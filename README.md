@@ -18,7 +18,7 @@ Today, the extension delivers the **capture half** (export + diff). The determin
 
 ## Features (today)
 
-The extension adds three buttons to the Vortex global toolbar (`global-icons`):
+The extension adds four buttons to the Vortex global toolbar (`global-icons`):
 
 ### 1. Export Mods To JSON
 Writes a full snapshot of the **active profile's mods** to a JSON file, including:
@@ -65,6 +65,22 @@ Supported games for plugin diffs (mapped via `LOCAL_APPDATA_GAME_FOLDER_BY_GAME_
 
 Other games will throw `Unsupported gameId for plugins.txt`. PRs welcome.
 
+### 4. Build Event Horizon Collection (Phase 2 slice 4a — early)
+
+Wires the snapshot pipeline into the new packager and produces a standalone `.ehcoll` package — the same data the export action captures, but packed into a self-contained ZIP with a `manifest.json` ready for the (eventual) installer to consume.
+
+A single dialog asks for collection **name**, **version** (semver), **author**, and an optional **description**. Everything else (per-mod external-archive instructions, README/CHANGELOG, persistent collection ID across rebuilds) is intentionally deferred to follow-up slices — the action ships a real, valid `.ehcoll` for any active profile today.
+
+Supported games: `skyrimse`, `fallout3`, `falloutnv`, `fallout4`, `starfield`. Other games will be rejected with an error notification.
+
+Output: `%APPDATA%/Vortex/event-horizon/collections/<slug>-<version>.ehcoll`
+
+> **Status:** the manifest format is stable (`schemaVersion: 1`, see [`docs/business/MANIFEST_SCHEMA.md`](docs/business/MANIFEST_SCHEMA.md)), but no installer reads it yet. Today this action is useful for inspecting what Event Horizon would ship — `7z l file.ehcoll` and read `manifest.json`. The user-side installer is the next phase.
+
+> **The toolbar buttons are temporary.** A dedicated **Event Horizon page** (custom React UI registered as a Vortex `mainPage`) is scheduled for Phase 5 and will replace every dialog in this extension with a proper build/install/inspect surface. Phases 2–4 ship business logic with deliberately minimal Vortex-native UI to avoid investing in throwaway dialog code. See [`docs/PROPOSAL_INSTALLER.md`](docs/PROPOSAL_INSTALLER.md) §10.
+
+Full spec: [`docs/business/BUILD_PACKAGE.md`](docs/business/BUILD_PACKAGE.md).
+
 ---
 
 ## Install (end users)
@@ -76,7 +92,7 @@ Other games will throw `Unsupported gameId for plugins.txt`. PRs welcome.
    %APPDATA%\Vortex\plugins\vortex-event-horizon\
    ```
 
-3. Restart Vortex. You should see three new icons in the global toolbar.
+3. Restart Vortex. You should see four new icons in the global toolbar.
 
 > The bundled `src/scripts/deploy-to-vortex.js` automates this — see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 

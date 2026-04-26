@@ -19,15 +19,36 @@
 import { util } from "vortex-api";
 
 /**
+ * One entry yielded by `list`'s `data` event. The shape mirrors
+ * `node-7z`'s output: `file` is the path inside the archive, `size` is
+ * the uncompressed size in bytes (when 7z reports it), `attr` is the DOS
+ * attribute flag string (`"D...."` on directories).
+ *
+ * Other fields exist (`dateTime`, `compressed`, `crc`) but we don't
+ * consume them — leaving the type narrow keeps callers honest.
+ */
+export type SevenZipListEntry = {
+  file: string;
+  size?: number;
+  attr?: string;
+};
+
+/**
  * Stream returned by every `node-7z` operation. Emits at minimum:
  *  - `end`     — the operation completed successfully.
  *  - `error`   — the operation failed; argument is an Error.
- *  - `data`    — per-file progress events (we don't consume these).
+ *  - `data`    — per-file events. For `list`, payload is a
+ *                {@link SevenZipListEntry}. For `add`/`extract`, it's a
+ *                progress entry we ignore.
  *  - `progress`— overall percent updates (we don't consume these).
  */
 export type SevenZipStream = {
   on(event: "end", listener: () => void): SevenZipStream;
   on(event: "error", listener: (err: Error) => void): SevenZipStream;
+  on(
+    event: "data",
+    listener: (entry: SevenZipListEntry) => void,
+  ): SevenZipStream;
   on(event: string, listener: (...args: unknown[]) => void): SevenZipStream;
 };
 
@@ -54,6 +75,22 @@ export type SevenZipAddOptions = {
 };
 
 /**
+ * Shared options for `list` and `extract`. We only use the few fields
+ * relevant to the Phase 3 slice 2 reader (`$cherryPick` to extract
+ * specific files, `$raw` for niche flags).
+ */
+export type SevenZipReadOptions = {
+  /**
+   * Only operate on these archive entries. For `extract`, only listed
+   * files are extracted; for `list`, only listed entries are yielded.
+   * Path syntax follows 7z's CLI patterns (forward slashes, glob ok).
+   */
+  $cherryPick?: string[];
+  /** Raw extra CLI flags appended to the 7z command line. */
+  $raw?: string[];
+};
+
+/**
  * The narrow surface of `node-7z` we consume. Add methods here only as
  * we need them — keeps the cast site honest about what we depend on.
  */
@@ -62,6 +99,12 @@ export type SevenZipApi = {
     archive: string,
     source: string | string[],
     options?: SevenZipAddOptions,
+  ): SevenZipStream;
+  list(archive: string, options?: SevenZipReadOptions): SevenZipStream;
+  extract(
+    archive: string,
+    output: string,
+    options?: SevenZipReadOptions,
   ): SevenZipStream;
 };
 

@@ -3,11 +3,13 @@ import type { types } from "vortex-api";
 import createExportModsAction from "./actions/exportModsAction";
 import createCompareModsAction from "./actions/compareModsAction";
 import { createComparePluginsAction } from "./actions/comparePluginsAction";
+import createBuildPackageAction from "./actions/buildPackageAction";
 
 function init(context: types.IExtensionContext): boolean {
   const exportModsAction = createExportModsAction(context);
   const compareModsAction = createCompareModsAction(context);
   const comparePluginsAction = createComparePluginsAction(context);
+  const buildPackageAction = createBuildPackageAction(context);
 
   context.registerAction(
     "global-icons",
@@ -39,6 +41,17 @@ function init(context: types.IExtensionContext): boolean {
     "Compare Plugins With TXT",
     () => {
       void comparePluginsAction();
+    },
+  );
+
+  context.registerAction(
+    "global-icons",
+    102,
+    "show",
+    {},
+    "Build Event Horizon Collection",
+    () => {
+      void buildPackageAction();
     },
   );
 

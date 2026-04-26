@@ -35,13 +35,14 @@ When prose disagrees with code, the prose is the spec — open an issue or fix t
 | [`PROFILE_RESOLUTION.md`](PROFILE_RESOLUTION.md) | Resolving "the active game" and "the active profile for the active game" from Vortex Redux state, including the two-pass fallback |
 | [`ARCHIVE_HASHING.md`](ARCHIVE_HASHING.md) | SHA-256 hashing of mod source archives — locating the archive on disk, streaming hash, bulk enrichment with bounded concurrency, why we use SHA-256 instead of the MD5 Vortex stores |
 
-### User-facing operations (the three toolbar actions)
+### User-facing operations (toolbar actions)
 
 | Spec | Toolbar action |
 |---|---|
 | [`EXPORT_MODS.md`](EXPORT_MODS.md) | "Export Mods To JSON" — produce a snapshot of the active profile's mods |
 | [`COMPARE_MODS.md`](COMPARE_MODS.md) | "Compare Current Mods With JSON" — diff a reference snapshot against the current profile |
 | [`COMPARE_PLUGINS.md`](COMPARE_PLUGINS.md) | "Compare Plugins With TXT" — diff a reference `plugins.txt` against the live one |
+| [`BUILD_PACKAGE.md`](BUILD_PACKAGE.md) | "Build Event Horizon Collection" — wire the snapshot pipeline into `buildManifest` + `packageEhcoll` and produce a `.ehcoll` (Phase 2 slice 4a: minimal end-to-end; per-mod UI + ID persistence are slice 4b/4c) |
 
 ### Capture extensions (Phase 1+)
 
@@ -58,6 +59,17 @@ When prose disagrees with code, the prose is the spec — open an issue or fix t
 | [`MANIFEST_SCHEMA.md`](MANIFEST_SCHEMA.md) | The `.ehcoll` package manifest schema (v1) — type-by-type contract for every section, the load-bearing mod-identity rule (Nexus IDs + SHA-256 / external SHA-256-only), what's in v1 vs deferred, and the additive evolution policy |
 | [`BUILD_MANIFEST.md`](BUILD_MANIFEST.md) | The pure converter from `ExportedModsSnapshot` (+ environmental inputs) to `EhcollManifest` — fatal vs non-fatal validation, identity synthesis, rule reference resolution, and v1 simplifications (empty `losingMods`, hardcoded Nexus game-domain table) |
 | [`PACKAGE_ZIP.md`](PACKAGE_ZIP.md) | The `EhcollManifest` + bundled-archives → `.ehcoll` ZIP packager — staging strategy (hardlink + copy fallback), the `7z` invocation, why ZIP (not 7z) format, why identity is `(package.id, package.version)` rather than byte-equal builds, and the validation matrix |
+| [`COLLECTION_CONFIG.md`](COLLECTION_CONFIG.md) | The per-collection state file (`<configDir>/<slug>.json`) — persists `package.id` across rebuilds, holds curator-edited per-mod overrides (`bundled` / `instructions`), README/CHANGELOG markdown bodies. Loaded/saved by the build action; consumed unchanged by the eventual Phase 5 React UI. |
+
+### Resolver / installer (Phase 3+)
+
+| Spec | Topic |
+|---|---|
+| [`PARSE_MANIFEST.md`](PARSE_MANIFEST.md) | The pure validator that turns a `.ehcoll` package's `manifest.json` text into a typed `EhcollManifest` — error vs warning tiers, cross-reference checks, and the round-trip property with `buildManifest` |
+| [`READ_EHCOLL.md`](READ_EHCOLL.md) | The I/O wrapper around `parseManifest` — opens a `.ehcoll` ZIP via `util.SevenZip`, lists the central directory, surgically extracts `manifest.json` to a temp dir, cross-checks `bundled/` entries against `manifest.mods`, and returns a typed package layout. Closes the round-trip with `packageEhcoll`. |
+| [`INSTALL_PLAN_SCHEMA.md`](INSTALL_PLAN_SCHEMA.md) | The `UserSideState` (resolver input) and `InstallPlan` (resolver output) contract — discriminated per-mod decisions (Nexus/external × already-installed/download/bundled/local-download/diverged/missing/prompt), aggregate compatibility, plugin order plan, rule plan, install-target (current-profile vs forced fresh-profile), and the `canProceed` derivation. Read by the Phase 3 resolver, action handler, eventual UI, and install driver. |
+| [`RESOLVE_INSTALL_PLAN.md`](RESOLVE_INSTALL_PLAN.md) | The pure resolver — `(manifest, userState, installTarget) → InstallPlan`. Per-mod ladder for Nexus and external mods (with the mode-dependent collapse of diverged decisions in fresh-profile mode), compatibility checks, orphan detection, external-dep checks, plugin/rule plans, summary derivation, and the v1 conservative-policy invariant ("always manual-review"). Mirrors the contract in [`INSTALL_PLAN_SCHEMA.md`](INSTALL_PLAN_SCHEMA.md). |
+| [`INSTALL_LEDGER.md`](INSTALL_LEDGER.md) | The on-disk receipt store at `<appData>/Vortex/event-horizon/installs/<package.id>.json` — schema, lifecycle (first install, upgrade, missing receipt, re-install, uninstall), why receipts and not Vortex mod attributes, atomic-write contract, validation rules, and the load-bearing "receipts are the only source of truth for cross-release lineage" invariant. |
 
 ## Conventions in these docs
 
