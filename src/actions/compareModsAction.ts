@@ -58,7 +58,7 @@ export default function createCompareModsAction(
       const diff = compareSnapshots(referenceSnapshot, currentSnapshot);
 
       const appDataPath = util.getVortexPath("appData");
-      const outputDir = path.join(appDataPath, "mod-monitor", "diffs");
+      const outputDir = path.join(appDataPath, "event-horizon", "diffs");
 
       const diffPath = await exportDiffReport({
         diff,
@@ -67,7 +67,7 @@ export default function createCompareModsAction(
       });
 
       console.log(
-        `[Vortex Mod Monitor] Diff generated | referenceOnly=${diff.summary.onlyInReference} | currentOnly=${diff.summary.onlyInCurrent} | changed=${diff.summary.changed}`,
+        `[Vortex Event Horizon] Diff generated | referenceOnly=${diff.summary.onlyInReference} | currentOnly=${diff.summary.onlyInCurrent} | changed=${diff.summary.changed}`,
       );
 
       context.api.sendNotification?.({
@@ -96,7 +96,7 @@ export default function createCompareModsAction(
         message: `Compare failed: ${message}`,
       });
 
-      console.error("[Vortex Mod Monitor] Compare failed:", error);
+      console.error("[Vortex Event Horizon] Compare failed:", error);
     }
   };
 }

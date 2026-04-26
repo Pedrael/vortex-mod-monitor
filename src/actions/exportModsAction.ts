@@ -10,13 +10,14 @@ import {
 import { enrichModsWithArchiveHashes } from "../core/archiveHashing";
 import { captureDeploymentManifests } from "../core/deploymentManifest";
 import { exportModsToJsonFile } from "../core/exportMods";
+import { captureLoadOrder } from "../core/loadOrder";
 import { openFile, openFolder } from "../utils/utils";
 
 export default function createExportModsAction(
   context: types.IExtensionContext,
 ): () => Promise<void> {
   return async () => {
-    const hashingNotificationId = "vortex-mod-monitor:hashing";
+    const hashingNotificationId = "vortex-event-horizon:hashing";
     let hashingNotificationShown = false;
 
     try {
@@ -53,6 +54,8 @@ export default function createExportModsAction(
         gameId,
       );
 
+      const loadOrder = captureLoadOrder(state, gameId);
+
       const fomodDetectedCount = mods.filter(
         (mod) => mod.installerType === "fomod",
       ).length;
@@ -71,7 +74,7 @@ export default function createExportModsAction(
       );
 
       const appDataPath = util.getVortexPath("appData");
-      const outputDir = path.join(appDataPath, "mod-monitor", "exports");
+      const outputDir = path.join(appDataPath, "event-horizon", "exports");
 
       const filePath = await exportModsToJsonFile({
         mods,
@@ -79,15 +82,16 @@ export default function createExportModsAction(
         profileId,
         outputDir,
         deploymentManifests,
+        loadOrder,
       });
 
       console.log(
-        `[Vortex Mod Monitor] Exported ${mods.length} mods | game=${gameId} | profile=${profileId} | fomod=${fomodDetectedCount} | detailed=${detailedFomodCount} | hashed=${hashedCount}/${mods.length} | deployedFiles=${deployedFileCount} across ${deploymentManifests.length} modtype(s)`,
+        `[Vortex Event Horizon] Exported ${mods.length} mods | game=${gameId} | profile=${profileId} | fomod=${fomodDetectedCount} | detailed=${detailedFomodCount} | hashed=${hashedCount}/${mods.length} | deployedFiles=${deployedFileCount} across ${deploymentManifests.length} modtype(s) | loadOrder=${loadOrder.length}`,
       );
 
       context.api.sendNotification?.({
         type: "success",
-        message: `Exported ${mods.length} mods | FOMOD: ${fomodDetectedCount} | Hashed: ${hashedCount}/${mods.length} | Deployed files: ${deployedFileCount}`,
+        message: `Exported ${mods.length} mods | FOMOD: ${fomodDetectedCount} | Hashed: ${hashedCount}/${mods.length} | Deployed files: ${deployedFileCount} | LO: ${loadOrder.length}`,
         actions: [
           {
             title: "Open Export",
@@ -107,7 +111,7 @@ export default function createExportModsAction(
         message: `Export failed: ${message}`,
       });
 
-      console.error("[Vortex Mod Monitor] Export failed:", error);
+      console.error("[Vortex Event Horizon] Export failed:", error);
     } finally {
       if (hashingNotificationShown) {
         context.api.dismissNotification?.(hashingNotificationId);

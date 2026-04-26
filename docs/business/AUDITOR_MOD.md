@@ -26,6 +26,8 @@ If `AuditorMod` is wrong, every downstream operation is wrong.
 | `modType` | `string` (required, may be empty) | `mod.type` | Vortex modtype. `""` is the default. Examples: `"collection"`, `"dinput"`, `"enb"`. Used to enumerate per-modtype deployment manifests during capture. See [`FILE_OVERRIDES_CAPTURE.md`](FILE_OVERRIDES_CAPTURE.md). |
 | `fileOverrides` | `string[]` (required, may be empty) | `mod.fileOverrides` (deduped + sorted) | Curator's explicit "this mod wins file X" choices from Vortex's conflict-resolution UI. The single strongest signal we capture. See [`FILE_OVERRIDES_CAPTURE.md`](FILE_OVERRIDES_CAPTURE.md). |
 | `enabledINITweaks` | `string[]` (required, may be empty) | `mod.enabledINITweaks` (deduped + sorted) | INI tweak filenames the curator turned on for this mod. |
+| `installTime` | `string?` (ISO 8601 UTC) | `mod.attributes.installTime` (Date \| string \| number → ISO) | Canonical UTC install timestamp. Undefined when missing or unparseable. See [`ORDERING.md`](ORDERING.md). |
+| `installOrder` | `number` (required, ≥ 0) | derived from `installTime` + `id` | 0-indexed ordinal of this mod in the curator's install sequence. Always present. Deterministic across runs. See [`ORDERING.md`](ORDERING.md). |
 
 ## Building an `AuditorMod`
 
@@ -136,7 +138,7 @@ The future installer (Phase 4+) cannot use that fallback. Before install,
 the user's Vortex has no mods, no internal ids, nothing. So the installer
 collapses identity to **two tiers**:
 
-| `source.kind` in `.vmcoll` | Identity used by installer | Why |
+| `source.kind` in `.ehcoll` | Identity used by installer | Why |
 |---|---|---|
 | `"nexus"` | `(gameDomain, modId, fileId)` for download, then `archiveSha256` for verification | Nexus IDs locate the file; the hash proves it's the same bytes the curator had. |
 | `"external"` | `archiveSha256` only | No Nexus IDs exist. The hash IS the identity. |
@@ -174,3 +176,4 @@ path of every export — which it currently is.
 - `rules` field + capture types: `src/core/getModsListForProfile.ts` — see [`MOD_RULES_CAPTURE.md`](MOD_RULES_CAPTURE.md)
 - `modType` / `fileOverrides` / `enabledINITweaks` fields: `src/core/getModsListForProfile.ts` — see [`FILE_OVERRIDES_CAPTURE.md`](FILE_OVERRIDES_CAPTURE.md)
 - `normalizeStringArray` (shared dedupe + sort helper): `src/core/getModsListForProfile.ts`
+- `installTime` / `installOrder` fields + `normalizeInstallTime` + `assignInstallOrder`: `src/core/getModsListForProfile.ts` — see [`ORDERING.md`](ORDERING.md)

@@ -154,7 +154,7 @@ export async function captureDeploymentManifests(
       }
     } catch (err) {
       console.warn(
-        `[Vortex Mod Monitor] Failed to read deployment manifest | gameId=${gameId} modType=${JSON.stringify(modType)}:`,
+        `[Vortex Event Horizon] Failed to read deployment manifest | gameId=${gameId} modType=${JSON.stringify(modType)}:`,
         err,
       );
     }

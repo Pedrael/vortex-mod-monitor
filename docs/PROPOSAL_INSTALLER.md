@@ -1,4 +1,4 @@
-# Proposal — Standalone Vortex Collection Installer
+# Proposal — Event Horizon Standalone Collection Installer
 
 **Status**: DRAFT — pending review
 **Owner**: TBD
@@ -8,9 +8,11 @@
 
 ## 1. Motivation
 
+> *Vortex is a black hole. Curated state — rules, FOMOD selections, file overrides, install order — gets pulled in and never comes out the same on the other side. **Event Horizon** is the boundary that captures everything before it crosses over, so a curated collection survives the trip from the curator's machine to a user's.*
+
 Vortex's built-in collection installer is unreliable: rules drop randomly, FOMOD selections get lost, file overrides differ between machines, and external dependencies are barely supported. The result is the well-known "works on the curator's machine, breaks on every user's machine" tax that eats hours of every release.
 
-This proposal describes a **standalone collection installer** that ships as part of this extension and runs **completely independently of Vortex's vanilla collection system**. We do not modify, replace, or hook into vanilla collections — we coexist.
+This proposal describes Event Horizon — a **standalone collection installer** that ships as part of this extension and runs **completely independently of Vortex's vanilla collection system**. We do not modify, replace, or hook into vanilla collections — we coexist.
 
 The installer is built **on top of `vortex-api`'s low-level primitives** (FOMOD installer, hardlink deployment, Redux state actions). We do not reimplement deployment or installer logic. Anything Vortex already does well, we delegate to.
 
@@ -21,7 +23,7 @@ The installer is built **on top of `vortex-api`'s low-level primitives** (FOMOD 
 ### Goals
 
 - **Bit-identical reproduction** of the curator's working profile on the user's machine, where "identical" means: same archive bytes (verified by SHA-256), same FOMOD choices, same mod rules, same file-override winners, same plugin order/state, same INI tweaks.
-- **Single-file distribution**: a `.vmcoll` package the curator publishes anywhere (Nexus as a "mod", direct download, Discord, file share). No registry, no auth on our side.
+- **Single-file distribution**: a `.ehcoll` package the curator publishes anywhere (Nexus as a "mod", direct download, Discord, file share). No registry, no auth on our side.
 - **Faithful Nexus integration**: every Nexus mod is auto-downloaded via Vortex's existing Nexus integration and the user's API key.
 - **First-class external mods**: any mod *not* on Nexus (hidden, removed, off-Nexus, curator-private) is handled by prompting the user to supply a local archive, which we then run through the same Vortex install pipeline.
 - **Post-install reconciliation**: after install, automatically diff against the curator's snapshot and surface drift in detail.
@@ -73,11 +75,11 @@ Game-version pinning is captured in the manifest (`game.version`) and the instal
                 │                    ▼                       │
                 │   ┌──────────────────────────────────┐     │
                 │   │  packager → manifest.json + zip  │     │
-                │   │            → out.vmcoll          │     │
+                │   │            → out.ehcoll          │     │
                 │   └──────────────────────────────────┘     │
                 └────────────────────────────────────────────┘
                                    │
-                  user downloads   │   .vmcoll
+                  user downloads   │   .ehcoll
                                    ▼
                 ┌────────────────────────────────────────────┐
                 │                USER SIDE                   │
@@ -124,14 +126,14 @@ The pipeline is deliberately **linear with explicit checkpoints**. After each ph
 
 ---
 
-## 5. The `.vmcoll` package
+## 5. The `.ehcoll` package
 
 ### 5.1 Format
 
-A standard ZIP archive with the extension `.vmcoll` (just a hint — content-sniffed by header anyway).
+A standard ZIP archive with the extension `.ehcoll` (Event Horizon Collection — just a hint, content-sniffed by header anyway).
 
 ```
-my-collection.vmcoll
+my-collection.ehcoll
 ├── manifest.json                # the source of truth (see §6)
 ├── README.md                    # optional, shown to user before install
 ├── CHANGELOG.md                 # optional
@@ -157,7 +159,7 @@ single most important reason ours will be reliable. **Read carefully.**
 
 ### The rule
 
-The identity of every mod in a `.vmcoll` package is determined by the
+The identity of every mod in a `.ehcoll` package is determined by the
 `source.kind` field, in the following way:
 
 | `source.kind` | Identity (cross-machine portable) | Verified by |
@@ -213,7 +215,7 @@ anything that doesn't match.
 ### Edge case: the curator updates an external mod's archive
 
 If the curator replaces one of their external archives between v1.0 and
-v1.1 of a `.vmcoll`, the SHA-256 changes. From the manifest's perspective
+v1.1 of a `.ehcoll`, the SHA-256 changes. From the manifest's perspective
 this is a different mod. The curator must:
 - bump the package version,
 - re-publish the new SHA in `manifest.json`,
@@ -226,7 +228,7 @@ There is no in-place upgrade path in v1 (see §14 out-of-scope).
 
 ## 6. Manifest schema (v1)
 
-TypeScript source of truth lives in `src/types/vmcoll.ts` (to be created). JSON shape:
+TypeScript source of truth lives in `src/types/ehcoll.ts` (to be created). JSON shape:
 
 ```jsonc
 {
@@ -431,10 +433,10 @@ Two design simplifications now possible:
    - Archive SHA-256 of every mod's source archive in `<staging>/<modId>` or the download cache.
    - External-dep block — if the curator has any non-Nexus mods, prompt them to supply per-mod metadata (instructions URL, optional bundle-this-archive checkbox).
 3. Build `manifest.json`.
-4. ZIP into `<name>-<version>.vmcoll`. If curator opted to bundle archives, copy them into `bundled/` keyed by SHA-256.
+4. ZIP into `<name>-<version>.ehcoll`. If curator opted to bundle archives, copy them into `bundled/` keyed by SHA-256.
 5. Open the output folder, show "Done" notification.
 
-Output goes to `<vortex appData>/mod-monitor/packages/`.
+Output goes to `<vortex appData>/event-horizon/packages/`.
 
 ---
 
@@ -442,7 +444,7 @@ Output goes to `<vortex appData>/mod-monitor/packages/`.
 
 ### 9.1 Preflight
 
-User clicks **Install Collection from .vmcoll**, picks the file. We:
+User clicks **Install Collection from .ehcoll**, picks the file. We:
 
 1. Validate ZIP + parse manifest, reject schema-version mismatches.
 2. Verify game match (`game.id` vs. active game). Refuse mismatch.
@@ -513,9 +515,9 @@ Shown in a separate dialog *after* mods finish, since they require manual user a
 | **0** | Repo cleanup: rename unification, license, this proposal accepted | ½ day | Owner sign-off |
 | **0.5** | ~~Spike: confirm `vortex-api` symbols in §7.~~ **DONE 2026-04-26.** Type-level verification complete — see §7. Runtime smoke-test (install one Nexus mod with saved FOMOD choices) deferred into Phase 1 since the API surface is solid enough to start building on. | ~~2–4 days~~ ½ day | ✅ Passed |
 | **1** | Extended capture: rules, file overrides, INI tweaks, archive hashes added to `AuditorMod` snapshot. Reconciler upgraded to handle them. **Useful as standalone feature on day 1.** | 1–2 weeks | Manual test on real Skyrim SE profile |
-| **2** | `.vmcoll` packager: manifest writer + ZIP builder + bundled-archive support. CLI/GUI to build a package from active profile. | 3–5 days | Round-trip: build a package, parse it back, equality |
+| **2** | `.ehcoll` packager: manifest writer + ZIP builder + bundled-archive support. CLI/GUI to build a package from active profile. | 3–5 days | Round-trip: build a package, parse it back, equality |
 | **3** | Resolver: Nexus download integration, hash verification, external-archive picker, bundled-fallback logic. | 1–2 weeks | Resolves a 30-mod collection on a clean machine without manual intervention beyond external prompts |
-| **4** | Installer driver: orchestrate install/rules/overrides/deploy via vortex-api events. Resume-from-crash support. | 3–6 weeks | End-to-end: clean Vortex → install `.vmcoll` → reconciler shows green on a real collection |
+| **4** | Installer driver: orchestrate install/rules/overrides/deploy via vortex-api events. Resume-from-crash support. | 3–6 weeks | End-to-end: clean Vortex → install `.ehcoll` → reconciler shows green on a real collection |
 | **5** | Polish: drift report UI, external-dep dialogs, error recovery, telemetry-free logging. | 1 week | UAT with one real collection author + 3 testers |
 
 **Phase 0.5 is the most important gate.** If we cannot drive the FOMOD installer with saved choices through `vortex-api`, the entire scope changes — we'd need to either fork bits of the FOMOD installer extension or accept manual FOMOD replay. Don't skip the spike.
@@ -550,7 +552,7 @@ Shown in a separate dialog *after* mods finish, since they require manual user a
 | `src/core/getModsListForProfile.ts` → `getModsForProfile`, `AuditorMod` | Base of curator-side capture; superset added |
 | `src/core/comparePlugins.ts` → `parsePluginsTxt`, `comparePluginsEntries` | Plugin-order diff in reconciler |
 | `src/utils/utils.ts` → `compareSnapshots`, `deepEqualStable`, `getModCompareKey` | Reconciler core |
-| `src/utils/utils.ts` → `pickJsonFile`, `pickTxtFile` | Used as base for `pickVmcollFile`, `pickArchiveFile` |
+| `src/utils/utils.ts` → `pickJsonFile`, `pickTxtFile` | Used as base for `pickEhcollFile`, `pickArchiveFile` |
 | `src/utils/utils.ts` → `openFile`, `openFolder` | Drift report and external-deps dialogs |
 | `src/core/exportMods.ts` → `exportModsToJsonFile` | Generalized into manifest writer |
 
@@ -564,7 +566,7 @@ The diff engine is the load-bearing pillar. The installer is meaningless without
 2. **Starfield specifics** — verify `Plugins.txt` location/format, ESM-list semantics, and Vortex's deployment method for it. Bethesda has changed this multiple times.
 3. **INI tweaks storage** — confirm Vortex Redux key. If non-trivial to extract, drop INI tweaks to a stretch goal.
 4. **LOOT integration** — do we just *require* it, or do we also persist `userlist.yaml` rules into the manifest? Probably yes, but defer to Phase 2.
-5. **Signing** — should `.vmcoll` support an optional Ed25519 signature so users can verify "this is really BubuZefirka's package"? Cheap to add, defer to Phase 5.
+5. **Signing** — should `.ehcoll` support an optional Ed25519 signature so users can verify "this is really BubuZefirka's package"? Cheap to add, defer to Phase 5.
 6. **Update flow** — when a curator releases v1.4.3, can users upgrade in place, or only re-install fresh? v1 = re-install fresh.
 7. **License** — which OSI license? MIT proposed. Add `LICENSE` in Phase 0.
 
@@ -576,7 +578,7 @@ The diff engine is the load-bearing pillar. The installer is meaningless without
 - Partial installs — manifest is all-or-nothing per mod (you don't "install just the patches").
 - In-place edits to a deployed collection (a fresh install is the unit).
 - Telemetry / analytics — we never phone home.
-- Cloud sync of `.vmcoll` files — this is a file format, not a service.
+- Cloud sync of `.ehcoll` files — this is a file format, not a service.
 - Linux / SteamDeck — Vortex itself is Windows-only.
 
 ---
@@ -588,3 +590,4 @@ The diff engine is the load-bearing pillar. The installer is meaningless without
 | 2026-04-26 | Proposal drafted. Games locked to skyrimse, fallout3, falloutnv, fallout4, starfield. External mods supported via local-archive picker. Missing-Nexus-mods policy = skip+warn (default) with optional bundling per package. Reuse Vortex hardlinking + FOMOD via `vortex-api`. Coexist with vanilla collections, do not modify them. Open source. |
 | 2026-04-26 | Phase 0.5 spike PASSED. `vortex-api@2.0.0-beta.1` types confirm: `InstallFunc` accepts `choices` + `unattended`; `nexusDownload(..., allowInstall=true)` and `startDownload(..., {allowInstall:'force'})` are the install primitives we'll use; `awaitModsDeployment` gives us awaitable deploys; `setFileOverride`, `addModRule`, `setModEnabled` are all typed actions. License unblocked: `vortex-api` is types-only, GPL on types is irrelevant — we ship our extension under MIT. |
 | 2026-04-26 | **Mod identity rule (load-bearing)**. External-dependency mods (any `source.kind: "external"`) are identified solely by `archiveSha256` of the source archive. Nexus mods are identified by `(gameDomain, modId, fileId)` for retrieval but the SHA-256 is mandatory and verified post-download. There is no name/version/filename fallback on the install side. This is the explicit divergence from Vortex's vanilla collections, which trust the user to supply the correct external archive — that "trust" is the root cause of most reproducibility failures. See §5.5. |
+| 2026-04-26 | **Project renamed: Vortex Mod Monitor → Event Horizon.** "Mod monitor" undersold the scope once the standalone installer became the primary deliverable. Metaphor: Vortex is a black hole that destroys curated state; Event Horizon is the boundary at which we capture state before it crosses over. New identifiers locked in: npm package `vortex-event-horizon`, Vortex extension display name `Event Horizon`, AppData folder `event-horizon/`, log prefix `[Vortex Event Horizon]`, package format extension `.ehcoll` (was `.vmcoll`), output filename prefixes `event-horizon-mods-…` / `event-horizon-mod-diff-…` / `event-horizon-plugins-diff-…`. All docs and code updated in this rename pass; no behavioral changes. |

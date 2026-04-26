@@ -39,10 +39,10 @@ User clicks the global toolbar button **"Compare Plugins With TXT"**. Registered
    1. Read both files in parallel as UTF-8.
    2. Parse each via `parsePluginsTxt` (next section).
    3. Run `comparePluginsEntries` against the parsed arrays.
-5. Compute output dir: `<appData>/mod-monitor/plugin-diffs/`.
+5. Compute output dir: `<appData>/event-horizon/plugin-diffs/`.
 6. Write the diff via `exportPluginsDiffReport({ diff, outputDir, gameId })`:
    - `mkdir -p`.
-   - Filename: `vortex-plugins-diff-<gameId>-<unixMillis>.json`.
+   - Filename: `event-horizon-plugins-diff-<gameId>-<unixMillis>.json`.
    - Pretty-printed UTF-8.
 7. Log one line, show success notification with "Open Diff" / "Open Folder" buttons.
 
@@ -93,8 +93,8 @@ For each `(normalizedName, currentPlugin)`:
 
 ### File on disk
 
-- **Path**: `<appData>\mod-monitor\plugin-diffs\vortex-plugins-diff-<gameId>-<unixMillis>.json`
-- **Contents**: see [`DATA_FORMATS.md`](../DATA_FORMATS.md#3-plugins-diff--vortex-plugins-diff-gameid-tsjson). Top-level: `generatedAt`, both file paths, `summary` (six counts), and the four arrays (`onlyInReference`, `onlyInCurrent`, `enabledMismatch`, `positionChanged`).
+- **Path**: `<appData>\event-horizon\plugin-diffs\event-horizon-plugins-diff-<gameId>-<unixMillis>.json`
+- **Contents**: see [`DATA_FORMATS.md`](../DATA_FORMATS.md#4-plugins-diff--event-horizon-plugins-diff-gameid-tsjson). Top-level: `generatedAt`, both file paths, `summary` (six counts), and the four arrays (`onlyInReference`, `onlyInCurrent`, `enabledMismatch`, `positionChanged`).
 
 ### Notifications
 
@@ -106,7 +106,7 @@ For each `(normalizedName, currentPlugin)`:
 ### Console
 
 ```
-[Vortex Mod Monitor] Plugins diff | game=<gameId> | referenceOnly=A | currentOnly=B | enabledMismatch=C | positionChanged=D
+[Vortex Event Horizon] Plugins diff | game=<gameId> | referenceOnly=A | currentOnly=B | enabledMismatch=C | positionChanged=D
 ```
 
 ## Failure modes
@@ -131,7 +131,7 @@ For each `(normalizedName, currentPlugin)`:
 ## Future direction (informational, not contract)
 
 When the installer ships:
-- The `.vmcoll` package will include a captured `plugins.txt` per the curator's machine, plus LOOT sortlists when available.
+- The `.ehcoll` package will include a captured `plugins.txt` per the curator's machine, plus LOOT sortlists when available.
 - The reconciler will read these in the same `parsePluginsTxt` format (so this code is reusable).
 - A "compare with packaged plugins" UI will replace the manual file picker for installed collections — but the underlying diff function stays untouched.
 
@@ -147,4 +147,4 @@ When the installer ships:
 - `getCurrentPluginsTxtPath`: `src/core/comparePlugins.ts:158-166`
 - `comparePluginsTxtFiles`: `src/core/comparePlugins.ts:168-185`
 - `exportPluginsDiffReport`: `src/core/comparePlugins.ts:187-204`
-- Plugins diff JSON schema: [`DATA_FORMATS.md`](../DATA_FORMATS.md#3-plugins-diff--vortex-plugins-diff-gameid-tsjson)
+- Plugins diff JSON schema: [`DATA_FORMATS.md`](../DATA_FORMATS.md#4-plugins-diff--event-horizon-plugins-diff-gameid-tsjson)

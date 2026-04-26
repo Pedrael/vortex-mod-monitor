@@ -122,6 +122,27 @@ export type AuditorMod = {
   enabledINITweaks: string[];
 
   /**
+   * Curator's `mod.attributes.installTime` normalized to an ISO-8601 string
+   * in UTC. Undefined when the attribute is missing or unparseable. Used as
+   * the input signal for `installOrder` and as the fallback tiebreaker for
+   * deployment priority when no rule applies between two mods.
+   *
+   * See docs/business/ORDERING.md for full semantics.
+   */
+  installTime?: string;
+
+  /**
+   * Stable ordinal of this mod in the active profile's install sequence,
+   * 0-indexed. Computed by `getModsForProfile` after walking all mods and
+   * sorting by `installTime` ascending; mods missing `installTime` are
+   * pushed to the end with a stable secondary sort by `id` so the ordinal
+   * is deterministic across runs.
+   *
+   * Always present. Never negative.
+   */
+  installOrder: number;
+
+  /**
    * FOMOD selected options grouped by installer step/page.
    *
    * Example:
@@ -206,6 +227,41 @@ function normalizeCollectionIds(value: unknown): string[] {
   }
 
   return [String(value)];
+}
+
+/**
+ * Normalize Vortex's `installTime` attribute (which can be a Date, an
+ * ISO-8601 string, an arbitrary date string, or — rarely — a unix-millis
+ * number stringified) into a canonical ISO-8601 UTC string.
+ *
+ * Returns undefined when:
+ *   - The attribute is missing.
+ *   - Parsing produces an invalid Date (NaN getTime).
+ *
+ * We deliberately re-stringify even already-ISO-formatted inputs so that
+ * cross-machine diffs cannot be confused by timezone-suffix variations
+ * (e.g. "+00:00" vs "Z").
+ */
+function normalizeInstallTime(raw: unknown): string | undefined {
+  if (raw === undefined || raw === null) {
+    return undefined;
+  }
+
+  let date: Date;
+
+  if (raw instanceof Date) {
+    date = raw;
+  } else if (typeof raw === "string" || typeof raw === "number") {
+    date = new Date(raw);
+  } else {
+    return undefined;
+  }
+
+  if (Number.isNaN(date.getTime())) {
+    return undefined;
+  }
+
+  return date.toISOString();
 }
 
 /**
@@ -375,7 +431,7 @@ export function getModsForProfile(
 
   const enabledMods = profile?.modState ?? {};
 
-  return Object.entries(modsByGame).map(([modId, rawMod]) => {
+  const mods: AuditorMod[] = Object.entries(modsByGame).map(([modId, rawMod]) => {
     const mod = rawMod as any;
     const attributes = (mod?.attributes ?? {}) as Record<string, unknown>;
 
@@ -417,6 +473,49 @@ export function getModsForProfile(
       modType: typeof mod?.type === "string" ? mod.type : "",
       fileOverrides: normalizeStringArray(mod?.fileOverrides),
       enabledINITweaks: normalizeStringArray(mod?.enabledINITweaks),
+      installTime: normalizeInstallTime(attributes.installTime),
+      installOrder: 0,
     };
   });
+
+  assignInstallOrder(mods);
+
+  return mods;
+}
+
+/**
+ * Assigns a deterministic 0-indexed `installOrder` to each mod, in place.
+ *
+ * Sort key precedence (ascending):
+ *   1. `installTime` parsed as Date — earliest first. Mods missing or with
+ *      unparseable `installTime` sort AFTER all timestamped mods.
+ *   2. Within either bucket, ties broken by `id` ASCII compare so the
+ *      ordinal is stable across runs.
+ *
+ * The function mutates the input array's elements (assigns `installOrder`)
+ * but does not re-sort the array itself — callers receive mods in the same
+ * iteration order as `Object.entries(modsByGame)` produced.
+ */
+function assignInstallOrder(mods: AuditorMod[]): void {
+  const indexed = mods.map((mod, idx) => {
+    const ts = mod.installTime ? Date.parse(mod.installTime) : NaN;
+    return { idx, mod, ts };
+  });
+
+  indexed.sort((a, b) => {
+    const aHas = !Number.isNaN(a.ts);
+    const bHas = !Number.isNaN(b.ts);
+
+    if (aHas && bHas) {
+      if (a.ts !== b.ts) return a.ts - b.ts;
+    } else if (aHas !== bHas) {
+      return aHas ? -1 : 1;
+    }
+
+    return a.mod.id < b.mod.id ? -1 : a.mod.id > b.mod.id ? 1 : 0;
+  });
+
+  for (let ord = 0; ord < indexed.length; ord += 1) {
+    indexed[ord].mod.installOrder = ord;
+  }
 }

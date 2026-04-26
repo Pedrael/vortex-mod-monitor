@@ -10,7 +10,7 @@
 
 ```powershell
 git clone <repo-url>
-cd vortex-mod-monitor
+cd vortex-event-horizon
 npm install
 ```
 
@@ -37,13 +37,13 @@ info.json
 dist/
 ```
 
-Restart Vortex. Use **View → Show developer tools** to see `console.log` / `console.error` output — the extension's lines are prefixed with `[Vortex Mod Monitor]`.
+Restart Vortex. Use **View → Show developer tools** to see `console.log` / `console.error` output — the extension's lines are prefixed with `[Vortex Event Horizon]`.
 
 ## Deploy to Vortex (script)
 
 `src/scripts/deploy-to-vortex.js` automates the copy. As of Phase 0 it:
 
-- resolves the Vortex plugin path via `%APPDATA%\Vortex\plugins\vortex-mod-monitor` — no hardcoding
+- resolves the Vortex plugin path via `%APPDATA%\Vortex\plugins\vortex-event-horizon` — no hardcoding
 - copies `dist/` plus the loader `index.js` and `info.json`
 
 If `%APPDATA%` is unset, the script exits with code 1.
@@ -117,7 +117,7 @@ See `CLAUDE.md` / `AGENTS.md` and the skill files under `.claude/skills/gitnexus
 
 ## Debugging tips
 
-- **Extension didn't load**: open Vortex devtools and look for errors mentioning `vortex-mod-monitor` / `Mod Monitor`. The most likely culprit is the `default` export indirection — see ARCHITECTURE.md "Design notes & quirks."
+- **Extension didn't load**: open Vortex devtools and look for errors mentioning `vortex-event-horizon` / `Event Horizon`. The most likely culprit is the `default` export indirection — see ARCHITECTURE.md "Design notes & quirks."
 - **No FOMOD selections in the snapshot**: Vortex only stores them when the FOMOD installer is run with "remember choices" semantics. `pickInstallerChoices` already tries 7 attribute keys; if a new key shows up in your state, add it there.
 - **`Unsupported gameId for plugins.txt`**: add the game to the `LOCAL_APPDATA_GAME_FOLDER_BY_GAME_ID` map.
 - **Inspect Vortex state**: in devtools console, run `getState()` (Vortex exposes this) and use the `findInObject` helper from `utils.ts` if you need to hunt for a specific attribute.

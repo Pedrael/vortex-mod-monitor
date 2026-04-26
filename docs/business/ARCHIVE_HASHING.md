@@ -134,7 +134,7 @@ Returning `undefined` at each step lets the caller (`enrichModsWithArchiveHashes
 
 ## How `archiveSha256` is consumed downstream
 
-- **Snapshot JSON**: present in every exported mod (when resolvable). See [`DATA_FORMATS.md`](../DATA_FORMATS.md#1-mods-snapshot--vortex-mods-gameid-profileid-tsjson).
+- **Snapshot JSON**: present in every exported mod (when resolvable). See [`DATA_FORMATS.md`](../DATA_FORMATS.md#1-mods-snapshot--event-horizon-mods-gameid-profileid-tsjson).
 - **Diff engine**: included in `compareFields`, so two snapshots with the same `compareKey` but different `archiveSha256` produce a `ModFieldDifference` entry. See [`COMPARE_MODS.md`](COMPARE_MODS.md).
 - **Future installer (Phase 4)**: will verify resolved archives against the manifest's recorded hash before invoking Vortex's installer.
 

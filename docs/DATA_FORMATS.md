@@ -4,7 +4,7 @@ All files this extension reads and writes are JSON (or, for plugins, the standar
 
 ---
 
-## 1. Mods snapshot — `vortex-mods-{gameId}-{profileId}-{ts}.json`
+## 1. Mods snapshot — `event-horizon-mods-{gameId}-{profileId}-{ts}.json`
 
 Produced by **Export Mods To JSON** (`exportModsToJsonFile`).
 Consumed by **Compare Current Mods With JSON** as the reference.
@@ -18,11 +18,12 @@ Consumed by **Compare Current Mods With JSON** as the reference.
   "profileId": "abcdef12",
   "count": 142,                                // mods.length
   "mods": [ /* AuditorMod[] */ ],
-  "deploymentManifests": [ /* CapturedDeploymentManifest[] — optional, omitted from older snapshots */ ]
+  "deploymentManifests": [ /* CapturedDeploymentManifest[] — optional, omitted from older snapshots */ ],
+  "loadOrder": [ /* CapturedLoadOrderEntry[] — optional, omitted from older snapshots */ ]
 }
 ```
 
-`deploymentManifests` is **omitted entirely** from snapshots produced before Phase 1 slice 3, and from snapshots built synchronously by the Compare Mods action (which has no access to Vortex's async `getManifest` API at construction time). Loaders MUST tolerate its absence.
+Both `deploymentManifests` and `loadOrder` are **omitted entirely** from older snapshots and from synchronous compare-side snapshots. Loaders MUST tolerate their absence. Empty arrays are also valid (e.g. a game without Vortex's LoadOrder API emits `loadOrder: []`).
 
 ### `AuditorMod`
 
@@ -50,7 +51,10 @@ Defined in [`src/core/getModsListForProfile.ts`](../src/core/getModsListForProfi
 
   "modType": "",                               // Vortex modtype, "" is default
   "fileOverrides": ["meshes/foo.nif"],         // sorted+deduped, may be empty
-  "enabledINITweaks": ["my-tweak.ini"]         // sorted+deduped, may be empty
+  "enabledINITweaks": ["my-tweak.ini"],        // sorted+deduped, may be empty
+
+  "installTime": "2026-04-25T14:32:11.000Z",   // optional ISO-8601 UTC
+  "installOrder": 47                           // 0-indexed ordinal across the profile
 }
 ```
 
@@ -129,6 +133,22 @@ Files are sorted by `relPath`. Entries with neither `relPath` nor `source` are d
 
 The `deploymentManifests` array is **not currently consumed by the diff engine** — the compare action ignores it. It exists so the future installer (Phase 4+) can plan reconciliation against the curator's actual deployment winners.
 
+### `CapturedLoadOrderEntry`
+
+One per mod present in `state.persistent.loadOrder[gameId]`. Captures Vortex's separate per-game LoadOrder structure (used by Fallout 4, Skyrim AE, Starfield, and other games that opt into the LoadOrder API). Distinct from `plugins.txt` — load order covers non-plugin mods (script extenders, ENB, etc.) too. Full semantics in [`business/ORDERING.md`](business/ORDERING.md).
+
+```jsonc
+{
+  "modId": "MyMod-1234-5-0-0",   // matches AuditorMod.id
+  "pos": 47,                      // 0-indexed position
+  "enabled": true,
+  "locked": true,                 // optional, omitted unless strictly true
+  "external": true                // optional, omitted unless strictly true
+}
+```
+
+Sorted by `pos` ascending. Empty array for games that don't use Vortex's LoadOrder API. The `loadOrder` snapshot field is **not currently consumed by the diff engine** — captured for the future installer.
+
 ### Identity for diffing
 
 When two snapshots are compared, mods are matched by `getModCompareKey` (see [`src/utils/utils.ts`](../src/utils/utils.ts)):
@@ -143,7 +163,7 @@ This means renaming a mod or upgrading its version won't break matching as long 
 
 ---
 
-## 2. Mods diff — `vortex-mod-diff-{gameId}-{ts}.json`
+## 2. Mods diff — `event-horizon-mod-diff-{gameId}-{ts}.json`
 
 Produced by **Compare Current Mods With JSON** (`exportDiffReport`).
 
@@ -203,7 +223,8 @@ Produced by **Compare Current Mods With JSON** (`exportDiffReport`).
 name, version, enabled, source, nexusModId, nexusFileId, archiveId,
 archiveSha256, collectionIds, installerType, hasInstallerChoices,
 hasDetailedInstallerChoices, fomodSelections, rules,
-modType, fileOverrides, enabledINITweaks
+modType, fileOverrides, enabledINITweaks,
+installTime, installOrder
 ```
 
 `archiveSha256` is the strongest drift signal: when two snapshots share Nexus
@@ -220,6 +241,12 @@ Sorted canonically. Any non-empty diff entry is a real intent change.
 
 `modType` and `enabledINITweaks` are also diffed for completeness; in practice
 they rarely change once a mod is installed.
+
+`installTime` differences mean a mod was uninstalled and reinstalled.
+`installOrder` is derived deterministically (sorted by `installTime` then `id`)
+so a single `installOrder` change usually means the mod set itself changed —
+the diff highlights both the cause (`only-in-current` / `only-in-reference`
+mod) and the effect (other mods' ordinals shifted) in one report.
 
 Equality is **order-insensitive deep equality** (`deepEqualStable` → `sortDeep` + `JSON.stringify`), so re-ordered arrays of the same elements won't be flagged as changed.
 
@@ -243,7 +270,7 @@ SomeDisabledMod.esp
 
 ---
 
-## 4. Plugins diff — `vortex-plugins-diff-{gameId}-{ts}.json`
+## 4. Plugins diff — `event-horizon-plugins-diff-{gameId}-{ts}.json`
 
 Produced by **Compare Plugins With TXT** (`exportPluginsDiffReport`).
 
@@ -304,9 +331,9 @@ Produced by **Compare Plugins With TXT** (`exportPluginsDiffReport`).
 
 | Output | Path |
 |---|---|
-| Mod snapshots | `<Vortex appData>\mod-monitor\exports\` |
-| Mod diffs | `<Vortex appData>\mod-monitor\diffs\` |
-| Plugin diffs | `<Vortex appData>\mod-monitor\plugin-diffs\` |
+| Mod snapshots | `<Vortex appData>\event-horizon\exports\` |
+| Mod diffs | `<Vortex appData>\event-horizon\diffs\` |
+| Plugin diffs | `<Vortex appData>\event-horizon\plugin-diffs\` |
 | Current `plugins.txt` (read-only input) | `%LOCALAPPDATA%\<GameFolder>\plugins.txt` |
 
 `<Vortex appData>` is whatever `util.getVortexPath("appData")` resolves to — typically `%APPDATA%\Vortex`.

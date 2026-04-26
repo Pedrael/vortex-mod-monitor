@@ -1,6 +1,6 @@
 {
-  "name": "Mod Monitor",
+  "name": "Event Horizon",
   "author": "Your Name",
   "version": "0.0.1",
-  "description": "Snapshot and diff your Vortex modlist and Bethesda plugins.txt to track modlist drift across sessions."
+  "description": "Capture and reproduce a curator's exact mod state — rules, FOMOD selections, file overrides, load order, install order — before Vortex's collection black hole loses it."
 }

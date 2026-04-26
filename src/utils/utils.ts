@@ -3,6 +3,7 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import type { AuditorMod } from "../core/getModsListForProfile";
 import type { CapturedDeploymentManifest } from "../core/deploymentManifest";
+import type { CapturedLoadOrderEntry } from "../core/loadOrder";
 
 export function openFolder(folderPath: string) {
   exec(`start "" "${folderPath}"`);
@@ -86,6 +87,20 @@ export type ExportedModsSnapshot = {
    * curator's actual deployment winners.
    */
   deploymentManifests?: CapturedDeploymentManifest[];
+
+  /**
+   * Per-game load order from `state.persistent.loadOrder[gameId]`.
+   *
+   * Optional because:
+   *   1. Older snapshot files (pre-Phase 1 slice 4) won't have it.
+   *   2. Games that drive load order purely via `plugins.txt` will emit
+   *      an empty array; we still emit the field for forward-compat.
+   *
+   * Distinct from `plugins.txt` — covers non-plugin mods (script
+   * extenders, ENB, etc.) on games that use Vortex's LoadOrder API.
+   * NOT diffed yet — captured for the future installer.
+   */
+  loadOrder?: CapturedLoadOrderEntry[];
 };
 
 export type ModFieldDifference = {
@@ -184,6 +199,8 @@ export function compareMods(
     "modType",
     "fileOverrides",
     "enabledINITweaks",
+    "installTime",
+    "installOrder",
   ];
 
   const differences: ModFieldDifference[] = [];
@@ -288,7 +305,7 @@ export async function exportDiffReport(params: {
 
   const filePath = path.join(
     outputDir,
-    `vortex-mod-diff-${gameId}-${Date.now()}.json`,
+    `event-horizon-mod-diff-${gameId}-${Date.now()}.json`,
   );
 
   await fs.writeFile(filePath, JSON.stringify(diff, null, 2), "utf8");

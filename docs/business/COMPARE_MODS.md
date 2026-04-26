@@ -32,10 +32,10 @@ User clicks the global toolbar button **"Compare Current Mods With JSON"**. Regi
    - Wrap in an `ExportedModsSnapshot` literal: `{ exportedAt, gameId, profileId, count, mods }`.
    - **No archive hashing** on the current side. See "Quirks" — this is a deliberate omission for now.
 6. Run `compareSnapshots(reference, current)` (next section).
-7. Compute output dir: `<appData>/mod-monitor/diffs/`.
+7. Compute output dir: `<appData>/event-horizon/diffs/`.
 8. Write the diff JSON via `exportDiffReport({ diff, outputDir, gameId })`:
    - `mkdir -p`.
-   - Filename: `vortex-mod-diff-<gameId>-<unixMillis>.json`.
+   - Filename: `event-horizon-mod-diff-<gameId>-<unixMillis>.json`.
    - Pretty-printed UTF-8.
 9. Log one line, show a `success` notification with "Open Diff" / "Open Folder" buttons.
 
@@ -84,11 +84,13 @@ rules
 modType
 fileOverrides
 enabledINITweaks
+installTime
+installOrder
 ```
 
-**INVARIANT**: This list is the **single source of truth** for "what counts as a meaningful change". Fields outside this list (notably `id` — the Vortex internal id — and the top-level `deploymentManifests` snapshot field) are not compared. Adding a field to `AuditorMod` requires deciding whether to add it here.
+**INVARIANT**: This list is the **single source of truth** for "what counts as a meaningful change". Fields outside this list (notably `id` — the Vortex internal id — and the top-level `deploymentManifests` and `loadOrder` snapshot fields) are not compared. Adding a field to `AuditorMod` requires deciding whether to add it here.
 
-**Not (yet) diffed at the field level**: `deploymentManifests` is captured on the snapshot wrapper (see [`FILE_OVERRIDES_CAPTURE.md`](FILE_OVERRIDES_CAPTURE.md)) but the diff engine does not consume it. Diffing manifests requires its own machinery (per-modtype grouping, per-file winner change classification) and is deferred to a later slice / the future installer.
+**Not (yet) diffed at the field level**: `deploymentManifests` (see [`FILE_OVERRIDES_CAPTURE.md`](FILE_OVERRIDES_CAPTURE.md)) and `loadOrder` (see [`ORDERING.md`](ORDERING.md)) are captured on the snapshot wrapper but the diff engine does not consume them. Diffing both requires its own machinery (per-modtype grouping for manifests; position/enabled-state classification for load order) and is deferred to a later slice / the future installer.
 
 ### 5. Stable deep-equality — `deepEqualStable`
 
@@ -104,8 +106,8 @@ Both sides are passed through `sortDeep` (recursively sorts object keys alphabet
 
 ### File on disk
 
-- **Path**: `<appData>\mod-monitor\diffs\vortex-mod-diff-<gameId>-<unixMillis>.json`
-- **Contents**: see [`DATA_FORMATS.md`](../DATA_FORMATS.md#2-mods-diff--vortex-mod-diff-gameid-tsjson). Top-level fields: `generatedAt`, `reference` (gameId/profileId/exportedAt/count from the loaded JSON), `current` (same from the live build), `summary` (counts), `onlyInReference`, `onlyInCurrent`, `changed`.
+- **Path**: `<appData>\event-horizon\diffs\event-horizon-mod-diff-<gameId>-<unixMillis>.json`
+- **Contents**: see [`DATA_FORMATS.md`](../DATA_FORMATS.md#2-mods-diff--event-horizon-mod-diff-gameid-tsjson). Top-level fields: `generatedAt`, `reference` (gameId/profileId/exportedAt/count from the loaded JSON), `current` (same from the live build), `summary` (counts), `onlyInReference`, `onlyInCurrent`, `changed`.
 
 ### Notifications
 
@@ -119,12 +121,12 @@ Both sides are passed through `sortDeep` (recursively sorts object keys alphabet
 ### Console
 
 ```
-[Vortex Mod Monitor] Diff generated | referenceOnly=A | currentOnly=B | changed=C
+[Vortex Event Horizon] Diff generated | referenceOnly=A | currentOnly=B | changed=C
 ```
 
 Or:
 ```
-[Vortex Mod Monitor] Compare failed: <Error>
+[Vortex Event Horizon] Compare failed: <Error>
 ```
 
 ## Failure modes
@@ -158,4 +160,4 @@ Or:
 - `compareMods` (per-field): `src/utils/utils.ts:150-183`
 - `compareSnapshots` (orchestrator): `src/utils/utils.ts:195-259`
 - `exportDiffReport` (writer): `src/utils/utils.ts:261-278`
-- Diff JSON schema: [`DATA_FORMATS.md`](../DATA_FORMATS.md#2-mods-diff--vortex-mod-diff-gameid-tsjson)
+- Diff JSON schema: [`DATA_FORMATS.md`](../DATA_FORMATS.md#2-mods-diff--event-horizon-mod-diff-gameid-tsjson)

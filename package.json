@@ -1,7 +1,7 @@
 {
-  "name": "vortex-mod-monitor",
+  "name": "vortex-event-horizon",
   "version": "0.0.1",
-  "description": "Vortex extension – mod monitor",
+  "description": "Vortex extension – Event Horizon: capture and reproduce a curator's exact mod state before Vortex's collection black hole loses it.",
   "type": "commonjs",
   "private": true,
   "scripts": {

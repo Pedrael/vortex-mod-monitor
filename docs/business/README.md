@@ -49,7 +49,7 @@ When prose disagrees with code, the prose is the spec — open an issue or fix t
 |---|---|
 | [`MOD_RULES_CAPTURE.md`](MOD_RULES_CAPTURE.md) | Capturing mod rules (`before`/`after`/`requires`/`conflicts`/`recommends`/`provides`) from Vortex state, including reference normalization and canonical sorting |
 | [`FILE_OVERRIDES_CAPTURE.md`](FILE_OVERRIDES_CAPTURE.md) | Per-mod `fileOverrides` and `enabledINITweaks`, plus per-modtype deployment manifests captured via `util.getManifest` (file → winning mod ground truth) |
-| _(slice 4 → forthcoming)_ `ORDERING.md` | Install order vs. deployment priority — what they mean and why we capture both |
+| [`ORDERING.md`](ORDERING.md) | Per-mod `installTime` + derived `installOrder`, and top-level `loadOrder` capture from Vortex's LoadOrder API. Why we don't store a single `deploymentPriority` number. |
 
 ## Conventions in these docs
 

@@ -12,9 +12,10 @@ src/
 │   ├── compareModsAction.ts              # Action handler: diff current vs reference JSON
 │   └── comparePluginsAction.ts           # Action handler: diff plugins.txt vs reference
 ├── core/
-│   ├── getModsListForProfile.ts          # Selectors + AuditorMod normalization (incl. FOMOD, rules, fileOverrides)
+│   ├── getModsListForProfile.ts          # Selectors + AuditorMod normalization (FOMOD, rules, fileOverrides, installOrder)
 │   ├── archiveHashing.ts                 # Streaming SHA-256 + archive-path resolver + bulk enricher
 │   ├── deploymentManifest.ts             # Per-modtype Vortex deployment manifest capture
+│   ├── loadOrder.ts                      # Vortex LoadOrder API capture (per-game)
 │   ├── exportMods.ts                     # exportModsToJsonFile — writes snapshot
 │   └── comparePlugins.ts                 # plugins.txt parser + diff + writer
 ├── utils/
@@ -39,7 +40,7 @@ Each action follows the same shape:
 2. Resolve `gameId` (and for mod actions, `profileId`); throw if missing.
 3. Read user input via an electron file picker (or skip — this is the export case).
 4. Call into `core/` to do real work.
-5. Compute output dir as `util.getVortexPath("appData") + "mod-monitor/<subdir>"`.
+5. Compute output dir as `util.getVortexPath("appData") + "event-horizon/<subdir>"`.
 6. `console.log` a one-line summary, then `sendNotification` with **Open Diff** / **Open Folder** actions wired through `openFile` / `openFolder`.
 7. On error: notification + `console.error`.
 
@@ -58,13 +59,18 @@ This means the actions are **purely orchestration** — no business logic.
   - `hasAnySelectedFomodChoices(steps)` — boolean for whether the FOMOD tree actually contains anything.
   - `normalizeRuleReference(reference)` / `normalizeModRules(rules)` — flatten Vortex's `IModRule[]` into `CapturedModRule[]` and sort canonically. See [`docs/business/MOD_RULES_CAPTURE.md`](business/MOD_RULES_CAPTURE.md).
   - `normalizeStringArray(value)` — defensive dedupe + alphabetical sort, used for `fileOverrides` and `enabledINITweaks`. See [`docs/business/FILE_OVERRIDES_CAPTURE.md`](business/FILE_OVERRIDES_CAPTURE.md).
+  - `normalizeInstallTime(raw)` — coerces `Date | string | number` to a canonical ISO-8601 UTC string, returns `undefined` for unparseable input. See [`docs/business/ORDERING.md`](business/ORDERING.md).
+  - `assignInstallOrder(mods)` — second pass that mutates each mod's `installOrder` to a deterministic 0-indexed ordinal sorted by `installTime` then `id`.
 
 `deploymentManifest.ts`
 - `collectDistinctModTypes(state, gameId)` — walks `state.persistent.mods[gameId]` and returns the set of distinct `mod.type` strings (always includes `""` for the default modtype).
 - `captureDeploymentManifests(api, state, gameId)` — for each modtype, calls `util.getManifest(api, modType, gameId)` and normalizes the result into a `CapturedDeploymentManifest` (absolute paths and Vortex instance UUIDs stripped). Per-modtype failures are swallowed with a `console.warn` so partial capture beats no capture. **INVARIANT**: never throws.
 
+`loadOrder.ts`
+- `captureLoadOrder(state, gameId)` — flattens `state.persistent.loadOrder[gameId]` into a sorted `CapturedLoadOrderEntry[]` (drops `prefix` and `data`, keeps `modId`/`pos`/`enabled`/`locked`/`external`). Synchronous, defensive, never throws. Returns `[]` for games that don't use Vortex's LoadOrder API.
+
 `exportMods.ts`
-- Pure I/O. `exportModsToJsonFile` ensures the output dir exists, builds a wrapper object (`exportedAt`, `gameId`, `profileId`, `count`, `mods`, optionally `deploymentManifests`), and writes pretty-printed JSON. The `deploymentManifests` field is omitted from the JSON entirely when `undefined`, preserving older-format compatibility.
+- Pure I/O. `exportModsToJsonFile` ensures the output dir exists, builds a wrapper object (`exportedAt`, `gameId`, `profileId`, `count`, `mods`, optionally `deploymentManifests`, optionally `loadOrder`), and writes pretty-printed JSON. Both optional fields are omitted from the JSON entirely when `undefined`, preserving older-format compatibility.
 
 `archiveHashing.ts`
 - `hashFileSha256(path)` — streaming SHA-256 (low memory; archives can be hundreds of MB).
@@ -103,10 +109,13 @@ init → exportModsAction()
         → pickInstallerChoices, normalizeFomodSelections,
           normalizeCollectionIds, hasAnySelectedFomodChoices,
           normalizeModRules → normalizeRuleReference,
-          normalizeStringArray (×2 — fileOverrides, enabledINITweaks)
+          normalizeStringArray (×2 — fileOverrides, enabledINITweaks),
+          normalizeInstallTime (per mod)
+        → assignInstallOrder (single pass after walk)
    → enrichModsWithArchiveHashes (concurrency-bounded SHA-256)
    → captureDeploymentManifests
         → collectDistinctModTypes → util.getManifest (per modtype)
+   → captureLoadOrder
    → exportModsToJsonFile
    → sendNotification(Open Diff/Folder)
 ```
@@ -138,7 +147,7 @@ init → comparePluginsAction()
 ## Design notes & quirks
 
 - **Two actions register at priority `101`** (`Compare Current Mods With JSON` and `Compare Plugins With TXT`). Vortex tolerates this but the relative order isn't guaranteed; consider giving them distinct priorities (e.g., `101`, `102`).
-- **Naming was unified in Phase 0** (2026-04-26): everywhere now uses `Vortex Mod Monitor` / `vortex-mod-monitor` / `mod-monitor`. The previous `mod-auditor` paths and `[Vortex Mod Auditor]` log prefixes are gone.
+- **Project rebranded to Event Horizon** (2026-04-26): the npm package is `vortex-event-horizon`, the Vortex extension name is `Event Horizon`, the AppData folder is `event-horizon/`, log prefixes are `[Vortex Event Horizon]`, and the upcoming standalone collection package format uses the `.ehcoll` extension. The previous `mod-monitor` / `mod-auditor` / `[Vortex Mod Monitor]` identifiers are gone. See [`docs/PROPOSAL_INSTALLER.md`](PROPOSAL_INSTALLER.md) for the metaphor (Vortex is the black hole; we capture state at the boundary).
 - **`index.ts` exports `default init`**. After tsc, `index.js` (`module.exports = require('./dist')`) yields `{ default: init, __esModule: true }`. Vortex's loader is generally lenient, but if you ever see "extension didn't load," that's the first thing to check — flip to `module.exports = init` or `export = init`.
 - **Windows-only assumptions**: `openFolder` / `openFile` use `start`, and `getCurrentPluginsTxtPath` reads `%LOCALAPPDATA%`. Vortex itself runs on Windows primarily, so this is acceptable for now.
 - **No tests** and no linter config. Adding a small Jest setup around `core/comparePlugins.ts` and the diff engine in `utils.ts` would catch regressions cheaply — those modules are pure.

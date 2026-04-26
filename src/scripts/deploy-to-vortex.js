@@ -10,7 +10,7 @@ if (!appData) {
   process.exit(1);
 }
 
-const targetDir = path.join(appData, "Vortex", "plugins", "vortex-mod-monitor");
+const targetDir = path.join(appData, "Vortex", "plugins", "vortex-event-horizon");
 
 function copyRecursiveSync(src, dest) {
   if (!fs.existsSync(src)) return;
