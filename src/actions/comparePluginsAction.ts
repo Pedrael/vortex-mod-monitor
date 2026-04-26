@@ -37,7 +37,7 @@ export function createComparePluginsAction(
       });
 
       const appDataPath = util.getVortexPath("appData");
-      const outputDir = path.join(appDataPath, "mod-auditor", "plugin-diffs");
+      const outputDir = path.join(appDataPath, "mod-monitor", "plugin-diffs");
 
       const diffPath = await exportPluginsDiffReport({
         diff,
@@ -46,7 +46,7 @@ export function createComparePluginsAction(
       });
 
       console.log(
-        `[Vortex Mod Auditor] Plugins diff | game=${gameId} | referenceOnly=${diff.summary.onlyInReference} | currentOnly=${diff.summary.onlyInCurrent} | enabledMismatch=${diff.summary.enabledMismatch} | positionChanged=${diff.summary.positionChanged}`,
+        `[Vortex Mod Monitor] Plugins diff | game=${gameId} | referenceOnly=${diff.summary.onlyInReference} | currentOnly=${diff.summary.onlyInCurrent} | enabledMismatch=${diff.summary.enabledMismatch} | positionChanged=${diff.summary.positionChanged}`,
       );
 
       context.api.sendNotification?.({
@@ -75,7 +75,7 @@ export function createComparePluginsAction(
         message: `Plugins compare failed: ${message}`,
       });
 
-      console.error("[Vortex Mod Auditor] Plugins compare failed:", error);
+      console.error("[Vortex Mod Monitor] Plugins compare failed:", error);
     }
   };
 }

@@ -1,9 +1,16 @@
 const fs = require("fs");
 const path = require("path");
 
-const sourceDir = path.resolve(__dirname, "../dist");
-const targetDir =
-  "C:/Users/Michael/AppData/Roaming/Vortex/plugins/vortex-mod-auditor";
+const repoRoot = path.resolve(__dirname, "../..");
+const sourceDistDir = path.join(repoRoot, "dist");
+
+const appData = process.env.APPDATA;
+if (!appData) {
+  console.error("APPDATA env var is not set; cannot resolve Vortex plugin path.");
+  process.exit(1);
+}
+
+const targetDir = path.join(appData, "Vortex", "plugins", "vortex-mod-monitor");
 
 function copyRecursiveSync(src, dest) {
   if (!fs.existsSync(src)) return;
@@ -26,6 +33,18 @@ function copyRecursiveSync(src, dest) {
   }
 }
 
-console.log("Deploying to Vortex plugins...");
-copyRecursiveSync(sourceDir, targetDir);
+console.log(`Deploying to ${targetDir} ...`);
+
+copyRecursiveSync(sourceDistDir, path.join(targetDir, "dist"));
+
+for (const file of ["index.js", "info.json"]) {
+  const src = path.join(repoRoot, file);
+  if (fs.existsSync(src)) {
+    fs.mkdirSync(targetDir, { recursive: true });
+    fs.copyFileSync(src, path.join(targetDir, file));
+  } else {
+    console.warn(`Skipping missing file: ${file}`);
+  }
+}
+
 console.log("Done.");

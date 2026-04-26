@@ -2,6 +2,7 @@ import { exec } from "child_process";
 import * as fs from "fs/promises";
 import * as path from "path";
 import type { AuditorMod } from "../core/getModsListForProfile";
+import type { CapturedDeploymentManifest } from "../core/deploymentManifest";
 
 export function openFolder(folderPath: string) {
   exec(`start "" "${folderPath}"`);
@@ -71,6 +72,20 @@ export type ExportedModsSnapshot = {
   profileId: string;
   count?: number;
   mods: AuditorMod[];
+
+  /**
+   * Per-modtype deployment manifests captured on export only.
+   *
+   * Optional because:
+   *   1. Older snapshot files (pre-Phase 1 slice 3) won't have it.
+   *   2. The Compare Mods action builds a current-side snapshot
+   *      synchronously without `api`, so it cannot capture manifests.
+   *
+   * NOT diffed yet — `compareMods` ignores it. Captured here so that the
+   * future installer (Phase 4+) can plan reconciliation against the
+   * curator's actual deployment winners.
+   */
+  deploymentManifests?: CapturedDeploymentManifest[];
 };
 
 export type ModFieldDifference = {
@@ -159,11 +174,16 @@ export function compareMods(
     "nexusModId",
     "nexusFileId",
     "archiveId",
+    "archiveSha256",
     "collectionIds",
     "installerType",
     "hasInstallerChoices",
     "hasDetailedInstallerChoices",
     "fomodSelections",
+    "rules",
+    "modType",
+    "fileOverrides",
+    "enabledINITweaks",
   ];
 
   const differences: ModFieldDifference[] = [];

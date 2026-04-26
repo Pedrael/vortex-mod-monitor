@@ -7,6 +7,8 @@ import {
   getActiveProfileIdFromState,
   getModsForProfile,
 } from "../core/getModsListForProfile";
+import { enrichModsWithArchiveHashes } from "../core/archiveHashing";
+import { captureDeploymentManifests } from "../core/deploymentManifest";
 import { exportModsToJsonFile } from "../core/exportMods";
 import { openFile, openFolder } from "../utils/utils";
 
@@ -14,6 +16,9 @@ export default function createExportModsAction(
   context: types.IExtensionContext,
 ): () => Promise<void> {
   return async () => {
+    const hashingNotificationId = "vortex-mod-monitor:hashing";
+    let hashingNotificationShown = false;
+
     try {
       const state = context.api.getState();
 
@@ -23,7 +28,30 @@ export default function createExportModsAction(
       const profileId = getActiveProfileIdFromState(state, gameId);
       if (!profileId) throw new Error(`No profile found for game ${gameId}`);
 
-      const mods = getModsForProfile(state, gameId, profileId);
+      const rawMods = getModsForProfile(state, gameId, profileId);
+
+      context.api.sendNotification?.({
+        id: hashingNotificationId,
+        type: "activity",
+        message: `Hashing ${rawMods.length} mod archives...`,
+      });
+      hashingNotificationShown = true;
+
+      const mods = await enrichModsWithArchiveHashes(
+        state,
+        gameId,
+        rawMods,
+        { concurrency: 4 },
+      );
+
+      context.api.dismissNotification?.(hashingNotificationId);
+      hashingNotificationShown = false;
+
+      const deploymentManifests = await captureDeploymentManifests(
+        context.api,
+        state,
+        gameId,
+      );
 
       const fomodDetectedCount = mods.filter(
         (mod) => mod.installerType === "fomod",
@@ -33,23 +61,33 @@ export default function createExportModsAction(
         (mod) => mod.hasDetailedInstallerChoices,
       ).length;
 
+      const hashedCount = mods.filter(
+        (mod) => mod.archiveSha256 !== undefined,
+      ).length;
+
+      const deployedFileCount = deploymentManifests.reduce(
+        (sum, m) => sum + m.entryCount,
+        0,
+      );
+
       const appDataPath = util.getVortexPath("appData");
-      const outputDir = path.join(appDataPath, "mod-auditor", "exports");
+      const outputDir = path.join(appDataPath, "mod-monitor", "exports");
 
       const filePath = await exportModsToJsonFile({
         mods,
         gameId,
         profileId,
         outputDir,
+        deploymentManifests,
       });
 
       console.log(
-        `[Vortex Mod Auditor] Exported ${mods.length} mods | game=${gameId} | profile=${profileId} | fomod=${fomodDetectedCount} | detailed=${detailedFomodCount}`,
+        `[Vortex Mod Monitor] Exported ${mods.length} mods | game=${gameId} | profile=${profileId} | fomod=${fomodDetectedCount} | detailed=${detailedFomodCount} | hashed=${hashedCount}/${mods.length} | deployedFiles=${deployedFileCount} across ${deploymentManifests.length} modtype(s)`,
       );
 
       context.api.sendNotification?.({
         type: "success",
-        message: `Exported ${mods.length} mods | FOMOD: ${fomodDetectedCount} | Detailed: ${detailedFomodCount}`,
+        message: `Exported ${mods.length} mods | FOMOD: ${fomodDetectedCount} | Hashed: ${hashedCount}/${mods.length} | Deployed files: ${deployedFileCount}`,
         actions: [
           {
             title: "Open Export",
@@ -69,7 +107,11 @@ export default function createExportModsAction(
         message: `Export failed: ${message}`,
       });
 
-      console.error("[Vortex Mod Auditor] Export failed:", error);
+      console.error("[Vortex Mod Monitor] Export failed:", error);
+    } finally {
+      if (hashingNotificationShown) {
+        context.api.dismissNotification?.(hashingNotificationId);
+      }
     }
   };
 }
