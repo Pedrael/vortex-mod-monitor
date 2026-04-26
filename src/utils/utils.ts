@@ -67,6 +67,74 @@ export async function pickJsonFile(): Promise<string | undefined> {
   return result.filePaths[0];
 }
 
+export async function pickEhcollFile(): Promise<string | undefined> {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const electron = require("electron");
+
+  const dialog = electron.remote?.dialog ?? electron.dialog;
+
+  if (!dialog?.showOpenDialog) {
+    throw new Error("Electron dialog is not available");
+  }
+
+  const result = await dialog.showOpenDialog({
+    title: "Select Event Horizon collection (.ehcoll)",
+    properties: ["openFile"],
+    filters: [
+      {
+        name: "Event Horizon collections",
+        extensions: ["ehcoll"],
+      },
+    ],
+  });
+
+  if (result.canceled || !result.filePaths?.length) {
+    return undefined;
+  }
+
+  return result.filePaths[0];
+}
+
+/**
+ * Open a file picker for a mod archive, used by the install action's
+ * external-prompt-user picker. Title and `expectedFilename` give the
+ * user a hint of what they're being asked to provide.
+ */
+export async function pickModArchiveFile(args: {
+  title: string;
+  expectedFilename?: string;
+}): Promise<string | undefined> {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const electron = require("electron");
+
+  const dialog = electron.remote?.dialog ?? electron.dialog;
+
+  if (!dialog?.showOpenDialog) {
+    throw new Error("Electron dialog is not available");
+  }
+
+  const filters: Array<{ name: string; extensions: string[] }> = [
+    {
+      name: "Mod archives",
+      extensions: ["zip", "7z", "rar", "tar", "tgz", "gz"],
+    },
+    { name: "All files", extensions: ["*"] },
+  ];
+
+  const result = await dialog.showOpenDialog({
+    title: args.title,
+    defaultPath: args.expectedFilename,
+    properties: ["openFile"],
+    filters,
+  });
+
+  if (result.canceled || !result.filePaths?.length) {
+    return undefined;
+  }
+
+  return result.filePaths[0];
+}
+
 export type ExportedModsSnapshot = {
   exportedAt?: string;
   gameId: string;

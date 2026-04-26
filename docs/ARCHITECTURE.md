@@ -6,12 +6,13 @@ A small TypeScript extension organized as **entry → actions → core → utils
 
 ```
 src/
-├── index.ts                              # Vortex entry — registers 4 toolbar actions
+├── index.ts                              # Vortex entry — registers 5 toolbar actions
 ├── actions/
 │   ├── exportModsAction.ts               # Action handler: snapshot mods → JSON
 │   ├── compareModsAction.ts              # Action handler: diff current vs reference JSON
 │   ├── comparePluginsAction.ts           # Action handler: diff plugins.txt vs reference
-│   └── buildPackageAction.ts             # Action handler: snapshot pipeline → buildManifest → packageEhcoll → .ehcoll (Phase 2 slice 4a + 4b)
+│   ├── buildPackageAction.ts             # Action handler: snapshot pipeline → buildManifest → packageEhcoll → .ehcoll (Phase 2 slice 4a + 4b)
+│   └── installCollectionAction.ts        # Action handler: file pick → readEhcoll → readReceipt → buildUserSideState → resolveInstallPlan → preview dialog → runInstall (Phase 3 slices 5 + 6a)
 ├── core/
 │   ├── getModsListForProfile.ts          # Selectors + AuditorMod normalization (FOMOD, rules, fileOverrides, installOrder)
 │   ├── archiveHashing.ts                 # Streaming SHA-256 + archive-path resolver + bulk enricher
@@ -27,11 +28,18 @@ src/
 │       ├── sevenZip.ts                   # Typed shim over vortex-api's util.SevenZip (node-7z)
 │       └── collectionConfig.ts           # Per-collection state file: persisted package.id, per-mod overrides, README/CHANGELOG (Phase 2 slice 4b)
 │   ├── resolver/
-│   │   └── resolveInstallPlan.ts         # Pure resolver: (manifest, userState, installTarget) → InstallPlan (Phase 3 slice 4)
+│   │   ├── resolveInstallPlan.ts         # Pure resolver: (manifest, userState, installTarget) → InstallPlan (Phase 3 slice 4)
+│   │   └── userState.ts                  # Pure UserSideState builder + pickInstallTarget + Vortex-state shape readers (Phase 3 slice 5)
+│   ├── installer/
+│   │   ├── runInstall.ts                 # Install driver orchestrator — runs InstallPlan in fresh-profile mode (Phase 3 slice 6a)
+│   │   ├── profile.ts                    # Vortex profile create/switch/enable-mod helpers (Phase 3 slice 6a)
+│   │   ├── modInstall.ts                 # Mod install primitives: nexusDownload / start-install / bundled-archive extract (Phase 3 slice 6a)
+│   │   └── pluginsTxt.ts                 # plugins.txt writer with format-aware serialization + atomic backup (Phase 3 slice 6a)
 │   └── installLedger.ts                  # On-disk receipt CRUD: <appData>/Vortex/event-horizon/installs/<package.id>.json (Phase 3 slice 5b)
 ├── types/
 │   ├── ehcoll.ts                         # .ehcoll manifest type schema (Phase 2 contract; type-only, no runtime)
 │   ├── installPlan.ts                    # Resolver input/output contract: UserSideState + InstallPlan (Phase 3 slice 3; type-only, no runtime)
+│   ├── installDriver.ts                  # Driver contract: DriverContext, DriverProgress, InstallResult (Phase 3 slice 6a; type-only, no runtime)
 │   └── installLedger.ts                  # Install-receipt schema (Phase 3 slice 5b; type-only, no runtime)
 ├── utils/
 │   └── utils.ts                          # File pickers, openFile/openFolder, mod diff engine
@@ -45,8 +53,8 @@ The compiled output lives in `dist/`; `index.js` at the repo root is the loader 
 
 ### Entry — `src/index.ts`
 - Implements Vortex's `init(context: types.IExtensionContext): boolean`.
-- Constructs four handler closures and binds them to toolbar actions via `context.registerAction("global-icons", priority, ...)`.
-- All four actions are fire-and-forget (`void handler()`); errors are caught inside the handler and surfaced via `context.api.sendNotification`.
+- Constructs five handler closures and binds them to toolbar actions via `context.registerAction("global-icons", priority, ...)`.
+- All actions are fire-and-forget (`void handler()`); errors are caught inside the handler and surfaced via `context.api.sendNotification`.
 
 ### Actions — `src/actions/*`
 Each action follows the same shape:
@@ -62,6 +70,8 @@ Each action follows the same shape:
 This means the actions are **purely orchestration** — no business logic.
 
 `buildPackageAction.ts` is a slightly fatter orchestrator: it gates on supported gameIds, runs a curator-metadata dialog (with re-prompt on validation failure, silent exit on Cancel), reuses the entire snapshot pipeline (`getModsForProfile` + `enrichModsWithArchiveHashes` + `captureDeploymentManifests` + `captureLoadOrder` + `getCurrentPluginsTxtPath`), wires everything into `buildManifest` + `packageEhcoll`, and writes one `.ehcoll` to `%APPDATA%\Vortex\event-horizon\collections\<slug>-<version>.ehcoll`. **Slice 4a is intentionally minimal** — every external mod uses defaults, `package.id` is freshly generated each build, and there is no README/CHANGELOG input. Slices 4b/4c add the per-mod table, README/CHANGELOG textareas, and `package.id` persistence. Full prose contract: [`docs/business/BUILD_PACKAGE.md`](business/BUILD_PACKAGE.md).
+
+`installCollectionAction.ts` is the user-side counterpart. The orchestration is: (1) `pickEhcollFile` → `.ehcoll` path, (2) `readEhcoll` for the typed manifest, (3) early game-id gate (no active game / unsupported game / manifest game mismatch all bail before hashing), (4) `readReceipt(appDataPath, manifest.package.id)` for cross-release lineage, (5) snapshot pipeline (`getModsForProfile` + `enrichModsWithArchiveHashes` with the existing activity notification/finally pattern), (6) `buildUserSideState`, (7) `pickInstallTarget` (the load-bearing receipt-vs-no-receipt rule lives there), (8) `resolveInstallPlan`, (9) console log + transitional `showDialog` rendering verdict + install target + summary counts + compatibility report + per-decision-kind buckets, (10) **Slice 6a**: if `isInstallableInSlice6a(plan)` returns ok and the user clicks **Install**, invoke `runInstall(...)` and surface progress as a single activity notification + final result dialog (success / aborted / failed). Slice 6a's gate restricts the Install button to fresh-profile mode + zero blocking decisions + zero orphans; current-profile installs and conflict pickers land in slice 6b. Full prose contract: [`docs/business/INSTALL_ACTION.md`](business/INSTALL_ACTION.md).
 
 ### Core — `src/core/*`
 
@@ -168,6 +178,48 @@ This means the actions are **purely orchestration** — no business logic.
 - The plan is JSON-serialisable: no `Date` objects, no functions, no circular references.
 - Full prose contract: [`docs/business/RESOLVE_INSTALL_PLAN.md`](business/RESOLVE_INSTALL_PLAN.md).
 
+`userState.ts`
+- Pure builder + install-target picker for the resolver's input. Two public functions: `buildUserSideState(input) → UserSideState` (no I/O, sync) and `pickInstallTarget(manifest, receipt, profileId, profileName) → InstallTarget`. Plus `previousInstallFromReceipt` and a handful of narrowed Vortex-state shape readers (`resolveVortexVersion`, `resolveGameVersion`, `resolveDeploymentMethod`, `resolveEnabledExtensions`, `resolveProfileName`).
+- **Lineage authority is the receipt, full stop** (LOAD-BEARING). A mod gets `eventHorizonInstall` iff `receipt.mods[i].vortexModId === installedMod.id`. No name fallback, no Nexus-ID fallback, no SHA fallback. Lost receipt = lost lineage = degrades cleanly to fresh-profile mode.
+- **Install-target rule** (LOAD-BEARING): `pickInstallTarget` is the SINGLE site of the rule. Receipt present ⇒ `current-profile`. Receipt missing ⇒ `fresh-profile` with suggested name `"<package.name> (Event Horizon v<package.version>)"`. The action handler never branches on the receipt directly.
+- **Co-determination invariant**: `installTarget.kind === "current-profile"` ⇔ `receipt !== undefined` ⇔ `userState.previousInstall !== undefined`. The picker enforces it on the input side; the resolver throws if violated on the output side.
+- Action-handler responsibilities (NOT this module): hashing installed-mod archives, reading the receipt, reading Vortex state. The builder takes already-prepared inputs.
+- `resolveDeploymentMethod` returns `undefined` for unknown deployment activators rather than defaulting to `"hardlink"` like the build action does — the resolver wants ground truth so it can report `status: "unknown"` rather than misreporting a guess as `"ok"`.
+- The build action (`buildPackageAction.ts`) currently keeps its own copies of `resolveVortexVersion` / `resolveGameVersion` / `resolveDeploymentMethod`. That duplication is intentional for now (slice 5 didn't refactor the build action). A later pass may consolidate them.
+- Full prose contract: [`docs/business/USER_STATE.md`](business/USER_STATE.md).
+
+### Installer — `src/core/installer/*`
+
+`runInstall.ts`
+- The install driver. Signature: `runInstall(ctx: DriverContext) → Promise<InstallResult>`. Consumes a frozen `InstallPlan` (the resolver's output) and orchestrates the actual mutations: profile creation, mod install (Nexus/local/bundled), `plugins.txt` write, deployment, receipt write. Never throws — failures land in the discriminated `InstallResult` (`success | aborted | failed`).
+- **Slice 6a is the fresh-profile happy path.** Preflight refuses to run when `installTarget.kind !== "fresh-profile"`, when any mod decision requires manual review (`*-version-diverged`, `*-bytes-diverged`, `external-prompt-user`, `external-missing`, `nexus-unreachable`), or when `orphanedMods.length > 0`. Slice 6b extends the driver to current-profile installs + conflict pickers; slice 6c adds mod rules + Vortex `setLoadOrder` + drift report.
+- **Phases (coarse-grained, surfaced via `DriverProgress`)**: `preflight` → `creating-profile` → `switching-profile` → `installing-mods` → `writing-plugins-txt` → `deploying` → `writing-receipt` → `complete` (or terminal `aborted` / `failed`). `onProgress` is called once per phase transition and once per mod within `installing-mods`, so the UI can render a single progress bar.
+- **Sequential mod installs.** Vortex's install pipeline is not safe to drive concurrently (the `did-install-mod` event is global, race-prone, and the installer holds locks on the staging dir). The driver awaits each mod's completion before starting the next, even though that's slower — correctness wins.
+- **Failure semantics (LOAD-BEARING)**: NO ROLLBACK. A failure mid-install leaves the partial profile + partially-installed mods on disk, so the user can inspect, recover, or retry. The driver's contract is **idempotent on restart**, NOT idempotent on rerun — restarting the driver from scratch on the same `.ehcoll` will create a NEW profile (different UUID), so re-runs are additive, not destructive. This is intentional: silently rolling back partial installs on Vortex (a system that loses state randomly) would compound the very problem we exist to fix.
+- **Cancellation** via `AbortSignal`. Checked between phases and between mod installs, never mid-mod (we cannot safely interrupt 7z extraction or Vortex's install pipeline). On cancel: the driver dispatches the `aborted` result with the current phase + partial profile id; cleanup is the user's call.
+- **Receipt write is the last side effect.** Until receipts are written, the install is "in-flight" from the ledger's perspective — a crash during deploy means no receipt, which means a re-run picks `fresh-profile` mode again (deterministic recovery, no orphan ghosts).
+- Full prose contract: [`docs/business/INSTALL_DRIVER.md`](business/INSTALL_DRIVER.md).
+
+`profile.ts`
+- Pure helpers around Vortex's profile API: `createFreshProfile(api, gameId, suggestedName)` (UUIDv4 id + collision-free name via `pickNonCollidingName`), `switchToProfile(api, profileId)` (dispatches `setNextProfile` and awaits the `profile-did-change` event with a 30s timeout), `enableModInProfile(api, profileId, modId)` (dispatches `setModEnabled(true)`).
+- The collision check rejects names already in `state.persistent.profiles[*].name` for the given `gameId`, suffixing `(2)`, `(3)`, … until it lands on a free slot. Receipt-bearing re-installs (slice 6b+) reuse the existing profile id, but this module always treats the name picker as a fresh nameservice.
+- No I/O outside Vortex's Redux store (and the event bus). No filesystem touches — Vortex's profile machinery handles disk writes for us.
+
+`modInstall.ts`
+- Three install primitives, one per `ModDecision` flavour slice 6a accepts:
+  - `installNexusViaApi({ gameId, nexusModId, nexusFileId, fileName? })` — emits `api.ext.nexusDownload` with `allowInstall: true`. Awaits the `did-install-mod` event matched against the returned `archiveId`. Used for `nexus-download` decisions.
+  - `installFromExistingDownload({ gameId, archiveId })` — emits `start-install-download(archiveId)`. Used for `nexus-use-local-download` and `external-use-local-download` (a fast path that skips re-downloading a Nexus file the user already has).
+  - `installFromBundledArchive({ gameId, ehcollZipPath, bundledZipEntry, sevenZip? })` — uses `extractBundledFromEhcoll` to surgically `$cherryPick` one `bundled/<sha>.<ext>` file out of the `.ehcoll` ZIP into a `mkdtemp` scratch dir, then emits `start-install(extractedPath)`. The temp dir is removed in `finally` (`safeRmTempDir` swallows ENOENT).
+- Each primitive returns `{ vortexModId, archiveId? }` after the install completes. The `did-install-mod` listener has a 5-minute timeout — if Vortex never fires the event (download hung, antivirus interference), the driver records a `failed` result with the phase and the mod that hung.
+- Bundled extraction never streams the bundled archive's bytes through Node — 7z extracts directly to disk. Memory footprint is constant regardless of bundled archive size.
+
+`pluginsTxt.ts`
+- `resolvePluginsTxtPath(gameId)` — joins `%LOCALAPPDATA%` + the per-game folder name. Has a wider game table than `core/comparePlugins.ts` (Skyrim SE/AE, Fallout 3/NV/4, Starfield).
+- `serializePluginsTxt(gameId, entries)` — emits the right format per game: **asterisk format** (UTF-16 LE with BOM, `*` prefix marks enabled) for SSE/F4/Starfield, **legacy format** (UTF-8, no BOM, no `*` — disabled plugins simply omitted) for FO3/FNV. The format choice is hardcoded in `LEGACY_FORMAT_GAME_IDS`; future games default to asterisk.
+- `writePluginsTxtWithBackup({ gameId, entries })` — atomic write: serialize to bytes → write `<plugins.txt>.<timestamp>.bak` if the file exists → write to `<plugins.txt>.tmp` → `rename` to `plugins.txt`. Returns `{ pluginsTxtPath, backupPath? }` so the receipt can record the backup location for "undo" UX in slice 6c.
+- Backup naming uses an ISO-8601 timestamp without colons (`plugins.txt.2026-04-27T01-28-00-000Z.bak`) to stay path-safe on Windows.
+- Never throws on missing source file — first-time installs get no `.bak`, just a fresh write.
+
 ### Install ledger — `src/core/installLedger.ts`
 
 - Pure CRUD over `<appData>/Vortex/event-horizon/installs/<package.id>.json`. One file per collection `package.id`, overwritten in-place on every successful install. The single source of truth for cross-release lineage; Vortex mod attributes are **never** consulted.
@@ -179,7 +231,7 @@ This means the actions are **purely orchestration** — no business logic.
 - **Best-effort listing**: `listReceipts` skips files that don't match `<uuid>.json` and surfaces parse failures via an optional `onError(filename, err)` callback — one bad receipt does not invalidate the rest.
 - **No silent overwrite of corrupt receipts**: parse failures throw `InstallLedgerError`; the action handler must surface the error and let the user decide. Silently regenerating would erase the lineage data the ledger exists to protect.
 - Schema is additive: future v1.x revisions add fields, never rename or remove. Breaking changes bump `INSTALL_LEDGER_SCHEMA_VERSION`.
-- Consumed by Phase 3 slice 5 (the userState builder that feeds the resolver) and Phase 3 slice 6 (the install driver that writes a receipt after a successful install).
+- Consumed by Phase 3 slice 5 (the install action calls `readReceipt`, the userState builder uses the receipt to attach lineage tags and choose the install target) and Phase 3 slice 6 (the install driver writes a receipt after a successful install).
 - Full prose contract: [`docs/business/INSTALL_LEDGER.md`](business/INSTALL_LEDGER.md).
 
 ### Types — `src/types/*`
@@ -268,6 +320,33 @@ init → comparePluginsAction()
         → comparePluginsEntries (uses toPluginMap)
    → exportPluginsDiffReport
    → sendNotification
+```
+
+**Install Event Horizon Collection** (Phase 3 slice 5 + slice 6a)
+```
+init → installCollectionAction()
+   → pickEhcollFile
+   → readEhcoll                              (manifest + bundled inventory)
+   → game-id gate                            (active game / supported / matches manifest)
+   → readReceipt(appData, package.id)        (lineage authority)
+   → getModsForProfile + enrichModsWithArchiveHashes  (activity notification + finally)
+   → buildUserSideState
+   → pickInstallTarget                       (receipt → current-profile vs fresh-profile)
+   → resolveInstallPlan                      (pure, no I/O)
+   → renderPlanDialog                        (Install button gated by isInstallableInSlice6a)
+   ↓ user clicks Install (slice 6a path)
+   → runInstall                              (ctx: api + plan + ehcoll + zipPath + appData)
+        → preflight                          (refuse current-profile / blocking decisions / orphans)
+        → createFreshProfile + switchToProfile
+        → for each ModResolution sequentially:
+              installNexusViaApi          (nexus-download)
+            | installFromExistingDownload (nexus-use-local-download / external-use-local-download)
+            | installFromBundledArchive   (external-use-bundled — extracts from .ehcoll)
+            → enableModInProfile
+        → writePluginsTxtWithBackup           (asterisk vs legacy format per gameId)
+        → emit deploy-mods + await did-deploy
+        → writeReceipt                       (last side effect — locks in lineage)
+   → renderResultDialog + sendNotification    (success / aborted / failed)
 ```
 
 **Build Event Horizon Collection** (Phase 2 slice 4a + 4b)
