@@ -2,10 +2,12 @@ import type { types } from "vortex-api";
 
 import createExportModsAction from "./actions/exportModsAction";
 import createCompareModsAction from "./actions/compareModsAction";
+import { createComparePluginsAction } from "./actions/comparePluginsAction";
 
 function init(context: types.IExtensionContext): boolean {
   const exportModsAction = createExportModsAction(context);
   const compareModsAction = createCompareModsAction(context);
+  const comparePluginsAction = createComparePluginsAction(context);
 
   context.registerAction(
     "global-icons",
@@ -26,6 +28,17 @@ function init(context: types.IExtensionContext): boolean {
     "Compare Current Mods With JSON",
     () => {
       void compareModsAction();
+    },
+  );
+
+  context.registerAction(
+    "global-icons",
+    101,
+    "show",
+    {},
+    "Compare Plugins With TXT",
+    () => {
+      void comparePluginsAction();
     },
   );
 

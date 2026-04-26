@@ -275,3 +275,35 @@ export async function exportDiffReport(params: {
 
   return filePath;
 }
+
+export async function pickTxtFile(): Promise<string | undefined> {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const electron = require("electron");
+
+  const dialog = electron.remote?.dialog ?? electron.dialog;
+
+  if (!dialog?.showOpenDialog) {
+    throw new Error("Electron dialog is not available");
+  }
+
+  const result = await dialog.showOpenDialog({
+    title: "Select reference plugins.txt",
+    properties: ["openFile"],
+    filters: [
+      {
+        name: "Text files",
+        extensions: ["txt"],
+      },
+      {
+        name: "All files",
+        extensions: ["*"],
+      },
+    ],
+  });
+
+  if (result.canceled || !result.filePaths?.length) {
+    return undefined;
+  }
+
+  return result.filePaths[0];
+}
