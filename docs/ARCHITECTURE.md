@@ -17,7 +17,13 @@ src/
 │   ├── deploymentManifest.ts             # Per-modtype Vortex deployment manifest capture
 │   ├── loadOrder.ts                      # Vortex LoadOrder API capture (per-game)
 │   ├── exportMods.ts                     # exportModsToJsonFile — writes snapshot
-│   └── comparePlugins.ts                 # plugins.txt parser + diff + writer
+│   ├── comparePlugins.ts                 # plugins.txt parser + diff + writer
+│   └── manifest/
+│       ├── buildManifest.ts              # Pure ExportedModsSnapshot → EhcollManifest converter (Phase 2)
+│       ├── packageZip.ts                 # EhcollManifest + bundled archives → .ehcoll ZIP packager (Phase 2)
+│       └── sevenZip.ts                   # Typed shim over vortex-api's util.SevenZip (node-7z)
+├── types/
+│   └── ehcoll.ts                         # .ehcoll manifest type schema (Phase 2 contract; type-only, no runtime)
 ├── utils/
 │   └── utils.ts                          # File pickers, openFile/openFolder, mod diff engine
 └── scripts/
@@ -83,6 +89,37 @@ This means the actions are **purely orchestration** — no business logic.
 - `getCurrentPluginsTxtPath(gameId)` — joins `%LOCALAPPDATA%` + the per-game folder name.
 - `comparePluginsTxtFiles({...})` — async wrapper that reads both files and calls the diff.
 - `exportPluginsDiffReport({...})` — writes the diff JSON.
+
+`manifest/buildManifest.ts`
+- `buildManifest(input)` — pure transform from `ExportedModsSnapshot` (+ curator-supplied package/game/vortex metadata, optional `plugins.txt` content, optional per-mod external-mod overrides) into a fully-typed `EhcollManifest`. No I/O, no state access — testable with hand-rolled fixtures.
+- Identity: emits `compareKey="nexus:<modId>:<fileId>"` for Nexus-sourced mods, `compareKey="external:<sha256>"` for everything else. Refuses to build when any mod lacks `archiveSha256` (fail-fast at packaging time, not at install time on a user's machine).
+- Validation: collects fatal problems (unsupported gameId, missing hashes, duplicate compareKeys) and throws a single `BuildManifestError` carrying the full list. Non-fatal issues (rules referencing unknown mods, deployment entries whose source mod isn't in the snapshot) come back as `result.warnings`.
+- Hardcoded `NEXUS_GAME_DOMAIN_BY_GAME_ID` table maps Vortex gameIds to Nexus URL domains (e.g. `skyrimse → skyrimspecialedition`, `falloutnv → newvegas`) because `AuditorMod` doesn't currently capture the per-mod domain.
+- v1 simplifications: `losingMods: []` on every file override (Vortex's deployment manifest doesn't record losers), `iniTweaks: []` (Phase 5), `archiveName` falls back to `mod.name` when no real filename is supplied (slice 4 will pass real filenames in).
+- Full prose contract: [`docs/business/BUILD_MANIFEST.md`](business/BUILD_MANIFEST.md).
+
+`manifest/packageZip.ts`
+- `packageEhcoll(input)` — takes one `EhcollManifest` plus a list of bundled archive specs (`{ sourcePath, sha256 }`), stages everything in a temp directory, and runs 7z to produce one `.ehcoll` file. Returns `{ outputPath, outputBytes, bundledCount, warnings }`.
+- ZIP format (forced via `-tzip`), not 7z native — bundled archives are already compressed, ZIP wins on tooling compatibility for debugging.
+- Bundled archives are hardlinked into staging where possible (free, instant) with `fs.copyFile` fallback on EXDEV/EPERM. 7z reads them off disk directly; Node never holds bundled bytes in memory.
+- Validation is fail-fast and exhaustive — every detectable problem (sha256 format violations, manifest/archives mismatch, non-absolute paths, etc.) goes into one `PackageEhcollError`.
+- **Identity is `(package.id, package.version)`, not byte-equal builds.** The only stable-bytes concession kept is `manifest.json` key sorting via `sortDeep`, purely for `unzip + diff` debuggability.
+- Optional `verifyHashes` re-streams every bundled archive through SHA-256 before staging — slow on big archives but catches "curator's archive cache changed since snapshot export."
+- Staging directory is `rm -rf`'d in `finally`, so partial output never leaks into the temp dir.
+- Full prose contract: [`docs/business/PACKAGE_ZIP.md`](business/PACKAGE_ZIP.md).
+
+`manifest/sevenZip.ts`
+- Narrow typed wrapper around `vortex-api`'s `util.SevenZip` (re-export of `node-7z`'s default). Defines `SevenZipApi`, `SevenZipStream`, `SevenZipAddOptions` for our exact callsites — the messy `as unknown as` cast is contained here so the rest of the codebase consumes a clean typed surface and tests can inject a fake.
+- `node-7z` ships no usable types and `@types/node-7z` is not in our deps; this file is the workaround. If `vortex-api` ever exposes proper types it collapses to a re-export.
+
+### Types — `src/types/*`
+
+Pure TypeScript type declarations. No runtime code lives here — adding any would change the dependency graph for files that should only depend on contracts.
+
+`ehcoll.ts`
+- The `.ehcoll` package manifest schema (v1). Defines `EhcollManifest` and every nested shape: `PackageMetadata`, `GameMetadata`, `VortexMetadata`, the `EhcollMod` discriminated union (`NexusEhcollMod` / `ExternalEhcollMod`), `EhcollRule`, `EhcollFileOverride` (curator-deployment outcome side), `EhcollPlugins`, `EhcollIniTweak` (Phase 5 placeholder), `EhcollExternalDependency`.
+- Imports `FomodSelectionStep` from `core/getModsListForProfile` so the manifest's installer spec is byte-compatible with what `AuditorMod` already captures.
+- Full prose contract: [`docs/business/MANIFEST_SCHEMA.md`](business/MANIFEST_SCHEMA.md).
 
 ### Utils — `src/utils/utils.ts`
 A grab-bag, but mostly stable surfaces:

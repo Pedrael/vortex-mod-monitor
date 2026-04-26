@@ -156,7 +156,16 @@ export function getModCompareKey(mod: AuditorMod): string {
   return `id:${mod.id}`;
 }
 
-function sortDeep(value: unknown): unknown {
+/**
+ * Recursively sort object keys for byte-stable JSON serialization.
+ * Arrays preserve their order (their order is meaningful); only object
+ * key ordering is normalized.
+ *
+ * Used by:
+ *  - `deepEqualStable` for order-insensitive comparisons.
+ *  - `core/manifest/packageZip` for deterministic `manifest.json` output.
+ */
+export function sortDeep(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(sortDeep);
   }

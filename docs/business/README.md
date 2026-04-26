@@ -51,6 +51,14 @@ When prose disagrees with code, the prose is the spec — open an issue or fix t
 | [`FILE_OVERRIDES_CAPTURE.md`](FILE_OVERRIDES_CAPTURE.md) | Per-mod `fileOverrides` and `enabledINITweaks`, plus per-modtype deployment manifests captured via `util.getManifest` (file → winning mod ground truth) |
 | [`ORDERING.md`](ORDERING.md) | Per-mod `installTime` + derived `installOrder`, and top-level `loadOrder` capture from Vortex's LoadOrder API. Why we don't store a single `deploymentPriority` number. |
 
+### Packager (Phase 2+)
+
+| Spec | Topic |
+|---|---|
+| [`MANIFEST_SCHEMA.md`](MANIFEST_SCHEMA.md) | The `.ehcoll` package manifest schema (v1) — type-by-type contract for every section, the load-bearing mod-identity rule (Nexus IDs + SHA-256 / external SHA-256-only), what's in v1 vs deferred, and the additive evolution policy |
+| [`BUILD_MANIFEST.md`](BUILD_MANIFEST.md) | The pure converter from `ExportedModsSnapshot` (+ environmental inputs) to `EhcollManifest` — fatal vs non-fatal validation, identity synthesis, rule reference resolution, and v1 simplifications (empty `losingMods`, hardcoded Nexus game-domain table) |
+| [`PACKAGE_ZIP.md`](PACKAGE_ZIP.md) | The `EhcollManifest` + bundled-archives → `.ehcoll` ZIP packager — staging strategy (hardlink + copy fallback), the `7z` invocation, why ZIP (not 7z) format, why identity is `(package.id, package.version)` rather than byte-equal builds, and the validation matrix |
+
 ## Conventions in these docs
 
 - File paths are **always relative to the repo root** unless otherwise noted.
