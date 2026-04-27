@@ -10,6 +10,7 @@ import type {
 } from "../../types/ehcoll";
 import { hashFileSha256 } from "../archiveHashing";
 import { AbortError } from "../../utils/abortError";
+import { getDefaultHashConcurrency } from "../manifest/stagingFileWalker";
 import { pMap } from "../../utils/pMap";
 
 /**
@@ -83,6 +84,11 @@ export type VerifyModInstallInput = {
    * downgrade per-file to size-only — never error.
    */
   level: VerificationLevel;
+  /**
+   * Max concurrent per-file SHA-256 hashes when `level === "thorough"`.
+   * Defaults to {@link getDefaultHashConcurrency} (`min(8, max(2, cpus-1))`),
+   * scaling with the user's machine while leaving a core for the UI.
+   */
   hashConcurrency?: number;
   signal?: AbortSignal;
 };
@@ -151,7 +157,7 @@ export async function verifyModInstall(
     vortexModId,
     expectedFiles,
     level,
-    hashConcurrency = 4,
+    hashConcurrency = getDefaultHashConcurrency(),
     signal,
   } = input;
 

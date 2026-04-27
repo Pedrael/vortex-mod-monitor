@@ -534,7 +534,31 @@ export async function runBuildPipeline(
     signal,
   });
 
-  void configPath;
+  // ── 6. Stamp the config with last-built metadata ───────────────────────
+  // Drives the curator dashboard's "Published" tab — `lastBuiltVersion`
+  // shows what was last shipped, `lastBuiltAt` lets the dashboard sort
+  // by recency. We persist AFTER the package is on disk so a failed
+  // package doesn't poison the recorded version with a build that
+  // never made it out.
+  //
+  // Best-effort: a failure here doesn't fail the build (the package
+  // exists, the curator is happy). We log + continue.
+  try {
+    collectionConfig = {
+      ...collectionConfig,
+      lastBuiltVersion: curator.version,
+      lastBuiltAt: new Date().toISOString(),
+      lastBuiltName: curator.name,
+    };
+    await saveCollectionConfig({ configDir, slug, config: collectionConfig });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[Event Horizon] failed to stamp last-built metadata on ${configPath}:`,
+      err,
+    );
+  }
+
   let stagingFileCount = 0;
   for (const m of manifest.mods) {
     stagingFileCount += m.state.stagingFiles?.length ?? 0;

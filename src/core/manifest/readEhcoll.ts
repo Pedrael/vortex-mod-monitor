@@ -429,15 +429,17 @@ function crossCheckBundled(
   // Build the expected set: every external mod with bundled=true.
   const expected = new Map<string, string>(); // sha256 → mod compareKey
   for (const mod of manifest.mods) {
+    // Invariant (parser-enforced): bundled === true ⇒ source.sha256 set.
     if (mod.source.kind === "external" && mod.source.bundled) {
-      const previous = expected.get(mod.source.sha256);
+      const sha = mod.source.sha256!;
+      const previous = expected.get(sha);
       if (previous !== undefined) {
         // The schema validator already warns about duplicate external
         // sha256s — we don't need to error here. The first mod claims
         // the archive; the second is informational.
         continue;
       }
-      expected.set(mod.source.sha256, mod.compareKey);
+      expected.set(sha, mod.compareKey);
     }
   }
 

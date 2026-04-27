@@ -343,6 +343,7 @@ const LOADING_PHASE_LABELS: Record<LoadingPhase, string> = {
   "reading-receipt": "Looking up previous installs",
   "checking-game": "Checking the active game profile",
   "hashing-mods": "Hashing your installed mods",
+  "hashing-staging": "Verifying installed mod contents",
   "resolving-plan": "Resolving the install plan",
 };
 
@@ -361,7 +362,8 @@ export function LoadingStep(props: {
   // Specialised UI for the hashing pass: live counter + scanner +
   // cancel button. Hashing is read-only so cancellation is always
   // safe — see `core/archiveHashing.ts`.
-  const isHashing = props.phase === "hashing-mods";
+  const isHashing =
+    props.phase === "hashing-mods" || props.phase === "hashing-staging";
   const total = props.hashCount ?? 0;
 
   return (

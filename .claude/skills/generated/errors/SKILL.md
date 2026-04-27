@@ -77,7 +77,7 @@ Start here when exploring this area:
 
 | Area | Connections |
 |------|-------------|
-| Pages | 1 calls |
+| Install | 1 calls |
 
 ## How to Explore
 

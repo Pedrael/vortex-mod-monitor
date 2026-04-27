@@ -1,16 +1,16 @@
 ---
 name: manifest
-description: "Skill for the Manifest area of vortex-mod-monitor. 123 symbols across 9 files."
+description: "Skill for the Manifest area of vortex-mod-monitor. 135 symbols across 15 files."
 ---
 
 # Manifest
 
-123 symbols | 9 files | Cohesion: 87%
+135 symbols | 15 files | Cohesion: 85%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how parseManifest, buildManifest, resolveSevenZip work
+- Understanding how parseManifest, enrichInstalledModsWithStagingSetHashes, getDefaultHashConcurrency work
 - Modifying manifest-related functionality
 
 ## Key Files
@@ -24,43 +24,44 @@ description: "Skill for the Manifest area of vortex-mod-monitor. 123 symbols acr
 | `src/core/manifest/collectionConfig.ts` | getCollectionConfigPath, loadOrCreateCollectionConfig, saveCollectionConfig, createDefaultConfig, writeConfigFile (+5) |
 | `src/utils/utils.ts` | getModCompareKey, sortDeep, deepEqualStable, compareMods, buildModsMap (+1) |
 | `src/core/comparePlugins.ts` | normalizePluginName, parsePluginsTxt, toPluginMap, comparePluginsEntries, comparePluginsTxtFiles |
+| `src/core/manifest/stagingFileWalker.ts` | getDefaultHashConcurrency, walkStagingFolder, hashStagingFiles, toPosix |
+| `src/core/resolver/enrichStagingSetHashes.ts` | enrichInstalledModsWithStagingSetHashes, collectExternalStagingSetHashTargets, normalizeName |
 | `src/core/manifest/sevenZip.ts` | resolveSevenZip, list, add |
-| `src/core/installer/bundledPrefetch.ts` | constructor |
 
 ## Entry Points
 
 Start here when exploring this area:
 
 - **`parseManifest`** (Function) — `src/core/manifest/parseManifest.ts:142`
-- **`buildManifest`** (Function) — `src/core/manifest/buildManifest.ts:199`
-- **`resolveSevenZip`** (Function) — `src/core/manifest/sevenZip.ts:118`
-- **`packageEhcoll`** (Function) — `src/core/manifest/packageZip.ts:128`
-- **`checkAbort`** (Function) — `src/core/manifest/packageZip.ts:138`
+- **`enrichInstalledModsWithStagingSetHashes`** (Function) — `src/core/resolver/enrichStagingSetHashes.ts:94`
+- **`getDefaultHashConcurrency`** (Function) — `src/core/manifest/stagingFileWalker.ts:47`
+- **`walkStagingFolder`** (Function) — `src/core/manifest/stagingFileWalker.ts:73`
+- **`hashStagingFiles`** (Function) — `src/core/manifest/stagingFileWalker.ts:165`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
 | `ParseManifestError` | Class | `src/core/manifest/parseManifest.ts` | 120 |
-| `BuildManifestError` | Class | `src/core/manifest/buildManifest.ts` | 183 |
+| `BuildManifestError` | Class | `src/core/manifest/buildManifest.ts` | 184 |
 | `ReadEhcollError` | Class | `src/core/manifest/readEhcoll.ts` | 124 |
 | `PackageEhcollError` | Class | `src/core/manifest/packageZip.ts` | 106 |
 | `CollectionConfigError` | Class | `src/core/manifest/collectionConfig.ts` | 132 |
 | `parseManifest` | Function | `src/core/manifest/parseManifest.ts` | 142 |
-| `buildManifest` | Function | `src/core/manifest/buildManifest.ts` | 199 |
+| `enrichInstalledModsWithStagingSetHashes` | Function | `src/core/resolver/enrichStagingSetHashes.ts` | 94 |
+| `getDefaultHashConcurrency` | Function | `src/core/manifest/stagingFileWalker.ts` | 47 |
+| `walkStagingFolder` | Function | `src/core/manifest/stagingFileWalker.ts` | 73 |
+| `hashStagingFiles` | Function | `src/core/manifest/stagingFileWalker.ts` | 165 |
+| `captureStagingFiles` | Function | `src/core/manifest/captureStagingFiles.ts` | 87 |
+| `reportProgress` | Function | `src/core/installer/runInstall.ts` | 212 |
+| `buildManifest` | Function | `src/core/manifest/buildManifest.ts` | 200 |
 | `resolveSevenZip` | Function | `src/core/manifest/sevenZip.ts` | 118 |
 | `packageEhcoll` | Function | `src/core/manifest/packageZip.ts` | 128 |
 | `checkAbort` | Function | `src/core/manifest/packageZip.ts` | 138 |
+| `computeStagingSetHash` | Function | `src/core/manifest/stagingSetHash.ts` | 51 |
 | `readEhcoll` | Function | `src/core/manifest/readEhcoll.ts` | 154 |
 | `getModCompareKey` | Function | `src/utils/utils.ts` | 232 |
 | `sortDeep` | Function | `src/utils/utils.ts` | 253 |
-| `deepEqualStable` | Function | `src/utils/utils.ts` | 270 |
-| `compareMods` | Function | `src/utils/utils.ts` | 274 |
-| `compareSnapshots` | Function | `src/utils/utils.ts` | 325 |
-| `parsePluginsTxt` | Function | `src/core/comparePlugins.ts` | 51 |
-| `comparePluginsEntries` | Function | `src/core/comparePlugins.ts` | 80 |
-| `comparePluginsTxtFiles` | Function | `src/core/comparePlugins.ts` | 167 |
-| `getCollectionConfigPath` | Function | `src/core/manifest/collectionConfig.ts` | 151 |
 
 ## Execution Flows
 
@@ -81,7 +82,7 @@ Start here when exploring this area:
 
 | Area | Connections |
 |------|-------------|
-| Installer | 5 calls |
+| Installer | 10 calls |
 
 ## How to Explore
 

@@ -29,6 +29,7 @@ import type { CapturedDeploymentManifest } from "../deploymentManifest";
 import type { CapturedLoadOrderEntry } from "../loadOrder";
 import type { CapturedUserlist } from "../userlist";
 import { parsePluginsTxt } from "../comparePlugins";
+import { computeStagingSetHash } from "./stagingSetHash";
 import type { ExportedModsSnapshot } from "../../utils/utils";
 import type {
   EhcollExternalDependency,
@@ -316,6 +317,14 @@ function buildPackageMetadata(
  * Decide nexus vs external from {@link AuditorMod} fields, build the
  * matching mod entry. Returns `undefined` when the mod is unbuildable
  * (in which case it pushed errors to the accumulator).
+ *
+ * Identity rules:
+ *  - **Nexus mods** require `archiveSha256` (Nexus identity is
+ *    `(modId, fileId, sha256)` per §5.5; absence is fatal).
+ *  - **External mods** require either `archiveSha256` OR a
+ *    thorough-level `stagingFiles` snapshot (which yields
+ *    `stagingSetHash`). Absence of *both* is fatal — there is no
+ *    way to identify the mod cross-machine.
  */
 function buildModEntry(
   mod: AuditorMod,
@@ -323,20 +332,19 @@ function buildModEntry(
   spec: ExternalModSpec | undefined,
   errors: string[],
 ): EhcollMod | undefined {
-  if (!mod.archiveSha256) {
-    errors.push(
-      `Mod "${mod.id}" (${mod.name}) has no archiveSha256. ` +
-        `Cannot pack a manifest mod without archive identity. ` +
-        `Verify the source archive is present in Vortex's download cache and re-export.`,
-    );
-    return undefined;
-  }
-
   if (isNexusMod(mod)) {
+    if (!mod.archiveSha256) {
+      errors.push(
+        `Mod "${mod.id}" (${mod.name}) has no archiveSha256. ` +
+          `Cannot pack a Nexus manifest mod without archive identity. ` +
+          `Verify the source archive is present in Vortex's download cache and re-export.`,
+      );
+      return undefined;
+    }
     return buildNexusMod(mod, gameId);
   }
 
-  return buildExternalMod(mod, spec);
+  return buildExternalMod(mod, spec, errors);
 }
 
 function isNexusMod(mod: AuditorMod): boolean {
@@ -376,15 +384,58 @@ function buildNexusMod(
 function buildExternalMod(
   mod: AuditorMod,
   spec: ExternalModSpec | undefined,
-): ExternalEhcollMod {
-  const compareKey = `external:${mod.archiveSha256}`;
+  errors: string[],
+): ExternalEhcollMod | undefined {
+  const archiveSha = mod.archiveSha256;
+  const stagingSetHash = mod.stagingFiles
+    ? computeStagingSetHash(mod.stagingFiles)
+    : undefined;
+  const wantsBundled = spec?.bundled ?? false;
+
+  // Hard-block: external mods need at least one identity oracle.
+  // (Q2.2: "yes it's a hard block" for curator mods with no archive
+  // AND no staging snapshot.) The build refuses rather than shipping
+  // a manifest that no user-side resolver could reason about.
+  if (archiveSha === undefined && stagingSetHash === undefined) {
+    errors.push(
+      `Mod "${mod.id}" (${mod.name}) is an external mod but has neither ` +
+        `an archive sha256 nor a thorough-level staging-file snapshot. ` +
+        `Vortex's download cache does not retain this mod's archive, and ` +
+        `no per-file hashes were captured at build time. The collection ` +
+        `cannot identify this mod across machines. Either: ` +
+        `(a) re-import the archive into Vortex so the cache picks it up, or ` +
+        `(b) rebuild with verificationLevel = "thorough" so a stagingSetHash ` +
+        `can be computed from the deployed file set.`,
+    );
+    return undefined;
+  }
+
+  // Bundling without an archive sha is a config error: the bundled-
+  // archive path inside `.ehcoll` is keyed by archive sha256.
+  if (wantsBundled && archiveSha === undefined) {
+    errors.push(
+      `Mod "${mod.id}" (${mod.name}) is marked bundled=true but has no ` +
+        `archive sha256. Bundled archives are keyed by archive sha; ` +
+        `re-import the archive or set bundled=false.`,
+    );
+    return undefined;
+  }
+
+  // CompareKey scheme:
+  //  - With archive: "external:<archiveSha>" (unchanged for backward compat).
+  //  - Without archive: "external:staging:<stagingSetHash>" (new in v1.1).
+  const compareKey =
+    archiveSha !== undefined
+      ? `external:${archiveSha}`
+      : `external:staging:${stagingSetHash!}`;
 
   const source: ExternalModSource = {
     kind: "external",
     expectedFilename: spec?.expectedFilename ?? deriveArchiveName(mod),
-    sha256: mod.archiveSha256!,
+    ...(archiveSha !== undefined ? { sha256: archiveSha } : {}),
+    ...(stagingSetHash !== undefined ? { stagingSetHash } : {}),
     instructions: spec?.instructions,
-    bundled: spec?.bundled ?? false,
+    bundled: wantsBundled,
   };
 
   return {

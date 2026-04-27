@@ -222,8 +222,9 @@ function validateInput(input: PackageEhcollInput, errors: string[]): void {
   // a sha256 (would be a duplicate identity).
   const expectedBundled = new Map<string, string>(); // sha256 → mod compareKey
   for (const mod of input.manifest.mods) {
+    // Invariant (parser-enforced): bundled === true ⇒ source.sha256 set.
     if (mod.source.kind === "external" && mod.source.bundled) {
-      expectedBundled.set(mod.source.sha256, mod.compareKey);
+      expectedBundled.set(mod.source.sha256!, mod.compareKey);
     }
   }
 

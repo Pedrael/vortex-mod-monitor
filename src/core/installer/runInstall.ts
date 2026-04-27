@@ -1431,12 +1431,14 @@ async function installManifestEntry(args: {
 }
 
 function findBundledZipEntry(ctx: DriverContext, mod: ExternalEhcollMod): string {
-  const match = ctx.ehcoll.bundledArchives.find(
-    (b) => b.sha256 === mod.source.sha256,
-  );
+  // Invariant (parser-enforced): bundled === true ⇒ source.sha256 set.
+  // Callers gate on `mod.source.bundled` before reaching us, so the
+  // `!` is a static guarantee, not a hope.
+  const sha = mod.source.sha256!;
+  const match = ctx.ehcoll.bundledArchives.find((b) => b.sha256 === sha);
   if (!match) {
     throw new Error(
-      `Bundled archive for sha=${mod.source.sha256} not found in .ehcoll. ` +
+      `Bundled archive for sha=${sha} not found in .ehcoll. ` +
         `Re-build the package or report a manifest/bundled mismatch.`,
     );
   }

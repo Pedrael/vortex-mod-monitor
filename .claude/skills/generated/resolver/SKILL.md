@@ -1,11 +1,11 @@
 ---
 name: resolver
-description: "Skill for the Resolver area of vortex-mod-monitor. 70 symbols across 17 files."
+description: "Skill for the Resolver area of vortex-mod-monitor. 70 symbols across 16 files."
 ---
 
 # Resolver
 
-70 symbols | 17 files | Cohesion: 80%
+70 symbols | 16 files | Cohesion: 77%
 
 ## When to Use
 
@@ -17,7 +17,7 @@ description: "Skill for the Resolver area of vortex-mod-monitor. 70 symbols acro
 
 | File | Symbols |
 |------|---------|
-| `src/core/resolver/resolveInstallPlan.ts` | resolveModResolutions, resolveSingleMod, resolveNexusMod, resolveExternalMod, findInstalledByNexusExact (+21) |
+| `src/core/resolver/resolveInstallPlan.ts` | resolveInstallPlan, enforceInstallTargetInvariant, resolveOrphanedMods, resolveExternalDependencies, resolveSingleExternalDependency (+22) |
 | `src/core/resolver/userState.ts` | buildUserSideState, pickInstallTarget, previousInstallFromReceipt, resolveVortexVersion, resolveGameVersion (+9) |
 | `src/actions/installCollectionAction.ts` | createInstallCollectionAction, logPlanSummary, isPlanInstallable, profileExistsInState, resolveStaleReceipt (+1) |
 | `src/utils/utils.ts` | openFolder, openFile, pickJsonFile, exportDiffReport, pickTxtFile |
@@ -51,17 +51,17 @@ Start here when exploring this area:
 | `createExportModsAction` | Function | `src/actions/exportModsAction.ts` | 15 |
 | `createComparePluginsAction` | Function | `src/actions/comparePluginsAction.ts` | 13 |
 | `createCompareModsAction` | Function | `src/actions/compareModsAction.ts` | 19 |
-| `readReceipt` | Function | `src/core/installLedger.ts` | 336 |
-| `getActiveGameId` | Function | `src/core/getModsListForProfile.ts` | 191 |
-| `getActiveProfileId` | Function | `src/core/getModsListForProfile.ts` | 196 |
-| `getActiveProfileIdFromState` | Function | `src/core/getModsListForProfile.ts` | 206 |
+| `getActiveGameId` | Function | `src/core/getModsListForProfile.ts` | 208 |
+| `getActiveProfileId` | Function | `src/core/getModsListForProfile.ts` | 213 |
+| `getActiveProfileIdFromState` | Function | `src/core/getModsListForProfile.ts` | 223 |
 | `exportModsToJsonFile` | Function | `src/core/exportMods.ts` | 6 |
 | `exportPluginsDiffReport` | Function | `src/core/comparePlugins.ts` | 186 |
-| `enrichModsWithArchiveHashes` | Function | `src/core/archiveHashing.ts` | 133 |
+| `enrichModsWithArchiveHashes` | Function | `src/core/archiveHashing.ts` | 141 |
 | `buildUserSideState` | Function | `src/core/resolver/userState.ts` | 120 |
 | `pickInstallTarget` | Function | `src/core/resolver/userState.ts` | 150 |
 | `previousInstallFromReceipt` | Function | `src/core/resolver/userState.ts` | 175 |
 | `resolveVortexVersion` | Function | `src/core/resolver/userState.ts` | 197 |
+| `resolveGameVersion` | Function | `src/core/resolver/userState.ts` | 204 |
 
 ## Execution Flows
 
@@ -82,14 +82,12 @@ Start here when exploring this area:
 
 | Area | Connections |
 |------|-------------|
+| Manifest | 10 calls |
 | Actions | 8 calls |
-| Manifest | 6 calls |
-| Cluster_21 | 6 calls |
-| Installer | 4 calls |
+| Cluster_17 | 6 calls |
+| Installer | 5 calls |
 | Build | 3 calls |
-| Pages | 2 calls |
-| Cluster_16 | 1 calls |
-| Cluster_18 | 1 calls |
+| Install | 2 calls |
 
 ## How to Explore
 

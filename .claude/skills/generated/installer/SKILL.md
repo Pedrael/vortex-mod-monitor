@@ -1,11 +1,11 @@
 ---
 name: installer
-description: "Skill for the Installer area of vortex-mod-monitor. 102 symbols across 17 files."
+description: "Skill for the Installer area of vortex-mod-monitor. 107 symbols across 15 files."
 ---
 
 # Installer
 
-102 symbols | 17 files | Cohesion: 73%
+107 symbols | 15 files | Cohesion: 76%
 
 ## When to Use
 
@@ -17,59 +17,57 @@ description: "Skill for the Installer area of vortex-mod-monitor. 102 symbols ac
 
 | File | Symbols |
 |------|---------|
-| `src/core/installer/runInstall.ts` | runInstall, checkAbort, collectBundledZipEntriesForPrefetch, collectRemovalPlan, deployAndWait (+35) |
+| `src/core/installer/runInstall.ts` | runInstall, checkAbort, collectBundledZipEntriesForPrefetch, collectRemovalPlan, deployAndWait (+34) |
+| `src/core/installLedger.ts` | InstallLedgerError, getReceiptPath, getInstallLedgerDir, parseReceipt, passthroughObject (+10) |
 | `src/core/installer/modInstall.ts` | uninstallMod, installNexusViaApi, installFromExistingDownload, installFromLocalArchive, installFromBundledArchive (+9) |
 | `src/core/installer/applyUserlist.ts` | applyUserlist, applyGroupDefinition, applyGroupRule, applyPluginEntry, applyPluginGroup (+8) |
 | `src/core/installer/bundledPrefetch.ts` | BundledPrefetchPool, prime, take, pump, startExtraction (+2) |
 | `src/core/installer/verifyModInstall.ts` | summarizeVerifyFail, verifyModInstall, collectOnDiskFiles, toPosix |
-| `src/core/installer/profile.ts` | enableModInProfile, switchToProfile, finalize, makeAbortError |
-| `src/core/manifest/captureStagingFiles.ts` | captureStagingFiles, walkStagingFolder, hashStagingFiles, toPosix |
+| `src/core/installer/profile.ts` | createFreshProfile, enableModInProfile, pickNonCollidingName |
 | `src/core/archiveHashing.ts` | hashFileSha256, onAbort, cleanup |
 | `src/core/installer/applyModRules.ts` | applyModRules, resolveReferenceToModId, refMatchesModId |
-| `src/actions/installCollectionAction.ts` | onProgress, formatProgressMessage |
+| `src/ui/errors/ErrorContext.tsx` | onError |
 
 ## Entry Points
 
 Start here when exploring this area:
 
-- **`summarizeVerifyFail`** (Function) — `src/core/installer/verifyModInstall.ts:368`
+- **`summarizeVerifyFail`** (Function) — `src/core/installer/verifyModInstall.ts:374`
 - **`runInstall`** (Function) — `src/core/installer/runInstall.ts:178`
 - **`checkAbort`** (Function) — `src/core/installer/runInstall.ts:221`
+- **`createFreshProfile`** (Function) — `src/core/installer/profile.ts:38`
 - **`enableModInProfile`** (Function) — `src/core/installer/profile.ts:181`
-- **`uninstallMod`** (Function) — `src/core/installer/modInstall.ts:258`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
 | `BundledPrefetchPool` | Class | `src/core/installer/bundledPrefetch.ts` | 101 |
+| `InstallLedgerError` | Class | `src/core/installLedger.ts` | 70 |
 | `AbortError` | Class | `src/utils/abortError.ts` | 22 |
-| `summarizeVerifyFail` | Function | `src/core/installer/verifyModInstall.ts` | 368 |
+| `summarizeVerifyFail` | Function | `src/core/installer/verifyModInstall.ts` | 374 |
 | `runInstall` | Function | `src/core/installer/runInstall.ts` | 178 |
 | `checkAbort` | Function | `src/core/installer/runInstall.ts` | 221 |
+| `createFreshProfile` | Function | `src/core/installer/profile.ts` | 38 |
 | `enableModInProfile` | Function | `src/core/installer/profile.ts` | 181 |
+| `pickNonCollidingName` | Function | `src/core/installer/profile.ts` | 206 |
 | `uninstallMod` | Function | `src/core/installer/modInstall.ts` | 258 |
+| `getReceiptPath` | Function | `src/core/installLedger.ts` | 124 |
+| `getInstallLedgerDir` | Function | `src/core/installLedger.ts` | 140 |
+| `parseReceipt` | Function | `src/core/installLedger.ts` | 155 |
+| `serializeReceipt` | Function | `src/core/installLedger.ts` | 319 |
+| `readReceipt` | Function | `src/core/installLedger.ts` | 336 |
+| `writeReceipt` | Function | `src/core/installLedger.ts` | 360 |
+| `listReceipts` | Function | `src/core/installLedger.ts` | 408 |
+| `onError` | Function | `src/ui/errors/ErrorContext.tsx` | 121 |
 | `pMap` | Function | `src/utils/pMap.ts` | 20 |
-| `hashFileSha256` | Function | `src/core/archiveHashing.ts` | 33 |
-| `onAbort` | Function | `src/core/archiveHashing.ts` | 45 |
-| `cleanup` | Function | `src/core/archiveHashing.ts` | 53 |
-| `captureStagingFiles` | Function | `src/core/manifest/captureStagingFiles.ts` | 77 |
-| `verifyModInstall` | Function | `src/core/installer/verifyModInstall.ts` | 144 |
-| `reportProgress` | Function | `src/core/installer/runInstall.ts` | 212 |
-| `applyModRules` | Function | `src/core/installer/applyModRules.ts` | 127 |
-| `applyLoadOrder` | Function | `src/core/installer/applyLoadOrder.ts` | 99 |
-| `checkAbort` | Function | `src/ui/pages/install/engine.ts` | 103 |
-| `applyUserlist` | Function | `src/core/installer/applyUserlist.ts` | 179 |
-| `installNexusViaApi` | Function | `src/core/installer/modInstall.ts` | 88 |
-| `installFromExistingDownload` | Function | `src/core/installer/modInstall.ts` | 151 |
+| `hashFileSha256` | Function | `src/core/archiveHashing.ts` | 34 |
 
 ## Execution Flows
 
 | Flow | Type | Steps |
 |------|------|-------|
-| `ReceiptDetailModal → EHRuntime` | cross_community | 7 |
-| `ReceiptDetailModal → Notify` | cross_community | 7 |
-| `ReceiptDetailModal → GetSnapshot` | cross_community | 6 |
+| `Dashboard → InstallLedgerError` | cross_community | 6 |
 | `InstallFromBundledArchive → Cleanup` | cross_community | 6 |
 | `Take → Extract` | cross_community | 6 |
 | `Take → SafeRmTempDir` | cross_community | 6 |
@@ -77,6 +75,8 @@ Start here when exploring this area:
 | `ApplyGroupRule → Notify` | cross_community | 6 |
 | `InstallFromExistingDownload → Cleanup` | cross_community | 6 |
 | `InstallFromLocalArchive → Cleanup` | cross_community | 6 |
+| `ApplyGroupDefinition → EHRuntime` | cross_community | 6 |
+| `ApplyGroupDefinition → Notify` | cross_community | 6 |
 
 ## Connected Areas
 
@@ -84,9 +84,7 @@ Start here when exploring this area:
 |------|-------------|
 | Resolver | 8 calls |
 | Install | 6 calls |
-| Cluster_18 | 1 calls |
-| Cluster_16 | 1 calls |
-| Manifest | 1 calls |
+| Manifest | 3 calls |
 
 ## How to Explore
 

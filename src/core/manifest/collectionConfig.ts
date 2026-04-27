@@ -86,6 +86,26 @@ export type CollectionConfig = {
   readme?: string;
   /** Optional CHANGELOG markdown body. Written as `CHANGELOG.md`. */
   changelog?: string;
+  /**
+   * Last successful build's version string ("1.2.0"). Written by the
+   * build pipeline post-package; read by the curator dashboard to
+   * answer "what version did I last ship for this collection?" and
+   * to power update-tracing ("editing v1.2 → ..." badge on a draft
+   * linked to this packageId).
+   *
+   * Optional because freshly-created configs haven't shipped yet —
+   * the field appears only after the first successful build.
+   */
+  lastBuiltVersion?: string;
+  /** ISO timestamp of the last successful build. Pairs with {@link lastBuiltVersion}. */
+  lastBuiltAt?: string;
+  /**
+   * Curator-facing display name as of the last build. Useful when
+   * the slug differs slightly from the human-readable name (e.g.
+   * "My Big Build" → slug "my-big-build"). Optional for legacy
+   * configs.
+   */
+  lastBuiltName?: string;
 };
 
 export type LoadCollectionConfigInput = {
@@ -261,6 +281,116 @@ export function toBuildManifestExternalMods(
 }
 
 // ---------------------------------------------------------------------------
+// Curator-side index ("My published collections")
+// ---------------------------------------------------------------------------
+
+/**
+ * Compact summary of a published collection, derived from a config
+ * file on disk. Powers the curator dashboard's "Published" tab.
+ *
+ * Treat fields like `lastBuiltVersion` as *advisory*: a curator may
+ * have hand-edited their config or imported a config from another
+ * machine before ever building locally. The dashboard shows what's
+ * known and gracefully skips fields that are missing.
+ */
+export type PublishedCollectionSummary = {
+  /** Filename slug (without `.json`). Acts as the on-disk identity. */
+  slug: string;
+  /** Stable UUIDv4 — release-lineage identity carried in manifests. */
+  packageId: string;
+  /** Last-built version (e.g. `"1.2.0"`), if the config records one. */
+  lastBuiltVersion?: string;
+  /** ISO timestamp of the last successful build, if recorded. */
+  lastBuiltAt?: string;
+  /** Last-built display name, if recorded. Falls back to `slug` in UI. */
+  lastBuiltName?: string;
+  /** Absolute path to the config file. Useful for "Open in editor" actions. */
+  configPath: string;
+};
+
+export type ListPublishedCollectionsOptions = {
+  /**
+   * If provided, called once per file that fails to parse so the UI
+   * can surface "n collections couldn't be read" without losing
+   * the rest of the list. Errors are otherwise silent.
+   */
+  onError?: (filename: string, err: unknown) => void;
+};
+
+/**
+ * Enumerate every `<configDir>/*.json` and return their summaries.
+ *
+ * Returns an empty array when:
+ *   - the configDir doesn't exist (curator never built anything),
+ *   - the directory is empty / contains no JSON files.
+ *
+ * Files with malformed JSON or invalid schema are skipped (and
+ * surfaced via `onError` if provided). Unlike {@link
+ * loadOrCreateCollectionConfig}, this function NEVER writes to disk —
+ * the dashboard is read-only with respect to config files.
+ *
+ * Sorted by `lastBuiltAt` descending (most recently built first),
+ * with never-built collections at the end in slug order.
+ */
+export async function listPublishedCollections(
+  configDir: string,
+  opts?: ListPublishedCollectionsOptions,
+): Promise<PublishedCollectionSummary[]> {
+  let entries: string[];
+  try {
+    entries = await fsp.readdir(configDir);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException | undefined)?.code;
+    if (code === "ENOENT") return [];
+    // Surface real I/O errors via onError; the dashboard prefers a
+    // partial result over a thrown promise it has to handle.
+    opts?.onError?.(configDir, err);
+    return [];
+  }
+  const out: PublishedCollectionSummary[] = [];
+  for (const filename of entries) {
+    if (!filename.endsWith(".json")) continue;
+    if (filename.startsWith(".")) continue;
+    const slug = filename.slice(0, -".json".length);
+    if (slug.length === 0) continue;
+    const configPath = path.join(configDir, filename);
+    let raw: string;
+    try {
+      raw = await fsp.readFile(configPath, "utf8");
+    } catch (err) {
+      opts?.onError?.(filename, err);
+      continue;
+    }
+    let config: CollectionConfig;
+    try {
+      config = parseAndValidate(raw, configPath);
+    } catch (err) {
+      opts?.onError?.(filename, err);
+      continue;
+    }
+    out.push({
+      slug,
+      packageId: config.packageId,
+      lastBuiltVersion: config.lastBuiltVersion,
+      lastBuiltAt: config.lastBuiltAt,
+      lastBuiltName: config.lastBuiltName,
+      configPath,
+    });
+  }
+  out.sort((a, b) => {
+    // Most recently built first; never-built collections sort to the
+    // end in slug order so the curator's freshest work surfaces on top.
+    if (a.lastBuiltAt !== undefined && b.lastBuiltAt !== undefined) {
+      return a.lastBuiltAt < b.lastBuiltAt ? 1 : a.lastBuiltAt > b.lastBuiltAt ? -1 : 0;
+    }
+    if (a.lastBuiltAt !== undefined) return -1;
+    if (b.lastBuiltAt !== undefined) return 1;
+    return a.slug.localeCompare(b.slug);
+  });
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // Internals
 // ---------------------------------------------------------------------------
 
@@ -356,6 +486,18 @@ function parseAndValidate(raw: string, configPath: string): CollectionConfig {
   if (obj.changelog !== undefined && typeof obj.changelog !== "string") {
     errors.push("changelog, when present, must be a string.");
   }
+  if (
+    obj.lastBuiltVersion !== undefined &&
+    typeof obj.lastBuiltVersion !== "string"
+  ) {
+    errors.push("lastBuiltVersion, when present, must be a string.");
+  }
+  if (obj.lastBuiltAt !== undefined && typeof obj.lastBuiltAt !== "string") {
+    errors.push("lastBuiltAt, when present, must be a string.");
+  }
+  if (obj.lastBuiltName !== undefined && typeof obj.lastBuiltName !== "string") {
+    errors.push("lastBuiltName, when present, must be a string.");
+  }
 
   if (errors.length > 0) {
     throw new CollectionConfigError(errors);
@@ -368,6 +510,15 @@ function parseAndValidate(raw: string, configPath: string): CollectionConfig {
   };
   if (typeof obj.readme === "string") config.readme = obj.readme;
   if (typeof obj.changelog === "string") config.changelog = obj.changelog;
+  if (typeof obj.lastBuiltVersion === "string") {
+    config.lastBuiltVersion = obj.lastBuiltVersion;
+  }
+  if (typeof obj.lastBuiltAt === "string") {
+    config.lastBuiltAt = obj.lastBuiltAt;
+  }
+  if (typeof obj.lastBuiltName === "string") {
+    config.lastBuiltName = obj.lastBuiltName;
+  }
   return config;
 }
 

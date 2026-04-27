@@ -346,6 +346,13 @@ function projectInstalledMods(
       out.archiveSha256 = mod.archiveSha256;
     }
 
+    if (
+      typeof mod.stagingSetHash === "string" &&
+      mod.stagingSetHash.length === 64
+    ) {
+      out.stagingSetHash = mod.stagingSetHash;
+    }
+
     const tag = tagsByVortexModId.get(mod.id);
     if (tag) out.eventHorizonInstall = tag;
 

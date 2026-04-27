@@ -243,18 +243,62 @@ export type ExternalModSource = {
   /** Filename hint for the user prompt. Not used for identity. */
   expectedFilename: string;
   /**
-   * Mandatory. THE identity of this mod. The user-side resolver
-   * picks a file (user-supplied or from `bundled/`), streams SHA-256,
-   * and refuses to install anything that doesn't match.
+   * SHA-256 of the source archive bytes when the curator has them.
+   *
+   * v1.0 schema treated this as mandatory. v1.1+ made it optional
+   * because Vortex doesn't always retain the original archive for
+   * externally-installed mods (manual installs, sideloaded mods,
+   * archives the user purged from the cache). When archive bytes are
+   * unavailable, identity falls back to {@link stagingSetHash}.
+   *
+   * INVARIANT (parser-enforced): at least one of `sha256` or
+   * `stagingSetHash` MUST be present. A manifest with neither has no
+   * way to identify the mod across machines and is rejected.
+   *
+   * INVARIANT (parser-enforced): if `bundled === true`, then `sha256`
+   * MUST be present (the bundled-archive path on disk is keyed by
+   * archive sha256, so we cannot bundle without it).
+   *
+   * When present: lowercase hex, exactly 64 characters.
    */
-  sha256: string;
+  sha256?: string;
   /** Free-form text shown to the user when the file isn't in `bundled/`. */
   instructions?: string;
   /**
    * `true` ⇒ archive is included in the package at `bundled/<sha256>.<ext>`.
    * `false` ⇒ the user must supply a local copy.
+   *
+   * Requires {@link sha256} to be set when `true` (see invariant above).
    */
   bundled: boolean;
+  /**
+   * Deterministic SHA-256 over the curator's deployed staging folder for
+   * this mod (file list aggregated by relative path + size + sha256).
+   * Populated iff this mod was captured with
+   * `verificationLevel = "thorough"`.
+   *
+   * Why we need it: Vortex doesn't always retain the original archive
+   * for externally-installed mods (manual installs, sideloads, archives
+   * the user purged). When the curator has no archive bytes to hash,
+   * the manifest still has identity via the curator's deployed file
+   * set. The user-side resolver mirrors this by hashing matching mods'
+   * staging folders and comparing.
+   *
+   * Identity ladder for external mods (LOAD-BEARING):
+   *   1. archive `sha256` match (preferred — cheap, archive-authoritative)
+   *   2. `stagingSetHash` match (fallback — works when archive absent)
+   *   3. fall through to install-from-bundle / prompt-user
+   *
+   * Optional for backward compatibility: parsers treat absence as
+   * "no staging-set identity available." Manifests built with
+   * `verificationLevel = "thorough"` always populate it. Manifests
+   * without `sha256` (archive-less mods) MUST populate it (otherwise
+   * the mod has no identity at all and the build is rejected).
+   *
+   * Format: lowercase hex, exactly 64 characters. Computed by
+   * `computeStagingSetHash`.
+   */
+  stagingSetHash?: string;
 };
 
 export type ModInstallSpec = {

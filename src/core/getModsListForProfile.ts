@@ -187,6 +187,23 @@ export type AuditorMod = {
    * the mod's identity.
    */
   stagingFiles?: import("../types/ehcoll").EhcollStagingFile[];
+
+  /**
+   * Deterministic SHA-256 over this mod's deployed staging folder
+   * file set. Populated by `enrichInstalledModsWithStagingSetHashes`
+   * on the user side (action handler) for installed mods whose name
+   * matches an external manifest mod that carries a `stagingSetHash`.
+   *
+   * Used as the fallback identity oracle for archive-less external
+   * mods (Vortex didn't retain the archive). The resolver's
+   * `findInstalledByStagingSetHash` reads this through the
+   * `InstalledMod` projection.
+   *
+   * Build-time `captureStagingFiles` does NOT populate this — it
+   * populates `stagingFiles` and the manifest builder derives the
+   * hash from there.
+   */
+  stagingSetHash?: string;
 };
 
 export function getActiveGameId(state: types.IState): string | undefined {

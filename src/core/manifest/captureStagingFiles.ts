@@ -1,4 +1,3 @@
-import * as fs from "fs";
 import * as path from "path";
 
 import { selectors } from "vortex-api";
@@ -6,9 +5,12 @@ import type { types } from "vortex-api";
 
 import type { AuditorMod } from "../getModsListForProfile";
 import type { EhcollStagingFile, VerificationLevel } from "../../types/ehcoll";
-import { hashFileSha256 } from "../archiveHashing";
 import { AbortError } from "../../utils/abortError";
-import { pMap } from "../../utils/pMap";
+import {
+  getDefaultHashConcurrency,
+  hashStagingFiles,
+  walkStagingFolder,
+} from "./stagingFileWalker";
 
 /**
  * Captures the curator's staging-folder file list for each mod, used by
@@ -41,13 +43,21 @@ import { pMap } from "../../utils/pMap";
  *
  * Concurrency:
  *  - Mods are walked one-at-a-time (outer loop) but files within each
- *    mod hash in parallel (4-wide via {@link pMap}). This keeps memory
- *    bounded for huge mods (BodySlide presets, voice packs) while still
- *    saturating SSD bandwidth.
+ *    mod hash in parallel via {@link pMap}. The default worker count
+ *    is cpu-aware (see {@link getDefaultHashConcurrency}) — typically
+ *    `min(8, max(2, cpus-1))`. This keeps memory bounded for huge
+ *    mods (BodySlide presets, voice packs) while still saturating
+ *    SSD bandwidth on multi-core boxes and leaving one core free for
+ *    the Vortex UI thread.
  */
 export type CaptureStagingOptions = {
   level: VerificationLevel;
-  /** Defaults to 4 — friendly to spinning rust, fine for SSD. */
+  /**
+   * Defaults to {@link getDefaultHashConcurrency} (cpu-aware: typically
+   * `min(8, max(2, cpus-1))`). Earlier versions hard-coded 4; the
+   * adaptive default scales with the curator's machine while keeping
+   * one core free for the UI thread.
+   */
   hashConcurrency?: number;
   /**
    * Per-mod progress callback. Fires once after each mod is processed
@@ -83,11 +93,12 @@ export async function captureStagingFiles(
 ): Promise<StagingEnrichedAuditorMod[]> {
   const {
     level,
-    hashConcurrency = 4,
+    hashConcurrency,
     onProgress,
     onWarn,
     signal,
   } = options;
+  const workers = hashConcurrency ?? getDefaultHashConcurrency();
 
   if (level === "none") {
     onProgress?.(mods.length, mods.length, mods[mods.length - 1]!);
@@ -150,7 +161,7 @@ export async function captureStagingFiles(
         stagingRoot,
         files,
         level,
-        hashConcurrency,
+        workers,
         signal,
         (relPath, err) => onWarn?.(mod, `${relPath}: ${err.message}`),
       );
@@ -171,142 +182,4 @@ export async function captureStagingFiles(
   }
 
   return out;
-}
-
-type WalkedFile = {
-  /** POSIX-style path relative to the staging root. */
-  relativePath: string;
-  /** Absolute path on disk. */
-  absolutePath: string;
-  size: number;
-};
-
-/**
- * Recursive directory walk that returns every regular file under `root`
- * with its size. Symlinks are followed only when they resolve to files
- * inside `root` (anti-loop guard); hardlinks are walked normally as
- * Vortex's primary deployment method produces them in the *deploy*
- * folder, not staging — staging is always real bytes.
- *
- * Returns an empty array if `root` doesn't exist (mod was concurrently
- * uninstalled — non-fatal, the build snapshot won't include it anyway).
- */
-async function walkStagingFolder(
-  root: string,
-  signal: AbortSignal | undefined,
-): Promise<WalkedFile[]> {
-  const out: WalkedFile[] = [];
-
-  const stat = await fs.promises.stat(root).catch(() => undefined);
-  if (stat === undefined || !stat.isDirectory()) {
-    return out;
-  }
-
-  const stack: string[] = [root];
-  const visited = new Set<string>();
-
-  while (stack.length > 0) {
-    if (signal?.aborted) throw new AbortError();
-    const dir = stack.pop()!;
-
-    let entries: fs.Dirent[];
-    try {
-      entries = await fs.promises.readdir(dir, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-
-    for (const entry of entries) {
-      if (signal?.aborted) throw new AbortError();
-      const abs = path.join(dir, entry.name);
-
-      if (entry.isDirectory()) {
-        stack.push(abs);
-        continue;
-      }
-
-      if (entry.isSymbolicLink()) {
-        const realPath = await fs.promises
-          .realpath(abs)
-          .catch(() => undefined);
-        if (
-          realPath === undefined ||
-          !realPath.startsWith(root) ||
-          visited.has(realPath)
-        ) {
-          continue;
-        }
-        visited.add(realPath);
-        const lstat = await fs.promises.stat(realPath).catch(() => undefined);
-        if (lstat === undefined || !lstat.isFile()) continue;
-
-        out.push({
-          relativePath: toPosix(path.relative(root, abs)),
-          absolutePath: abs,
-          size: lstat.size,
-        });
-        continue;
-      }
-
-      if (entry.isFile()) {
-        const lstat = await fs.promises.stat(abs).catch(() => undefined);
-        if (lstat === undefined) continue;
-        out.push({
-          relativePath: toPosix(path.relative(root, abs)),
-          absolutePath: abs,
-          size: lstat.size,
-        });
-      }
-    }
-  }
-
-  out.sort((a, b) =>
-    a.relativePath < b.relativePath ? -1 : a.relativePath > b.relativePath ? 1 : 0,
-  );
-  return out;
-}
-
-async function hashStagingFiles(
-  _root: string,
-  files: WalkedFile[],
-  level: VerificationLevel,
-  concurrency: number,
-  signal: AbortSignal | undefined,
-  onFileWarn: (relativePath: string, err: Error) => void,
-): Promise<EhcollStagingFile[]> {
-  if (level === "fast") {
-    return files.map<EhcollStagingFile>((f) => ({
-      path: f.relativePath,
-      size: f.size,
-    }));
-  }
-
-  // level === "thorough"
-  const hashes = await pMap(
-    files,
-    Math.max(1, concurrency),
-    async (file) => {
-      try {
-        const sha256 = await hashFileSha256(file.absolutePath, signal);
-        return { ok: true as const, sha256 };
-      } catch (err) {
-        if (err instanceof AbortError) throw err;
-        onFileWarn(file.relativePath, err as Error);
-        return { ok: false as const };
-      }
-    },
-    signal,
-  );
-
-  return files.map<EhcollStagingFile>((f, i) => {
-    const h = hashes[i]!;
-    if (h.ok) {
-      return { path: f.relativePath, size: f.size, sha256: h.sha256 };
-    }
-    return { path: f.relativePath, size: f.size };
-  });
-}
-
-function toPosix(p: string): string {
-  return p.split(path.sep).join("/");
 }

@@ -190,6 +190,29 @@ export type InstalledMod = {
    * "byte-identity unknown" not "different bytes."
    */
   archiveSha256?: string;
+  /**
+   * Deterministic SHA-256 over the user's deployed staging folder
+   * for this mod (file list aggregated by relative path + size +
+   * sha256). The fallback identity oracle for external mods that
+   * have no `archiveSha256` (Vortex didn't retain the original
+   * archive — manual install, sideload, archive purged).
+   *
+   * Only populated when:
+   *  1. the manifest carries `stagingSetHash` for at least one
+   *     external mod (so there is something to match against), AND
+   *  2. the action handler has chosen to enrich this mod's snapshot
+   *     because its name matches an external manifest entry (we
+   *     skip mods with no name candidate to bound the cost — see
+   *     `enrichModsWithStagingSetHashes`).
+   *
+   * Absence is treated identically to `archiveSha256` absence:
+   * "byte-identity unknown" — the resolver falls through to the
+   * next ladder rung (bundled-install, prompt-user, etc.), never
+   * "different bytes."
+   *
+   * Format: lowercase hex, exactly 64 characters when present.
+   */
+  stagingSetHash?: string;
   /** Whether the mod is currently enabled in the active profile. */
   enabled: boolean;
   /**
@@ -694,7 +717,18 @@ export type ExternalBytesDivergedDecision = {
 export type ExternalPromptUserDecision = {
   kind: "external-prompt-user";
   expectedFilename: string;
-  expectedSha256: string;
+  /**
+   * Archive sha256 the manifest pinned, when known. Absent for
+   * archive-less external mods (curator has no archive bytes; the
+   * mod is identified solely by `expectedStagingSetHash`).
+   */
+  expectedSha256?: string;
+  /**
+   * Staging-set hash the manifest pinned, when known. Used as the
+   * fallback identity oracle when `expectedSha256` is absent (or as
+   * a secondary check when both are present).
+   */
+  expectedStagingSetHash?: string;
   /** Curator's free-form prose for the prompt. */
   instructions?: string;
 };
@@ -713,7 +747,16 @@ export type ExternalPromptUserDecision = {
 export type ExternalMissingDecision = {
   kind: "external-missing";
   expectedFilename: string;
-  expectedSha256: string;
+  /**
+   * Archive sha256 the manifest pinned, when known. Absent for
+   * archive-less external mods.
+   */
+  expectedSha256?: string;
+  /**
+   * Staging-set hash the manifest pinned, when known. Used as the
+   * fallback identity oracle when `expectedSha256` is absent.
+   */
+  expectedStagingSetHash?: string;
   instructions?: string;
 };
 

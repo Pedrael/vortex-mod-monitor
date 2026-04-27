@@ -35,6 +35,7 @@ import {
   type ReadEhcollResult,
   readEhcoll,
 } from "../../../core/manifest/readEhcoll";
+import { enrichInstalledModsWithStagingSetHashes } from "../../../core/resolver/enrichStagingSetHashes";
 import { resolveInstallPlan } from "../../../core/resolver/resolveInstallPlan";
 import {
   buildUserSideState,
@@ -153,16 +154,35 @@ export async function runLoadingPipeline(args: {
     }
   }
 
-  // ── 4. snapshot pipeline (hash mods) ─────────────────────────────
+  // ── 4. snapshot pipeline (hash archive bytes) ────────────────────
   checkAbort();
   const rawMods = getModsForProfile(state, activeGameId, activeProfileId);
   events.onPhase("hashing-mods", rawMods.length);
-  const installedMods = await enrichModsWithArchiveHashes(
+  const archiveHashed = await enrichModsWithArchiveHashes(
     state,
     activeGameId,
     rawMods,
     {
-      concurrency: 4,
+      signal,
+      onProgress: (done, total, mod) => {
+        events.onHashProgress?.(done, total, mod.name);
+      },
+    },
+  );
+
+  // ── 4b. staging-set-hash enrichment ──────────────────────────────
+  // Cheap no-op when the manifest has no archive-less external mods.
+  // For mods Vortex didn't retain the archive of (manual installs,
+  // sideloads, archives the user purged), this is the only identity
+  // oracle the resolver can match on.
+  checkAbort();
+  events.onPhase("hashing-staging");
+  const installedMods = await enrichInstalledModsWithStagingSetHashes(
+    state,
+    activeGameId,
+    manifest,
+    archiveHashed,
+    {
       signal,
       onProgress: (done, total, mod) => {
         events.onHashProgress?.(done, total, mod.name);
@@ -247,12 +267,26 @@ export async function runLoadingPipelineWithReceipt(args: {
   checkAbort();
   const rawMods = getModsForProfile(state, activeGameId, activeProfileId);
   events.onPhase("hashing-mods", rawMods.length);
-  const installedMods = await enrichModsWithArchiveHashes(
+  const archiveHashed = await enrichModsWithArchiveHashes(
     state,
     activeGameId,
     rawMods,
     {
-      concurrency: 4,
+      signal,
+      onProgress: (done, total, mod) => {
+        events.onHashProgress?.(done, total, mod.name);
+      },
+    },
+  );
+
+  checkAbort();
+  events.onPhase("hashing-staging");
+  const installedMods = await enrichInstalledModsWithStagingSetHashes(
+    state,
+    activeGameId,
+    manifest,
+    archiveHashed,
+    {
       signal,
       onProgress: (done, total, mod) => {
         events.onHashProgress?.(done, total, mod.name);

@@ -7,6 +7,7 @@ import type { types } from "vortex-api";
 
 import type { AuditorMod } from "./getModsListForProfile";
 import { AbortError } from "../utils/abortError";
+import { getDefaultHashConcurrency } from "./manifest/stagingFileWalker";
 import { pMap } from "../utils/pMap";
 
 /**
@@ -106,7 +107,14 @@ export function getModArchivePath(
 }
 
 export type EnrichOptions = {
-  /** Max concurrent file reads. Defaults to 4 — friendly to spinning rust. */
+  /**
+   * Max concurrent archive hashes. Defaults to
+   * {@link getDefaultHashConcurrency} (`min(8, max(2, cpus-1))`),
+   * which scales with the user's machine while leaving a core free
+   * for the UI/Vortex itself. Override to a small constant (e.g. 2)
+   * when you know the install lives on spinning rust and seek
+   * latency dominates throughput.
+   */
   concurrency?: number;
   /** Called for each mod after it has been processed (success or skip). */
   onProgress?: (done: number, total: number, mod: AuditorMod) => void;
@@ -137,7 +145,8 @@ export async function enrichModsWithArchiveHashes(
   mods: AuditorMod[],
   options: EnrichOptions = {},
 ): Promise<AuditorMod[]> {
-  const { concurrency = 4, onProgress, signal } = options;
+  const { concurrency = getDefaultHashConcurrency(), onProgress, signal } =
+    options;
 
   let done = 0;
 

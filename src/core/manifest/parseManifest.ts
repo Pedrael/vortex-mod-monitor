@@ -559,26 +559,64 @@ function validateExternalSource(
     `${path}.expectedFilename`,
     errors,
   );
-  const sha256 = expectSha256Hex(obj.sha256, `${path}.sha256`, errors);
+  // sha256 is optional in v1.1+ when stagingSetHash is set. Validate
+  // format only when the field is present; absence is checked by the
+  // identity-oracle invariant below.
+  const sha256 =
+    obj.sha256 === undefined
+      ? undefined
+      : expectSha256Hex(obj.sha256, `${path}.sha256`, errors);
+  const stagingSetHash =
+    obj.stagingSetHash === undefined
+      ? undefined
+      : expectSha256Hex(
+          obj.stagingSetHash,
+          `${path}.stagingSetHash`,
+          errors,
+        );
   const bundled = expectBoolean(obj.bundled, `${path}.bundled`, errors);
   const instructions =
     obj.instructions === undefined
       ? undefined
       : expectString(obj.instructions, `${path}.instructions`, errors);
 
-  if (
-    expectedFilename === undefined ||
-    sha256 === undefined ||
-    bundled === undefined
-  ) {
+  if (expectedFilename === undefined || bundled === undefined) {
+    return undefined;
+  }
+
+  // Identity-oracle invariant: at least one of sha256/stagingSetHash.
+  // A field validation error above (e.g. malformed hex) leaves the
+  // value undefined; we only emit this extra error when both fields
+  // were genuinely absent — otherwise the format error already
+  // explains the rejection.
+  const sha256Present = obj.sha256 !== undefined;
+  const stagingSetHashPresent = obj.stagingSetHash !== undefined;
+  if (!sha256Present && !stagingSetHashPresent) {
+    errors.push(
+      `${path} must define either "sha256" (archive identity) or ` +
+        `"stagingSetHash" (deployed-files identity). Both absent ⇒ ` +
+        `the mod has no cross-machine identity.`,
+    );
+    return undefined;
+  }
+
+  // Bundled-archive invariant: the on-disk path inside .ehcoll is
+  // keyed by archive sha256, so bundling requires sha256 to be set.
+  if (bundled && sha256 === undefined) {
+    errors.push(
+      `${path}.bundled is true but ${path}.sha256 is missing. ` +
+        `Bundled archives are addressed by archive sha256; cannot ` +
+        `locate the archive inside the package without it.`,
+    );
     return undefined;
   }
 
   return {
     kind: "external",
     expectedFilename,
-    sha256,
     bundled,
+    ...(sha256 !== undefined ? { sha256 } : {}),
+    ...(stagingSetHash !== undefined ? { stagingSetHash } : {}),
     ...(instructions !== undefined ? { instructions } : {}),
   };
 }
@@ -1383,15 +1421,26 @@ function crossReferenceValidate(
 ): void {
   const compareKeys = new Set(parts.mods.map((m) => m.compareKey));
   const externalSha256Counts = new Map<string, string[]>();
+  const externalStagingHashCounts = new Map<string, string[]>();
 
-  // Bundled flag must only ever be true for external mods. The
-  // discriminated union makes this a static guarantee at the type
-  // level, but a hand-edited manifest could violate it.
+  // External-mod identity collision detection. We bucket on whichever
+  // identity oracle the mod carries (archiveSha256 first, then
+  // stagingSetHash) and warn on collisions in either bucket. Mods
+  // without `sha256` (archive-less, identity by stagingSetHash) can
+  // legitimately collide with sha-based mods only if the curator
+  // deduped poorly — we don't bother cross-bucket-checking those.
   for (const mod of parts.mods) {
     if (mod.source.kind === "external") {
-      const list = externalSha256Counts.get(mod.source.sha256) ?? [];
-      list.push(mod.compareKey);
-      externalSha256Counts.set(mod.source.sha256, list);
+      if (mod.source.sha256 !== undefined) {
+        const list = externalSha256Counts.get(mod.source.sha256) ?? [];
+        list.push(mod.compareKey);
+        externalSha256Counts.set(mod.source.sha256, list);
+      } else if (mod.source.stagingSetHash !== undefined) {
+        const list =
+          externalStagingHashCounts.get(mod.source.stagingSetHash) ?? [];
+        list.push(mod.compareKey);
+        externalStagingHashCounts.set(mod.source.stagingSetHash, list);
+      }
     }
   }
   for (const [sha, keys] of externalSha256Counts) {
@@ -1401,6 +1450,15 @@ function crossReferenceValidate(
           `same archiveSha256 (${sha.slice(0, 12)}…). The package can only ` +
           `bundle the archive once; the resolver will install both pointing ` +
           `at the same bytes. Likely a curator dedupe oversight.`,
+      );
+    }
+  }
+  for (const [setHash, keys] of externalStagingHashCounts) {
+    if (keys.length > 1) {
+      warnings.push(
+        `External mods ${keys.map((k) => `"${k}"`).join(", ")} share the ` +
+          `same stagingSetHash (${setHash.slice(0, 12)}…). Their deployed ` +
+          `file sets are byte-identical. Likely a curator dedupe oversight.`,
       );
     }
   }

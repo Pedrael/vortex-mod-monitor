@@ -1,9 +1,9 @@
 ---
-name: cluster-21
-description: "Skill for the Cluster_21 area of vortex-mod-monitor. 11 symbols across 1 files."
+name: cluster-17
+description: "Skill for the Cluster_17 area of vortex-mod-monitor. 11 symbols across 1 files."
 ---
 
-# Cluster_21
+# Cluster_17
 
 11 symbols | 1 files | Cohesion: 74%
 
@@ -11,7 +11,7 @@ description: "Skill for the Cluster_21 area of vortex-mod-monitor. 11 symbols ac
 
 - Working with code in `src/`
 - Understanding how getModsForProfile work
-- Modifying cluster_21-related functionality
+- Modifying cluster_17-related functionality
 
 ## Key Files
 
@@ -23,23 +23,23 @@ description: "Skill for the Cluster_21 area of vortex-mod-monitor. 11 symbols ac
 
 Start here when exploring this area:
 
-- **`getModsForProfile`** (Function) — `src/core/getModsListForProfile.ts:448`
+- **`getModsForProfile`** (Function) — `src/core/getModsListForProfile.ts:465`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `getModsForProfile` | Function | `src/core/getModsListForProfile.ts` | 448 |
-| `pickInstallerChoices` | Function | `src/core/getModsListForProfile.ts` | 231 |
-| `normalizeCollectionIds` | Function | `src/core/getModsListForProfile.ts` | 244 |
-| `normalizeInstallTime` | Function | `src/core/getModsListForProfile.ts` | 269 |
-| `normalizeStringArray` | Function | `src/core/getModsListForProfile.ts` | 295 |
-| `normalizeFomodSelections` | Function | `src/core/getModsListForProfile.ts` | 311 |
-| `hasAnySelectedFomodChoices` | Function | `src/core/getModsListForProfile.ts` | 345 |
-| `normalizeRuleReference` | Function | `src/core/getModsListForProfile.ts` | 359 |
-| `rulesSortKey` | Function | `src/core/getModsListForProfile.ts` | 398 |
-| `normalizeModRules` | Function | `src/core/getModsListForProfile.ts` | 409 |
-| `assignInstallOrder` | Function | `src/core/getModsListForProfile.ts` | 528 |
+| `getModsForProfile` | Function | `src/core/getModsListForProfile.ts` | 465 |
+| `pickInstallerChoices` | Function | `src/core/getModsListForProfile.ts` | 248 |
+| `normalizeCollectionIds` | Function | `src/core/getModsListForProfile.ts` | 261 |
+| `normalizeInstallTime` | Function | `src/core/getModsListForProfile.ts` | 286 |
+| `normalizeStringArray` | Function | `src/core/getModsListForProfile.ts` | 312 |
+| `normalizeFomodSelections` | Function | `src/core/getModsListForProfile.ts` | 328 |
+| `hasAnySelectedFomodChoices` | Function | `src/core/getModsListForProfile.ts` | 362 |
+| `normalizeRuleReference` | Function | `src/core/getModsListForProfile.ts` | 376 |
+| `rulesSortKey` | Function | `src/core/getModsListForProfile.ts` | 415 |
+| `normalizeModRules` | Function | `src/core/getModsListForProfile.ts` | 426 |
+| `assignInstallOrder` | Function | `src/core/getModsListForProfile.ts` | 545 |
 
 ## Execution Flows
 
@@ -59,5 +59,5 @@ Start here when exploring this area:
 ## How to Explore
 
 1. `gitnexus_context({name: "getModsForProfile"})` — see callers and callees
-2. `gitnexus_query({query: "cluster_21"})` — find related execution flows
+2. `gitnexus_query({query: "cluster_17"})` — find related execution flows
 3. Read key files listed above for implementation details

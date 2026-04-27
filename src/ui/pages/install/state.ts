@@ -44,6 +44,7 @@ export type LoadingPhase =
   | "reading-receipt"
   | "checking-game"
   | "hashing-mods"
+  | "hashing-staging"
   | "resolving-plan";
 
 export interface PreviewBundle {
@@ -184,25 +185,29 @@ export function wizardReducer(
         zipPath: action.zipPath,
         phase: "reading-package",
       };
-    case "loading-phase":
+    case "loading-phase": {
       if (state.kind !== "loading") return state;
+      const isHashingPhase =
+        action.phase === "hashing-mods" || action.phase === "hashing-staging";
+      // The two hashing phases share a UI card with a live counter.
+      // Reset progress on every phase transition (incl. mods → staging)
+      // so the counter doesn't show stale numbers from the previous
+      // phase. Non-hashing phases drop the counter entirely.
       return {
         ...state,
         phase: action.phase,
-        hashCount: action.hashCount ?? state.hashCount,
-        // Reset live counters whenever we leave the hashing phase so
-        // the hashing card doesn't flash stale numbers if we ever
-        // re-enter it later.
-        hashDone:
-          action.phase === "hashing-mods" ? state.hashDone ?? 0 : undefined,
-        hashCurrent:
-          action.phase === "hashing-mods" ? state.hashCurrent : undefined,
+        hashCount: action.hashCount ?? (isHashingPhase ? 0 : state.hashCount),
+        hashDone: isHashingPhase ? 0 : undefined,
+        hashCurrent: isHashingPhase ? undefined : undefined,
       };
+    }
     case "hash-progress":
       if (state.kind !== "loading") return state;
+      // Don't override the current phase — the engine can be in
+      // either "hashing-mods" or "hashing-staging" and both fire
+      // hash-progress events.
       return {
         ...state,
-        phase: "hashing-mods",
         hashCount: action.total,
         hashDone: action.done,
         hashCurrent: action.currentItem,

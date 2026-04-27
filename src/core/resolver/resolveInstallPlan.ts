@@ -440,11 +440,28 @@ function resolveNexusMod(
  * can emit (see {@link ExternalBytesDivergedDecision} doc), so the
  * mode flag is irrelevant here.
  *
- *   1. byte-exact installed (sha match)              → already-installed
- *   2. download with matching sha                    → use-local-download
- *   3. bundled in the .ehcoll                        → use-bundled
- *   4. strict mode + nothing else                    → missing
- *   5. lenient mode + nothing else                   → prompt-user
+ *   1. archive-sha match installed (cheap, archive-authoritative) → already-installed
+ *   2. staging-set-hash match installed (fallback for archive-less) → already-installed
+ *   3. download with matching archive sha                          → use-local-download
+ *   4. bundled in the .ehcoll                                      → use-bundled
+ *   5. strict mode + nothing else                                  → missing
+ *   6. lenient mode + nothing else                                 → prompt-user
+ *
+ * IDENTITY ORACLES — load-bearing:
+ * External mods carry one or both of:
+ *  - `archiveSha256`: hash of the source archive bytes. Preferred —
+ *    cheap to compare, authoritative against archive tampering, and
+ *    works regardless of whether the mod is deployed yet.
+ *  - `stagingSetHash`: deterministic SHA-256 over the curator's
+ *    deployed file set (`{ path, size, sha256 }` per file, sorted).
+ *    Required for mods whose archive Vortex doesn't retain (manual
+ *    installs, sideloads, archives the user purged). The action
+ *    handler enriches `InstalledMod.stagingSetHash` for installed
+ *    mods that name-match an archive-less manifest entry — we don't
+ *    blanket-hash every installed mod.
+ *
+ * The schema invariant guarantees at least one is set; the resolver
+ * tries archive sha first, falls back to staging-set hash.
  */
 function resolveExternalMod(
   mod: EhcollMod,
@@ -454,47 +471,91 @@ function resolveExternalMod(
   if (mod.source.kind !== "external") {
     throw new Error("resolveExternalMod called on non-external mod");
   }
-  const { sha256, expectedFilename, instructions, bundled } = mod.source;
+  const {
+    sha256,
+    stagingSetHash,
+    expectedFilename,
+    instructions,
+    bundled,
+  } = mod.source;
 
-  const installed = findInstalledBySha(userState.installedMods, sha256);
-  if (installed) {
-    return { kind: "external-already-installed", existingModId: installed.id };
+  // Rung 1: archive-sha match (preferred when the curator had archive
+  // bytes and the user does too).
+  if (sha256 !== undefined) {
+    const installed = findInstalledBySha(userState.installedMods, sha256);
+    if (installed) {
+      return { kind: "external-already-installed", existingModId: installed.id };
+    }
   }
 
-  const localDownload = findDownloadBySha(userState.availableDownloads, sha256);
-  if (localDownload) {
-    return {
-      kind: "external-use-local-download",
+  // Rung 2: staging-set-hash match (fallback — works for archive-less
+  // mods OR when the user's archive was purged but the deployed files
+  // remain). Only fires for installed mods the action handler has
+  // chosen to enrich (those that name-match a manifest external mod);
+  // un-enriched mods carry `stagingSetHash === undefined` and are
+  // treated as "byte-identity unknown," not "different bytes."
+  if (stagingSetHash !== undefined) {
+    const installedByStaging = findInstalledByStagingSetHash(
+      userState.installedMods,
+      stagingSetHash,
+    );
+    if (installedByStaging) {
+      return {
+        kind: "external-already-installed",
+        existingModId: installedByStaging.id,
+      };
+    }
+  }
+
+  // Rung 3: archive-sha matches a download in Vortex's cache.
+  if (sha256 !== undefined) {
+    const localDownload = findDownloadBySha(
+      userState.availableDownloads,
       sha256,
-      archiveId: localDownload.archiveId,
-      localPath: localDownload.localPath,
-    };
+    );
+    if (localDownload) {
+      return {
+        kind: "external-use-local-download",
+        sha256,
+        archiveId: localDownload.archiveId,
+        localPath: localDownload.localPath,
+      };
+    }
   }
 
+  // Rung 4: archive bundled in the .ehcoll. Schema invariant
+  // guarantees `bundled === true ⇒ sha256 set`, so the assertion is
+  // safe even though TS can't infer it from the destructure.
   if (bundled) {
+    const sha = sha256!;
     return {
       kind: "external-use-bundled",
-      sha256,
-      zipPath: bundledZipPath(sha256, expectedFilename),
+      sha256: sha,
+      zipPath: bundledZipPath(sha, expectedFilename),
     };
   }
 
-  // Not bundled, not in downloads, not installed. Strict mode treats
-  // this as a hard "we have no path to these bytes ahead of time"
-  // (`canProceed` flips to false); lenient defers to the install-time
-  // file picker. See `ExternalMissingDecision` doc.
+  // Rung 5/6: nothing. Both decisions carry whichever identity
+  // oracles the manifest provided (one or both). The driver / UI
+  // inspects whichever is set.
   if (strictMissingMods) {
     return {
       kind: "external-missing",
       expectedFilename,
-      expectedSha256: sha256,
+      ...(sha256 !== undefined ? { expectedSha256: sha256 } : {}),
+      ...(stagingSetHash !== undefined
+        ? { expectedStagingSetHash: stagingSetHash }
+        : {}),
       instructions,
     };
   }
   return {
     kind: "external-prompt-user",
     expectedFilename,
-    expectedSha256: sha256,
+    ...(sha256 !== undefined ? { expectedSha256: sha256 } : {}),
+    ...(stagingSetHash !== undefined
+      ? { expectedStagingSetHash: stagingSetHash }
+      : {}),
     instructions,
   };
 }
@@ -850,6 +911,24 @@ function findInstalledBySha(
   sha256: string,
 ): InstalledMod | undefined {
   return installed.find((m) => m.archiveSha256 === sha256);
+}
+
+/**
+ * External match by staging-set hash — the fallback identity oracle
+ * for archive-less mods. Only fires when the action handler has
+ * pre-enriched `InstalledMod.stagingSetHash` for the relevant
+ * candidates (we never blanket-hash every installed mod to bound
+ * the cost; see `enrichInstalledModsWithStagingSetHashes`).
+ *
+ * Mods with `stagingSetHash === undefined` are treated as "byte-
+ * identity unknown," not "different bytes" — same conservative
+ * convention as `archiveSha256`.
+ */
+function findInstalledByStagingSetHash(
+  installed: InstalledMod[],
+  stagingSetHash: string,
+): InstalledMod | undefined {
+  return installed.find((m) => m.stagingSetHash === stagingSetHash);
 }
 
 function findDownloadBySha(

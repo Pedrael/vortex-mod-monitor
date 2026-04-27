@@ -46,10 +46,12 @@ import type { ExternalModConfigEntry } from "../../../core/manifest/collectionCo
 import type { VerificationLevel } from "../../../types/ehcoll";
 import { getAppDataPath, saveDraft } from "../../../core/draftStorage";
 import {
-  getBuildSession,
   type BuildDraftPayload,
+  type BuildSession,
   type BuildSessionState,
 } from "./buildSession";
+import { getBuildSessionRegistry } from "./buildSessionRegistry";
+import { BuildDashboard } from "./BuildDashboard";
 import { ConcurrentOpBanner } from "../../runtime/ConcurrentOpBanner";
 import { nativeNotify } from "../../runtime/nativeNotify";
 
@@ -72,22 +74,68 @@ const DRAFT_AUTOSAVE_DEBOUNCE_MS = 600;
 
 export function BuildPage(props: BuildPageProps): JSX.Element {
   const reportFormatted = useErrorReporterFormatted();
+  // Top-level routing between dashboard and wizard. `undefined` ==
+  // dashboard view (Track 1: parallel drafts). The dashboard creates
+  // sessions in the registry on "+ New draft" / "Open" / "Update"
+  // and hands the resulting draftId back here so the wizard can
+  // subscribe to it.
+  //
+  // Kept in component state (not Redux/route segment) because the
+  // dashboard ↔ wizard transition is purely a UI concern — the
+  // sessions themselves persist across the transition because they
+  // live in the module-scope registry.
+  const [activeDraftId, setActiveDraftId] = React.useState<
+    string | undefined
+  >(undefined);
+
   return (
     <ErrorBoundary
       where="BuildPage"
       variant="page"
       onReport={reportFormatted}
     >
-      <BuildWizard onNavigate={props.onNavigate} />
+      {activeDraftId === undefined ? (
+        <BuildDashboard
+          onOpenDraft={(draftId): void => {
+            setActiveDraftId(draftId);
+          }}
+        />
+      ) : (
+        <BuildWizard
+          draftId={activeDraftId}
+          onNavigate={props.onNavigate}
+          onBackToDashboard={(): void => {
+            setActiveDraftId(undefined);
+          }}
+        />
+      )}
     </ErrorBoundary>
   );
 }
 
-function BuildWizard(props: BuildPageProps): JSX.Element {
+interface BuildWizardProps extends BuildPageProps {
+  draftId: string;
+  onBackToDashboard: () => void;
+}
+
+function BuildWizard(props: BuildWizardProps): JSX.Element {
   const api = useApi();
   const reportError = useErrorReporter();
   const showToast = useToast();
-  const session = React.useMemo(() => getBuildSession(), []);
+  // Get-or-fail: the dashboard always creates the session before
+  // routing here, so the `ensure` call below is effectively a get.
+  // We pass a fallback gameId of "" — `ensure` ignores gameId for
+  // existing sessions, which is what we always have at this point.
+  const session: BuildSession = React.useMemo(() => {
+    const registry = getBuildSessionRegistry();
+    const existing = registry.get(props.draftId);
+    if (existing !== undefined) return existing;
+    // Defensive path: if a hot reload nuked the registry but the
+    // dashboard's activeDraftId state survived, recreate. The empty
+    // gameId will be back-filled when `begin()` reads the active
+    // game from Vortex state — same path a fresh draft would take.
+    return registry.ensure({ draftId: props.draftId, gameId: "" });
+  }, [props.draftId]);
 
   // Mirror the session's state into local React state. The session
   // is the source of truth; this useState only exists to trigger
@@ -170,23 +218,47 @@ function BuildWizard(props: BuildPageProps): JSX.Element {
   // user is editing — which means they're on this page. Persists to
   // disk via `core/draftStorage`; restoration happens inside the
   // session on the loading → form transition.
+  //
+  // Track 1: the autosave key is the session's `draftId` (a UUIDv4),
+  // not `ctx.gameId`. That's what unlocks "many drafts per game" —
+  // each draft gets its own file, no clobbering.
+  //
+  // We also persist linkage metadata (`linkedSlug`/`linkedPackageId`)
+  // here because the dashboard's "Update from published" pre-stages
+  // a partial draft on disk, but a subsequent autosave would
+  // overwrite it without these fields if we didn't carry them
+  // through. They're read off the saved disk envelope at the start
+  // of the form session (see auto-begin effect below) and then
+  // written back on every autosave.
+  const linkedFieldsRef = React.useRef<{
+    title?: string;
+    linkedSlug?: string;
+    linkedPackageId?: string;
+  }>({});
+
   React.useEffect(() => {
     if (state.kind !== "form") return undefined;
     const formState = state;
     const handle = setTimeout(() => {
       const payload: BuildDraftPayload = {
+        draftId: session.draftId,
+        gameId: session.gameId,
+        title: linkedFieldsRef.current.title,
+        linkedSlug: linkedFieldsRef.current.linkedSlug,
+        linkedPackageId: linkedFieldsRef.current.linkedPackageId,
         curator: formState.curator,
         overrides: formState.overrides,
         readme: formState.readme,
         changelog: formState.changelog,
         verificationLevel: formState.verificationLevel,
       };
-      void saveDraft(getAppDataPath(), "build", formState.ctx.gameId, payload);
+      void saveDraft(getAppDataPath(), "build", session.draftId, payload);
     }, DRAFT_AUTOSAVE_DEBOUNCE_MS);
     return () => {
       clearTimeout(handle);
     };
   }, [
+    session,
     state.kind,
     state.kind === "form" ? state.curator : undefined,
     state.kind === "form" ? state.overrides : undefined,
@@ -195,7 +267,52 @@ function BuildWizard(props: BuildPageProps): JSX.Element {
     state.kind === "form" ? state.verificationLevel : undefined,
   ]);
 
+  // ── Auto-begin / auto-restore-link-metadata ──────────────────────
+  // When the wizard is opened for a draft that's already in `idle`
+  // (e.g. user just clicked "Open" or "Update" on the dashboard,
+  // or a fresh draft was minted), kick `session.begin()` so the
+  // hashing pass starts immediately. Saves the curator a click and
+  // matches the legacy "you clicked Build, you want to build" UX.
+  //
+  // We also pre-load `linkedSlug`/`linkedPackageId`/`title` from any
+  // on-disk draft into the ref so the autosave keeps them stable
+  // across edits (the session's `form` state doesn't carry them).
+  React.useEffect(() => {
+    if (state.kind !== "idle") return;
+    let alive = true;
+    void (async (): Promise<void> => {
+      try {
+        const { loadDraft } = await import("../../../core/draftStorage");
+        const env = await loadDraft<BuildDraftPayload>(
+          getAppDataPath(),
+          "build",
+          session.draftId,
+        );
+        if (!alive) return;
+        if (env !== undefined) {
+          linkedFieldsRef.current = {
+            title: env.payload.title,
+            linkedSlug: env.payload.linkedSlug,
+            linkedPackageId: env.payload.linkedPackageId,
+          };
+        }
+      } catch {
+        /* swallow — best-effort */
+      }
+      if (!alive) return;
+      session.begin(api);
+    })();
+    return (): void => {
+      alive = false;
+    };
+    // Only react to the initial idle landing, not every state tick.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
+
   // ── Step indicator ───────────────────────────────────────────────
+  // `queued` shares a step bucket with `building` because from the
+  // user's mental model "I clicked Build, now I'm waiting" is one
+  // phase. The QueuedPanel itself spells out the distinction.
   const stepIndex =
     state.kind === "idle"
       ? 0
@@ -203,20 +320,33 @@ function BuildWizard(props: BuildPageProps): JSX.Element {
       ? 1
       : state.kind === "form"
       ? 2
-      : state.kind === "building"
+      : state.kind === "building" || state.kind === "queued"
       ? 3
       : 4;
   const stepLabels = ["Idle", "Loading", "Form", "Building", "Done"];
 
   // ── Render ────────────────────────────────────────────────────────
+  // Tiny "← Drafts" affordance so the curator can always bail back
+  // to the dashboard without resetting their session. Sessions live
+  // in the registry; remounting the wizard for the same draftId
+  // resumes exactly where they left off.
+  const backToDashboard = (
+    <div style={{ marginBottom: "var(--eh-sp-3)" }}>
+      <Button intent="ghost" onClick={props.onBackToDashboard}>
+        ← Drafts
+      </Button>
+    </div>
+  );
+
   if (state.kind === "idle") {
     return (
       <div className="eh-page">
+        {backToDashboard}
         <Header stepIndex={stepIndex} stepLabel="Idle" />
         <ConcurrentOpBanner self="build" />
         <IdlePanel
           onBegin={(): void => session.begin(api)}
-          onCancel={(): void => props.onNavigate("home")}
+          onCancel={props.onBackToDashboard}
         />
       </div>
     );
@@ -224,6 +354,7 @@ function BuildWizard(props: BuildPageProps): JSX.Element {
   if (state.kind === "loading") {
     return (
       <div className="eh-page">
+        {backToDashboard}
         <Header stepIndex={stepIndex} stepLabel={stepLabels[stepIndex]} />
         <LoadingPanel
           progress={state.phase}
@@ -235,6 +366,7 @@ function BuildWizard(props: BuildPageProps): JSX.Element {
   if (state.kind === "error") {
     return (
       <div className="eh-page">
+        {backToDashboard}
         <Header stepIndex={stepIndex} stepLabel="Error" />
         <ErrorPanel
           onRetry={(): void => {
@@ -245,9 +377,23 @@ function BuildWizard(props: BuildPageProps): JSX.Element {
       </div>
     );
   }
+  if (state.kind === "queued") {
+    return (
+      <div className="eh-page">
+        {backToDashboard}
+        <Header stepIndex={stepIndex} stepLabel="Queued" />
+        <QueuedPanel
+          curator={state.curator}
+          queuePosition={state.queuePosition}
+          onCancel={(): void => session.cancelBuilding()}
+        />
+      </div>
+    );
+  }
   if (state.kind === "building") {
     return (
       <div className="eh-page">
+        {backToDashboard}
         <Header stepIndex={stepIndex} stepLabel={stepLabels[stepIndex]} />
         <BuildingPanel
           progress={state.progress}
@@ -260,15 +406,22 @@ function BuildWizard(props: BuildPageProps): JSX.Element {
   if (state.kind === "done") {
     return (
       <div className="eh-page">
+        {backToDashboard}
         <Header stepIndex={stepIndex} stepLabel={stepLabels[stepIndex]} />
         <DonePanel
           result={state.result}
           onBuildAnother={(): void => {
+            // Successful build — drop the session from the registry
+            // and bounce back to the dashboard. Curators almost
+            // always start a *different* collection next, not an
+            // identical rebuild of the same one.
             session.reset();
-            session.begin(api);
+            getBuildSessionRegistry().remove(session.draftId);
+            props.onBackToDashboard();
           }}
           onGoHome={(): void => {
             session.reset();
+            getBuildSessionRegistry().remove(session.draftId);
             props.onNavigate("home");
           }}
         />
@@ -318,6 +471,7 @@ function BuildWizard(props: BuildPageProps): JSX.Element {
 
   return (
     <div className="eh-page">
+      {backToDashboard}
       <Header stepIndex={stepIndex} stepLabel={stepLabels[stepIndex]} />
       <ConcurrentOpBanner self="build" />
       <FormPanel
@@ -328,6 +482,70 @@ function BuildWizard(props: BuildPageProps): JSX.Element {
         onDismissDraftBanner={handleDismissDraftBanner}
       />
     </div>
+  );
+}
+
+// ===========================================================================
+// Queued
+// ===========================================================================
+
+/**
+ * Card shown when this draft's build is parked behind another draft's
+ * build. The registry's queue promotes us automatically; we just
+ * render a friendly "you're #N in line" + a cancel that bails us out
+ * without touching whoever currently owns the slot.
+ */
+function QueuedPanel(props: {
+  curator: CuratorInput;
+  queuePosition: number;
+  onCancel: () => void;
+}): JSX.Element {
+  return (
+    <Card title={`Queued: ${props.curator.name} v${props.curator.version}`}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "var(--eh-sp-3)",
+          padding: "var(--eh-sp-2)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--eh-sp-3)",
+          }}
+        >
+          <ProgressRing size={48} />
+          <div>
+            <div
+              style={{
+                color: "var(--eh-text-primary)",
+                fontSize: "var(--eh-text-md)",
+              }}
+            >
+              Waiting for the current build to finish.
+            </div>
+            <div
+              style={{
+                color: "var(--eh-text-secondary)",
+                fontSize: "var(--eh-text-sm)",
+                marginTop: "var(--eh-sp-1)",
+              }}
+            >
+              Position {props.queuePosition} in queue. We'll start automatically
+              when it's your turn — switching tabs is fine.
+            </div>
+          </div>
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <Button intent="ghost" onClick={props.onCancel}>
+            Cancel build
+          </Button>
+        </div>
+      </div>
+    </Card>
   );
 }
 

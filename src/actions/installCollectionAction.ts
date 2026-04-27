@@ -910,9 +910,18 @@ function formatPromptUserText(
   const lines: string[] = [
     `Mod: ${resolution.name}`,
     `Expected file: ${decision.expectedFilename}`,
-    `Expected SHA-256: ${truncSha(decision.expectedSha256)}`,
-    "",
   ];
+  if (decision.expectedSha256 !== undefined) {
+    lines.push(`Expected SHA-256: ${truncSha(decision.expectedSha256)}`);
+  } else if (decision.expectedStagingSetHash !== undefined) {
+    // Archive-less external mod: the curator never had archive bytes
+    // to hash, so we identify by deployed file set instead. Surfaced
+    // here purely as a debug aid — users don't act on this value.
+    lines.push(
+      `Expected staging-set hash: ${truncSha(decision.expectedStagingSetHash)}`,
+    );
+  }
+  lines.push("");
   if (decision.instructions) {
     lines.push("Curator's instructions:");
     lines.push(`  ${decision.instructions}`);
