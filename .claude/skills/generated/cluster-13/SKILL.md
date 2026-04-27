@@ -1,9 +1,9 @@
 ---
-name: cluster-16
-description: "Skill for the Cluster_16 area of vortex-mod-monitor. 5 symbols across 1 files."
+name: cluster-13
+description: "Skill for the Cluster_13 area of vortex-mod-monitor. 5 symbols across 1 files."
 ---
 
-# Cluster_16
+# Cluster_13
 
 5 symbols | 1 files | Cohesion: 73%
 
@@ -11,7 +11,7 @@ description: "Skill for the Cluster_16 area of vortex-mod-monitor. 5 symbols acr
 
 - Working with code in `src/`
 - Understanding how getDraftPath, loadDraft, saveDraft work
-- Modifying cluster_16-related functionality
+- Modifying cluster_13-related functionality
 
 ## Key Files
 
@@ -49,5 +49,5 @@ Start here when exploring this area:
 ## How to Explore
 
 1. `gitnexus_context({name: "getDraftPath"})` — see callers and callees
-2. `gitnexus_query({query: "cluster_16"})` — find related execution flows
+2. `gitnexus_query({query: "cluster_13"})` — find related execution flows
 3. Read key files listed above for implementation details

@@ -1,16 +1,16 @@
 ---
 name: actions
-description: "Skill for the Actions area of vortex-mod-monitor. 55 symbols across 7 files."
+description: "Skill for the Actions area of vortex-mod-monitor. 58 symbols across 8 files."
 ---
 
 # Actions
 
-55 symbols | 7 files | Cohesion: 73%
+58 symbols | 8 files | Cohesion: 71%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how createBuildPackageAction, openFolder, pickTxtFile work
+- Understanding how createBuildPackageAction, getModArchivePath, openFolder work
 - Modifying actions-related functionality
 
 ## Key Files
@@ -20,26 +20,28 @@ description: "Skill for the Actions area of vortex-mod-monitor. 55 symbols acros
 | `src/actions/installCollectionAction.ts` | renderPlanDialog, formatPlanText, formatVerdict, formatInstallTarget, formatSummary (+24) |
 | `src/actions/buildPackageAction.ts` | createBuildPackageAction, promptCuratorMetadata, validateCuratorInput, resolveVortexVersion, resolveGameVersion (+10) |
 | `src/utils/utils.ts` | openFolder, pickTxtFile, openFile, pickJsonFile, exportDiffReport |
+| `src/ui/pages/build/engine.ts` | isNexusMod, resolveBundledArchives, readPluginsTxtIfPresent |
 | `src/core/comparePlugins.ts` | exportPluginsDiffReport, getLocalAppDataPath, getCurrentPluginsTxtPath |
+| `src/core/archiveHashing.ts` | getModArchivePath |
 | `src/actions/comparePluginsAction.ts` | createComparePluginsAction |
 | `src/actions/compareModsAction.ts` | createCompareModsAction |
-| `src/ui/pages/build/engine.ts` | readPluginsTxtIfPresent |
 
 ## Entry Points
 
 Start here when exploring this area:
 
 - **`createBuildPackageAction`** (Function) — `src/actions/buildPackageAction.ts:105`
+- **`getModArchivePath`** (Function) — `src/core/archiveHashing.ts:76`
 - **`openFolder`** (Function) — `src/utils/utils.ts:7`
 - **`pickTxtFile`** (Function) — `src/utils/utils.ts:392`
 - **`exportPluginsDiffReport`** (Function) — `src/core/comparePlugins.ts:186`
-- **`createComparePluginsAction`** (Function) — `src/actions/comparePluginsAction.ts:13`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
 | `createBuildPackageAction` | Function | `src/actions/buildPackageAction.ts` | 105 |
+| `getModArchivePath` | Function | `src/core/archiveHashing.ts` | 76 |
 | `openFolder` | Function | `src/utils/utils.ts` | 7 |
 | `pickTxtFile` | Function | `src/utils/utils.ts` | 392 |
 | `exportPluginsDiffReport` | Function | `src/core/comparePlugins.ts` | 186 |
@@ -57,8 +59,7 @@ Start here when exploring this area:
 | `resolveDeploymentMethod` | Function | `src/actions/buildPackageAction.ts` | 467 |
 | `buildOutputFileName` | Function | `src/actions/buildPackageAction.ts` | 521 |
 | `slugify` | Function | `src/actions/buildPackageAction.ts` | 527 |
-| `collectExternalMods` | Function | `src/actions/buildPackageAction.ts` | 564 |
-| `isNexusMod` | Function | `src/actions/buildPackageAction.ts` | 572 |
+| `formatError` | Function | `src/actions/buildPackageAction.ts` | 648 |
 
 ## Execution Flows
 
@@ -74,10 +75,10 @@ Start here when exploring this area:
 
 | Area | Connections |
 |------|-------------|
-| Resolver | 10 calls |
+| Resolver | 9 calls |
 | Manifest | 6 calls |
 | Build | 4 calls |
-| Cluster_15 | 2 calls |
+| Cluster_12 | 2 calls |
 | Install | 1 calls |
 | Installer | 1 calls |
 

@@ -26,8 +26,78 @@ BLUE='\033[0;34m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-CONFIG_DIR="$HOME/.gitnexus"
+# ── Detect runtime (WSL / Git Bash / native) ───────────────────────────
+# The config file has to live where Node's `os.homedir()` will look for
+# it. That depends on which Node binary actually runs `gitnexus` later:
+#
+#   • Native Linux / macOS bash → $HOME (just works).
+#   • Git Bash / MSYS / Cygwin on Windows → $HOME maps to %USERPROFILE%
+#     under the hood. Just works.
+#   • WSL bash → $HOME = /home/<user> (Linux). But the user typically
+#     runs `gitnexus wiki` later from PowerShell, where Node's homedir()
+#     returns C:\Users\<WinUser>. Two different filesystems, two
+#     different homes. We have to write the config to the Windows home
+#     too, otherwise the Windows-native `gitnexus wiki` can't find it.
+#
+# Strategy:
+#   PRIMARY_HOME     — where Linux/macOS/Git-Bash gitnexus will look
+#   SECONDARY_HOME   — additionally written when running under WSL, so
+#                      Windows-native gitnexus invocations also see the
+#                      same key. Empty on non-WSL systems.
+
+PRIMARY_HOME="$HOME"
+SECONDARY_HOME=""
+RUNTIME_LABEL="native"
+
+uname_s="$(uname -s 2>/dev/null || echo)"
+uname_r="$(uname -r 2>/dev/null || echo)"
+
+is_wsl="no"
+if [[ "$uname_r" == *microsoft* || "$uname_r" == *Microsoft* || "$uname_r" == *WSL* ]]; then
+  is_wsl="yes"
+fi
+# WSL1 sometimes hides the kernel marker; /proc/version is the fallback.
+if [ "$is_wsl" = "no" ] && [ -r /proc/version ]; then
+  if grep -qiE '(microsoft|wsl)' /proc/version 2>/dev/null; then
+    is_wsl="yes"
+  fi
+fi
+
+if [ "$is_wsl" = "yes" ]; then
+  RUNTIME_LABEL="WSL"
+  # Ask Windows what its home dir is — works in any WSL distro that has
+  # Windows interop enabled (the default).
+  win_home_raw="$(cmd.exe /c 'echo %USERPROFILE%' 2>/dev/null | tr -d '\r\n' || echo)"
+  if [ -n "$win_home_raw" ] && command -v wslpath >/dev/null 2>&1; then
+    win_home="$(wslpath -u "$win_home_raw" 2>/dev/null || echo)"
+    if [ -n "$win_home" ] && [ -d "$win_home" ]; then
+      # Windows home is the canonical one because the user runs gitnexus
+      # from PowerShell most of the time. We also keep the WSL home in
+      # sync so `gitnexus` invoked from inside WSL still finds the key.
+      PRIMARY_HOME="$win_home"
+      SECONDARY_HOME="$HOME"
+    else
+      echo -e "${YELLOW}⚠${NC} WSL detected but couldn't resolve Windows home from '${win_home_raw}'."
+      echo "    Falling back to \$HOME — the Windows-native \`gitnexus wiki\` may not find this key."
+    fi
+  else
+    echo -e "${YELLOW}⚠${NC} WSL detected but cmd.exe interop or wslpath is unavailable."
+    echo "    Falling back to \$HOME — the Windows-native \`gitnexus wiki\` may not find this key."
+  fi
+elif [[ "$uname_s" == MINGW* || "$uname_s" == MSYS* || "$uname_s" == CYGWIN* ]]; then
+  RUNTIME_LABEL="Git Bash on Windows"
+  # $HOME under MSYS/Git Bash already points at %USERPROFILE%. Nothing
+  # to translate.
+fi
+
+CONFIG_DIR="$PRIMARY_HOME/.gitnexus"
 CONFIG_FILE="$CONFIG_DIR/config.json"
+SECONDARY_CONFIG_DIR=""
+SECONDARY_CONFIG_FILE=""
+if [ -n "$SECONDARY_HOME" ]; then
+  SECONDARY_CONFIG_DIR="$SECONDARY_HOME/.gitnexus"
+  SECONDARY_CONFIG_FILE="$SECONDARY_CONFIG_DIR/config.json"
+fi
 
 # ── Detect project name + package manager ──────────────────────────────
 PROJECT_NAME="$(basename "$PWD")"
@@ -52,16 +122,77 @@ run_script() {
 
 echo ""
 echo -e "${BLUE}🧠 GitNexus setup — ${PROJECT_NAME}${NC}"
+echo -e "    runtime: ${RUNTIME_LABEL}"
+echo -e "    config:  ${CONFIG_FILE}"
+if [ -n "$SECONDARY_CONFIG_FILE" ]; then
+  echo -e "    mirror:  ${SECONDARY_CONFIG_FILE}"
+fi
 echo ""
 
-# ── Step 1: detect existing key ────────────────────────────────────────
-key_already_set="no"
+# ── Migrate any prior wrong-location key forward ───────────────────────
+# Earlier versions of this script always wrote to $HOME, which under WSL
+# meant /home/<user>/.gitnexus/config.json — invisible to Windows-native
+# gitnexus. If we find a key there, copy it to the new primary location
+# so the user doesn't have to paste it again.
+write_config() {
+  local target_dir="$1"
+  local target_file="$2"
+  local key="$3"
+  mkdir -p "$target_dir"
+  cat > "$target_file" <<EOF
+{
+  "apiKey": "$key",
+  "provider": "openai"
+}
+EOF
+  chmod 600 "$target_file" 2>/dev/null || true
+}
+
+extract_key() {
+  # Pull "apiKey" value out of a config.json without needing jq or node.
+  # Works for the shape this script writes (single-line string value, no
+  # escaped quotes). If anything fancier is in the config, this returns
+  # empty and we fall through to prompting the user. We deliberately
+  # avoid `node -e` here because WSL bash often doesn't have node on its
+  # PATH even when `npx` works (npx interop walks Windows PATH first).
+  local file="$1"
+  [ -f "$file" ] || return 0
+  sed -nE 's/.*"apiKey"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$file" 2>/dev/null | head -n1
+}
+
+primary_has_key="no"
 if [ -f "$CONFIG_FILE" ] && rg -q '"apiKey"' "$CONFIG_FILE" 2>/dev/null; then
-  key_already_set="yes"
+  primary_has_key="yes"
 fi
+
+if [ -n "$SECONDARY_CONFIG_FILE" ] \
+   && [ "$primary_has_key" = "no" ] \
+   && [ -f "$SECONDARY_CONFIG_FILE" ]; then
+  legacy_key="$(extract_key "$SECONDARY_CONFIG_FILE" || echo)"
+  if [ -n "$legacy_key" ]; then
+    echo -e "${BLUE}→${NC} Migrating existing key from ${SECONDARY_CONFIG_FILE} → ${CONFIG_FILE}"
+    write_config "$CONFIG_DIR" "$CONFIG_FILE" "$legacy_key"
+    echo -e "${GREEN}✓${NC} Migrated."
+    echo ""
+    primary_has_key="yes"
+  fi
+fi
+
+# ── Step 1: detect existing key ────────────────────────────────────────
+key_already_set="$primary_has_key"
 
 if [ "$key_already_set" = "yes" ]; then
   echo -e "${GREEN}✓${NC} OpenAI key already configured at ${CONFIG_FILE}"
+  # Make sure both homes are in sync on WSL so PowerShell and WSL bash
+  # both see the same key going forward.
+  if [ -n "$SECONDARY_CONFIG_FILE" ] && [ ! -f "$SECONDARY_CONFIG_FILE" ]; then
+    existing_key="$(extract_key "$CONFIG_FILE" || echo)"
+    if [ -n "$existing_key" ]; then
+      echo -e "${BLUE}→${NC} Mirroring to ${SECONDARY_CONFIG_FILE}..."
+      write_config "$SECONDARY_CONFIG_DIR" "$SECONDARY_CONFIG_FILE" "$existing_key"
+      echo -e "${GREEN}✓${NC} Mirrored."
+    fi
+  fi
 else
   echo -e "${YELLOW}!${NC} No GitNexus OpenAI key found."
   echo ""
@@ -70,6 +201,10 @@ else
   echo "    • Auto-generated wiki — uses gpt-4-class models (~\$1–5 per full regen)"
   echo ""
   echo "  The key will be saved to ${CONFIG_FILE} (per-developer, global)."
+  if [ -n "$SECONDARY_CONFIG_FILE" ]; then
+    echo "  A mirror copy will also be written to ${SECONDARY_CONFIG_FILE}"
+    echo "  so both Windows-native and WSL-side \`gitnexus\` find it."
+  fi
   echo "  It is NOT stored in the repo. NOT exported to env. Won't collide with your .zshrc."
   echo "  This key works for ALL your indexed gitnexus repos — set once, use everywhere."
   echo ""
@@ -86,19 +221,14 @@ else
   fi
 
   echo -e "${BLUE}→${NC} Saving key to ${CONFIG_FILE}..."
-
-  # Direct write is the simplest reliable path. We previously tried piping
-  # through `gitnexus wiki --api-key … --review` first, but that didn't always
-  # persist the key before exit and produced scary-but-harmless warnings.
-  mkdir -p "$CONFIG_DIR"
-  cat > "$CONFIG_FILE" <<EOF
-{
-  "apiKey": "$OPENAI_KEY",
-  "provider": "openai"
-}
-EOF
-  chmod 600 "$CONFIG_FILE"
+  write_config "$CONFIG_DIR" "$CONFIG_FILE" "$OPENAI_KEY"
   echo -e "${GREEN}✓${NC} Key saved (chmod 600)."
+
+  if [ -n "$SECONDARY_CONFIG_FILE" ]; then
+    echo -e "${BLUE}→${NC} Mirroring to ${SECONDARY_CONFIG_FILE}..."
+    write_config "$SECONDARY_CONFIG_DIR" "$SECONDARY_CONFIG_FILE" "$OPENAI_KEY"
+    echo -e "${GREEN}✓${NC} Mirrored."
+  fi
 fi
 
 echo ""

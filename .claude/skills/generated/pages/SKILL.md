@@ -10,7 +10,7 @@ description: "Skill for the Pages area of vortex-mod-monitor. 29 symbols across 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how pickEhcollFile, useApi, useToast work
+- Understanding how pickEhcollFile, useApi, useErrorReporter work
 - Modifying pages-related functionality
 
 ## Key Files
@@ -34,8 +34,8 @@ Start here when exploring this area:
 
 - **`pickEhcollFile`** (Function) — `src/utils/utils.ts:69`
 - **`useApi`** (Function) — `src/ui/state/ApiContext.tsx:33`
-- **`useToast`** (Function) — `src/ui/components/Toast.tsx:50`
 - **`useErrorReporter`** (Function) — `src/ui/errors/ErrorContext.tsx:48`
+- **`useToast`** (Function) — `src/ui/components/Toast.tsx:50`
 - **`PickStep`** (Function) — `src/ui/pages/install/steps.tsx:183`
 
 ## Key Symbols
@@ -44,8 +44,8 @@ Start here when exploring this area:
 |--------|------|------|------|
 | `pickEhcollFile` | Function | `src/utils/utils.ts` | 69 |
 | `useApi` | Function | `src/ui/state/ApiContext.tsx` | 33 |
-| `useToast` | Function | `src/ui/components/Toast.tsx` | 50 |
 | `useErrorReporter` | Function | `src/ui/errors/ErrorContext.tsx` | 48 |
+| `useToast` | Function | `src/ui/components/Toast.tsx` | 50 |
 | `PickStep` | Function | `src/ui/pages/install/steps.tsx` | 183 |
 | `StaleReceiptStep` | Function | `src/ui/pages/install/steps.tsx` | 435 |
 | `HomePage` | Function | `src/ui/pages/HomePage.tsx` | 48 |
@@ -82,10 +82,10 @@ Start here when exploring this area:
 
 | Area | Connections |
 |------|-------------|
+| Errors | 2 calls |
 | Build | 2 calls |
-| Dashboard | 2 calls |
 | Install | 2 calls |
-| Cluster_10 | 1 calls |
+| Dashboard | 1 calls |
 | Resolver | 1 calls |
 | Manifest | 1 calls |
 

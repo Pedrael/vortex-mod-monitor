@@ -1,16 +1,16 @@
 ---
 name: resolver
-description: "Skill for the Resolver area of vortex-mod-monitor. 65 symbols across 13 files."
+description: "Skill for the Resolver area of vortex-mod-monitor. 61 symbols across 12 files."
 ---
 
 # Resolver
 
-65 symbols | 13 files | Cohesion: 79%
+61 symbols | 12 files | Cohesion: 79%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how readReceipt, getActiveGameId, getActiveProfileId work
+- Understanding how getActiveGameId, getActiveProfileId, getActiveProfileIdFromState work
 - Modifying resolver-related functionality
 
 ## Key Files
@@ -22,32 +22,30 @@ description: "Skill for the Resolver area of vortex-mod-monitor. 65 symbols acro
 | `src/actions/installCollectionAction.ts` | createInstallCollectionAction, logPlanSummary, isPlanInstallable, profileExistsInState, resolveStaleReceipt (+1) |
 | `src/core/getModsListForProfile.ts` | getActiveGameId, getActiveProfileId, getActiveProfileIdFromState |
 | `src/ui/pages/install/engine.ts` | runLoadingPipeline, runLoadingPipelineWithReceipt, profileExistsInState |
-| `src/ui/pages/build/engine.ts` | loadBuildContext, isNexusMod, resolveBundledArchives |
 | `src/index.ts` | installEventHorizonIconSet, init |
-| `src/core/archiveHashing.ts` | getModArchivePath, enrichModsWithArchiveHashes |
 | `src/ui/pages/dashboard/data.ts` | readSystemStatus, formatGameLabel |
-| `src/core/installLedger.ts` | readReceipt |
+| `src/core/exportMods.ts` | exportModsToJsonFile |
+| `src/core/archiveHashing.ts` | enrichModsWithArchiveHashes |
+| `src/actions/exportModsAction.ts` | createExportModsAction |
 
 ## Entry Points
 
 Start here when exploring this area:
 
-- **`readReceipt`** (Function) — `src/core/installLedger.ts:270`
 - **`getActiveGameId`** (Function) — `src/core/getModsListForProfile.ts:166`
 - **`getActiveProfileId`** (Function) — `src/core/getModsListForProfile.ts:171`
 - **`getActiveProfileIdFromState`** (Function) — `src/core/getModsListForProfile.ts:181`
 - **`exportModsToJsonFile`** (Function) — `src/core/exportMods.ts:6`
+- **`enrichModsWithArchiveHashes`** (Function) — `src/core/archiveHashing.ts:175`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `readReceipt` | Function | `src/core/installLedger.ts` | 270 |
 | `getActiveGameId` | Function | `src/core/getModsListForProfile.ts` | 166 |
 | `getActiveProfileId` | Function | `src/core/getModsListForProfile.ts` | 171 |
 | `getActiveProfileIdFromState` | Function | `src/core/getModsListForProfile.ts` | 181 |
 | `exportModsToJsonFile` | Function | `src/core/exportMods.ts` | 6 |
-| `getModArchivePath` | Function | `src/core/archiveHashing.ts` | 76 |
 | `enrichModsWithArchiveHashes` | Function | `src/core/archiveHashing.ts` | 175 |
 | `createInstallCollectionAction` | Function | `src/actions/installCollectionAction.ts` | 107 |
 | `createExportModsAction` | Function | `src/actions/exportModsAction.ts` | 15 |
@@ -62,6 +60,8 @@ Start here when exploring this area:
 | `runLoadingPipeline` | Function | `src/ui/pages/install/engine.ts` | 96 |
 | `runLoadingPipelineWithReceipt` | Function | `src/ui/pages/install/engine.ts` | 210 |
 | `readSystemStatus` | Function | `src/ui/pages/dashboard/data.ts` | 132 |
+| `loadBuildContext` | Function | `src/ui/pages/build/engine.ts` | 191 |
+| `resolveInstallPlan` | Function | `src/core/resolver/resolveInstallPlan.ts` | 91 |
 
 ## Execution Flows
 
@@ -82,17 +82,16 @@ Start here when exploring this area:
 
 | Area | Connections |
 |------|-------------|
-| Actions | 8 calls |
+| Actions | 10 calls |
 | Manifest | 7 calls |
-| Cluster_15 | 5 calls |
+| Cluster_12 | 5 calls |
 | Build | 4 calls |
 | Pages | 2 calls |
-| Cluster_10 | 1 calls |
-| Cluster_12 | 1 calls |
+| Errors | 2 calls |
 | Installer | 1 calls |
 
 ## How to Explore
 
-1. `gitnexus_context({name: "readReceipt"})` — see callers and callees
+1. `gitnexus_context({name: "getActiveGameId"})` — see callers and callees
 2. `gitnexus_query({query: "resolver"})` — find related execution flows
 3. Read key files listed above for implementation details

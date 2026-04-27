@@ -81,11 +81,11 @@ Start here when exploring this area:
 | Area | Connections |
 |------|-------------|
 | Manifest | 5 calls |
-| Resolver | 4 calls |
 | Pages | 4 calls |
-| Cluster_16 | 3 calls |
+| Cluster_13 | 3 calls |
+| Resolver | 3 calls |
+| Actions | 2 calls |
 | Runtime | 2 calls |
-| Actions | 1 calls |
 
 ## How to Explore
 
