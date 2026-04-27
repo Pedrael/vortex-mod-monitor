@@ -91,6 +91,7 @@ import {
   type InstallReceiptMod,
   type ReceiptPluginEntry,
   type RulesApplicationReceipt,
+  type UserlistApplicationReceipt,
   INSTALL_LEDGER_SCHEMA_VERSION,
 } from "../../types/installLedger";
 import type {
@@ -126,6 +127,10 @@ import {
   applyLoadOrder,
   type ApplyLoadOrderResult,
 } from "./applyLoadOrder";
+import {
+  applyUserlist,
+  type ApplyUserlistResult,
+} from "./applyUserlist";
 import {
   createFreshProfile,
   enableModInProfile,
@@ -179,6 +184,8 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
   // what conflict-choice maps key on, etc.).
   const manifestByCompareKey = buildManifestIndex(plan.manifest.mods);
   let rulesApplication: RulesApplicationReceipt = emptyRulesApplication();
+  let userlistApplication: UserlistApplicationReceipt =
+    emptyUserlistApplication();
 
   const reportProgress = (
     phase: DriverPhase,
@@ -490,6 +497,75 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
       if (aborted) return aborted;
     }
 
+    // ── 5c. apply LOOT userlist (slice 6d) ──────────────────────────
+    // Plugin-to-plugin rules + group definitions + per-plugin group
+    // assignments live in `state.userlist`, NOT in the mod-rules
+    // slice we just wrote. They drive LOOT's `plugins.txt` ordering
+    // — which is exactly what the curator's "the order I shipped"
+    // intent maps to. Mod rules above only affect file-deployment
+    // conflicts; without this phase the user gets the curator's
+    // mod-conflict resolution but their own LOOT sort, and we'd
+    // reproduce the "Vortex says rules applied, LOOT gives slightly
+    // different order" report we set out to fix.
+    //
+    // Why before deploy: Vortex's gamebryo-plugin-management runs
+    // `loot.sortPluginsAsync` during deploy. The sort call reads
+    // `userlist.yaml` from disk; that file is updated synchronously
+    // by `UserlistPersistor` whenever `state.userlist` changes. So
+    // dispatch → reducer updates state → persistor writes YAML →
+    // LOOT reads YAML at sort time. Running this phase after deploy
+    // would either need a second deploy or leave the user with a
+    // wrong sort until they deploy again.
+    //
+    // Why non-fatal: same rationale as `applying-mod-rules`. If
+    // Vortex's userlist contract changed, we want to surface the
+    // actionable error in `receipt.userlistApplication.skippedUserlistEntries`
+    // rather than aborting an otherwise-successful install.
+    const ulPlugins = plan.manifest.userlist.plugins.length;
+    const ulGroups = plan.manifest.userlist.groups.length;
+    if (ulPlugins > 0 || ulGroups > 0) {
+      reportProgress(
+        "applying-userlist",
+        0,
+        ulPlugins + ulGroups,
+        `Applying LOOT userlist (${ulPlugins} plugin entr${ulPlugins === 1 ? "y" : "ies"}, ${ulGroups} group${ulGroups === 1 ? "" : "s"})...`,
+      );
+
+      try {
+        const ulResult = applyUserlist({
+          api,
+          userlist: plan.manifest.userlist,
+          signal: ctx.abortSignal,
+        });
+        userlistApplication = mergeUserlistResult(
+          userlistApplication,
+          ulResult,
+        );
+      } catch (err) {
+        if (
+          (err as Error)?.name === "AbortError" ||
+          ctx.abortSignal?.aborted
+        ) {
+          return {
+            kind: "aborted",
+            phase: "applying-userlist",
+            partialProfileId: createdProfileId,
+            reason: "Install aborted while applying LOOT userlist.",
+          };
+        }
+        // Non-fatal — log and continue. Receipt's
+        // skippedUserlistEntries surfaces the issue.
+        console.warn(
+          `[Vortex Event Horizon] applyUserlist threw unexpectedly: ` +
+            (err instanceof Error ? err.message : String(err)) +
+            `. Continuing without userlist application.`,
+        );
+      }
+
+      aborted = checkAbort("applying-userlist");
+      if (aborted) return aborted;
+    }
+
     // ── 6. plugins.txt (no-op write under rules-only strategy) ──────
     // We deliberately do NOT overwrite plugins.txt directly. Locked
     // design choice: applying mod rules above lets Vortex's
@@ -603,6 +679,7 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
       installedMods,
       carriedMods,
       rulesApplication,
+      userlistApplication,
     });
 
     let receiptPath: string;
@@ -1355,8 +1432,17 @@ function buildReceipt(args: {
   installedMods: InstalledModReportEntry[];
   carriedMods: CarriedModReportEntry[];
   rulesApplication: RulesApplicationReceipt;
+  userlistApplication: UserlistApplicationReceipt;
 }): InstallReceipt {
-  const { ctx, profileId, profileName, installedMods, carriedMods, rulesApplication } = args;
+  const {
+    ctx,
+    profileId,
+    profileName,
+    installedMods,
+    carriedMods,
+    rulesApplication,
+    userlistApplication,
+  } = args;
   const { manifest } = ctx.plan;
   const now = new Date().toISOString();
 
@@ -1400,6 +1486,7 @@ function buildReceipt(args: {
     installTargetMode: ctx.plan.installTarget.kind,
     mods: modEntries,
     rulesApplication,
+    userlistApplication,
   };
 }
 
@@ -1825,6 +1912,53 @@ function mergeLoadOrderResult(
       ...loResult.skipped.map((s) => ({
         compareKey: s.compareKey,
         pos: s.pos,
+        reason: s.reason,
+      })),
+    ],
+  };
+}
+
+// ===========================================================================
+// Slice 6d — userlist-application bookkeeping
+// ===========================================================================
+
+/**
+ * Initial empty value for the userlist-application receipt. Merged
+ * incrementally as `applyUserlist` returns.
+ */
+function emptyUserlistApplication(): UserlistApplicationReceipt {
+  return {
+    appliedRuleCount: 0,
+    appliedGroupAssignmentCount: 0,
+    overwrittenGroupAssignmentCount: 0,
+    appliedNewGroupCount: 0,
+    appliedGroupRuleCount: 0,
+    skippedUserlistEntries: [],
+  };
+}
+
+function mergeUserlistResult(
+  base: UserlistApplicationReceipt,
+  ulResult: ApplyUserlistResult,
+): UserlistApplicationReceipt {
+  return {
+    appliedRuleCount: base.appliedRuleCount + ulResult.appliedRuleCount,
+    appliedGroupAssignmentCount:
+      base.appliedGroupAssignmentCount + ulResult.appliedGroupAssignmentCount,
+    overwrittenGroupAssignmentCount:
+      base.overwrittenGroupAssignmentCount +
+      ulResult.overwrittenGroupAssignmentCount,
+    appliedNewGroupCount:
+      base.appliedNewGroupCount + ulResult.appliedNewGroupCount,
+    appliedGroupRuleCount:
+      base.appliedGroupRuleCount + ulResult.appliedGroupRuleCount,
+    skippedUserlistEntries: [
+      ...base.skippedUserlistEntries,
+      ...ulResult.skipped.map((s) => ({
+        kind: s.kind,
+        subject: s.subject,
+        ruleKind: s.ruleKind,
+        reference: s.reference,
         reason: s.reason,
       })),
     ],

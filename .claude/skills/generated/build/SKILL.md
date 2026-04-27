@@ -1,11 +1,11 @@
 ---
 name: build
-description: "Skill for the Build area of vortex-mod-monitor. 48 symbols across 9 files."
+description: "Skill for the Build area of vortex-mod-monitor. 45 symbols across 8 files."
 ---
 
 # Build
 
-48 symbols | 9 files | Cohesion: 73%
+45 symbols | 8 files | Cohesion: 71%
 
 ## When to Use
 
@@ -20,7 +20,6 @@ description: "Skill for the Build area of vortex-mod-monitor. 48 symbols across 
 | `src/ui/pages/build/buildSession.ts` | patchForm, dismissDraftBanner, discardDraft, setValidationError, begin (+9) |
 | `src/ui/pages/build/BuildPage.tsx` | handleChange, handleDiscardDraft, handleDismissDraftBanner, onBuild, BuildWizard (+9) |
 | `src/ui/pages/build/engine.ts` | validateCuratorInput, BundleResolutionError, runBuildPipeline, resolveVortexVersion, resolveGameVersion (+3) |
-| `src/ui/runtime/ehRuntime.ts` | setBuildBusy, setInstallBusy, notify |
 | `src/core/deploymentManifest.ts` | collectDistinctModTypes, normalizeManifest, captureDeploymentManifests |
 | `src/core/draftStorage.ts` | deleteDraft, getAppDataPath |
 | `src/core/manifest/collectionConfig.ts` | reconcileExternalModsConfig, toBuildManifestExternalMods |
@@ -33,7 +32,7 @@ Start here when exploring this area:
 
 - **`deleteDraft`** (Function) — `src/core/draftStorage.ts:192`
 - **`getAppDataPath`** (Function) — `src/core/draftStorage.ts:218`
-- **`validateCuratorInput`** (Function) — `src/ui/pages/build/engine.ts:459`
+- **`validateCuratorInput`** (Function) — `src/ui/pages/build/engine.ts:466`
 - **`captureLoadOrder`** (Function) — `src/core/loadOrder.ts:40`
 - **`collectDistinctModTypes`** (Function) — `src/core/deploymentManifest.ts:53`
 
@@ -41,16 +40,16 @@ Start here when exploring this area:
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `BundleResolutionError` | Class | `src/ui/pages/build/engine.ts` | 164 |
+| `BundleResolutionError` | Class | `src/ui/pages/build/engine.ts` | 166 |
 | `deleteDraft` | Function | `src/core/draftStorage.ts` | 192 |
 | `getAppDataPath` | Function | `src/core/draftStorage.ts` | 218 |
-| `validateCuratorInput` | Function | `src/ui/pages/build/engine.ts` | 459 |
+| `validateCuratorInput` | Function | `src/ui/pages/build/engine.ts` | 466 |
 | `captureLoadOrder` | Function | `src/core/loadOrder.ts` | 40 |
 | `collectDistinctModTypes` | Function | `src/core/deploymentManifest.ts` | 53 |
 | `captureDeploymentManifests` | Function | `src/core/deploymentManifest.ts` | 133 |
 | `reconcileExternalModsConfig` | Function | `src/core/manifest/collectionConfig.ts` | 208 |
 | `toBuildManifestExternalMods` | Function | `src/core/manifest/collectionConfig.ts` | 249 |
-| `runBuildPipeline` | Function | `src/ui/pages/build/engine.ts` | 305 |
+| `runBuildPipeline` | Function | `src/ui/pages/build/engine.ts` | 307 |
 | `nativeNotify` | Function | `src/ui/runtime/nativeNotify.ts` | 39 |
 | `getBuildSession` | Function | `src/ui/pages/build/buildSession.ts` | 493 |
 | `BuildSession` | Class | `src/ui/pages/build/buildSession.ts` | 170 |
@@ -60,34 +59,34 @@ Start here when exploring this area:
 | `handleDismissDraftBanner` | Function | `src/ui/pages/build/BuildPage.tsx` | 289 |
 | `onBuild` | Function | `src/ui/pages/build/BuildPage.tsx` | 293 |
 | `normalizeManifest` | Function | `src/core/deploymentManifest.ts` | 73 |
-| `resolveVortexVersion` | Function | `src/ui/pages/build/engine.ts` | 556 |
+| `resolveVortexVersion` | Function | `src/ui/pages/build/engine.ts` | 563 |
 
 ## Execution Flows
 
 | Flow | Type | Steps |
 |------|------|-------|
-| `ReceiptDetailModal → Notify` | cross_community | 7 |
-| `DecisionsStep → Notify` | cross_community | 5 |
 | `OnBuild → EHRuntime` | cross_community | 5 |
-| `OnBuild → Notify` | intra_community | 5 |
+| `OnBuild → Notify` | cross_community | 5 |
 | `OnBuild → AbortError` | cross_community | 5 |
 | `OnBuild → GetCollectionConfigPath` | cross_community | 5 |
 | `OnBuild → CreateDefaultConfig` | cross_community | 5 |
 | `OnBuild → WriteConfigFile` | cross_community | 5 |
 | `OnBuild → SanitizeKey` | cross_community | 5 |
 | `Begin → NormalizeRuleReference` | cross_community | 5 |
+| `Begin → RulesSortKey` | cross_community | 5 |
+| `Build → CollectionConfigError` | cross_community | 5 |
 
 ## Connected Areas
 
 | Area | Connections |
 |------|-------------|
 | Manifest | 5 calls |
+| Resolver | 4 calls |
 | Pages | 4 calls |
-| Cluster_21 | 3 calls |
-| Installer | 2 calls |
-| Actions | 2 calls |
-| Resolver | 1 calls |
-| Runtime | 1 calls |
+| Cluster_14 | 3 calls |
+| Runtime | 2 calls |
+| Cluster_9 | 1 calls |
+| Actions | 1 calls |
 
 ## How to Explore
 

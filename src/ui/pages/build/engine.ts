@@ -37,6 +37,7 @@ import {
   getModsForProfile,
 } from "../../../core/getModsListForProfile";
 import { captureLoadOrder } from "../../../core/loadOrder";
+import { captureUserlist } from "../../../core/userlist";
 import { getCurrentPluginsTxtPath } from "../../../core/comparePlugins";
 import { buildManifest } from "../../../core/manifest/buildManifest";
 import {
@@ -123,6 +124,7 @@ export type BuildProgressPhase =
   | "hashing-mods"
   | "capturing-deployment"
   | "capturing-load-order"
+  | "capturing-userlist"
   | "reading-plugins-txt"
   | "writing-config"
   | "building-manifest"
@@ -378,6 +380,10 @@ export async function runBuildPipeline(
   const loadOrder = captureLoadOrder(state, gameId);
 
   checkAbort();
+  onProgress?.({ phase: "capturing-userlist" });
+  const userlist = captureUserlist(state);
+
+  checkAbort();
   onProgress?.({ phase: "reading-plugins-txt" });
   const pluginsTxtContent = await readPluginsTxtIfPresent(gameId);
 
@@ -392,6 +398,7 @@ export async function runBuildPipeline(
     mods,
     deploymentManifests,
     loadOrder,
+    userlist,
   };
 
   const { manifest, warnings: manifestWarnings } = buildManifest({

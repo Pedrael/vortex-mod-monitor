@@ -44,6 +44,9 @@ import type {
   EhcollMod,
   EhcollPluginEntry,
   EhcollRule,
+  EhcollUserlist,
+  EhcollUserlistGroup,
+  EhcollUserlistPlugin,
   ExternalDependencyDestination,
   ExternalDependencyFile,
   ExternalModSource,
@@ -172,6 +175,10 @@ export function parseManifest(raw: string): ParseManifestResult {
   // (written before slice 6c added the field) parse cleanly. Schema
   // version stays at 1 because the field is additive.
   const loadOrder = validateLoadOrder(obj.loadOrder, errors);
+  // userlist (slice 6d) is back-filled to {plugins:[], groups:[]} when
+  // missing so older v1 manifests parse cleanly. Schema version stays at 1
+  // because the field is additive.
+  const userlist = validateUserlist(obj.userlist, errors);
   const iniTweaks = validateIniTweaks(obj.iniTweaks, errors);
   const externalDependencies = validateExternalDependencies(
     obj.externalDependencies,
@@ -191,6 +198,8 @@ export function parseManifest(raw: string): ParseManifestResult {
       rules: rules!,
       fileOverrides: fileOverrides!,
       loadOrder: loadOrder!,
+      userlist: userlist!,
+      plugins: plugins!.order,
     },
     warnings,
   );
@@ -205,6 +214,7 @@ export function parseManifest(raw: string): ParseManifestResult {
     fileOverrides: fileOverrides!,
     plugins: plugins!,
     loadOrder: loadOrder!,
+    userlist: userlist!,
     iniTweaks: iniTweaks!,
     externalDependencies: externalDependencies!,
   };
@@ -950,6 +960,184 @@ function validateLoadOrder(
 }
 
 // ---------------------------------------------------------------------------
+// Userlist (LOOT plugin rules + groups, slice 6d)
+// ---------------------------------------------------------------------------
+
+/**
+ * Back-compat note: pre-slice-6d manifests don't carry `userlist`.
+ * `undefined` is treated as an empty userlist so older `.ehcoll` files
+ * parse cleanly (schema version stays at 1; the field is additive).
+ *
+ * The validator is permissive about reference shape: each
+ * `after` / `req` / `inc` / group `after` entry can be either a plain
+ * string OR a LOOT object reference `{ name, display?, condition? }`.
+ * Object refs are collapsed to their `name`, mirroring what the
+ * curator-side capture does. Conditional refs lose their condition
+ * metadata in the collapse — same v1 limitation as capture.
+ */
+function validateUserlist(
+  raw: unknown,
+  errors: string[],
+): EhcollUserlist | undefined {
+  if (raw === undefined) return { plugins: [], groups: [] };
+
+  if (!isObject(raw)) {
+    errors.push(`userlist must be an object, got ${describe(raw)}.`);
+    return undefined;
+  }
+  const obj = raw as Record<string, unknown>;
+
+  const plugins = validateUserlistPlugins(obj.plugins, errors);
+  const groups = validateUserlistGroups(obj.groups, errors);
+  if (plugins === undefined || groups === undefined) return undefined;
+
+  return { plugins, groups };
+}
+
+function validateUserlistPlugins(
+  raw: unknown,
+  errors: string[],
+): EhcollUserlistPlugin[] | undefined {
+  // Back-fill missing/undefined to [] for forward-compat — same policy
+  // we apply to the entire userlist when the manifest predates 6d.
+  if (raw === undefined) return [];
+  const arr = expectArray(raw, "userlist.plugins", errors);
+  if (arr === undefined) return undefined;
+
+  const out: EhcollUserlistPlugin[] = [];
+  const seen = new Map<string, number>();
+
+  arr.forEach((entry, i) => {
+    const path = `userlist.plugins[${i}]`;
+    if (!isObject(entry)) {
+      errors.push(`${path} must be an object, got ${describe(entry)}.`);
+      return;
+    }
+    const e = entry as Record<string, unknown>;
+
+    const name = expectNonEmptyString(e.name, `${path}.name`, errors);
+    if (name === undefined) return;
+
+    const lower = name.toLowerCase();
+    const previousIndex = seen.get(lower);
+    if (previousIndex !== undefined) {
+      errors.push(
+        `Duplicate userlist plugin "${name}" at ${path} and ` +
+          `userlist.plugins[${previousIndex}] (case-insensitive). ` +
+          `Each plugin can have at most one userlist entry.`,
+      );
+      return;
+    }
+    seen.set(lower, i);
+
+    const group =
+      e.group === undefined
+        ? undefined
+        : expectNonEmptyString(e.group, `${path}.group`, errors);
+    const after = readUserlistRefList(e.after, `${path}.after`, errors);
+    const req = readUserlistRefList(e.req, `${path}.req`, errors);
+    const inc = readUserlistRefList(e.inc, `${path}.inc`, errors);
+
+    // If any sub-validator pushed an error for this plugin, we still
+    // collect the rest of its fields — `errors` accumulates everything
+    // so the curator gets the full picture in one pass.
+    const built: EhcollUserlistPlugin = { name };
+    if (group !== undefined) built.group = group;
+    if (after !== undefined && after.length > 0) built.after = after;
+    if (req !== undefined && req.length > 0) built.req = req;
+    if (inc !== undefined && inc.length > 0) built.inc = inc;
+    out.push(built);
+  });
+
+  return out;
+}
+
+function validateUserlistGroups(
+  raw: unknown,
+  errors: string[],
+): EhcollUserlistGroup[] | undefined {
+  if (raw === undefined) return [];
+  const arr = expectArray(raw, "userlist.groups", errors);
+  if (arr === undefined) return undefined;
+
+  const out: EhcollUserlistGroup[] = [];
+  const seen = new Map<string, number>();
+
+  arr.forEach((entry, i) => {
+    const path = `userlist.groups[${i}]`;
+    if (!isObject(entry)) {
+      errors.push(`${path} must be an object, got ${describe(entry)}.`);
+      return;
+    }
+    const e = entry as Record<string, unknown>;
+    const name = expectNonEmptyString(e.name, `${path}.name`, errors);
+    if (name === undefined) return;
+
+    const lower = name.toLowerCase();
+    const previousIndex = seen.get(lower);
+    if (previousIndex !== undefined) {
+      errors.push(
+        `Duplicate userlist group "${name}" at ${path} and ` +
+          `userlist.groups[${previousIndex}] (case-insensitive). ` +
+          `Each group can be defined at most once.`,
+      );
+      return;
+    }
+    seen.set(lower, i);
+
+    const after = readUserlistRefList(e.after, `${path}.after`, errors);
+    const built: EhcollUserlistGroup = { name };
+    if (after !== undefined && after.length > 0) built.after = after;
+    out.push(built);
+  });
+
+  return out;
+}
+
+/**
+ * Permissive reference-list reader: accepts plain strings (Vortex's
+ * Redux storage shape) and LOOT object refs (`{ name, display?,
+ * condition? }`, the on-disk YAML shape). Object refs are collapsed
+ * to their `name` field. Mixed lists are tolerated.
+ */
+function readUserlistRefList(
+  raw: unknown,
+  path: string,
+  errors: string[],
+): string[] | undefined {
+  if (raw === undefined) return [];
+  const arr = expectArray(raw, path, errors);
+  if (arr === undefined) return undefined;
+  const out: string[] = [];
+  arr.forEach((item, i) => {
+    if (typeof item === "string") {
+      if (item.length === 0) {
+        errors.push(`${path}[${i}] cannot be an empty string.`);
+        return;
+      }
+      out.push(item);
+      return;
+    }
+    if (isObject(item)) {
+      const obj = item as Record<string, unknown>;
+      if (typeof obj.name !== "string" || obj.name.length === 0) {
+        errors.push(
+          `${path}[${i}] must be a string or have a non-empty "name" field, ` +
+            `got ${describe(item)}.`,
+        );
+        return;
+      }
+      out.push(obj.name);
+      return;
+    }
+    errors.push(
+      `${path}[${i}] must be a string or LOOT reference object, got ${describe(item)}.`,
+    );
+  });
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // INI tweaks (placeholder until Phase 5)
 // ---------------------------------------------------------------------------
 
@@ -1107,6 +1295,8 @@ function crossReferenceValidate(
     rules: EhcollRule[];
     fileOverrides: EhcollFileOverride[];
     loadOrder: EhcollLoadOrderEntry[];
+    userlist: EhcollUserlist;
+    plugins: EhcollPluginEntry[];
   },
   warnings: string[],
 ): void {
@@ -1169,6 +1359,49 @@ function crossReferenceValidate(
           `any mod's compareKey. The entry will be skipped at install time.`,
       );
     }
+  }
+
+  // Userlist plugin entries — every plugin entry should match a plugin
+  // in `plugins.order` (the curator-side scoping pass enforces this,
+  // so a mismatch implies a hand-edited manifest). References (after /
+  // req / inc) are NOT validated against the manifest's plugin list:
+  // they intentionally reach outside the collection (to vanilla
+  // masters, common community plugins, etc.) — that's the only way
+  // LOOT rules work in practice.
+  const collectionPluginsLower = new Set(
+    parts.plugins.map((p) => p.name.toLowerCase()),
+  );
+  for (let i = 0; i < parts.userlist.plugins.length; i++) {
+    const entry = parts.userlist.plugins[i]!;
+    if (!collectionPluginsLower.has(entry.name.toLowerCase())) {
+      warnings.push(
+        `userlist.plugins[${i}].name "${entry.name}" does not match any ` +
+          `plugin in plugins.order. The entry will be skipped at install ` +
+          `time. (Likely a hand-edited manifest — the curator-side scoping ` +
+          `pass drops these.)`,
+      );
+    }
+  }
+
+  // Userlist groups — group `after` references should point at other
+  // groups defined in this userlist. Inter-group rules pointing at a
+  // group not present here are warned but not fatal: the user's local
+  // userlist may carry the missing group definition.
+  const groupNamesLower = new Set(
+    parts.userlist.groups.map((g) => g.name.toLowerCase()),
+  );
+  for (let i = 0; i < parts.userlist.groups.length; i++) {
+    const group = parts.userlist.groups[i]!;
+    if (group.after === undefined) continue;
+    group.after.forEach((ref, j) => {
+      if (!groupNamesLower.has(ref.toLowerCase())) {
+        warnings.push(
+          `userlist.groups[${i}].after[${j}] "${ref}" does not match any ` +
+            `group defined in userlist.groups. Vortex will tolerate the ` +
+            `dangling reference but the rule may not behave as intended.`,
+        );
+      }
+    });
   }
 
   // File-override references.

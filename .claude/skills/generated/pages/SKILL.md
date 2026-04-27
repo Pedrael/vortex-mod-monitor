@@ -32,7 +32,7 @@ description: "Skill for the Pages area of vortex-mod-monitor. 29 symbols across 
 
 Start here when exploring this area:
 
-- **`pickEhcollFile`** (Function) — `src/utils/utils.ts:69`
+- **`pickEhcollFile`** (Function) — `src/utils/utils.ts:70`
 - **`useApi`** (Function) — `src/ui/state/ApiContext.tsx:33`
 - **`useErrorReporter`** (Function) — `src/ui/errors/ErrorContext.tsx:48`
 - **`useToast`** (Function) — `src/ui/components/Toast.tsx:50`
@@ -42,7 +42,7 @@ Start here when exploring this area:
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `pickEhcollFile` | Function | `src/utils/utils.ts` | 69 |
+| `pickEhcollFile` | Function | `src/utils/utils.ts` | 70 |
 | `useApi` | Function | `src/ui/state/ApiContext.tsx` | 33 |
 | `useErrorReporter` | Function | `src/ui/errors/ErrorContext.tsx` | 48 |
 | `useToast` | Function | `src/ui/components/Toast.tsx` | 50 |
@@ -82,9 +82,10 @@ Start here when exploring this area:
 
 | Area | Connections |
 |------|-------------|
-| Installer | 4 calls |
+| Installer | 3 calls |
 | Build | 2 calls |
 | Dashboard | 1 calls |
+| Resolver | 1 calls |
 | Install | 1 calls |
 | Manifest | 1 calls |
 

@@ -1,11 +1,11 @@
 ---
 name: manifest
-description: "Skill for the Manifest area of vortex-mod-monitor. 122 symbols across 11 files."
+description: "Skill for the Manifest area of vortex-mod-monitor. 127 symbols across 11 files."
 ---
 
 # Manifest
 
-122 symbols | 11 files | Cohesion: 85%
+127 symbols | 11 files | Cohesion: 85%
 
 ## When to Use
 
@@ -17,13 +17,13 @@ description: "Skill for the Manifest area of vortex-mod-monitor. 122 symbols acr
 
 | File | Symbols |
 |------|---------|
-| `src/core/manifest/parseManifest.ts` | ParseManifestError, parseManifest, validatePackage, validateGame, validateVortex (+39) |
-| `src/core/manifest/buildManifest.ts` | BuildManifestError, buildManifest, validateGameId, buildPackageMetadata, buildRules (+14) |
-| `src/core/manifest/packageZip.ts` | writeManifestJson, PackageEhcollError, stageBundledArchives, stripDot, stageOne (+12) |
+| `src/core/manifest/parseManifest.ts` | ParseManifestError, parseManifest, validatePackage, validateGame, validateVortex (+43) |
+| `src/core/manifest/buildManifest.ts` | BuildManifestError, buildManifest, validateGameId, buildPackageMetadata, buildRules (+15) |
+| `src/core/manifest/packageZip.ts` | checkAbort, writeManifestJson, packageEhcoll, validateInput, prepareStagingDir (+12) |
 | `src/core/manifest/readEhcoll.ts` | ReadEhcollError, readEhcoll, assertReadableFile, listZipEntries, crossCheckBundled (+7) |
 | `src/core/manifest/collectionConfig.ts` | getCollectionConfigPath, loadOrCreateCollectionConfig, saveCollectionConfig, createDefaultConfig, writeConfigFile (+5) |
 | `src/utils/utils.ts` | getModCompareKey, sortDeep, deepEqualStable, compareMods, buildModsMap (+1) |
-| `src/core/archiveHashing.ts` | hashFileSha256, cleanup, AbortError, onAbort, pMap |
+| `src/core/archiveHashing.ts` | AbortError, hashFileSha256, onAbort, cleanup, pMap |
 | `src/core/comparePlugins.ts` | normalizePluginName, parsePluginsTxt, toPluginMap, comparePluginsEntries, comparePluginsTxtFiles |
 | `src/core/manifest/sevenZip.ts` | list, add |
 | `src/ui/pages/install/engine.ts` | checkAbort |
@@ -32,36 +32,36 @@ description: "Skill for the Manifest area of vortex-mod-monitor. 122 symbols acr
 
 Start here when exploring this area:
 
-- **`parseManifest`** (Function) — `src/core/manifest/parseManifest.ts:137`
-- **`buildManifest`** (Function) — `src/core/manifest/buildManifest.ts:183`
+- **`parseManifest`** (Function) — `src/core/manifest/parseManifest.ts:140`
+- **`buildManifest`** (Function) — `src/core/manifest/buildManifest.ts:187`
 - **`readEhcoll`** (Function) — `src/core/manifest/readEhcoll.ts:154`
-- **`getModCompareKey`** (Function) — `src/utils/utils.ts:214`
-- **`sortDeep`** (Function) — `src/utils/utils.ts:235`
+- **`hashFileSha256`** (Function) — `src/core/archiveHashing.ts:31`
+- **`onAbort`** (Function) — `src/core/archiveHashing.ts:43`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `ParseManifestError` | Class | `src/core/manifest/parseManifest.ts` | 115 |
-| `BuildManifestError` | Class | `src/core/manifest/buildManifest.ts` | 167 |
+| `ParseManifestError` | Class | `src/core/manifest/parseManifest.ts` | 118 |
+| `BuildManifestError` | Class | `src/core/manifest/buildManifest.ts` | 171 |
 | `ReadEhcollError` | Class | `src/core/manifest/readEhcoll.ts` | 124 |
-| `PackageEhcollError` | Class | `src/core/manifest/packageZip.ts` | 106 |
 | `AbortError` | Class | `src/core/archiveHashing.ts` | 16 |
+| `PackageEhcollError` | Class | `src/core/manifest/packageZip.ts` | 106 |
 | `CollectionConfigError` | Class | `src/core/manifest/collectionConfig.ts` | 132 |
-| `parseManifest` | Function | `src/core/manifest/parseManifest.ts` | 137 |
-| `buildManifest` | Function | `src/core/manifest/buildManifest.ts` | 183 |
+| `parseManifest` | Function | `src/core/manifest/parseManifest.ts` | 140 |
+| `buildManifest` | Function | `src/core/manifest/buildManifest.ts` | 187 |
 | `readEhcoll` | Function | `src/core/manifest/readEhcoll.ts` | 154 |
-| `getModCompareKey` | Function | `src/utils/utils.ts` | 214 |
-| `sortDeep` | Function | `src/utils/utils.ts` | 235 |
-| `deepEqualStable` | Function | `src/utils/utils.ts` | 252 |
-| `compareMods` | Function | `src/utils/utils.ts` | 256 |
-| `compareSnapshots` | Function | `src/utils/utils.ts` | 307 |
 | `hashFileSha256` | Function | `src/core/archiveHashing.ts` | 31 |
+| `onAbort` | Function | `src/core/archiveHashing.ts` | 43 |
 | `cleanup` | Function | `src/core/archiveHashing.ts` | 51 |
-| `packageEhcoll` | Function | `src/core/manifest/packageZip.ts` | 128 |
-| `parsePluginsTxt` | Function | `src/core/comparePlugins.ts` | 51 |
-| `comparePluginsEntries` | Function | `src/core/comparePlugins.ts` | 80 |
-| `comparePluginsTxtFiles` | Function | `src/core/comparePlugins.ts` | 167 |
+| `checkAbort` | Function | `src/core/manifest/packageZip.ts` | 138 |
+| `checkAbort` | Function | `src/ui/pages/install/engine.ts` | 103 |
+| `checkAbort` | Function | `src/ui/pages/build/engine.ts` | 316 |
+| `getModCompareKey` | Function | `src/utils/utils.ts` | 232 |
+| `sortDeep` | Function | `src/utils/utils.ts` | 253 |
+| `deepEqualStable` | Function | `src/utils/utils.ts` | 270 |
+| `compareMods` | Function | `src/utils/utils.ts` | 274 |
+| `compareSnapshots` | Function | `src/utils/utils.ts` | 325 |
 
 ## Execution Flows
 

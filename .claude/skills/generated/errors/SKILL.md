@@ -62,6 +62,7 @@ Start here when exploring this area:
 
 | Flow | Type | Steps |
 |------|------|-------|
+| `StartInstall → ClassifyUnknown` | cross_community | 5 |
 | `ErrorProvider → CleanStack` | cross_community | 5 |
 | `ErrorProvider → GuessGenericTitle` | cross_community | 5 |
 | `ErrorProvider → GuessGenericHints` | cross_community | 5 |
@@ -71,7 +72,6 @@ Start here when exploring this area:
 | `ErrorReportModal → TryRequireElectron` | intra_community | 4 |
 | `PickFile → PickStringContext` | cross_community | 4 |
 | `ResolveStaleReceipt → PickStringContext` | cross_community | 4 |
-| `StartInstall → PickStringContext` | cross_community | 4 |
 
 ## Connected Areas
 

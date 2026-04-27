@@ -94,6 +94,25 @@ export type InstallReceipt = {
    * rules actually get applied on my machine?"
    */
   rulesApplication?: RulesApplicationReceipt;
+  /**
+   * Slice 6d — LOOT userlist application summary.
+   *
+   * Optional and additive: receipts written before slice 6d shipped
+   * will not have it. Consumers must default to a zero-value record
+   * when missing. The values mirror the
+   * `ApplyUserlistResult` returned by `applyUserlist`, with
+   * `skippedUserlistEntries` carrying verbose actionable reasons
+   * (Vortex's reducer ignored our dispatch, action contract changed,
+   * etc.) so the user (and our error reports) can audit which rules
+   * landed.
+   *
+   * Plugin rules are dispatched additively (the reducer dedupes, see
+   * `applyUserlist.ts`'s "Conflict policy" header), so this struct
+   * does NOT carry an `overwrittenUserlistRuleCount`. The only
+   * collection-wins overwrites are at the plugin-group level —
+   * tracked separately as `overwrittenGroupAssignmentCount`.
+   */
+  userlistApplication?: UserlistApplicationReceipt;
 };
 
 /**
@@ -136,6 +155,56 @@ export type RulesApplicationReceipt = {
    * does not use plugins.txt.
    */
   baselinePluginOrder: ReceiptPluginEntry[];
+};
+
+/**
+ * On-disk summary of what `applyUserlist` did. Same audit-trail role
+ * as `RulesApplicationReceipt` but for the LOOT userlist (plugin-to-
+ * plugin rules + groups).
+ *
+ * Same write-once invariant: this struct describes the dispatches we
+ * issued at install time, not the current state. Subsequent user
+ * edits to userlist (drag-drop in Plugins tab, manual `userlist.yaml`
+ * edits, etc.) do NOT update this record.
+ */
+export type UserlistApplicationReceipt = {
+  /** ADD_USERLIST_RULE dispatches we verified landed in state. */
+  appliedRuleCount: number;
+  /** SET_PLUGIN_GROUP dispatches we verified landed in state. */
+  appliedGroupAssignmentCount: number;
+  /**
+   * SET_PLUGIN_GROUP dispatches that overwrote a different
+   * pre-existing user group assignment for the same plugin. Subset
+   * of `appliedGroupAssignmentCount` (not in addition to it).
+   */
+  overwrittenGroupAssignmentCount: number;
+  /** ADD_PLUGIN_GROUP dispatches that created a new group. */
+  appliedNewGroupCount: number;
+  /** ADD_GROUP_RULE dispatches we verified landed in state. */
+  appliedGroupRuleCount: number;
+  /**
+   * Manifest userlist entries we couldn't apply, with a verbose
+   * actionable reason. See `SkippedUserlistEntry` in
+   * `applyUserlist.ts` for shape semantics.
+   */
+  skippedUserlistEntries: ReceiptSkippedUserlistEntry[];
+};
+
+export type ReceiptSkippedUserlistEntry = {
+  /** What kind of manifest entry we were trying to apply. */
+  kind:
+    | "plugin-rule"
+    | "plugin-group"
+    | "group-definition"
+    | "group-rule";
+  /** Human-readable identifier (plugin or group name). */
+  subject: string;
+  /** Optional: rule kind for plugin rules. */
+  ruleKind?: "after" | "req" | "inc";
+  /** Optional: reference (other plugin / other group) for plugin and group rules. */
+  reference?: string;
+  /** Verbose actionable explanation. */
+  reason: string;
 };
 
 export type ReceiptSkippedRule = {

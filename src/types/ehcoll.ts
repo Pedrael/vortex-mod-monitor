@@ -60,6 +60,20 @@ export type EhcollManifest = {
    * Vortex modIds at install time (mirrors `EhcollRule.source`).
    */
   loadOrder: EhcollLoadOrderEntry[];
+  /**
+   * Curator's LOOT userlist snapshot — `state.userlist` projection
+   * scoped to plugins shipped by this collection. Drives plugin-to-
+   * plugin load order via Vortex's `extension-plugin-management` +
+   * LOOT auto-sort. Distinct from {@link EhcollPlugins.order} (a flat
+   * `plugins.txt` snapshot) and from {@link loadOrder} (Vortex's
+   * generic per-game LoadOrder for non-plugin payloads).
+   *
+   * Required field — older v1 manifests written before slice 6d
+   * landed will not have it; the parser back-fills with an empty
+   * userlist so the type stays clean. Empty for games without LOOT
+   * support (pure LoadOrder-API games like Starfield).
+   */
+  userlist: EhcollUserlist;
   iniTweaks: EhcollIniTweak[];
   externalDependencies: EhcollExternalDependency[];
 };
@@ -360,6 +374,53 @@ export type EhcollLoadOrderEntry = {
    * side; Vortex's UI uses this for display + drag-disable hints only.
    */
   locked?: boolean;
+};
+
+// ---------------------------------------------------------------------------
+// Userlist (LOOT plugin rules + groups, slice 6d)
+// ---------------------------------------------------------------------------
+
+/**
+ * Portable LOOT userlist — mirrors Vortex's `state.userlist` Redux
+ * slice (which mirrors LOOT's `userlist.yaml`).
+ *
+ * INVARIANTS:
+ *  - References inside `plugins[i].after / req / inc` and
+ *    `groups[i].after` are plain plugin/group **names** (strings),
+ *    matching Vortex's reducer storage. The on-disk LOOT object form
+ *    (`{ name, display?, condition? }`) is collapsed at capture time;
+ *    conditional refs lose their condition metadata (v1 limitation).
+ *  - `plugins` is scoped to entries whose `name` matches a plugin in
+ *    the manifest's `plugins.order`. Plugin entries that only carried
+ *    LOOT noise (msg / tag / dirty / url) are dropped at capture time.
+ *  - `groups` is captured in full — group rules form a global
+ *    namespace; trimming risks breaking transitive ordering.
+ *  - Both arrays may be empty — that's the steady state for non-LOOT
+ *    games.
+ */
+export type EhcollUserlist = {
+  plugins: EhcollUserlistPlugin[];
+  groups: EhcollUserlistGroup[];
+};
+
+export type EhcollUserlistPlugin = {
+  /** Plugin filename. Curator's casing preserved; matched case-insensitively. */
+  name: string;
+  /** LOOT group assignment. Omitted when the plugin has no explicit group. */
+  group?: string;
+  /** Plain plugin names this plugin loads after. */
+  after?: string[];
+  /** Plain plugin names required by this one (LOOT requirement metadata). */
+  req?: string[];
+  /** Plain plugin names incompatible with this one. */
+  inc?: string[];
+};
+
+export type EhcollUserlistGroup = {
+  /** Group name. Curator's casing preserved; matched case-insensitively. */
+  name: string;
+  /** Plain group names this group loads after (group → group ordering). */
+  after?: string[];
 };
 
 // ---------------------------------------------------------------------------

@@ -4,6 +4,7 @@ import * as path from "path";
 import type { AuditorMod } from "../core/getModsListForProfile";
 import type { CapturedDeploymentManifest } from "../core/deploymentManifest";
 import type { CapturedLoadOrderEntry } from "../core/loadOrder";
+import type { CapturedUserlist } from "../core/userlist";
 
 export function openFolder(folderPath: string) {
   exec(`start "" "${folderPath}"`);
@@ -169,6 +170,23 @@ export type ExportedModsSnapshot = {
    * NOT diffed yet — captured for the future installer.
    */
   loadOrder?: CapturedLoadOrderEntry[];
+
+  /**
+   * Curator's LOOT userlist (`state.userlist`) — plugin-to-plugin
+   * rules + group assignments + group-to-group rules.
+   *
+   * Optional because:
+   *   1. Older snapshot files (pre-slice 6d) won't have it.
+   *   2. The Compare Mods action builds a current-side snapshot
+   *      synchronously without `api`, so it cannot capture userlist.
+   *   3. Non-LOOT games (Starfield without xeditor) emit an empty
+   *      userlist; we still capture the field for forward-compat.
+   *
+   * Distinct from `plugins.order` (flat plugins.txt snapshot) and
+   * from `loadOrder` (Vortex's generic per-game LoadOrder).
+   * NOT diffed yet — captured for the future installer.
+   */
+  userlist?: CapturedUserlist;
 };
 
 export type ModFieldDifference = {

@@ -27,6 +27,7 @@ import type {
 } from "../getModsListForProfile";
 import type { CapturedDeploymentManifest } from "../deploymentManifest";
 import type { CapturedLoadOrderEntry } from "../loadOrder";
+import type { CapturedUserlist } from "../userlist";
 import { parsePluginsTxt } from "../comparePlugins";
 import type { ExportedModsSnapshot } from "../../utils/utils";
 import type {
@@ -37,6 +38,9 @@ import type {
   EhcollMod,
   EhcollPluginEntry,
   EhcollRule,
+  EhcollUserlist,
+  EhcollUserlistGroup,
+  EhcollUserlistPlugin,
   ExternalEhcollMod,
   ExternalModSource,
   GameVersionPolicy,
@@ -233,6 +237,12 @@ export function buildManifest(input: BuildManifestInput): BuildManifestResult {
     warnings,
   );
 
+  const userlist = buildUserlist(
+    input.snapshot.userlist,
+    pluginsOrder,
+    warnings,
+  );
+
   const manifest: EhcollManifest = {
     schemaVersion: SCHEMA_VERSION,
     package: buildPackageMetadata(input.package),
@@ -251,6 +261,7 @@ export function buildManifest(input: BuildManifestInput): BuildManifestResult {
     fileOverrides,
     plugins: { order: pluginsOrder },
     loadOrder,
+    userlist,
     iniTweaks: [],
     externalDependencies: input.externalDependencies ?? [],
   };
@@ -638,4 +649,106 @@ function buildLoadOrder(
     });
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Userlist (LOOT plugin rules + groups, slice 6d)
+// ---------------------------------------------------------------------------
+
+/**
+ * Translate the curator's `CapturedUserlist` into the manifest's
+ * `EhcollUserlist`, scoping plugin entries to those shipping with this
+ * collection.
+ *
+ * Scoping policy:
+ *   - **plugins**: kept only when the plugin name matches one of the
+ *     manifest's `plugins.order` entries (case-insensitive). This drops
+ *     curator's personal rules on plugins they didn't ship — those
+ *     would never apply on a user machine that doesn't have them, and
+ *     they'd waste audit-trail space in the receipt.
+ *   - **groups**: ALL captured groups are kept. Group rules form a
+ *     global namespace; trimming risks breaking transitive ordering
+ *     (plugin A → group X, group X → group Y, group Y → plugin B).
+ *     Groups are tiny (typically <30 entries) so the overhead is
+ *     negligible.
+ *
+ * References (after / req / inc lists, group `after` lists) are kept
+ * verbatim — they may point at vanilla masters (Skyrim.esm), at
+ * plugins NOT in our collection but commonly present, or at user-
+ * supplied plugins. The apply-side decides what to do with each.
+ */
+function buildUserlist(
+  captured: CapturedUserlist | undefined,
+  pluginsOrder: EhcollPluginEntry[],
+  warnings: string[],
+): EhcollUserlist {
+  if (captured === undefined) return { plugins: [], groups: [] };
+
+  // Build the lowercase lookup once. Plugins are matched case-
+  // insensitively everywhere (LOOT, Vortex's reducer, plugins.txt).
+  const pluginNamesLower = new Set(
+    pluginsOrder.map((p) => p.name.toLowerCase()),
+  );
+
+  const plugins: EhcollUserlistPlugin[] = [];
+  for (const entry of captured.plugins) {
+    if (!pluginNamesLower.has(entry.name.toLowerCase())) {
+      // Don't warn — this is curator's personal userlist on plugins
+      // they don't ship. Common case (most modders maintain rules on
+      // many more plugins than they collection-bundle).
+      continue;
+    }
+
+    const built: EhcollUserlistPlugin = { name: entry.name };
+    if (entry.group !== undefined) built.group = entry.group;
+    if (entry.after !== undefined && entry.after.length > 0) {
+      built.after = [...entry.after];
+    }
+    if (entry.req !== undefined && entry.req.length > 0) {
+      built.req = [...entry.req];
+    }
+    if (entry.inc !== undefined && entry.inc.length > 0) {
+      built.inc = [...entry.inc];
+    }
+    plugins.push(built);
+  }
+
+  // Stable sort for deterministic manifest output.
+  plugins.sort((a, b) =>
+    a.name.toLowerCase() < b.name.toLowerCase()
+      ? -1
+      : a.name.toLowerCase() > b.name.toLowerCase()
+        ? 1
+        : 0,
+  );
+
+  const groups: EhcollUserlistGroup[] = [];
+  const seenGroupNames = new Set<string>();
+  for (const group of captured.groups) {
+    const lower = group.name.toLowerCase();
+    if (seenGroupNames.has(lower)) {
+      warnings.push(
+        `Duplicate userlist group "${group.name}" in curator state. ` +
+          `Keeping the first occurrence.`,
+      );
+      continue;
+    }
+    seenGroupNames.add(lower);
+
+    const built: EhcollUserlistGroup = { name: group.name };
+    if (group.after !== undefined && group.after.length > 0) {
+      built.after = [...group.after];
+    }
+    groups.push(built);
+  }
+
+  groups.sort((a, b) =>
+    a.name.toLowerCase() < b.name.toLowerCase()
+      ? -1
+      : a.name.toLowerCase() > b.name.toLowerCase()
+        ? 1
+        : 0,
+  );
+
+  return { plugins, groups };
 }

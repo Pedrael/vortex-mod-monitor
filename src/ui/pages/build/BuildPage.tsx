@@ -1335,6 +1335,8 @@ function phaseToLabel(phase: BuildProgress["phase"] | undefined): string | undef
       return "Capturing deployment manifests...";
     case "capturing-load-order":
       return "Capturing load order...";
+    case "capturing-userlist":
+      return "Capturing LOOT userlist...";
     case "reading-plugins-txt":
       return "Reading plugins.txt...";
     case "writing-config":

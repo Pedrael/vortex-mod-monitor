@@ -64,6 +64,7 @@ import {
   getModsForProfile,
 } from "../core/getModsListForProfile";
 import { captureLoadOrder } from "../core/loadOrder";
+import { captureUserlist } from "../core/userlist";
 import { getCurrentPluginsTxtPath } from "../core/comparePlugins";
 import {
   buildManifest,
@@ -160,6 +161,8 @@ export default function createBuildPackageAction(
 
       const loadOrder = captureLoadOrder(state, gameId);
 
+      const userlist = captureUserlist(state);
+
       const pluginsTxtContent = await readPluginsTxtIfPresent(gameId);
 
       // ── Slice 4b: load/create per-collection state file ────────────────
@@ -204,6 +207,7 @@ export default function createBuildPackageAction(
         mods,
         deploymentManifests,
         loadOrder,
+        userlist,
       };
 
       const { manifest, warnings } = buildManifest({
@@ -261,6 +265,7 @@ export default function createBuildPackageAction(
           `mods=${manifest.mods.length} | rules=${manifest.rules.length} | ` +
           `fileOverrides=${manifest.fileOverrides.length} | plugins=${manifest.plugins.order.length} | ` +
           `loadOrder=${manifest.loadOrder.length} | ` +
+          `userlist={plugins:${manifest.userlist.plugins.length},groups:${manifest.userlist.groups.length}} | ` +
           `bundled=${result.bundledCount} | bytes=${result.outputBytes} | ` +
           `warnings=${warnings.length + result.warnings.length} | ` +
           `configFile=${loaded.configPath}${loaded.created ? " (NEW)" : ""}`,

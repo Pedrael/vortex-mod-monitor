@@ -1561,6 +1561,7 @@ const PHASE_LABELS: Record<DriverProgress["phase"], string> = {
   "removing-mods": "Removing replaced + orphaned mods",
   "installing-mods": "Installing mods",
   "applying-mod-rules": "Applying mod rules",
+  "applying-userlist": "Applying LOOT plugin rules",
   "writing-plugins-txt": "Finalizing plugin order",
   deploying: "Deploying",
   "applying-load-order": "Applying load order",
