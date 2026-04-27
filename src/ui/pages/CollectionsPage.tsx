@@ -37,6 +37,7 @@ import {
 import { ErrorBoundary, useErrorReporter, useErrorReporterFormatted } from "../errors";
 import type { EventHorizonRoute } from "../routes";
 import { useApi } from "../state";
+import { EXTENSION_VERSION } from "../version";
 
 export interface CollectionsPageProps {
   onNavigate: (route: EventHorizonRoute) => void;
@@ -66,6 +67,8 @@ export function CollectionsPage(props: CollectionsPageProps): JSX.Element {
   );
 }
 
+type SortKey = "recent" | "name" | "mods";
+
 function CollectionsList(props: CollectionsPageProps): JSX.Element {
   const reportError = useErrorReporter();
   const showToast = useToast();
@@ -76,6 +79,8 @@ function CollectionsList(props: CollectionsPageProps): JSX.Element {
     undefined,
   );
   const [refreshTick, setRefreshTick] = React.useState(0);
+  const [query, setQuery] = React.useState("");
+  const [sortKey, setSortKey] = React.useState<SortKey>("recent");
 
   const refresh = React.useCallback((): void => {
     setRefreshTick((t) => t + 1);
@@ -113,6 +118,44 @@ function CollectionsList(props: CollectionsPageProps): JSX.Element {
 
   const activeProfileId =
     api.getState().settings?.profiles?.activeProfileId;
+
+  // Apply search + sort to the loaded receipts. Memoised because the
+  // grid below re-renders on every keystroke into the search box.
+  const visibleReceipts = React.useMemo<InstallReceipt[]>(() => {
+    if (state.kind !== "loaded") return [];
+    const q = query.trim().toLowerCase();
+    const filtered =
+      q.length === 0
+        ? state.receipts
+        : state.receipts.filter((r) =>
+            // Match name OR game id OR profile name. Searching by
+            // profile name lets users find "the collection in <Skyrim
+            // playthrough X>" without remembering its title.
+            [r.packageName, r.gameId, r.vortexProfileName]
+              .some((s) => s.toLowerCase().includes(q)),
+          );
+    const out = [...filtered];
+    switch (sortKey) {
+      case "recent":
+        out.sort(
+          (a, b) =>
+            new Date(b.installedAt).getTime() -
+            new Date(a.installedAt).getTime(),
+        );
+        break;
+      case "name":
+        out.sort((a, b) =>
+          a.packageName.localeCompare(b.packageName, undefined, {
+            sensitivity: "base",
+          }),
+        );
+        break;
+      case "mods":
+        out.sort((a, b) => b.mods.length - a.mods.length);
+        break;
+    }
+    return out;
+  }, [state, query, sortKey]);
 
   if (state.kind === "loading") {
     return (
@@ -185,7 +228,10 @@ function CollectionsList(props: CollectionsPageProps): JSX.Element {
               fontSize: "var(--eh-text-md)",
             }}
           >
-            {state.receipts.length} collection{state.receipts.length === 1 ? "" : "s"} on this machine.
+            {state.receipts.length} collection{state.receipts.length === 1 ? "" : "s"} on this machine
+            {query.trim().length > 0 &&
+              ` · showing ${visibleReceipts.length}`}
+            .
           </p>
         </div>
         <div style={{ display: "flex", gap: "var(--eh-sp-2)" }}>
@@ -200,6 +246,67 @@ function CollectionsList(props: CollectionsPageProps): JSX.Element {
           </Button>
         </div>
       </header>
+
+      {state.receipts.length > 1 && (
+        <div
+          style={{
+            display: "flex",
+            gap: "var(--eh-sp-2)",
+            marginBottom: "var(--eh-sp-4)",
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <input
+            type="search"
+            value={query}
+            onChange={(e): void => setQuery(e.target.value)}
+            placeholder="Search by name, game, or profile..."
+            aria-label="Filter installed collections"
+            style={{
+              flex: "1 1 240px",
+              minWidth: 0,
+              padding: "var(--eh-sp-2) var(--eh-sp-3)",
+              background: "var(--eh-bg-base)",
+              border: "1px solid var(--eh-border-default)",
+              borderRadius: "var(--eh-radius-sm)",
+              color: "var(--eh-text-primary)",
+              fontSize: "var(--eh-text-sm)",
+              fontFamily: "inherit",
+              outline: "none",
+            }}
+          />
+          <label
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "var(--eh-sp-2)",
+              color: "var(--eh-text-secondary)",
+              fontSize: "var(--eh-text-sm)",
+            }}
+          >
+            <span>Sort:</span>
+            <select
+              value={sortKey}
+              onChange={(e): void => setSortKey(e.target.value as SortKey)}
+              aria-label="Sort installed collections"
+              style={{
+                padding: "var(--eh-sp-2) var(--eh-sp-3)",
+                background: "var(--eh-bg-base)",
+                border: "1px solid var(--eh-border-default)",
+                borderRadius: "var(--eh-radius-sm)",
+                color: "var(--eh-text-primary)",
+                fontSize: "var(--eh-text-sm)",
+                fontFamily: "inherit",
+              }}
+            >
+              <option value="recent">Most recent</option>
+              <option value="name">Name (A → Z)</option>
+              <option value="mods">Mod count (high → low)</option>
+            </select>
+          </label>
+        </div>
+      )}
 
       {state.errors.length > 0 && (
         <div
@@ -230,22 +337,44 @@ function CollectionsList(props: CollectionsPageProps): JSX.Element {
         </div>
       )}
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
-          gap: "var(--eh-sp-4)",
-        }}
-      >
-        {state.receipts.map((receipt) => (
-          <ReceiptCard
-            key={receipt.packageId}
-            receipt={receipt}
-            isActive={receipt.vortexProfileId === activeProfileId}
-            onOpen={(): void => setSelected(receipt)}
-          />
-        ))}
-      </div>
+      {visibleReceipts.length === 0 && state.receipts.length > 0 ? (
+        <div
+          style={{
+            padding: "var(--eh-sp-6)",
+            background: "var(--eh-bg-elevated)",
+            border: "1px dashed var(--eh-border-default)",
+            borderRadius: "var(--eh-radius-md)",
+            textAlign: "center",
+            color: "var(--eh-text-secondary)",
+          }}
+        >
+          No collections match{" "}
+          <strong style={{ color: "var(--eh-text-primary)" }}>
+            &quot;{query}&quot;
+          </strong>
+          .{" "}
+          <Button intent="ghost" onClick={(): void => setQuery("")}>
+            Clear search
+          </Button>
+        </div>
+      ) : (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
+            gap: "var(--eh-sp-4)",
+          }}
+        >
+          {visibleReceipts.map((receipt) => (
+            <ReceiptCard
+              key={receipt.packageId}
+              receipt={receipt}
+              isActive={receipt.vortexProfileId === activeProfileId}
+              onOpen={(): void => setSelected(receipt)}
+            />
+          ))}
+        </div>
+      )}
 
       <ReceiptDetailModal
         receipt={selected}
@@ -389,6 +518,30 @@ function ReceiptDetailModal(props: {
     total: number;
   } | null>(null);
 
+  const handleExportDiagnostic = async (): Promise<void> => {
+    if (receipt === undefined) return;
+    setBusy(true);
+    try {
+      const saved = await saveDiagnosticReport(receipt);
+      if (saved) {
+        showToast({
+          intent: "success",
+          message: "Diagnostic saved.",
+        });
+      }
+    } catch (err) {
+      reportError(err, {
+        title: "Couldn't export diagnostic",
+        context: {
+          step: "export-diagnostic",
+          packageId: receipt.packageId,
+        },
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleSwitchProfile = async (): Promise<void> => {
     if (receipt === undefined) return;
     setBusy(true);
@@ -486,6 +639,16 @@ function ReceiptDetailModal(props: {
               }}
             >
               Switch to profile
+            </Button>
+            <Button
+              intent="ghost"
+              disabled={busy}
+              onClick={(): void => {
+                void handleExportDiagnostic();
+              }}
+              title="Save a JSON diagnostic with this receipt + version metadata. Useful to attach to bug reports."
+            >
+              Export diagnostic
             </Button>
             <Button intent="primary" onClick={onClose} disabled={busy}>
               Close
@@ -712,4 +875,90 @@ function DetailTile(props: {
       )}
     </div>
   );
+}
+
+// ===========================================================================
+// Diagnostic export
+// ===========================================================================
+
+interface MinimalElectronDialog {
+  showSaveDialog: (
+    opts: Record<string, unknown>,
+  ) => Promise<{ canceled: boolean; filePath?: string }>;
+}
+interface MinimalElectronModule {
+  remote?: { dialog?: MinimalElectronDialog };
+  dialog?: MinimalElectronDialog;
+}
+
+/** Build a self-contained diagnostic JSON for a receipt and prompt
+ * the user to save it. We bundle the full receipt + a metadata block
+ * (Event Horizon version, OS, timestamp) so a bug report attachment
+ * is enough on its own — no follow-up "what's your version" pings.
+ *
+ * Returns true if the user actually picked a path and we wrote to
+ * disk; false if they cancelled the dialog.
+ *
+ * Throws on real I/O errors so the caller's reportError can pick
+ * them up. Cancellation is NOT an error. */
+async function saveDiagnosticReport(
+  receipt: InstallReceipt,
+): Promise<boolean> {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const electron = require("electron") as MinimalElectronModule;
+  const dialog = electron.remote?.dialog ?? electron.dialog;
+  if (dialog?.showSaveDialog === undefined) {
+    throw new Error("Electron save dialog API is not available");
+  }
+
+  const sanitized = receipt.packageName
+    .replace(/[<>:"\\/|?*\x00-\x1f]/g, "_")
+    .slice(0, 60)
+    .trim();
+  const stamp = new Date()
+    .toISOString()
+    .replace(/[:.]/g, "-")
+    .slice(0, 19);
+  const defaultName = `event-horizon-diagnostic-${sanitized}-${stamp}.json`;
+
+  const result = await dialog.showSaveDialog({
+    title: "Export Event Horizon diagnostic",
+    defaultPath: defaultName,
+    filters: [
+      { name: "JSON", extensions: ["json"] },
+      { name: "All files", extensions: ["*"] },
+    ],
+  });
+  if (result.canceled || result.filePath === undefined) return false;
+
+  const payload = {
+    schema: "event-horizon.diagnostic/1",
+    generatedAt: new Date().toISOString(),
+    extension: {
+      name: "vortex-event-horizon",
+      version: EXTENSION_VERSION,
+    },
+    host: {
+      platform:
+        typeof process !== "undefined" ? process.platform : "unknown",
+      nodeVersion:
+        typeof process !== "undefined" ? process.version : "unknown",
+      // Trim user-agent to avoid leaking arbitrary auth state, just
+      // keep the major Electron + Chrome version string.
+      userAgent:
+        typeof navigator !== "undefined"
+          ? navigator.userAgent.slice(0, 240)
+          : "unknown",
+    },
+    receipt,
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const fsp = require("fs/promises") as typeof import("fs/promises");
+  await fsp.writeFile(
+    result.filePath,
+    JSON.stringify(payload, null, 2),
+    { encoding: "utf-8" },
+  );
+  return true;
 }

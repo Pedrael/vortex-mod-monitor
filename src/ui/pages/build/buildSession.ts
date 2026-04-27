@@ -60,6 +60,7 @@ import {
   getAppDataPath,
   loadDraft,
 } from "../../../core/draftStorage";
+import { getEHRuntime } from "../../runtime/ehRuntime";
 import type { ExternalModConfigEntry } from "../../../core/manifest/collectionConfig";
 import {
   loadBuildContext,
@@ -462,6 +463,13 @@ class BuildSession {
 
   private setState(next: BuildSessionState): void {
     this.state = next;
+    // Mirror "is heavy work in flight?" into the runtime so the
+    // install page can warn the user about concurrent operations.
+    // Loading + building both touch Vortex state; form / done /
+    // error / idle are user-thinking states.
+    const busy = next.kind === "loading" || next.kind === "building";
+    getEHRuntime().setBuildBusy(busy);
+
     for (const listener of this.listeners) {
       try {
         listener(next);

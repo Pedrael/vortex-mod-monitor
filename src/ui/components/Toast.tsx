@@ -33,7 +33,13 @@ export interface ToastInput {
 
 interface ToastInstance extends ToastInput {
   id: number;
+  /** Stable hash used to dedupe identical toasts back-to-back. */
+  key: string;
 }
+
+/** Max simultaneous toasts shown in the stack. Beyond this we drop the
+ * oldest. We don't want a buggy loop covering the whole UI. */
+const MAX_STACK = 5;
 
 interface ToastContextValue {
   show: (input: ToastInput) => number;
@@ -82,15 +88,55 @@ export function ToastProvider(props: ToastProviderProps): JSX.Element {
 
   const show = React.useCallback(
     (input: ToastInput): number => {
-      counterRef.current += 1;
-      const id = counterRef.current;
       const ttl = input.ttl ?? 4000;
-      setToasts((prev) => [...prev, { ...input, id }]);
-      if (ttl > 0) {
-        const handle = window.setTimeout(() => dismiss(id), ttl);
-        timeoutsRef.current.set(id, handle);
+      const key = toastDedupKey(input);
+
+      // Capture the dedupe id without setState side-effects fighting
+      // each other. We resolve to a single id here then synchronously
+      // schedule the auto-dismiss timer below.
+      let resolvedId = -1;
+
+      setToasts((prev) => {
+        // Dedupe: an identical toast already on screen → just bump
+        // its TTL by reissuing the timer below. Don't push a clone.
+        const existing = prev.find((t) => t.key === key);
+        if (existing !== undefined) {
+          resolvedId = existing.id;
+          return prev;
+        }
+
+        counterRef.current += 1;
+        resolvedId = counterRef.current;
+        const next = [...prev, { ...input, id: resolvedId, key }];
+
+        // Cap the stack. Oldest excess toasts (still pinned) get
+        // discarded; the rest survive.
+        if (next.length > MAX_STACK) {
+          const overflow = next.length - MAX_STACK;
+          for (let i = 0; i < overflow; i++) {
+            const dropped = next[i];
+            const handle = timeoutsRef.current.get(dropped.id);
+            if (handle !== undefined) {
+              window.clearTimeout(handle);
+              timeoutsRef.current.delete(dropped.id);
+            }
+          }
+          return next.slice(overflow);
+        }
+        return next;
+      });
+
+      // Reschedule the timer for both new + deduped toasts so the
+      // user sees the latest occurrence linger a full TTL.
+      if (resolvedId >= 0 && ttl > 0) {
+        const prevTimer = timeoutsRef.current.get(resolvedId);
+        if (prevTimer !== undefined) {
+          window.clearTimeout(prevTimer);
+        }
+        const handle = window.setTimeout(() => dismiss(resolvedId), ttl);
+        timeoutsRef.current.set(resolvedId, handle);
       }
-      return id;
+      return resolvedId;
     },
     [dismiss],
   );
@@ -115,6 +161,31 @@ export function ToastProvider(props: ToastProviderProps): JSX.Element {
       <ToastHost toasts={toasts} onDismiss={dismiss} />
     </ToastContext.Provider>
   );
+}
+
+// ===========================================================================
+// Dedup
+// ===========================================================================
+
+/** Best-effort hash over the user-visible content of a toast. Two
+ * toasts with the same intent + title + message dedupe, regardless of
+ * action button. ReactNode -> string is intentionally shallow: we
+ * stringify primitives and fall back to `[node]` so distinct elements
+ * still hash distinctly via the surrounding intent/title slots. */
+function toastDedupKey(input: ToastInput): string {
+  return [
+    input.intent ?? "info",
+    nodeToText(input.title),
+    nodeToText(input.message),
+  ].join("\u0001");
+}
+
+function nodeToText(node: React.ReactNode): string {
+  if (node === undefined || node === null) return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (typeof node === "boolean") return "";
+  if (Array.isArray(node)) return node.map(nodeToText).join("");
+  return "[node]";
 }
 
 // ===========================================================================

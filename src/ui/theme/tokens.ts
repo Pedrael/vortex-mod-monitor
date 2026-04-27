@@ -194,7 +194,13 @@ export const TOKENS_CSS = `
 }
 
 /* Honor user preference: kill ambient motion + dampen entrance
-   animations to a quick fade. Keep glows + colors intact. */
+   animations to a quick fade. Keep glows + colors intact.
+
+   The first block rewrites our token vars (the path most of our
+   components use). The second block is a universal safety net for
+   ANY rule that hardcodes a duration in ms/s — we cap iterations at
+   1 and slam duration to ~0 so a future component that forgets to
+   use a token still respects the user's preference. */
 @media (prefers-reduced-motion: reduce) {
   :root {
     --eh-dur-warp: 0s;
@@ -203,6 +209,20 @@ export const TOKENS_CSS = `
     --eh-dur-deliberate: var(--eh-dur-fast);
     --eh-dur-slow: var(--eh-dur-fast);
     --eh-dur-base: var(--eh-dur-fast);
+  }
+
+  /* Universal clamp. Anything in the EH UI that opted into an
+     animation gets one quick frame; ambient loops collapse to a
+     single iteration. We deliberately scope to .eh-* so we don't
+     fight Vortex's own UI animations outside the extension. */
+  [class*="eh-"],
+  [class*="eh-"] *,
+  [class*="eh-"]::before,
+  [class*="eh-"]::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 `;

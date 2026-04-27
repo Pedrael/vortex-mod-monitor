@@ -440,6 +440,7 @@ export async function runBuildPipeline(
     readme: overrides.readme.length > 0 ? overrides.readme : undefined,
     changelog: overrides.changelog.length > 0 ? overrides.changelog : undefined,
     outputPath,
+    signal,
   });
 
   void configPath;

@@ -33,6 +33,8 @@ import {
 } from "../../components";
 import { useApi } from "../../state";
 import { useToast } from "../../components";
+import { useKeyboardShortcut } from "../../hooks/useKeyboardShortcut";
+import { formatBytes } from "../../../utils/diskSpace";
 import {
   ConflictChoice,
   DriverProgress,
@@ -181,6 +183,12 @@ export interface PickStepProps {
 
 export function PickStep(props: PickStepProps): JSX.Element {
   const reportError = useErrorReporter();
+  const showToast = useToast();
+  const [isDragging, setDragging] = React.useState(false);
+  // Track nested dragenter/dragleave: child elements fire leave when
+  // we cross internal boundaries, which would clear the highlight
+  // even though the cursor is still over the drop zone.
+  const dragDepthRef = React.useRef(0);
 
   const handlePick = React.useCallback(async (): Promise<void> => {
     try {
@@ -198,6 +206,67 @@ export function PickStep(props: PickStepProps): JSX.Element {
     }
   }, [props, reportError]);
 
+  const handleDragEnter = React.useCallback((e: React.DragEvent): void => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepthRef.current += 1;
+    if (dragDepthRef.current === 1) setDragging(true);
+  }, []);
+
+  const handleDragLeave = React.useCallback((e: React.DragEvent): void => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setDragging(false);
+  }, []);
+
+  const handleDragOver = React.useCallback((e: React.DragEvent): void => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "copy";
+  }, []);
+
+  const handleDrop = React.useCallback(
+    (e: React.DragEvent): void => {
+      e.preventDefault();
+      e.stopPropagation();
+      dragDepthRef.current = 0;
+      setDragging(false);
+
+      const files = e.dataTransfer.files;
+      if (files.length === 0) return;
+      if (files.length > 1) {
+        showToast({
+          intent: "warning",
+          message: "Drop only one .ehcoll file at a time.",
+        });
+        return;
+      }
+      // Electron exposes the absolute path on File. In a normal
+      // browser this is empty for security; we tell the user to
+      // browse instead.
+      const dropped = files[0] as File & { path?: string };
+      const filePath = dropped.path ?? "";
+      if (filePath.length === 0) {
+        showToast({
+          intent: "warning",
+          message:
+            "Couldn't read the dropped file path. Use the Browse button instead.",
+        });
+        return;
+      }
+      if (!filePath.toLowerCase().endsWith(".ehcoll")) {
+        showToast({
+          intent: "warning",
+          message: "That's not a .ehcoll file. Drop an Event Horizon collection.",
+        });
+        return;
+      }
+      props.onPick(filePath);
+    },
+    [props, showToast],
+  );
+
   return (
     <StepFrame
       current="pick"
@@ -206,16 +275,25 @@ export function PickStep(props: PickStepProps): JSX.Element {
       subtitle="Pick a .ehcoll archive and Event Horizon walks you through every mod, conflict, and decision before touching your profile."
     >
       <div
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
         style={{
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
           gap: "var(--eh-sp-5)",
           padding: "var(--eh-sp-7) var(--eh-sp-5)",
-          background: "var(--eh-bg-glass)",
-          border: "1px dashed var(--eh-border-default)",
+          background: isDragging
+            ? "var(--eh-accent-soft, var(--eh-bg-elevated))"
+            : "var(--eh-bg-glass)",
+          border: isDragging
+            ? "2px dashed var(--eh-accent)"
+            : "1px dashed var(--eh-border-default)",
           borderRadius: "var(--eh-radius-lg)",
           textAlign: "center",
+          transition: "background var(--eh-dur-quick) var(--eh-easing), border-color var(--eh-dur-quick) var(--eh-easing)",
           animation:
             "eh-fade-up var(--eh-dur-deliberate) var(--eh-easing) both",
         }}
@@ -363,6 +441,13 @@ export function StaleReceiptStep(
   const reportError = useErrorReporter();
   const [busy, setBusy] = React.useState(false);
 
+  // Esc → "Go back" (least destructive). We deliberately do NOT bind
+  // Enter here: there are three roughly-equivalent choices and silent
+  // confirmation of any one of them could wipe the receipt by accident.
+  useKeyboardShortcut("Escape", () => {
+    if (!busy) onResolved("cancel");
+  });
+
   const handleDelete = async (): Promise<void> => {
     setBusy(true);
     try {
@@ -388,8 +473,8 @@ export function StaleReceiptStep(
   return (
     <StepFrame
       current="stale-receipt"
-      title="Stale install receipt"
-      subtitle="Event Horizon found a record of a previous install of this collection, but the Vortex profile it points to no longer exists."
+      title="This collection was installed here before"
+      subtitle="Event Horizon kept a record of the last install, but the Vortex profile it pointed to is gone. Pick how to handle it before continuing."
     >
       <Card
         title={`${state.receipt.packageName} v${state.receipt.packageVersion}`}
@@ -399,25 +484,70 @@ export function StaleReceiptStep(
           style={{
             display: "flex",
             flexDirection: "column",
-            gap: "var(--eh-sp-2)",
+            gap: "var(--eh-sp-3)",
             color: "var(--eh-text-secondary)",
             fontSize: "var(--eh-text-sm)",
           }}
         >
           <div>
-            <strong>Linked profile:</strong> {state.receipt.vortexProfileName}{" "}
+            <strong>Was installed into:</strong>{" "}
+            {state.receipt.vortexProfileName}{" "}
             <span style={{ color: "var(--eh-text-muted)" }}>
-              (id {state.receipt.vortexProfileId})
+              (deleted — id {state.receipt.vortexProfileId})
             </span>
           </div>
           <div>
-            <strong>Mods recorded:</strong> {state.receipt.mods.length}
+            <strong>Mods recorded in receipt:</strong>{" "}
+            {state.receipt.mods.length}
           </div>
-          <p style={{ margin: 0 }}>
-            Pick how to proceed. <em>Treat as fresh install</em> is the
-            safest option — it deletes the stale receipt and Event Horizon
-            will create a new, empty profile.
-          </p>
+
+          <details
+            style={{
+              padding: "var(--eh-sp-2) var(--eh-sp-3)",
+              background: "var(--eh-bg-elevated)",
+              border: "1px solid var(--eh-border-default)",
+              borderRadius: "var(--eh-radius-sm)",
+            }}
+          >
+            <summary
+              style={{
+                cursor: "pointer",
+                color: "var(--eh-text-primary)",
+                fontWeight: 600,
+              }}
+            >
+              What is a stale receipt?
+            </summary>
+            <p
+              style={{
+                margin: "var(--eh-sp-2) 0 0 0",
+                lineHeight: "var(--eh-leading-relaxed)",
+              }}
+            >
+              When a collection is installed, Event Horizon writes a small
+              JSON file remembering which mods went where, so a re-install
+              can skip them. If the Vortex profile is later deleted (or
+              you moved your config), that receipt is left dangling and
+              points nowhere.
+            </p>
+          </details>
+
+          <div
+            style={{
+              padding: "var(--eh-sp-3)",
+              background: "var(--eh-bg-elevated)",
+              border: "1px solid var(--eh-border-default)",
+              borderRadius: "var(--eh-radius-sm)",
+              color: "var(--eh-text-primary)",
+              fontSize: "var(--eh-text-sm)",
+              lineHeight: "var(--eh-leading-relaxed)",
+            }}
+          >
+            <strong>Recommended:</strong>{" "}
+            <em>Start fresh</em> — Event Horizon deletes the dead receipt
+            and treats this like a brand-new install (a new profile, full
+            install plan, full safety guarantees).
+          </div>
         </div>
         <div
           style={{
@@ -433,22 +563,25 @@ export function StaleReceiptStep(
             onClick={(): void => {
               void handleDelete();
             }}
+            title="Delete the dead receipt and install into a new profile (recommended)"
           >
-            Treat as fresh install
+            Start fresh
           </Button>
           <Button
             intent="ghost"
             disabled={busy}
             onClick={(): void => onResolved("keep")}
+            title="Keep the receipt as-is and try to install into your currently-active Vortex profile"
           >
-            Use current profile anyway
+            Install into current profile
           </Button>
           <Button
-            intent="danger"
+            intent="ghost"
             disabled={busy}
             onClick={(): void => onResolved("cancel")}
+            title="Go back and pick a different file"
           >
-            Cancel
+            Go back
           </Button>
         </div>
       </Card>
@@ -473,6 +606,12 @@ export function PreviewStep(props: PreviewStepProps): JSX.Element {
   const summary = plan.summary;
 
   const verdict = computeVerdict(plan);
+
+  // Enter = continue to decisions/review. Esc = bail. Off when focus
+  // is inside an input (there are no inputs on this screen yet, but
+  // the hook's guard makes that future-proof).
+  useKeyboardShortcut("Enter", onContinue);
+  useKeyboardShortcut("Escape", onCancel);
 
   return (
     <StepFrame
@@ -1236,10 +1375,45 @@ export interface ConfirmStepProps {
   onBack: () => void;
 }
 
+/** Below this many free bytes on the install drive we surface a
+ * pre-flight warning. 5 GB is conservative — most casual collections
+ * stage 1–2 GB, but a single high-poly mesh pack can blow past 4. */
+const DISK_SPACE_WARN_THRESHOLD = 5 * 1024 * 1024 * 1024;
+
 export function ConfirmStep(props: ConfirmStepProps): JSX.Element {
   const { state, onInstall, onBack } = props;
   const { bundle, decisions } = state;
   const target = bundle.plan.installTarget;
+
+  // Enter = trigger the primary install. Esc = back to decisions.
+  useKeyboardShortcut("Enter", onInstall);
+  useKeyboardShortcut("Escape", onBack);
+
+  // Best-effort disk-space probe. We swallow probe errors and just
+  // show nothing if the API is unavailable — never block install on
+  // a flaky stat. Runs once on mount; recomputing per re-render is
+  // pointless because the user can't free disk space without leaving
+  // this screen.
+  const [diskFreeBytes, setDiskFreeBytes] = React.useState<number | undefined>(
+    undefined,
+  );
+  React.useEffect(() => {
+    let cancelled = false;
+    void (async (): Promise<void> => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { getFreeBytes } = await import("../../../utils/diskSpace");
+        const probePath = util.getVortexPath("userData");
+        const free = await getFreeBytes(probePath);
+        if (!cancelled) setDiskFreeBytes(free);
+      } catch {
+        /* swallow — UI just won't render the banner */
+      }
+    })();
+    return (): void => {
+      cancelled = true;
+    };
+  }, []);
 
   const conflictCount = Object.keys(decisions.conflictChoices ?? {}).length;
   const orphanCount = Object.keys(decisions.orphanChoices ?? {}).length;
@@ -1327,6 +1501,34 @@ export function ConfirmStep(props: ConfirmStepProps): JSX.Element {
           </p>
         )}
       </Card>
+
+      {diskFreeBytes !== undefined &&
+        diskFreeBytes < DISK_SPACE_WARN_THRESHOLD && (
+          <div
+            role="alert"
+            style={{
+              marginTop: "var(--eh-sp-4)",
+              padding: "var(--eh-sp-3) var(--eh-sp-4)",
+              background: "rgba(255, 177, 92, 0.08)",
+              border: "1px solid var(--eh-warning)",
+              borderRadius: "var(--eh-radius-md)",
+              color: "var(--eh-text-primary)",
+              fontSize: "var(--eh-text-sm)",
+              display: "flex",
+              gap: "var(--eh-sp-2)",
+              alignItems: "flex-start",
+            }}
+          >
+            <span aria-hidden="true">⚠</span>
+            <div>
+              <strong>Low disk space on Vortex&apos;s data drive.</strong>{" "}
+              Only {formatBytes(diskFreeBytes)} free where mods get
+              staged. Large collections can easily download tens of
+              gigabytes — installs may fail mid-way if the disk fills.
+              Free up space before continuing if you&apos;re unsure.
+            </div>
+          </div>
+        )}
 
       <div
         style={{
@@ -1443,10 +1645,17 @@ export interface DoneStepProps {
   bundle: PreviewBundle;
   onStartOver: () => void;
   onGoCollections: () => void;
+  /**
+   * Optional. When provided AND the install succeeded, the success
+   * card surfaces a "Switch to <profile>" button so the user lands
+   * directly inside the profile their collection just installed
+   * into. No-op for aborted/failed results.
+   */
+  onSwitchProfile?: (profileId: string, profileName: string) => void;
 }
 
 export function DoneStep(props: DoneStepProps): JSX.Element {
-  const { result, bundle, onStartOver, onGoCollections } = props;
+  const { result, bundle, onStartOver, onGoCollections, onSwitchProfile } = props;
 
   let badge: JSX.Element;
   let headline: string;
@@ -1523,6 +1732,17 @@ export function DoneStep(props: DoneStepProps): JSX.Element {
         <Button intent="ghost" onClick={onStartOver}>
           Install another collection
         </Button>
+        {result.kind === "success" && onSwitchProfile !== undefined && (
+          <Button
+            intent="ghost"
+            onClick={(): void =>
+              onSwitchProfile(result.profileId, result.profileName)
+            }
+            title={`Activate the "${result.profileName}" profile in Vortex`}
+          >
+            Switch to {result.profileName}
+          </Button>
+        )}
         <Button intent="primary" onClick={onGoCollections}>
           View installed collections
         </Button>

@@ -39,6 +39,7 @@ import * as fsp from "fs/promises";
 import * as os from "os";
 import * as path from "path";
 
+import { AbortError } from "../archiveHashing";
 import type { EhcollManifest } from "../../types/ehcoll";
 import { sortDeep } from "../../utils/utils";
 import { resolveSevenZip, type SevenZipApi } from "./sevenZip";
@@ -83,6 +84,16 @@ export type PackageEhcollInput = {
   verifyHashes?: boolean;
   /** Optional injection point for tests. Defaults to vortex-api's SevenZip. */
   sevenZip?: SevenZipApi;
+  /**
+   * Cooperative cancellation. When fired, the packager:
+   *   1. Throws {@link AbortError} at the next checkpoint between phases.
+   *   2. Sends SIGTERM to the spawned 7z child if packaging has started, so
+   *      "cancel" doesn't have to wait for 7z to finish on its own.
+   *   3. Cleans up the staging directory AND any partially-written
+   *      `outputPath` so the curator's output folder doesn't accumulate
+   *      corrupt half-zipped archives.
+   */
+  signal?: AbortSignal;
 };
 
 export type PackageEhcollResult = {
@@ -124,26 +135,43 @@ export async function packageEhcoll(
   validateInput(input, errors);
   if (errors.length > 0) throw new PackageEhcollError(errors);
 
+  const signal = input.signal;
+  const checkAbort = (): void => {
+    if (signal?.aborted) {
+      throw new AbortError("Packaging cancelled by user");
+    }
+  };
+  checkAbort();
+
   const stagingDir = await prepareStagingDir(input.stagingDir);
   const cleanupOnSuccess = input.cleanupOnSuccess !== false;
 
   try {
+    checkAbort();
     await writeManifestJson(stagingDir, input.manifest);
+
+    checkAbort();
     await writeOptionalMarkdown(stagingDir, "README.md", input.readme);
+
+    checkAbort();
     await writeOptionalMarkdown(stagingDir, "CHANGELOG.md", input.changelog);
 
     await stageBundledArchives(
       stagingDir,
       input.bundledArchives,
       input.verifyHashes === true,
+      signal,
     );
 
+    checkAbort();
     await runSevenZipAdd(
       input.outputPath,
       stagingDir,
       input.sevenZip ?? resolveSevenZip(),
+      signal,
     );
 
+    checkAbort();
     const stat = await fsp.stat(input.outputPath);
 
     if (cleanupOnSuccess) {
@@ -157,8 +185,19 @@ export async function packageEhcoll(
       warnings,
     };
   } catch (err) {
+    // Cleanup BOTH the staging dir AND any partially-written output. Without
+    // the second step, a failed/cancelled build leaves a corrupt .ehcoll on
+    // disk that the curator might mistake for a real artifact.
     await safeRmDir(stagingDir);
+    await safeRmFile(input.outputPath);
+
+    // Preserve abort/package errors verbatim so callers can distinguish
+    // "user cancelled" from "real failure" without digging through wrapped
+    // messages.
+    if (err instanceof AbortError) throw err;
     if (err instanceof PackageEhcollError) throw err;
+    if (isAbortLikeError(err)) throw err;
+
     throw new PackageEhcollError([
       err instanceof Error ? err.message : String(err),
     ]);
@@ -283,11 +322,16 @@ async function stageBundledArchives(
   stagingDir: string,
   archives: BundledArchiveSpec[],
   verifyHashes: boolean,
+  signal: AbortSignal | undefined,
 ): Promise<void> {
   const bundledDir = path.join(stagingDir, "bundled");
   await fsp.mkdir(bundledDir, { recursive: true });
 
   for (const archive of archives) {
+    if (signal?.aborted) {
+      throw new AbortError("Packaging cancelled by user");
+    }
+
     if (verifyHashes) {
       await verifyArchiveHash(archive);
     }
@@ -344,6 +388,7 @@ async function runSevenZipAdd(
   outputPath: string,
   stagingDir: string,
   sevenZip: SevenZipApi,
+  signal: AbortSignal | undefined,
 ): Promise<void> {
   // Overwrite any existing .ehcoll at outputPath. 7z's `add` would APPEND
   // to an existing archive, which is never what we want.
@@ -362,8 +407,57 @@ async function runSevenZipAdd(
       recursive: true,
     });
 
-    stream.on("end", () => resolve());
-    stream.on("error", (err: Error) => reject(err));
+    let abortListener: (() => void) | undefined;
+
+    const cleanup = (): void => {
+      if (abortListener && signal) {
+        signal.removeEventListener("abort", abortListener);
+      }
+    };
+
+    stream.on("end", () => {
+      cleanup();
+      resolve();
+    });
+    stream.on("error", (err: Error) => {
+      cleanup();
+      reject(err);
+    });
+
+    // Hard cancellation: kill the spawned 7z child so the user doesn't
+    // wait minutes for "cancel" to take effect on a multi-GB collection.
+    //
+    // node-7z exposes the spawned ChildProcess as `_childProcess`. The
+    // field isn't typed (the upstream lib has no .d.ts) so we cast through
+    // unknown. If a future node-7z renames it, we fall back to letting
+    // 7z finish on its own — slow, but not broken.
+    if (signal !== undefined) {
+      const tryKill = (): void => {
+        const internals = stream as unknown as {
+          _childProcess?: { kill?: (sig?: NodeJS.Signals) => void };
+        };
+        try {
+          internals._childProcess?.kill?.("SIGTERM");
+        } catch {
+          // Best effort. If 7z resists SIGTERM the staging dir is still
+          // cleaned up by the catch in packageEhcoll.
+        }
+      };
+
+      if (signal.aborted) {
+        tryKill();
+        cleanup();
+        reject(new AbortError("Packaging cancelled by user"));
+        return;
+      }
+
+      abortListener = (): void => {
+        tryKill();
+        cleanup();
+        reject(new AbortError("Packaging cancelled by user"));
+      };
+      signal.addEventListener("abort", abortListener);
+    }
   });
 }
 
@@ -374,4 +468,27 @@ async function safeRmDir(dir: string): Promise<void> {
     // Best-effort cleanup. Failure here is purely cosmetic; the OS will
     // GC the temp dir eventually.
   }
+}
+
+async function safeRmFile(filePath: string): Promise<void> {
+  try {
+    await fsp.rm(filePath, { force: true });
+  } catch {
+    // Best-effort. If the file can't be removed (locked by AV?), the next
+    // build will overwrite it via 7z's own `rm -f` step.
+  }
+}
+
+/**
+ * Match plain DOMException-style abort errors from Node's stream APIs and
+ * any error whose `name === "AbortError"`. We don't have a single ancestor
+ * class — Node, the DOM, and our own {@link AbortError} all use the
+ * convention of `.name === "AbortError"`.
+ */
+function isAbortLikeError(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    (err as { name?: unknown }).name === "AbortError"
+  );
 }

@@ -9,7 +9,14 @@
     "build:vortex": "npm run build && npm run deploy:vortex",
     "deploy:vortex": "node scripts/deploy-to-vortex.js",
     "watch": "tsc -w",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "gitnexus:setup": "bash scripts/gitnexus-setup.sh",
+    "gitnexus:refresh": "gitnexus analyze --embeddings --skills",
+    "gitnexus:full": "gitnexus analyze --force --embeddings --skills",
+    "gitnexus:wiki": "gitnexus wiki",
+    "gitnexus:wiki:review": "gitnexus wiki --review",
+    "gitnexus:status": "gitnexus status",
+    "gitnexus:list": "gitnexus list"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

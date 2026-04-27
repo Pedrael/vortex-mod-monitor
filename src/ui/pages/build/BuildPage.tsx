@@ -49,6 +49,8 @@ import {
   type BuildDraftPayload,
   type BuildSessionState,
 } from "./buildSession";
+import { ConcurrentOpBanner } from "../../runtime/ConcurrentOpBanner";
+import { nativeNotify } from "../../runtime/nativeNotify";
 
 export interface BuildPageProps {
   onNavigate: (route: EventHorizonRoute) => void;
@@ -124,6 +126,11 @@ function BuildWizard(props: BuildPageProps): JSX.Element {
         intent: "success",
         title: `Built ${state.curator.name} v${state.curator.version}`,
         message: `${state.result.modCount} mods, ${formatBytes(state.result.outputBytes)}.`,
+      });
+      nativeNotify({
+        title: "Event Horizon · build complete",
+        body: `${state.curator.name} v${state.curator.version} — ${state.result.modCount} mods, ${formatBytes(state.result.outputBytes)}`,
+        tag: `eh-build-${state.curator.name}-${state.curator.version}`,
       });
       return;
     }
@@ -203,6 +210,7 @@ function BuildWizard(props: BuildPageProps): JSX.Element {
     return (
       <div className="eh-page">
         <Header stepIndex={stepIndex} stepLabel="Idle" />
+        <ConcurrentOpBanner self="build" />
         <IdlePanel
           onBegin={(): void => session.begin(api)}
           onCancel={(): void => props.onNavigate("home")}
@@ -284,6 +292,12 @@ function BuildWizard(props: BuildPageProps): JSX.Element {
   };
 
   const onBuild = (): void => {
+    if (formState.ctx.mods.length === 0) {
+      session.setValidationError(
+        "Your active profile has no mods. Enable at least one mod in Vortex before building a collection.",
+      );
+      return;
+    }
     const validationError = validateCuratorInput(formState.curator);
     if (validationError !== undefined) {
       session.setValidationError(validationError);
@@ -301,6 +315,7 @@ function BuildWizard(props: BuildPageProps): JSX.Element {
   return (
     <div className="eh-page">
       <Header stepIndex={stepIndex} stepLabel={stepLabels[stepIndex]} />
+      <ConcurrentOpBanner self="build" />
       <FormPanel
         state={formState}
         onChange={handleChange}
@@ -563,7 +578,43 @@ function FormPanel(props: FormPanelProps): JSX.Element {
           onDismiss={onDismissDraftBanner}
         />
       )}
+      {ctx.mods.length === 0 && (
+        <div
+          role="alert"
+          style={{
+            padding: "var(--eh-sp-3) var(--eh-sp-4)",
+            background: "var(--eh-bg-elevated)",
+            border: "1px solid var(--eh-danger)",
+            borderRadius: "var(--eh-radius-md)",
+            color: "var(--eh-text-primary)",
+            fontSize: "var(--eh-text-sm)",
+            display: "flex",
+            gap: "var(--eh-sp-2)",
+            alignItems: "flex-start",
+          }}
+        >
+          <span aria-hidden="true">⚠</span>
+          <div>
+            <strong>Your active profile has no mods.</strong>{" "}
+            A collection needs at least one mod. Enable some mods in
+            Vortex first, then come back here.
+          </div>
+        </div>
+      )}
       <Card title="Collection metadata">
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            marginBottom: "var(--eh-sp-3)",
+          }}
+        >
+          <ImportPreviousButton
+            onImported={(patch): void => {
+              onChange({ curator: { ...curator, ...patch } });
+            }}
+          />
+        </div>
         <div
           style={{
             display: "grid",
@@ -684,11 +735,91 @@ function FormPanel(props: FormPanelProps): JSX.Element {
             {validationError}
           </span>
         )}
-        <Button intent="primary" size="lg" onClick={onBuild}>
+        <Button
+          intent="primary"
+          size="lg"
+          onClick={onBuild}
+          disabled={state.ctx.mods.length === 0}
+          title={
+            state.ctx.mods.length === 0
+              ? "Enable at least one mod in your Vortex profile first"
+              : undefined
+          }
+        >
           Build .ehcoll
         </Button>
       </div>
     </div>
+  );
+}
+
+// ===========================================================================
+// Import previous .ehcoll
+// ===========================================================================
+
+interface ImportPreviousButtonProps {
+  onImported: (patch: Partial<CuratorInput>) => void;
+}
+
+/** Small ghost button on the metadata card. Lets the curator pick a
+ * previously-built `.ehcoll` and prefill name/version/author/description
+ * from its manifest. We do not import mod selections or external-mod
+ * overrides — those depend on the *current* profile's mods, and a stale
+ * import would produce silently-mismatched config. */
+function ImportPreviousButton(props: ImportPreviousButtonProps): JSX.Element {
+  const reportError = useErrorReporter();
+  const showToast = useToast();
+  const [busy, setBusy] = React.useState(false);
+
+  const handleClick = React.useCallback(async (): Promise<void> => {
+    setBusy(true);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { pickEhcollFile } = await import("../../../utils/utils");
+      const file = await pickEhcollFile();
+      if (file === undefined) return;
+
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { readEhcoll } = await import(
+        "../../../core/manifest/readEhcoll"
+      );
+      const result = await readEhcoll(file);
+      const pkg = result.manifest.package;
+
+      const patch: Partial<CuratorInput> = {
+        name: pkg.name,
+        version: pkg.version,
+        author: pkg.author,
+        description: pkg.description ?? "",
+      };
+      props.onImported(patch);
+      showToast({
+        intent: "success",
+        title: "Imported metadata",
+        message: `Pre-filled from "${pkg.name}" v${pkg.version}.`,
+      });
+    } catch (err) {
+      reportError(err, {
+        title: "Couldn't import .ehcoll metadata",
+        context: { step: "build-import-existing" },
+      });
+    } finally {
+      setBusy(false);
+    }
+  }, [props, reportError, showToast]);
+
+  return (
+    <Button
+      intent="ghost"
+      size="sm"
+      disabled={busy}
+      onClick={(): void => {
+        void handleClick();
+      }}
+      title="Pick a previously-built .ehcoll and copy its name/version/author/description into this form."
+    >
+      {busy ? "Importing..." : "Import from previous .ehcoll"}
+    </Button>
   );
 }
 
@@ -888,6 +1019,19 @@ function DonePanel(props: {
   onGoHome: () => void;
 }): JSX.Element {
   const { result } = props;
+  const showToast = useToast();
+
+  const handleCopyPath = React.useCallback((): void => {
+    void writeToClipboard(result.outputPath).then((ok) => {
+      showToast({
+        intent: ok ? "success" : "warning",
+        title: ok ? "Path copied" : "Couldn't copy path",
+        message: ok ? result.outputPath : "Clipboard isn't available right now.",
+        ttl: 3500,
+      });
+    });
+  }, [result.outputPath, showToast]);
+
   return (
     <Card title="Build complete">
       <div
@@ -923,6 +1067,7 @@ function DonePanel(props: {
         >
           {result.outputPath}
         </div>
+        <DistributionHint />
         {result.warnings.length > 0 && (
           <details
             style={{
@@ -958,6 +1103,9 @@ function DonePanel(props: {
             justifyContent: "flex-end",
           }}
         >
+          <Button intent="ghost" onClick={handleCopyPath}>
+            Copy path
+          </Button>
           <Button
             intent="ghost"
             onClick={(): void => {
@@ -1113,6 +1261,70 @@ async function openShellPath(p: string): Promise<void> {
   } catch {
     // Best-effort; swallow if Electron isn't available.
   }
+}
+
+/**
+ * Best-effort clipboard write. Tries the navigator API first (works
+ * inside Electron's renderer when the page is HTTPS-equivalent), then
+ * falls back to electron.clipboard. Returns false if both fail.
+ */
+async function writeToClipboard(text: string): Promise<boolean> {
+  try {
+    if (
+      typeof navigator !== "undefined" &&
+      navigator.clipboard !== undefined &&
+      typeof navigator.clipboard.writeText === "function"
+    ) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    /* fall through to electron clipboard */
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const electron = require("electron") as {
+      clipboard?: { writeText?: (s: string) => void };
+    };
+    if (electron.clipboard?.writeText) {
+      electron.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    /* swallow */
+  }
+  return false;
+}
+
+/**
+ * Tiny hint card that bridges "build finished" → "now what?". Until
+ * we ship a one-click publish flow (see docs/RESEARCH_PUBLISHING.md),
+ * curators distribute their `.ehcoll` by uploading it as a regular
+ * Nexus mod attachment. Saying it explicitly here saves "where do I
+ * upload this?" support requests.
+ */
+function DistributionHint(): JSX.Element {
+  return (
+    <div
+      style={{
+        padding: "var(--eh-sp-3) var(--eh-sp-4)",
+        background:
+          "color-mix(in srgb, var(--eh-accent) 8%, transparent)",
+        border:
+          "1px solid color-mix(in srgb, var(--eh-accent) 30%, transparent)",
+        borderRadius: "var(--eh-radius-sm)",
+        fontSize: "var(--eh-text-sm)",
+        lineHeight: "var(--eh-leading-relaxed)",
+        color: "var(--eh-text-secondary)",
+      }}
+    >
+      <strong style={{ color: "var(--eh-text-primary)" }}>Next: share it.</strong>{" "}
+      Upload this <code>.ehcoll</code> as a regular Nexus mod
+      attachment under your collection&apos;s mod page — testers install it via
+      Event Horizon&apos;s install tab. A one-click publish flow is
+      tracked in <code>docs/RESEARCH_PUBLISHING.md</code>.
+    </div>
+  );
 }
 
 function phaseToLabel(phase: BuildProgress["phase"] | undefined): string | undefined {
