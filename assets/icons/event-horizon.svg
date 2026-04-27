@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Event Horizon  monochrome icon set.
+
+  Single-icon sprite used by `installIconSet("event-horizon", ...)` in
+  `src/index.ts`. The Icon component then resolves the symbol id via
+  `name="event-horizon-logo"` (or `set="event-horizon"`).
+
+  Design notes:
+    * 24×24 viewBox so it sits cleanly next to Vortex's font-awesome
+      sidebar icons (same nominal size).
+    * `fill="currentColor"` / `stroke="currentColor"` so it picks up the
+      sidebar's active / hover / muted theme colours automatically 
+      this is what makes it "monochrome" in the user's sense (one
+      colour, theme-driven).
+    * Three concentric strokes mimic the accretion disk + photon ring;
+      the filled centre is the singularity. No gradients on purpose 
+      sidebar icons in Vortex are tiny (~20px) and gradients smudge.
+    * The slight horizontal notch on the right ring is the Doppler-bright
+      crescent from the full hero logo, simplified down to a tick.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="event-horizon-logo" viewBox="0 0 24 24">
+    <title>Event Horizon</title>
+    <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10.5" stroke-width="1" opacity="0.55" />
+      <circle cx="12" cy="12" r="8" stroke-width="1.4" />
+      <path d="M 19.6 9.2 A 8 8 0 0 1 19.6 14.8" stroke-width="2" opacity="0.95" />
+    </g>
+    <circle cx="12" cy="12" r="4" fill="currentColor" />
+  </symbol>
+</svg>

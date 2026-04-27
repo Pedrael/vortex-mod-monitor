@@ -195,7 +195,7 @@ export async function exportPluginsDiffReport(params: {
 
   const filePath = path.join(
     outputDir,
-    `vortex-plugins-diff-${gameId}-${Date.now()}.json`,
+    `event-horizon-plugins-diff-${gameId}-${Date.now()}.json`,
   );
 
   await fs.writeFile(filePath, JSON.stringify(diff, null, 2), "utf8");

@@ -1,6 +1,6 @@
 {
-  "name": "Mod Monitor",
-  "author": "Your Name",
+  "name": "Event Horizon",
+  "author": "DuduPhudu and Bluuuk",
   "version": "0.0.1",
-  "description": "Vortex extension scaffold (see index.js to implement features)"
+  "description": "Capture and reproduce a curator's exact mod state — rules, FOMOD selections, file overrides, load order, install order — before Vortex's collection black hole loses it."
 }

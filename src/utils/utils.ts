@@ -2,6 +2,8 @@ import { exec } from "child_process";
 import * as fs from "fs/promises";
 import * as path from "path";
 import type { AuditorMod } from "../core/getModsListForProfile";
+import type { CapturedDeploymentManifest } from "../core/deploymentManifest";
+import type { CapturedLoadOrderEntry } from "../core/loadOrder";
 
 export function openFolder(folderPath: string) {
   exec(`start "" "${folderPath}"`);
@@ -65,12 +67,108 @@ export async function pickJsonFile(): Promise<string | undefined> {
   return result.filePaths[0];
 }
 
+export async function pickEhcollFile(): Promise<string | undefined> {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const electron = require("electron");
+
+  const dialog = electron.remote?.dialog ?? electron.dialog;
+
+  if (!dialog?.showOpenDialog) {
+    throw new Error("Electron dialog is not available");
+  }
+
+  const result = await dialog.showOpenDialog({
+    title: "Select Event Horizon collection (.ehcoll)",
+    properties: ["openFile"],
+    filters: [
+      {
+        name: "Event Horizon collections",
+        extensions: ["ehcoll"],
+      },
+    ],
+  });
+
+  if (result.canceled || !result.filePaths?.length) {
+    return undefined;
+  }
+
+  return result.filePaths[0];
+}
+
+/**
+ * Open a file picker for a mod archive, used by the install action's
+ * external-prompt-user picker. Title and `expectedFilename` give the
+ * user a hint of what they're being asked to provide.
+ */
+export async function pickModArchiveFile(args: {
+  title: string;
+  expectedFilename?: string;
+}): Promise<string | undefined> {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const electron = require("electron");
+
+  const dialog = electron.remote?.dialog ?? electron.dialog;
+
+  if (!dialog?.showOpenDialog) {
+    throw new Error("Electron dialog is not available");
+  }
+
+  const filters: Array<{ name: string; extensions: string[] }> = [
+    {
+      name: "Mod archives",
+      extensions: ["zip", "7z", "rar", "tar", "tgz", "gz"],
+    },
+    { name: "All files", extensions: ["*"] },
+  ];
+
+  const result = await dialog.showOpenDialog({
+    title: args.title,
+    defaultPath: args.expectedFilename,
+    properties: ["openFile"],
+    filters,
+  });
+
+  if (result.canceled || !result.filePaths?.length) {
+    return undefined;
+  }
+
+  return result.filePaths[0];
+}
+
 export type ExportedModsSnapshot = {
   exportedAt?: string;
   gameId: string;
   profileId: string;
   count?: number;
   mods: AuditorMod[];
+
+  /**
+   * Per-modtype deployment manifests captured on export only.
+   *
+   * Optional because:
+   *   1. Older snapshot files (pre-Phase 1 slice 3) won't have it.
+   *   2. The Compare Mods action builds a current-side snapshot
+   *      synchronously without `api`, so it cannot capture manifests.
+   *
+   * NOT diffed yet — `compareMods` ignores it. Captured here so that the
+   * future installer (Phase 4+) can plan reconciliation against the
+   * curator's actual deployment winners.
+   */
+  deploymentManifests?: CapturedDeploymentManifest[];
+
+  /**
+   * Per-game load order from `state.persistent.loadOrder[gameId]`.
+   *
+   * Optional because:
+   *   1. Older snapshot files (pre-Phase 1 slice 4) won't have it.
+   *   2. Games that drive load order purely via `plugins.txt` will emit
+   *      an empty array; we still emit the field for forward-compat.
+   *
+   * Distinct from `plugins.txt` — covers non-plugin mods (script
+   * extenders, ENB, etc.) on games that use Vortex's LoadOrder API.
+   * NOT diffed yet — captured for the future installer.
+   */
+  loadOrder?: CapturedLoadOrderEntry[];
 };
 
 export type ModFieldDifference = {
@@ -126,7 +224,16 @@ export function getModCompareKey(mod: AuditorMod): string {
   return `id:${mod.id}`;
 }
 
-function sortDeep(value: unknown): unknown {
+/**
+ * Recursively sort object keys for byte-stable JSON serialization.
+ * Arrays preserve their order (their order is meaningful); only object
+ * key ordering is normalized.
+ *
+ * Used by:
+ *  - `deepEqualStable` for order-insensitive comparisons.
+ *  - `core/manifest/packageZip` for deterministic `manifest.json` output.
+ */
+export function sortDeep(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(sortDeep);
   }
@@ -159,11 +266,18 @@ export function compareMods(
     "nexusModId",
     "nexusFileId",
     "archiveId",
+    "archiveSha256",
     "collectionIds",
     "installerType",
     "hasInstallerChoices",
     "hasDetailedInstallerChoices",
     "fomodSelections",
+    "rules",
+    "modType",
+    "fileOverrides",
+    "enabledINITweaks",
+    "installTime",
+    "installOrder",
   ];
 
   const differences: ModFieldDifference[] = [];
@@ -268,7 +382,7 @@ export async function exportDiffReport(params: {
 
   const filePath = path.join(
     outputDir,
-    `vortex-mod-diff-${gameId}-${Date.now()}.json`,
+    `event-horizon-mod-diff-${gameId}-${Date.now()}.json`,
   );
 
   await fs.writeFile(filePath, JSON.stringify(diff, null, 2), "utf8");
