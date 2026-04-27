@@ -14,19 +14,22 @@ export const BASE_CSS = `
   line-height: var(--eh-leading-normal);
   color: var(--eh-text-primary);
   background: var(--eh-gradient-page);
-  /* Vortex's MainPage container is a flex column that gives us a
-     definite height via flex sizing, NOT via height:100%. Hooking
-     into that flex chain (flex:1 + min-height:0) guarantees a real
-     pixel height for our descendants — without this our inner flex
-     column collapses and the main scroll region never overflows
-     (the "dashboard not scrollable" bug). */
-  flex: 1 1 auto;
+  /* Vortex's MainPage container varies between block, flex column,
+     and absolutely-positioned panes depending on the layout mode the
+     user picked (Classic vs Modern). The only thing it consistently
+     does is render us inside a positioned ancestor that fills the
+     content region. So instead of betting on flex inheritance or
+     height:100% (which silently collapses when the parent isn't
+     a flex container), we pin every edge with inset:0 — this gives
+     us a guaranteed definite height that our inner flex column can
+     subdivide, which is what makes the main scroll region actually
+     scrollable. */
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
-  min-height: 0;
-  height: 100%;
   width: 100%;
-  position: relative;
+  height: 100%;
   overflow: hidden;
   isolation: isolate;
   -webkit-font-smoothing: antialiased;
@@ -130,16 +133,19 @@ export const BASE_CSS = `
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
+  /* min-height: 0 lets the flex child shrink below its intrinsic
+     content size, which is what enables the inner main element to
+     actually overflow + scroll. Without this Firefox happily grows
+     the inner column past the parent's bounds. */
   min-height: 0;
-  height: 100%;
   width: 100%;
+  height: 100%;
 }
 
 .eh-app__main {
   flex: 1 1 auto;
-  /* min-height: 0 is required so this flex child can actually shrink
-     below its intrinsic content height — otherwise overflow-y:auto
-     never kicks in and the page grows past the viewport. */
+  /* min-height: 0 here is the same dance: makes overflow-y:auto
+     respect the parent's height instead of expanding to fit content. */
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;

@@ -1,14 +1,24 @@
 /**
- * BuildPage — Phase 5.3.
+ * BuildPage — Phase 5.3 (session-driven, 5.5+).
  *
  * The curator-side React UI. Drives the full build pipeline:
- *   1. Loading: read state, hash mods, load (or create) collection config.
- *   2. Form: metadata + per-mod overrides + README / CHANGELOG editors.
- *   3. Building: run the manifest + package pipeline with progress.
- *   4. Done: success card with "Open package" / "Open folder" actions.
+ *   1. Idle:     friendly welcome card, "Begin" launches the load.
+ *   2. Loading:  read state, hash mods, load (or create) collection config.
+ *   3. Form:     metadata + per-mod overrides + README / CHANGELOG editors.
+ *   4. Building: run the manifest + package pipeline with progress.
+ *   5. Done:     success card with "Open package" / "Open folder" actions.
  *
- * The page never duplicates logic from `engine.ts` — it just renders
- * the result and dispatches user input.
+ * Crucially the page DOES NOT own the pipeline state. All in-flight
+ * work (loadBuildContext, runBuildPipeline, AbortControllers, draft
+ * restore) lives in `buildSession.ts` — a module-scope singleton
+ * that survives sidebar tab switches. This page is a thin renderer:
+ *   • subscribes to the session on mount,
+ *   • dispatches user actions to it,
+ *   • re-renders whenever the session emits.
+ *
+ * That decoupling is what lets the build keep running in the
+ * background when the user navigates to another tab (the bug
+ * symptom: hashing/building "restarted" on every tab return).
  */
 
 import * as React from "react";
@@ -26,8 +36,6 @@ import { ErrorBoundary, useErrorReporter, useErrorReporterFormatted } from "../.
 import type { EventHorizonRoute } from "../../routes";
 import { useApi } from "../../state";
 import {
-  loadBuildContext,
-  runBuildPipeline,
   validateCuratorInput,
   type BuildContext,
   type BuildPipelineResult,
@@ -35,77 +43,23 @@ import {
   type CuratorInput,
 } from "./engine";
 import type { ExternalModConfigEntry } from "../../../core/manifest/collectionConfig";
+import { getAppDataPath, saveDraft } from "../../../core/draftStorage";
 import {
-  deleteDraft,
-  getAppDataPath,
-  loadDraft,
-  saveDraft,
-} from "../../../core/draftStorage";
+  getBuildSession,
+  type BuildDraftPayload,
+  type BuildSessionState,
+} from "./buildSession";
 
 export interface BuildPageProps {
   onNavigate: (route: EventHorizonRoute) => void;
 }
 
-// ===========================================================================
-// State machine
-// ===========================================================================
-
-type BuildPageState =
-  | { kind: "loading"; phase?: BuildProgress }
-  | {
-      kind: "form";
-      ctx: BuildContext;
-      curator: CuratorInput;
-      overrides: Record<string, ExternalModConfigEntry>;
-      readme: string;
-      changelog: string;
-      validationError?: string;
-      /**
-       * If non-undefined, the form was rehydrated from an autosaved
-       * draft loaded from disk. Carries the ISO timestamp of the
-       * saved draft so the banner can show "Restored from X minutes
-       * ago". Cleared once the user explicitly dismisses or discards
-       * the banner — the autosave keeps running either way.
-       */
-      restoredAt?: string;
-    }
-  | {
-      kind: "building";
-      ctx: BuildContext;
-      curator: CuratorInput;
-      progress: BuildProgress;
-    }
-  | {
-      kind: "done";
-      result: BuildPipelineResult;
-      ctx: BuildContext;
-      curator: CuratorInput;
-    }
-  | {
-      kind: "error";
-      previous: BuildPageState | undefined;
-    };
-
 /**
- * Persisted shape of an in-flight build form.
- *
- * Deliberately a flat snapshot of the user-editable fields — NEVER
- * the whole `BuildContext` (mods, configPath, hashes, ...) since:
- *   • that data is freshly re-derived from Vortex's live state on
- *     every session anyway, and
- *   • bundling a hash list into the draft would let it go stale
- *     against an evolving profile and silently restore wrong
- *     archive references.
- *
- * The shape is intentionally a strict subset of `BuildPageState`
- * (form variant) so restoration is just an object spread.
+ * Local alias for the form variant of the session state. Kept under
+ * the old name so the inner panel components (FormPanel, banner) can
+ * stay verbatim from the previous component-state implementation.
  */
-interface BuildDraftPayload {
-  curator: CuratorInput;
-  overrides: Record<string, ExternalModConfigEntry>;
-  readme: string;
-  changelog: string;
-}
+type BuildFormState = Extract<BuildSessionState, { kind: "form" }>;
 
 const DRAFT_AUTOSAVE_DEBOUNCE_MS = 600;
 
@@ -130,122 +84,84 @@ function BuildWizard(props: BuildPageProps): JSX.Element {
   const api = useApi();
   const reportError = useErrorReporter();
   const showToast = useToast();
-  const [state, setState] = React.useState<BuildPageState>({
-    kind: "loading",
-  });
-  // Re-arm to force the effect to re-run after Cancel / Retry without
-  // unmounting the page.
-  const [loadAttempt, setLoadAttempt] = React.useState(0);
-  // AbortController for the active loadBuildContext / runBuildPipeline.
-  // Stored in a ref so onCancel handlers and unmount cleanup can both
-  // reach the same controller.
-  const abortRef = React.useRef<AbortController | undefined>(undefined);
+  const session = React.useMemo(() => getBuildSession(), []);
 
-  const handleCancelLoading = React.useCallback((): void => {
-    abortRef.current?.abort();
-  }, []);
-
-  // ── Initial load ─────────────────────────────────────────────────────
+  // Mirror the session's state into local React state. The session
+  // is the source of truth; this useState only exists to trigger
+  // re-renders when the session emits.
+  const [state, setLocalState] = React.useState<BuildSessionState>(() =>
+    session.getState(),
+  );
   React.useEffect(() => {
-    if (state.kind !== "loading") return undefined;
-    let alive = true;
-    const controller = new AbortController();
-    abortRef.current = controller;
-    void (async () => {
-      try {
-        const ctx = await loadBuildContext(api, {
-          signal: controller.signal,
-          onProgress: (p) => {
-            if (!alive) return;
-            setState({ kind: "loading", phase: p });
-          },
-        });
-        if (!alive) return;
+    // On (re)mount, immediately sync — the session may have moved on
+    // while we were on another tab.
+    setLocalState(session.getState());
+    return session.subscribe(setLocalState);
+  }, [session]);
 
-        // Defaults derived from the freshly-read Vortex state +
-        // per-collection config on disk. These are the "blank slate"
-        // values the curator would see on first open.
-        const baseForm: Extract<BuildPageState, { kind: "form" }> = {
-          kind: "form",
-          ctx,
-          curator: {
-            name: ctx.defaultName,
-            version: ctx.defaultVersion,
-            author: ctx.defaultAuthor,
-            description: "",
-          },
-          overrides: { ...ctx.collectionConfig.externalMods },
-          readme: ctx.collectionConfig.readme ?? "",
-          changelog: ctx.collectionConfig.changelog ?? "",
-        };
+  // ── Side-effect dispatch on session transitions ──────────────────
+  // Toasts and error modals must fire once per real transition, NOT
+  // on remount when the user lands back on the page mid-state. We
+  // track the previous kind in a ref and only react when it changes.
+  // Refs persist for the component instance lifetime; reportedErrorId
+  // makes "did I already open the modal for this exact failure?"
+  // dedup explicit (the session bumps errorId per failure).
+  const prevKindRef = React.useRef<BuildSessionState["kind"] | undefined>(
+    undefined,
+  );
+  const reportedErrorIdRef = React.useRef<number | undefined>(undefined);
+  React.useEffect(() => {
+    const prev = prevKindRef.current;
+    prevKindRef.current = state.kind;
 
-        // Try to rehydrate any in-flight draft for this game. Failures
-        // resolve to undefined; we never block the wizard on a flaky
-        // draft file.
-        let draftEnvelope: Awaited<
-          ReturnType<typeof loadDraft<BuildDraftPayload>>
-        > = undefined;
-        try {
-          draftEnvelope = await loadDraft<BuildDraftPayload>(
-            getAppDataPath(),
-            "build",
-            ctx.gameId,
-          );
-        } catch {
-          /* swallow — best-effort restore */
-        }
-        if (!alive) return;
+    // First subscription tick: just record kind, never spam toasts
+    // for whatever state we walked into.
+    if (prev === undefined) return;
+    if (prev === state.kind) return;
 
-        if (draftEnvelope !== undefined) {
-          // Draft fields take precedence over config defaults — the
-          // user's most recent unsaved edits are what they actually
-          // wanted to come back to.
-          setState({
-            ...baseForm,
-            curator: { ...baseForm.curator, ...draftEnvelope.payload.curator },
-            overrides: {
-              ...baseForm.overrides,
-              ...draftEnvelope.payload.overrides,
-            },
-            readme: draftEnvelope.payload.readme,
-            changelog: draftEnvelope.payload.changelog,
-            restoredAt: draftEnvelope.savedAt,
-          });
-        } else {
-          setState(baseForm);
-        }
-      } catch (err) {
-        if (!alive) return;
-        // User-initiated cancellation: silently bounce back to a
-        // friendly "cancelled" state rather than the error modal.
-        if (isAbortError(err)) {
-          props.onNavigate("home");
-          return;
-        }
-        reportError(err, {
-          title: "Couldn't prepare build context",
-          context: { step: "load-build-context" },
-        });
-        setState({ kind: "error", previous: undefined });
-      }
-    })();
-    return () => {
-      alive = false;
-      abortRef.current = undefined;
-    };
-    // We deliberately key on `loadAttempt` (not `state`) so cancellation
-    // of an in-flight load can be re-triggered on demand.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api, reportError, loadAttempt]);
+    if (state.kind === "done" && prev === "building") {
+      showToast({
+        intent: "success",
+        title: `Built ${state.curator.name} v${state.curator.version}`,
+        message: `${state.result.modCount} mods, ${formatBytes(state.result.outputBytes)}.`,
+      });
+      return;
+    }
+    if (state.kind === "form" && prev === "building") {
+      // Only path from building → form is a user-initiated cancel.
+      showToast({
+        intent: "info",
+        title: "Build cancelled",
+        message: "No .ehcoll was written.",
+      });
+      return;
+    }
+    if (state.kind === "error") {
+      // Each distinct failure gets one report — even if the user
+      // remounts the page, the modal won't reopen for the same
+      // errorId. Cleared once they retry/reset.
+      if (reportedErrorIdRef.current === state.record.errorId) return;
+      reportedErrorIdRef.current = state.record.errorId;
+      reportError(state.record.error, {
+        title:
+          state.record.phase === "load"
+            ? "Couldn't prepare build context"
+            : "Build failed",
+        context: { step: state.record.phase },
+      });
+      return;
+    }
+    if (state.kind === "idle" || state.kind === "loading") {
+      // Cleared so a future error after a retry reports cleanly.
+      reportedErrorIdRef.current = undefined;
+    }
+  }, [state, showToast, reportError]);
 
-  // ── Autosave the draft (debounced) ───────────────────────────────────
-  // Triggered every time the form state mutates. Re-runs schedule a new
-  // timer and cancel the previous one, so a typing burst only writes
-  // one file at the end (≈ 600ms after the last keystroke).
-  //
-  // The draft is keyed on the active gameId (from ctx) so different
-  // games end up with independent drafts, and the build can be
-  // resumed even after the user temporarily switches games.
+  // ── Autosave (debounced) ─────────────────────────────────────────
+  // Stays in the component because autosave only matters while the
+  // user is editing — which means they're on this page. Persists to
+  // disk via `core/draftStorage`; restoration happens inside the
+  // session on the loading → form transition.
   React.useEffect(() => {
     if (state.kind !== "form") return undefined;
     const formState = state;
@@ -269,42 +185,38 @@ function BuildWizard(props: BuildPageProps): JSX.Element {
     state.kind === "form" ? state.changelog : undefined,
   ]);
 
-  // ── Delete the draft on success ──────────────────────────────────────
-  // Once the build pipeline has produced a real .ehcoll file, the
-  // in-flight draft is no longer interesting — the curator has shipped
-  // a release. Wiping the file keeps the next "Build" open with a
-  // clean form (or with whatever the persisted collection config has).
-  React.useEffect(() => {
-    if (state.kind !== "done") return;
-    void deleteDraft(getAppDataPath(), "build", state.ctx.gameId);
-  }, [state.kind === "done" ? state.ctx.gameId : undefined]);
-
-  // Abort any in-flight work if the page unmounts (user navigates away).
-  React.useEffect(() => {
-    return () => {
-      abortRef.current?.abort();
-    };
-  }, []);
-
-  // ── Step indicator (match the wizard order) ──────────────────────────
+  // ── Step indicator ───────────────────────────────────────────────
   const stepIndex =
-    state.kind === "loading"
+    state.kind === "idle"
       ? 0
-      : state.kind === "form"
+      : state.kind === "loading"
       ? 1
-      : state.kind === "building"
+      : state.kind === "form"
       ? 2
-      : 3;
-  const stepLabels = ["Loading", "Form", "Building", "Done"];
+      : state.kind === "building"
+      ? 3
+      : 4;
+  const stepLabels = ["Idle", "Loading", "Form", "Building", "Done"];
 
-  // ── Render ────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────
+  if (state.kind === "idle") {
+    return (
+      <div className="eh-page">
+        <Header stepIndex={stepIndex} stepLabel="Idle" />
+        <IdlePanel
+          onBegin={(): void => session.begin(api)}
+          onCancel={(): void => props.onNavigate("home")}
+        />
+      </div>
+    );
+  }
   if (state.kind === "loading") {
     return (
       <div className="eh-page">
         <Header stepIndex={stepIndex} stepLabel={stepLabels[stepIndex]} />
         <LoadingPanel
           progress={state.phase}
-          onCancel={handleCancelLoading}
+          onCancel={(): void => session.cancelLoading()}
         />
       </div>
     );
@@ -314,9 +226,9 @@ function BuildWizard(props: BuildPageProps): JSX.Element {
       <div className="eh-page">
         <Header stepIndex={stepIndex} stepLabel="Error" />
         <ErrorPanel
-          onRetry={() => {
-            setState({ kind: "loading" });
-            setLoadAttempt((n) => n + 1);
+          onRetry={(): void => {
+            session.reset();
+            session.begin(api);
           }}
         />
       </div>
@@ -329,7 +241,7 @@ function BuildWizard(props: BuildPageProps): JSX.Element {
         <BuildingPanel
           progress={state.progress}
           curator={state.curator}
-          onCancel={handleCancelLoading}
+          onCancel={(): void => session.cancelBuilding()}
         />
       </div>
     );
@@ -340,42 +252,26 @@ function BuildWizard(props: BuildPageProps): JSX.Element {
         <Header stepIndex={stepIndex} stepLabel={stepLabels[stepIndex]} />
         <DonePanel
           result={state.result}
-          onBuildAnother={() => {
-            setState({ kind: "loading" });
-            setLoadAttempt((n) => n + 1);
+          onBuildAnother={(): void => {
+            session.reset();
+            session.begin(api);
           }}
-          onGoHome={() => props.onNavigate("home")}
+          onGoHome={(): void => {
+            session.reset();
+            props.onNavigate("home");
+          }}
         />
       </div>
     );
   }
 
   const formState = state;
-  const handleChange = (
-    next: Partial<BuildPageState & { kind: "form" }>,
-  ): void => {
-    setState({ ...formState, ...next, validationError: undefined });
+  const handleChange = (next: Partial<BuildFormState>): void => {
+    session.patchForm(next);
   };
 
-  // Throw away any restored draft and reset every user-editable field
-  // back to its config-derived default. Wipes the file too so the
-  // wizard truly starts fresh next time.
   const handleDiscardDraft = (): void => {
-    void deleteDraft(getAppDataPath(), "build", formState.ctx.gameId);
-    setState({
-      kind: "form",
-      ctx: formState.ctx,
-      curator: {
-        name: formState.ctx.defaultName,
-        version: formState.ctx.defaultVersion,
-        author: formState.ctx.defaultAuthor,
-        description: "",
-      },
-      overrides: { ...formState.ctx.collectionConfig.externalMods },
-      readme: formState.ctx.collectionConfig.readme ?? "",
-      changelog: formState.ctx.collectionConfig.changelog ?? "",
-      restoredAt: undefined,
-    });
+    void session.discardDraft();
     showToast({
       intent: "info",
       title: "Draft discarded",
@@ -383,76 +279,23 @@ function BuildWizard(props: BuildPageProps): JSX.Element {
     });
   };
 
-  // Lighter dismiss — just hide the banner, keep the restored values
-  // and the autosaved draft on disk untouched.
   const handleDismissDraftBanner = (): void => {
-    setState({ ...formState, restoredAt: undefined });
+    session.dismissDraftBanner();
   };
 
-  const onBuild = async (): Promise<void> => {
+  const onBuild = (): void => {
     const validationError = validateCuratorInput(formState.curator);
     if (validationError !== undefined) {
-      setState({ ...formState, validationError });
+      session.setValidationError(validationError);
       return;
     }
-    setState({
-      kind: "building",
+    session.build(api, {
       ctx: formState.ctx,
       curator: formState.curator,
-      progress: { phase: "writing-config" },
+      overrides: formState.overrides,
+      readme: formState.readme,
+      changelog: formState.changelog,
     });
-    const controller = new AbortController();
-    abortRef.current = controller;
-    try {
-      const result = await runBuildPipeline(
-        api,
-        formState.ctx,
-        formState.curator,
-        {
-          externalMods: formState.overrides,
-          readme: formState.readme,
-          changelog: formState.changelog,
-        },
-        {
-          signal: controller.signal,
-          onProgress: (p) =>
-            setState({
-              kind: "building",
-              ctx: formState.ctx,
-              curator: formState.curator,
-              progress: p,
-            }),
-        },
-      );
-      abortRef.current = undefined;
-      showToast({
-        intent: "success",
-        title: `Built ${formState.curator.name} v${formState.curator.version}`,
-        message: `${result.modCount} mods, ${formatBytes(result.outputBytes)}.`,
-      });
-      setState({
-        kind: "done",
-        result,
-        ctx: formState.ctx,
-        curator: formState.curator,
-      });
-    } catch (err) {
-      abortRef.current = undefined;
-      if (isAbortError(err)) {
-        showToast({
-          intent: "info",
-          title: "Build cancelled",
-          message: "No .ehcoll was written.",
-        });
-        setState({ ...formState });
-        return;
-      }
-      reportError(err, {
-        title: "Build failed",
-        context: { step: "run-build-pipeline" },
-      });
-      setState({ kind: "error", previous: formState });
-    }
   };
 
   return (
@@ -461,13 +304,94 @@ function BuildWizard(props: BuildPageProps): JSX.Element {
       <FormPanel
         state={formState}
         onChange={handleChange}
-        onBuild={() => {
-          void onBuild();
-        }}
+        onBuild={onBuild}
         onDiscardDraft={handleDiscardDraft}
         onDismissDraftBanner={handleDismissDraftBanner}
       />
     </div>
+  );
+}
+
+// ===========================================================================
+// Idle
+// ===========================================================================
+
+/**
+ * First-impression panel for the build flow. We deliberately don't
+ * auto-start the (slow) hashing pass on tab open — it's surprising
+ * for the user, costs CPU, and on cancel had no good "back" button.
+ *
+ * Instead this card explains what's about to happen and waits for an
+ * explicit click. Once the work is in flight the session keeps it
+ * running across tab switches.
+ */
+function IdlePanel(props: {
+  onBegin: () => void;
+  onCancel: () => void;
+}): JSX.Element {
+  return (
+    <Card title="Build a collection">
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "var(--eh-sp-3)",
+          padding: "var(--eh-sp-2)",
+        }}
+      >
+        <p
+          style={{
+            margin: 0,
+            color: "var(--eh-text-secondary)",
+            fontSize: "var(--eh-text-md)",
+            lineHeight: "var(--eh-leading-normal)",
+          }}
+        >
+          Event Horizon will read your active profile, hash every mod
+          archive (so the manifest pins exact files), and then open
+          the curator form so you can polish the metadata, README,
+          and CHANGELOG before packaging the .ehcoll.
+        </p>
+        <ul
+          style={{
+            margin: 0,
+            paddingLeft: "var(--eh-sp-5)",
+            color: "var(--eh-text-secondary)",
+            fontSize: "var(--eh-text-sm)",
+            lineHeight: "var(--eh-leading-relaxed)",
+          }}
+        >
+          <li>
+            Hashing is read-only and safe to cancel. Big profiles can
+            take a few minutes the first time, near-instant on retries.
+          </li>
+          <li>
+            Your draft autosaves while you edit. Switch to another tab
+            or restart Vortex — your form will be there when you come back.
+          </li>
+          <li>
+            The build keeps running if you navigate away while it's
+            in flight; come back to this tab to see progress.
+          </li>
+        </ul>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: "var(--eh-sp-2)",
+            marginTop: "var(--eh-sp-2)",
+            flexWrap: "wrap",
+          }}
+        >
+          <Button intent="ghost" onClick={props.onCancel}>
+            Cancel
+          </Button>
+          <Button intent="primary" size="lg" onClick={props.onBegin}>
+            Begin
+          </Button>
+        </div>
+      </div>
+    </Card>
   );
 }
 
@@ -516,7 +440,7 @@ function Header(props: { stepIndex: number; stepLabel: string }): JSX.Element {
           gap: "var(--eh-sp-2)",
         }}
       >
-        <StepDots total={4} current={props.stepIndex} />
+        <StepDots total={5} current={props.stepIndex} />
         <span
           style={{
             color: "var(--eh-text-muted)",
@@ -525,7 +449,7 @@ function Header(props: { stepIndex: number; stepLabel: string }): JSX.Element {
             letterSpacing: "var(--eh-tracking-widest)",
           }}
         >
-          Step {props.stepIndex + 1} / 4 · {props.stepLabel}
+          Step {props.stepIndex + 1} / 5 · {props.stepLabel}
         </span>
       </div>
     </header>
@@ -599,8 +523,8 @@ function LoadingPanel(props: {
 // ===========================================================================
 
 interface FormPanelProps {
-  state: Extract<BuildPageState, { kind: "form" }>;
-  onChange: (next: Partial<Extract<BuildPageState, { kind: "form" }>>) => void;
+  state: BuildFormState;
+  onChange: (next: Partial<BuildFormState>) => void;
   onBuild: () => void;
   onDiscardDraft: () => void;
   onDismissDraftBanner: () => void;
@@ -1175,22 +1099,6 @@ function Stat(props: { label: string; value: string }): JSX.Element {
       </div>
     </div>
   );
-}
-
-/**
- * True when an error came from an `AbortController.abort()` chain —
- * either via our own `AbortError` class (see `core/archiveHashing`) or
- * a DOMException thrown by the underlying browser/Electron APIs.
- * Distinguishes user cancellation from real failures so we can route
- * cancellation to a friendly toast instead of the error report modal.
- */
-function isAbortError(err: unknown): boolean {
-  if (err instanceof Error) {
-    if (err.name === "AbortError") return true;
-    const message = err.message ?? "";
-    if (message.toLowerCase().includes("cancelled")) return true;
-  }
-  return false;
 }
 
 async function openShellPath(p: string): Promise<void> {

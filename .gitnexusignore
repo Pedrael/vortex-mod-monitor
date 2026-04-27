@@ -1,0 +1,7 @@
+# Re-include the curator-side wizard directory which gitnexus's
+# default heuristics filter (the `build` basename matches output
+# folders like dist/build/, but our UI source has a legitimate
+# src/ui/pages/build/ directory).
+!build/
+!src/ui/pages/build/
+!src/ui/pages/build/**
