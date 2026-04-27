@@ -13,8 +13,8 @@
     "gitnexus:setup": "bash scripts/gitnexus-setup.sh",
     "gitnexus:refresh": "gitnexus analyze --embeddings --skills",
     "gitnexus:full": "gitnexus analyze --force --embeddings --skills",
-    "gitnexus:wiki": "gitnexus wiki",
-    "gitnexus:wiki:review": "gitnexus wiki --review",
+    "gitnexus:wiki": "gitnexus wiki --model gpt-4o-mini --base-url https://api.openai.com/v1",
+    "gitnexus:wiki:review": "gitnexus wiki --model gpt-4o-mini --base-url https://api.openai.com/v1 --review",
     "gitnexus:status": "gitnexus status",
     "gitnexus:list": "gitnexus list"
   },
