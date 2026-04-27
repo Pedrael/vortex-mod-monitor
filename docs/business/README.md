@@ -74,6 +74,12 @@ When prose disagrees with code, the prose is the spec — open an issue or fix t
 | [`INSTALL_LEDGER.md`](INSTALL_LEDGER.md) | The on-disk receipt store at `<appData>/Vortex/event-horizon/installs/<package.id>.json` — schema, lifecycle (first install, upgrade, missing receipt, re-install, uninstall), why receipts and not Vortex mod attributes, atomic-write contract, validation rules, and the load-bearing "receipts are the only source of truth for cross-release lineage" invariant. |
 | [`INSTALL_DRIVER.md`](INSTALL_DRIVER.md) | The install driver (`src/core/installer/runInstall.ts` + helpers) — the only piece of Event Horizon that mutates Vortex state or the filesystem. Slice 6a's fresh-profile happy path: profile create + switch, sequential mod install primitives (Nexus auto-install, bundled archive extract+install), `plugins.txt` write with backup, deploy + receipt write. Failure semantics (no rollback; partial profile preserved). Slice 6b/6c scope. |
 
+### React UI (Phase 5+)
+
+| Spec | Topic |
+|---|---|
+| [`UI_FOUNDATION.md`](UI_FOUNDATION.md) | Phase 5.0 — the design-system foundation: Gargantua palette tokens, motion language, animated `EventHorizonLogo` SVG, page shell + nav + route table, UI primitives (Button/Card/Pill/ProgressRing/StepDots/Page), and the `EventHorizonMainPage` registered with Vortex. Pure-CSS animations (no bundler), reduced-motion support, single inline `<style>` injection strategy. Foundation for the install (5.1) / collections (5.2) / build (5.3) wizards that land in their own slices. |
+
 ## Conventions in these docs
 
 - File paths are **always relative to the repo root** unless otherwise noted.

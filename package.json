@@ -12,6 +12,8 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/react": "^16.14.69",
+    "react": "^16.14.0",
     "typescript": "^5.7.0",
     "vortex-api": "github:Nexus-Mods/vortex-api"
   }
