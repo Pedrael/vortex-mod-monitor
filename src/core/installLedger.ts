@@ -57,6 +57,9 @@ import type {
   InstallReceipt,
   InstallReceiptMod,
   InstallTargetMode,
+  ModVerificationReceipt,
+  RulesApplicationReceipt,
+  UserlistApplicationReceipt,
 } from "../types/installLedger";
 import { INSTALL_LEDGER_SCHEMA_VERSION } from "../types/installLedger";
 import type { SupportedGameId } from "../types/ehcoll";
@@ -227,11 +230,35 @@ export function parseReceipt(raw: string): InstallReceipt {
     mods = validateModEntries(obj.mods, errors);
   }
 
+  // Optional additive fields. These are preserved through the
+  // serialize ↔ parse roundtrip with light shape checks (object /
+  // array) but without exhaustive field validation — the data is
+  // already vetted at write time by the type system on the driver
+  // side. Hand-edited receipts that put garbage here will round-
+  // trip the garbage; the consumer code handles missing or weird
+  // shapes gracefully (`(receipt.rulesApplication?.appliedRuleCount
+  // ?? 0)` etc.).
+  const rulesApplication = passthroughObject(
+    obj.rulesApplication,
+    "rulesApplication",
+    errors,
+  ) as RulesApplicationReceipt | undefined;
+  const userlistApplication = passthroughObject(
+    obj.userlistApplication,
+    "userlistApplication",
+    errors,
+  ) as UserlistApplicationReceipt | undefined;
+  const verifications = passthroughArray(
+    obj.verifications,
+    "verifications",
+    errors,
+  ) as ModVerificationReceipt[] | undefined;
+
   if (errors.length > 0) {
     throw new InstallLedgerError(errors);
   }
 
-  return {
+  const out: InstallReceipt = {
     schemaVersion: INSTALL_LEDGER_SCHEMA_VERSION,
     packageId: packageId as string,
     packageVersion: packageVersion as string,
@@ -243,6 +270,45 @@ export function parseReceipt(raw: string): InstallReceipt {
     installTargetMode: installTargetMode as InstallTargetMode,
     mods,
   };
+  if (rulesApplication !== undefined) out.rulesApplication = rulesApplication;
+  if (userlistApplication !== undefined)
+    out.userlistApplication = userlistApplication;
+  if (verifications !== undefined) out.verifications = verifications;
+  return out;
+}
+
+/**
+ * Lightweight passthrough validator. Returns the value when it's a
+ * plain object (not array / null), undefined when missing, and
+ * pushes a single error otherwise. Used for additive optional
+ * fields where doing exhaustive sub-field validation would double
+ * the size of the parser without catching anything the type system
+ * doesn't already enforce on writes.
+ */
+function passthroughObject(
+  value: unknown,
+  key: string,
+  errors: string[],
+): Record<string, unknown> | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "object" || Array.isArray(value)) {
+    errors.push(`${key} must be an object when present.`);
+    return undefined;
+  }
+  return value as Record<string, unknown>;
+}
+
+function passthroughArray(
+  value: unknown,
+  key: string,
+  errors: string[],
+): unknown[] | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value)) {
+    errors.push(`${key} must be an array when present.`);
+    return undefined;
+  }
+  return value;
 }
 
 /**

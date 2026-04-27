@@ -162,6 +162,31 @@ export type AuditorMod = {
    * ]
    */
   fomodSelections: FomodSelectionStep[];
+
+  /**
+   * Vortex's `installationPath` for this mod — relative to
+   * `selectors.installPathForGame(state, gameId)`. Captured at audit
+   * time so {@link captureStagingFiles} can locate the on-disk staging
+   * folder without re-querying state. Optional because legacy mod
+   * records may not have one set.
+   */
+  installationPath?: string;
+
+  /**
+   * Snapshot of the curator's staging folder for this mod, populated
+   * by {@link captureStagingFiles} during build (NOT during snapshot
+   * export). Drives the user-side {@link verifyModInstall} integrity
+   * check.
+   *
+   * Optional — present only when:
+   *   1. The build was run with `verificationLevel !== "none"`, AND
+   *   2. The mod's `installationPath` resolved to a real directory.
+   *
+   * The diff/comparison side of the codebase (`compareMods`) does
+   * NOT diff this field — it's an output of build, not a property of
+   * the mod's identity.
+   */
+  stagingFiles?: import("../types/ehcoll").EhcollStagingFile[];
 };
 
 export function getActiveGameId(state: types.IState): string | undefined {
@@ -475,6 +500,11 @@ export function getModsForProfile(
       enabledINITweaks: normalizeStringArray(mod?.enabledINITweaks),
       installTime: normalizeInstallTime(attributes.installTime),
       installOrder: 0,
+      installationPath:
+        typeof mod?.installationPath === "string" &&
+        mod.installationPath.length > 0
+          ? mod.installationPath
+          : undefined,
     };
   });
 

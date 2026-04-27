@@ -51,6 +51,7 @@ import type {
   RequiredExtension,
   SchemaVersion,
   SupportedGameId,
+  VerificationLevel,
   VortexDeploymentMethod,
 } from "../../types/ehcoll";
 
@@ -129,6 +130,17 @@ export type BuildManifestInput = {
     createdAt?: string;
     /** Default false — skip+warn rather than abort. */
     strictMissingMods?: boolean;
+    /**
+     * Curator's chosen integrity-verification depth. Drives whether the
+     * snapshot's mods carry `stagingFiles` (and whether each entry has
+     * a sha256). Defaults to `"fast"` — full file lists with size, no
+     * hashes — which catches Vortex's "lost file" bug without making
+     * builds painful for large collections.
+     *
+     * The `"none"` value is reserved for backward-compat / explicit
+     * opt-out by the curator; new builds should pick fast or thorough.
+     */
+    verificationLevel?: VerificationLevel;
   };
 
   game: {
@@ -296,6 +308,7 @@ function buildPackageMetadata(
     createdAt: pkg.createdAt ?? new Date().toISOString(),
     description: pkg.description,
     strictMissingMods: pkg.strictMissingMods ?? false,
+    verificationLevel: pkg.verificationLevel ?? "fast",
   };
 }
 
@@ -420,6 +433,10 @@ function buildModInstallState(
     enabledINITweaks:
       mod.enabledINITweaks && mod.enabledINITweaks.length > 0
         ? mod.enabledINITweaks
+        : undefined,
+    stagingFiles:
+      mod.stagingFiles && mod.stagingFiles.length > 0
+        ? mod.stagingFiles
         : undefined,
   };
 }

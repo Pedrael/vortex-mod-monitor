@@ -102,7 +102,26 @@ export type PackageMetadata = {
    *  - `false` → skip + warn, surface in the post-install drift report.
    */
   strictMissingMods: boolean;
+  /**
+   * How thoroughly the curator captured per-mod file integrity data at
+   * build time. Drives what the user-side {@link verifyModInstall} check
+   * can do post-install:
+   *  - `"none"`     → no `stagingFiles` captured. Verification is skipped
+   *                   for backward compat with manifests built before this
+   *                   field existed.
+   *  - `"fast"`     → `stagingFiles` populated with `{ path, size }` only.
+   *                   Catches Vortex's "lost file" bug + truncations.
+   *  - `"thorough"` → `stagingFiles` populated with `{ path, size, sha256 }`.
+   *                   Additionally catches silent corruption (file present
+   *                   with right size but wrong bytes).
+   *
+   * Optional for backward compatibility: parsers treat absence as
+   * `"none"`. New manifests always set this explicitly.
+   */
+  verificationLevel?: VerificationLevel;
 };
+
+export type VerificationLevel = "none" | "fast" | "thorough";
 
 // ---------------------------------------------------------------------------
 // Game / Vortex environment metadata
@@ -273,6 +292,46 @@ export type ModInstallState = {
   fileOverrides?: string[];
   /** INI tweak filenames the curator enabled on this mod. */
   enabledINITweaks?: string[];
+  /**
+   * Snapshot of the curator's staging folder for this mod, captured at
+   * build time. Used by the user-side {@link verifyModInstall} check to
+   * detect Vortex's "lost file" / truncation / corruption bugs after a
+   * mod install completes.
+   *
+   * Source: walking `<curator install path>/<mod.installationPath>` on
+   * the curator's machine after Vortex finished extracting the archive
+   * (post-FOMOD-resolution, so the file set reflects the curator's
+   * answers to the wizard, not the raw archive contents).
+   *
+   * Optional because:
+   *  - Older manifests (pre-Tier-1) don't have it.
+   *  - Curators may opt out via `package.verificationLevel = "none"`
+   *    for very large collections where build time matters more than
+   *    integrity catching.
+   *
+   * The list is **not** the complete set the user MUST have — if the
+   * user picks different FOMOD answers, file sets legitimately differ.
+   * The verifier treats "extra files on user side" as informational and
+   * "missing files on user side" as the only hard failure (with retry).
+   */
+  stagingFiles?: EhcollStagingFile[];
+};
+
+/**
+ * One file from the curator's staging folder for a mod, recorded at
+ * build time. `sha256` is only set when the curator built with
+ * `verificationLevel = "thorough"`.
+ */
+export type EhcollStagingFile = {
+  /** POSIX-style path, relative to the mod's staging root. */
+  path: string;
+  /** File size in bytes. */
+  size: number;
+  /**
+   * SHA-256 of the file contents, lowercase hex. Present iff the
+   * curator's manifest was built with `verificationLevel = "thorough"`.
+   */
+  sha256?: string;
 };
 
 export type ModUiAttributes = {

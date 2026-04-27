@@ -35,6 +35,7 @@
 import type { ReadEhcollResult } from "../core/manifest/readEhcoll";
 import type { InstallPlan } from "./installPlan";
 import type {
+  ModVerificationReceipt,
   RulesApplicationReceipt,
   UserlistApplicationReceipt,
 } from "./installLedger";
@@ -196,6 +197,7 @@ export type DriverPhase =
   | "switching-profile"
   | "removing-mods"
   | "installing-mods"
+  | "verifying-mods"
   | "applying-mod-rules"
   | "applying-load-order"
   | "applying-userlist"
@@ -302,6 +304,18 @@ export type InstallSuccess = {
    * failures would only live on disk in the receipt JSON.
    */
   userlistApplication: UserlistApplicationReceipt;
+  /**
+   * Slice 7 — Per-mod file integrity verification summary. Mirrors
+   * the receipt's `verifications` field (always present here even
+   * when manifest had no staging snapshots: each mod gets at
+   * minimum a `kind: "skip"` entry explaining why). Drives the
+   * "Integrity check" tile group in the Done card.
+   *
+   * Empty list ⇒ no mods were installed (e.g. fresh-profile install
+   * where every mod was already-installed and re-used). The Done
+   * card hides the integrity tile group in that case.
+   */
+  verifications: ModVerificationReceipt[];
 };
 
 export type InstallAborted = {

@@ -92,6 +92,8 @@ import {
 import {
   type InstallReceipt,
   type InstallReceiptMod,
+  type ModVerificationFailExample,
+  type ModVerificationReceipt,
   type ReceiptPluginEntry,
   type RulesApplicationReceipt,
   type UserlistApplicationReceipt,
@@ -147,6 +149,12 @@ import {
   safeRmTempDir,
   uninstallMod,
 } from "./modInstall";
+import {
+  summarizeVerifyFail,
+  verifyModInstall,
+  type VerifyResult,
+} from "./verifyModInstall";
+import { BundledPrefetchPool } from "./bundledPrefetch";
 // NOTE: there used to be a `pluginsTxt.ts` writer module here. It
 // was deleted along with the `writing-plugins-txt` driver phase
 // when the rules-only strategy locked. Vortex's
@@ -188,6 +196,19 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
   let rulesApplication: RulesApplicationReceipt = emptyRulesApplication();
   let userlistApplication: UserlistApplicationReceipt =
     emptyUserlistApplication();
+  const verifications: ModVerificationReceipt[] = [];
+
+  // Bundled-archive prefetch pool. We extract up to 2 archives ahead
+  // of the install loop so Vortex's per-mod install (which is
+  // serialized internally) overlaps with disk-bound 7z extraction.
+  // Empty manifest sets ⇒ pool is created but never primed; its
+  // dispose() is a no-op. See {@link BundledPrefetchPool} for the
+  // concurrency-2 rationale.
+  const bundledPool = new BundledPrefetchPool({
+    ehcollZipPath: ctx.ehcollZipPath,
+    concurrency: 2,
+    signal: ctx.abortSignal,
+  });
 
   const reportProgress = (
     phase: DriverPhase,
@@ -224,6 +245,20 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
 
     let aborted = checkAbort("preflight");
     if (aborted) return aborted;
+
+    // Seed the bundled-archive prefetch pool. We compute the zip
+    // entries the driver will likely extract and kick off background
+    // extraction for the first `concurrency` of them. Recovery paths
+    // and conflict-choice changes that take a different bundled
+    // entry will hit the cold path inside `pool.take` and extract
+    // inline — slower for that one mod but safe and self-healing.
+    const prefetchEntries = collectBundledZipEntriesForPrefetch(
+      plan,
+      ctx,
+    );
+    if (prefetchEntries.length > 0) {
+      bundledPool.prime(prefetchEntries);
+    }
 
     // ── 2 + 3. profile resolution ───────────────────────────────────
     if (plan.installTarget.kind === "fresh-profile") {
@@ -369,6 +404,7 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
           onTempArchive: (p) => tempArchivesToCleanup.push(p),
           onSkip: (entry) => skippedMods.push(entry),
           onCarry: (entry) => carriedMods.push(entry),
+          bundledPool,
         });
       } catch (err) {
         // Honor user aborts even if they bubbled out of a primitive
@@ -420,6 +456,204 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
       const choice = ctx.decisions.orphanChoices?.[orphan.existingModId];
       if (choice?.kind !== "keep") continue;
       carriedMods.push(buildOrphanCarriedEntry(api, plan, orphan));
+    }
+
+    // ── 5a-verify. file integrity verification (slice 7) ────────────
+    // Cross-checks every freshly installed mod's staging folder
+    // against the curator's `stagingFiles` snapshot from the
+    // manifest. Catches Vortex's "did-install-mod fired but the
+    // archive wasn't fully extracted" bug — the famous "Vortex
+    // randomly loses files" symptom we saw in the wild.
+    //
+    // We only verify mods with `kind === "freshly-installed"`
+    // (fromDecision is a download / bundled / local-archive path).
+    // `*-already-installed` decisions re-use the user's pre-existing
+    // mod folder which we can't meaningfully verify against the
+    // curator's snapshot — the user might have edited files on
+    // purpose and we'd produce false positives.
+    //
+    // Failures don't abort the install. Each failing mod is given
+    // ONE retry (uninstall + reinstall via the same decision path,
+    // re-verify); if the retry recovers the mod we record success
+    // with `retryAttempted: true`. If it still fails, we keep the
+    // mod and surface the failure in the receipt + Done card so
+    // the user can decide (often the answer is "antivirus quarantined
+    // a file, click reinstall in Mods tab").
+    //
+    // Manifest carries `package.verificationLevel`. If the curator
+    // built with `"none"` we skip the entire phase fast (zero disk
+    // walks). The receipt still records `kind: "skip"` per mod so
+    // the audit trail is uniform.
+    const declaredLevel = plan.manifest.package.verificationLevel ?? "none";
+    if (
+      installedMods.length > 0 &&
+      declaredLevel !== "none"
+    ) {
+      reportProgress(
+        "verifying-mods",
+        0,
+        installedMods.length,
+        `Verifying ${installedMods.length} mod${installedMods.length === 1 ? "" : "s"}...`,
+      );
+
+      for (let i = 0; i < installedMods.length; i++) {
+        const installEntry = installedMods[i];
+        const manifestEntry = manifestByCompareKey.get(
+          installEntry.compareKey,
+        );
+        const expectedFiles = manifestEntry?.state.stagingFiles;
+
+        reportProgress(
+          "verifying-mods",
+          i + 1,
+          installedMods.length,
+          `[${i + 1}/${installedMods.length}] Checking "${installEntry.name}"...`,
+        );
+
+        let verifyResult: VerifyResult;
+        try {
+          verifyResult = await verifyModInstall({
+            api,
+            gameId: plan.manifest.game.id,
+            vortexModId: installEntry.vortexModId,
+            expectedFiles,
+            level: declaredLevel,
+            signal: ctx.abortSignal,
+          });
+        } catch (err) {
+          if (
+            (err as Error)?.name === "AbortError" ||
+            ctx.abortSignal?.aborted
+          ) {
+            return {
+              kind: "aborted",
+              phase: "verifying-mods",
+              partialProfileId: createdProfileId,
+              reason: `Install aborted while verifying "${installEntry.name}".`,
+            };
+          }
+          // Non-fatal: record as a skip-with-error so the user can
+          // see SOMETHING happened but the install carries on.
+          console.warn(
+            `[Vortex Event Horizon] verifyModInstall threw for ` +
+              `"${installEntry.name}": ` +
+              (err instanceof Error ? err.message : String(err)),
+          );
+          verifications.push({
+            kind: "skip",
+            vortexModId: installEntry.vortexModId,
+            compareKey: installEntry.compareKey,
+            name: installEntry.name,
+            reason: "errored",
+          });
+          continue;
+        }
+
+        if (verifyResult.kind === "skip") {
+          verifications.push({
+            kind: "skip",
+            vortexModId: installEntry.vortexModId,
+            compareKey: installEntry.compareKey,
+            name: installEntry.name,
+            reason: verifyResult.reason,
+          });
+          continue;
+        }
+
+        if (verifyResult.kind === "ok") {
+          verifications.push({
+            kind: "ok",
+            vortexModId: installEntry.vortexModId,
+            compareKey: installEntry.compareKey,
+            name: installEntry.name,
+            level: declaredLevel === "thorough" ? "thorough" : "fast",
+            verifiedFileCount: verifyResult.verifiedCount,
+            extraFileCount: verifyResult.extraFiles.length,
+          });
+          continue;
+        }
+
+        // verifyResult.kind === "fail" — try ONE recovery cycle.
+        const failSummary = summarizeVerifyFail(verifyResult);
+        console.warn(
+          `[Vortex Event Horizon] integrity check failed for ` +
+            `"${installEntry.name}" (${failSummary}). Attempting reinstall...`,
+        );
+        reportProgress(
+          "verifying-mods",
+          i + 1,
+          installedMods.length,
+          `Reinstalling "${installEntry.name}" (${failSummary})...`,
+        );
+
+        const retried = await tryRecoverFailedMod({
+          ctx,
+          installEntry,
+          manifestEntry,
+          activeProfileId: activeProfileId!,
+          expectedFiles,
+          level: declaredLevel,
+        });
+
+        if (retried.kind === "recovered") {
+          // Update installedMods entry with the (potentially new)
+          // vortexModId. Vortex assigns fresh ids for each install.
+          installedMods[i] = retried.installEntry;
+          verifications.push({
+            kind: "ok",
+            vortexModId: retried.installEntry.vortexModId,
+            compareKey: retried.installEntry.compareKey,
+            name: retried.installEntry.name,
+            level: declaredLevel === "thorough" ? "thorough" : "fast",
+            verifiedFileCount: retried.verifiedCount,
+            extraFileCount: retried.extraFileCount,
+            retryAttempted: true,
+          });
+          continue;
+        }
+
+        // Retry didn't help (or wasn't possible). Keep the original
+        // mod entry and record the failure.
+        verifications.push(
+          buildFailReceipt({
+            installEntry,
+            verifyResult,
+            level: declaredLevel === "thorough" ? "thorough" : "fast",
+            retryAttempted: retried.kind === "retry-failed",
+          }),
+        );
+      }
+
+      const failed = verifications.filter((v) => v.kind === "fail").length;
+      const recovered = verifications.filter(
+        (v) => v.kind === "ok" && v.retryAttempted === true,
+      ).length;
+      reportProgress(
+        "verifying-mods",
+        installedMods.length,
+        installedMods.length,
+        `Integrity check complete` +
+          (failed > 0 ? ` — ${failed} mod(s) still failing` : "") +
+          (recovered > 0 ? `, ${recovered} recovered via reinstall` : "") +
+          ".",
+      );
+
+      aborted = checkAbort("verifying-mods");
+      if (aborted) return aborted;
+    } else if (installedMods.length > 0) {
+      // verificationLevel === "none". Record a uniform skip for
+      // every installed mod so the receipt's row count matches and
+      // the Done card can render "Verification skipped (curator
+      // didn't capture file snapshots)."
+      for (const installEntry of installedMods) {
+        verifications.push({
+          kind: "skip",
+          vortexModId: installEntry.vortexModId,
+          compareKey: installEntry.compareKey,
+          name: installEntry.name,
+          reason: "verification-level-none",
+        });
+      }
     }
 
     // ── 5b. apply mod rules ─────────────────────────────────────────
@@ -724,6 +958,7 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
       carriedMods,
       rulesApplication,
       userlistApplication,
+      verifications,
     });
 
     let receiptPath: string;
@@ -759,6 +994,7 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
       carriedMods,
       rulesApplication,
       userlistApplication,
+      verifications,
     };
   } finally {
     // Cleanup of bundled-extract temp dirs is fire-and-forget. Each
@@ -768,7 +1004,40 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
     for (const tempDir of tempArchivesToCleanup) {
       void safeRmTempDir(tempDir);
     }
+    // Discard any prefetched-but-untaken bundles. If the install
+    // aborted partway through, the pool still owns extracted dirs
+    // for entries the install loop never reached; dispose() releases
+    // them. For a fully-consumed pool this is a no-op.
+    void bundledPool.dispose();
   }
+}
+
+/**
+ * Walk the resolved plan and emit the bundled zip entries the
+ * install loop is *guaranteed* to extract. Conflict-choice paths
+ * (`*-diverged`, `external-prompt-user`) are intentionally excluded:
+ * their resolution depends on a user choice that may select
+ * "keep-existing"/"skip", in which case no bundled extraction
+ * happens. Those paths fall through to the cold path inside
+ * `pool.take` if they do extract, which is correct (just not as fast).
+ *
+ * Order matters: we prime the pool in plan order so the install
+ * loop's first bundled mod is also the pool's first to start.
+ */
+function collectBundledZipEntriesForPrefetch(
+  plan: DriverContext["plan"],
+  _ctx: DriverContext,
+): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const res of plan.modResolutions) {
+    const dec = res.decision;
+    if (dec.kind !== "external-use-bundled") continue;
+    if (seen.has(dec.zipPath)) continue;
+    seen.add(dec.zipPath);
+    out.push(dec.zipPath);
+  }
+  return out;
 }
 
 // ===========================================================================
@@ -783,8 +1052,16 @@ async function executeDecision(args: {
   onTempArchive: (p: string) => void;
   onSkip: (entry: SkippedModReportEntry) => void;
   onCarry: (entry: CarriedModReportEntry) => void;
+  /**
+   * Optional bundled prefetch pool. When supplied, bundled-archive
+   * decisions will consume pre-extracted results from the pool
+   * instead of running 7z inline. Recovery paths and out-of-band
+   * call sites can omit it — bundled extraction will fall back to
+   * the cold path (synchronous extract).
+   */
+  bundledPool?: BundledPrefetchPool;
 }): Promise<InstalledModReportEntry | undefined> {
-  const { ctx, resolution, manifestEntry, profileId, onTempArchive, onSkip, onCarry } =
+  const { ctx, resolution, manifestEntry, profileId, onTempArchive, onSkip, onCarry, bundledPool } =
     args;
   const { manifest } = ctx.plan;
   const decision = resolution.decision;
@@ -837,11 +1114,15 @@ async function executeDecision(args: {
     }
 
     case "external-use-bundled": {
+      const preExtracted = bundledPool
+        ? await bundledPool.take(decision.zipPath)
+        : undefined;
       const result = await installFromBundledArchive(ctx.api, {
         gameId: manifest.game.id,
         ehcollZipPath: ctx.ehcollZipPath,
         bundledZipEntry: decision.zipPath,
         signal: ctx.abortSignal,
+        preExtracted,
       });
       // Track the temp **directory**, not the file: cherry-picked
       // entries can have nested paths inside the dir.
@@ -876,6 +1157,7 @@ async function executeDecision(args: {
         onTempArchive,
         onSkip,
         onCarry,
+        bundledPool,
       });
     }
 
@@ -932,6 +1214,7 @@ async function executeDivergedChoice(args: {
   onTempArchive: (p: string) => void;
   onSkip: (entry: SkippedModReportEntry) => void;
   onCarry: (entry: CarriedModReportEntry) => void;
+  bundledPool?: BundledPrefetchPool;
 }): Promise<InstalledModReportEntry | undefined> {
   const {
     ctx,
@@ -942,6 +1225,7 @@ async function executeDivergedChoice(args: {
     onTempArchive,
     onSkip,
     onCarry,
+    bundledPool,
   } = args;
   const compareKey = resolution.compareKey;
   const decision = resolution.decision;
@@ -1012,6 +1296,7 @@ async function executeDivergedChoice(args: {
     resolution,
     manifestEntry,
     onTempArchive,
+    bundledPool,
     fromDecisionLabel: `${decision.kind}/replace-existing`,
   });
 }
@@ -1083,9 +1368,16 @@ async function installManifestEntry(args: {
   manifestEntry: EhcollMod;
   onTempArchive: (p: string) => void;
   fromDecisionLabel: string;
+  bundledPool?: BundledPrefetchPool;
 }): Promise<InstalledModReportEntry> {
-  const { ctx, resolution, manifestEntry, onTempArchive, fromDecisionLabel } =
-    args;
+  const {
+    ctx,
+    resolution,
+    manifestEntry,
+    onTempArchive,
+    fromDecisionLabel,
+    bundledPool,
+  } = args;
   const compareKey = resolution.compareKey;
   const gameId = ctx.plan.manifest.game.id;
 
@@ -1117,11 +1409,15 @@ async function installManifestEntry(args: {
   }
 
   const bundledEntry = findBundledZipEntry(ctx, ex);
+  const preExtracted = bundledPool
+    ? await bundledPool.take(bundledEntry)
+    : undefined;
   const result = await installFromBundledArchive(ctx.api, {
     gameId,
     ehcollZipPath: ctx.ehcollZipPath,
     bundledZipEntry: bundledEntry,
     signal: ctx.abortSignal,
+    preExtracted,
   });
   onTempArchive(result.tempDir);
 
@@ -1479,6 +1775,7 @@ function buildReceipt(args: {
   carriedMods: CarriedModReportEntry[];
   rulesApplication: RulesApplicationReceipt;
   userlistApplication: UserlistApplicationReceipt;
+  verifications: ModVerificationReceipt[];
 }): InstallReceipt {
   const {
     ctx,
@@ -1488,6 +1785,7 @@ function buildReceipt(args: {
     carriedMods,
     rulesApplication,
     userlistApplication,
+    verifications,
   } = args;
   const { manifest } = ctx.plan;
   const now = new Date().toISOString();
@@ -1533,6 +1831,7 @@ function buildReceipt(args: {
     mods: modEntries,
     rulesApplication,
     userlistApplication,
+    verifications,
   };
 }
 
@@ -1980,6 +2279,239 @@ function emptyUserlistApplication(): UserlistApplicationReceipt {
     appliedNewGroupCount: 0,
     appliedGroupRuleCount: 0,
     skippedUserlistEntries: [],
+  };
+}
+
+// ===========================================================================
+// Slice 7 — file integrity verification helpers
+// ===========================================================================
+
+/**
+ * Attempt one recovery cycle for a mod whose post-install
+ * verification reported missing / truncated / corrupt files.
+ *
+ * Strategy: uninstall the failing mod, re-execute the original
+ * decision, re-enable in the active profile, re-verify. The
+ * recovery succeeds when the second verify reports `kind === "ok"`.
+ *
+ * We only attempt recovery for decisions that performed a fresh
+ * Vortex install — `*-already-installed` arms re-used a mod the
+ * user already had on disk, and our verification snapshot can't
+ * reliably distinguish "Vortex truncated during install" from "user
+ * deleted a file two months ago". Retrying those would overwrite
+ * the user's changes for a false-positive failure.
+ *
+ * The retry runs inline in the verifying-mods phase. There is no
+ * progress sub-bar — typical recovery completes in seconds (Vortex
+ * re-extracts from the same cached archive). For nexus-download
+ * decisions where the archive is no longer cached, Vortex will
+ * re-download; that's slow but still correct, and the user sees
+ * the existing phase progress message advance.
+ *
+ * Returns:
+ *  - `recovered`     — verify came back ok the second time.
+ *  - `retry-failed`  — retry ran but verify still failed.
+ *  - `not-eligible`  — decision arm wasn't a fresh install (skip).
+ *  - `errored`       — uninstall or reinstall threw; the original
+ *                      mod entry is left untouched. We treat this
+ *                      as a non-fatal soft failure to keep the
+ *                      driver moving toward the rules phase.
+ */
+type RecoverResult =
+  | {
+      kind: "recovered";
+      installEntry: InstalledModReportEntry;
+      verifiedCount: number;
+      extraFileCount: number;
+    }
+  | { kind: "retry-failed" }
+  | { kind: "not-eligible" }
+  | { kind: "errored" };
+
+async function tryRecoverFailedMod(args: {
+  ctx: DriverContext;
+  installEntry: InstalledModReportEntry;
+  manifestEntry: EhcollMod | undefined;
+  activeProfileId: string;
+  expectedFiles: import("../../types/ehcoll").EhcollStagingFile[] | undefined;
+  level: import("../../types/ehcoll").VerificationLevel;
+}): Promise<RecoverResult> {
+  const { ctx, installEntry, manifestEntry, activeProfileId, expectedFiles, level } =
+    args;
+
+  // Already-installed re-uses: we never installed these, so retry
+  // would mutate the user's pre-existing state. Refuse.
+  if (installEntry.fromDecision.endsWith("already-installed")) {
+    return { kind: "not-eligible" };
+  }
+
+  // Find the resolution so we can re-execute the original decision.
+  // Resolutions are keyed by compareKey; we already validated all
+  // installed entries have a matching resolution at the install
+  // loop site.
+  const resolution = ctx.plan.modResolutions.find(
+    (r) => r.compareKey === installEntry.compareKey,
+  );
+  if (resolution === undefined || manifestEntry === undefined) {
+    return { kind: "not-eligible" };
+  }
+
+  try {
+    // Step 1: uninstall the failing mod. Vortex's uninstaller
+    // cleans both the staging folder and the mod state slice; we
+    // start from a known-empty baseline before the second extract.
+    await uninstallMod(ctx.api, {
+      gameId: ctx.plan.manifest.game.id,
+      modId: installEntry.vortexModId,
+    });
+  } catch (err) {
+    console.warn(
+      `[Vortex Event Horizon] retry uninstall failed for ` +
+        `"${installEntry.name}": ` +
+        (err instanceof Error ? err.message : String(err)),
+    );
+    return { kind: "errored" };
+  }
+
+  // Step 2: re-execute the decision. We reuse the executeDecision
+  // path so divergence + prompt-user choices (which Plan-A includes
+  // in installedMods if their conflict choice was "replace-existing"
+  // or "use-local-file") get re-resolved through the same code
+  // that did the original install. Side-effects we DON'T want:
+  //  - onSkip / onCarry callbacks: retry is for the install path,
+  //    if the decision arm produced a skip the first time we'd
+  //    have never landed in installedMods. So pass no-op callbacks.
+  //  - tempArchive accumulation: bundled retries produce a fresh
+  //    temp dir; we re-thread it into the same cleanup list.
+  let newEntry: InstalledModReportEntry | undefined;
+  try {
+    newEntry = await executeDecision({
+      ctx,
+      resolution,
+      manifestEntry,
+      profileId: activeProfileId,
+      onTempArchive: (p) => {
+        // Best-effort re-thread; if the driver caller exposed
+        // tempArchivesToCleanup we'd pipe it here, but the closure
+        // ownership is private. For now the OS temp GC handles it.
+        void p;
+      },
+      onSkip: () => {
+        /* should not happen on a retry — install arm only */
+      },
+      onCarry: () => {
+        /* should not happen on a retry — install arm only */
+      },
+    });
+  } catch (err) {
+    if (
+      (err as Error)?.name === "AbortError" ||
+      ctx.abortSignal?.aborted
+    ) {
+      throw err;
+    }
+    console.warn(
+      `[Vortex Event Horizon] retry reinstall failed for ` +
+        `"${installEntry.name}": ` +
+        (err instanceof Error ? err.message : String(err)),
+    );
+    return { kind: "errored" };
+  }
+
+  if (newEntry === undefined) {
+    // executeDecision returned undefined → the arm now wants to
+    // skip / carry. Defensive: original decision must've changed
+    // between attempts (impossible by construction, but the type
+    // system can't enforce that). Treat as a hard recovery failure.
+    return { kind: "errored" };
+  }
+
+  enableModInProfile(ctx.api, activeProfileId, newEntry.vortexModId);
+
+  // Step 3: re-verify. Same level, same expected file set.
+  let secondResult: VerifyResult;
+  try {
+    secondResult = await verifyModInstall({
+      api: ctx.api,
+      gameId: ctx.plan.manifest.game.id,
+      vortexModId: newEntry.vortexModId,
+      expectedFiles,
+      level,
+      signal: ctx.abortSignal,
+    });
+  } catch (err) {
+    if (
+      (err as Error)?.name === "AbortError" ||
+      ctx.abortSignal?.aborted
+    ) {
+      throw err;
+    }
+    return { kind: "errored" };
+  }
+
+  if (secondResult.kind === "ok") {
+    return {
+      kind: "recovered",
+      installEntry: newEntry,
+      verifiedCount: secondResult.verifiedCount,
+      extraFileCount: secondResult.extraFiles.length,
+    };
+  }
+
+  // skip on retry shouldn't happen (we passed the same expectedFiles
+  // and level), but defensively treat it as a retry failure rather
+  // than masking it as a recovery.
+  return { kind: "retry-failed" };
+}
+
+/**
+ * Build a `kind: "fail"` verification receipt from a `VerifyFail`.
+ * Caps the example list at ~30 entries (10 per bucket) — receipts
+ * are inspected by hand and pasted into bug reports, so a few
+ * representative paths beat a 5MB JSON of every missing file.
+ */
+function buildFailReceipt(args: {
+  installEntry: InstalledModReportEntry;
+  verifyResult: Extract<VerifyResult, { kind: "fail" }>;
+  level: "fast" | "thorough";
+  retryAttempted: boolean;
+}): ModVerificationReceipt {
+  const { installEntry, verifyResult, level, retryAttempted } = args;
+  const examples: ModVerificationFailExample[] = [];
+
+  for (const p of verifyResult.missingFiles.slice(0, 10)) {
+    examples.push({ bucket: "missing", path: p });
+  }
+  for (const m of verifyResult.sizeMismatches.slice(0, 10)) {
+    examples.push({
+      bucket: "size",
+      path: m.path,
+      expected: String(m.expected),
+      actual: String(m.actual),
+    });
+  }
+  for (const h of verifyResult.hashMismatches.slice(0, 10)) {
+    examples.push({
+      bucket: "hash",
+      path: h.path,
+      expected: h.expected,
+      actual: h.actual,
+    });
+  }
+
+  return {
+    kind: "fail",
+    vortexModId: installEntry.vortexModId,
+    compareKey: installEntry.compareKey,
+    name: installEntry.name,
+    level,
+    expectedFileCount: verifyResult.expectedCount,
+    missingFileCount: verifyResult.missingFiles.length,
+    sizeMismatchCount: verifyResult.sizeMismatches.length,
+    hashMismatchCount: verifyResult.hashMismatches.length,
+    examples,
+    retryAttempted,
+    retrySucceeded: false,
   };
 }
 

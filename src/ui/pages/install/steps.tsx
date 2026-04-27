@@ -1645,6 +1645,7 @@ const PHASE_LABELS: Record<DriverProgress["phase"], string> = {
   "switching-profile": "Switching to install profile",
   "removing-mods": "Removing replaced + orphaned mods",
   "installing-mods": "Installing mods",
+  "verifying-mods": "Verifying mod integrity",
   "applying-mod-rules": "Applying mod rules",
   "applying-userlist": "Applying LOOT plugin rules",
   deploying: "Deploying",
@@ -1939,6 +1940,8 @@ function SuccessBody(props: {
         userlist={result.userlistApplication}
       />
 
+      <IntegritySection verifications={result.verifications} />
+
       <p
         style={{
           margin: 0,
@@ -1950,6 +1953,206 @@ function SuccessBody(props: {
       >
         receipt: {result.receiptPath}
       </p>
+    </div>
+  );
+}
+
+/**
+ * Surfaces the slice 7 (file integrity verification) summary the
+ * driver writes into the receipt. Without this, the user has no
+ * way to see when Vortex's "lost files" bug bit during install.
+ *
+ * Layout mirrors {@link RulesAndUserlistSection}: a row of count
+ * tiles + a `<details>` expander for failure detail. Hidden when
+ * the manifest didn't carry a verification snapshot at all (the
+ * curator built with `verificationLevel = "none"` AND every
+ * verification is `kind: "skip"` for that reason — common for old
+ * receipts pre-slice-7).
+ */
+function IntegritySection(props: {
+  verifications: Extract<InstallResult, { kind: "success" }>["verifications"];
+}): JSX.Element | null {
+  const { verifications } = props;
+  if (verifications.length === 0) return null;
+
+  let okCount = 0;
+  let recoveredCount = 0;
+  let failCount = 0;
+  let skipCount = 0;
+  let levelNoneSkips = 0;
+  let totalVerifiedFiles = 0;
+  for (const v of verifications) {
+    if (v.kind === "ok") {
+      okCount++;
+      totalVerifiedFiles += v.verifiedFileCount;
+      if (v.retryAttempted === true) recoveredCount++;
+    } else if (v.kind === "fail") {
+      failCount++;
+    } else {
+      skipCount++;
+      if (v.reason === "verification-level-none") levelNoneSkips++;
+    }
+  }
+
+  // Hide entirely when every entry is a `verification-level-none`
+  // skip — there's nothing to surface and no failure to warn about.
+  // (Mixed-skip receipts where SOME mods carried snapshots still
+  // render so the user sees the partial coverage.)
+  if (
+    okCount === 0 &&
+    recoveredCount === 0 &&
+    failCount === 0 &&
+    skipCount === levelNoneSkips
+  ) {
+    return null;
+  }
+
+  const fails = verifications.filter(
+    (v): v is Extract<typeof v, { kind: "fail" }> => v.kind === "fail",
+  );
+  const recovered = verifications.filter(
+    (v): v is Extract<typeof v, { kind: "ok" }> =>
+      v.kind === "ok" && v.retryAttempted === true,
+  );
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "var(--eh-sp-3)",
+      }}
+    >
+      <div
+        style={{
+          color: "var(--eh-text-muted)",
+          fontSize: "var(--eh-text-xs)",
+          textTransform: "uppercase",
+          letterSpacing: "var(--eh-tracking-widest)",
+        }}
+      >
+        Integrity check
+      </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+          gap: "var(--eh-sp-2)",
+        }}
+      >
+        <Tile
+          label="Mods passing"
+          value={String(okCount)}
+          accent={failCount === 0 ? "var(--eh-success)" : undefined}
+        />
+        <Tile
+          label="Files verified"
+          value={String(totalVerifiedFiles)}
+        />
+        {recoveredCount > 0 && (
+          <Tile
+            label="Recovered"
+            value={String(recoveredCount)}
+            accent="var(--eh-warning)"
+          />
+        )}
+        {failCount > 0 && (
+          <Tile
+            label="Still failing"
+            value={String(failCount)}
+            accent="var(--eh-danger)"
+          />
+        )}
+        {skipCount > 0 && failCount === 0 && (
+          <Tile
+            label="Skipped"
+            value={String(skipCount)}
+          />
+        )}
+      </div>
+      {recovered.length > 0 && fails.length === 0 && (
+        <p
+          style={{
+            margin: 0,
+            color: "var(--eh-text-muted)",
+            fontSize: "var(--eh-text-xs)",
+            lineHeight: "var(--eh-leading-relaxed)",
+          }}
+        >
+          {recovered.length} mod{recovered.length === 1 ? "" : "s"} needed a
+          reinstall to land all files. Common cause: an antivirus briefly
+          quarantined a file mid-extract; Event Horizon retried automatically.
+        </p>
+      )}
+      {fails.length > 0 && (
+        <details>
+          <summary
+            style={{
+              color: "var(--eh-danger)",
+              cursor: "pointer",
+              fontSize: "var(--eh-text-sm)",
+            }}
+          >
+            Show failing mods ({fails.length})
+          </summary>
+          <p
+            style={{
+              margin: "var(--eh-sp-2) 0 var(--eh-sp-2) 0",
+              color: "var(--eh-text-muted)",
+              fontSize: "var(--eh-text-xs)",
+              lineHeight: "var(--eh-leading-relaxed)",
+            }}
+          >
+            These mods extracted with missing or corrupt files even after
+            an automatic reinstall. The most common cause is antivirus
+            quarantining files; check your AV history, restore the files,
+            and click <strong>Reinstall</strong> on the mod in Vortex&apos;s
+            Mods tab. The full per-file diff is in the receipt JSON.
+          </p>
+          <ul
+            style={{
+              margin: 0,
+              paddingLeft: "var(--eh-sp-5)",
+              color: "var(--eh-text-secondary)",
+              fontSize: "var(--eh-text-sm)",
+            }}
+          >
+            {fails.map((f) => (
+              <li key={f.vortexModId} style={{ marginBottom: "var(--eh-sp-2)" }}>
+                <strong>{f.name}</strong>{" "}
+                <em style={{ color: "var(--eh-text-muted)" }}>
+                  — {f.missingFileCount} missing,{" "}
+                  {f.sizeMismatchCount} truncated,{" "}
+                  {f.hashMismatchCount} corrupt of {f.expectedFileCount}
+                  {f.retryAttempted ? "; reinstall did not help" : ""}
+                </em>
+                {f.examples.length > 0 && (
+                  <ul
+                    style={{
+                      margin: "var(--eh-sp-1) 0 0 0",
+                      paddingLeft: "var(--eh-sp-4)",
+                      color: "var(--eh-text-muted)",
+                      fontSize: "var(--eh-text-xs)",
+                      fontFamily: "var(--eh-font-mono)",
+                    }}
+                  >
+                    {f.examples.slice(0, 6).map((ex, i) => (
+                      <li key={i} style={{ wordBreak: "break-all" }}>
+                        [{ex.bucket}] {ex.path}
+                      </li>
+                    ))}
+                    {f.examples.length > 6 && (
+                      <li style={{ color: "var(--eh-text-muted)" }}>
+                        ... and {f.examples.length - 6} more
+                      </li>
+                    )}
+                  </ul>
+                )}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
     </div>
   );
 }

@@ -1,11 +1,11 @@
 ---
 name: errors
-description: "Skill for the Errors area of vortex-mod-monitor. 26 symbols across 6 files."
+description: "Skill for the Errors area of vortex-mod-monitor. 20 symbols across 5 files."
 ---
 
 # Errors
 
-26 symbols | 6 files | Cohesion: 82%
+20 symbols | 5 files | Cohesion: 90%
 
 ## When to Use
 
@@ -19,9 +19,8 @@ description: "Skill for the Errors area of vortex-mod-monitor. 26 symbols across
 |------|---------|
 | `src/ui/errors/formatError.ts` | buildErrorReport, classify, classifyMultiError, classifyGenericError, classifyUnknown (+5) |
 | `src/ui/errors/ErrorReportModal.tsx` | ErrorReportModal, handleCopy, handleSave, tryRequireElectron, copyToClipboard (+1) |
-| `src/core/installLedger.ts` | InstallLedgerError, getReceiptPath, getInstallLedgerDir, listReceipts, isUuid |
 | `src/ui/pages/install/InstallPage.tsx` | ErrorRetry, copyTextToClipboard |
-| `src/ui/errors/ErrorContext.tsx` | onError, ErrorProvider |
+| `src/ui/errors/ErrorContext.tsx` | ErrorProvider |
 | `src/ui/errors/ErrorBoundary.tsx` | componentDidCatch |
 
 ## Entry Points
@@ -32,21 +31,16 @@ Start here when exploring this area:
 - **`ErrorReportModal`** (Function) — `src/ui/errors/ErrorReportModal.tsx:35`
 - **`handleCopy`** (Function) — `src/ui/errors/ErrorReportModal.tsx:60`
 - **`handleSave`** (Function) — `src/ui/errors/ErrorReportModal.tsx:71`
-- **`getReceiptPath`** (Function) — `src/core/installLedger.ts:121`
+- **`formatError`** (Function) — `src/ui/errors/formatError.ts:111`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `InstallLedgerError` | Class | `src/core/installLedger.ts` | 67 |
 | `buildErrorReport` | Function | `src/ui/errors/formatError.ts` | 134 |
 | `ErrorReportModal` | Function | `src/ui/errors/ErrorReportModal.tsx` | 35 |
 | `handleCopy` | Function | `src/ui/errors/ErrorReportModal.tsx` | 60 |
 | `handleSave` | Function | `src/ui/errors/ErrorReportModal.tsx` | 71 |
-| `getReceiptPath` | Function | `src/core/installLedger.ts` | 121 |
-| `getInstallLedgerDir` | Function | `src/core/installLedger.ts` | 137 |
-| `listReceipts` | Function | `src/core/installLedger.ts` | 342 |
-| `onError` | Function | `src/ui/errors/ErrorContext.tsx` | 121 |
 | `formatError` | Function | `src/ui/errors/formatError.ts` | 111 |
 | `ErrorProvider` | Function | `src/ui/errors/ErrorContext.tsx` | 84 |
 | `componentDidCatch` | Method | `src/ui/errors/ErrorBoundary.tsx` | 78 |
@@ -58,27 +52,31 @@ Start here when exploring this area:
 | `classify` | Function | `src/ui/errors/formatError.ts` | 197 |
 | `classifyMultiError` | Function | `src/ui/errors/formatError.ts` | 276 |
 | `classifyGenericError` | Function | `src/ui/errors/formatError.ts` | 293 |
+| `classifyUnknown` | Function | `src/ui/errors/formatError.ts` | 309 |
+| `guessGenericTitle` | Function | `src/ui/errors/formatError.ts` | 329 |
+| `guessGenericHints` | Function | `src/ui/errors/formatError.ts` | 361 |
+| `cleanStack` | Function | `src/ui/errors/formatError.ts` | 392 |
+| `pickStringContext` | Function | `src/ui/errors/formatError.ts` | 408 |
 
 ## Execution Flows
 
 | Flow | Type | Steps |
 |------|------|-------|
-| `Dashboard → InstallLedgerError` | cross_community | 6 |
-| `Dashboard → GetInstallLedgerDir` | cross_community | 5 |
-| `Dashboard → IsUuid` | cross_community | 5 |
-| `Dashboard → OnError` | cross_community | 5 |
-| `LoadDashboardData → ExpectString` | cross_community | 5 |
-| `LoadDashboardData → IsUuid` | cross_community | 5 |
-| `LoadDashboardData → IsSemverLike` | cross_community | 5 |
 | `StartInstall → ClassifyUnknown` | cross_community | 5 |
 | `ErrorProvider → CleanStack` | cross_community | 5 |
 | `ErrorProvider → GuessGenericTitle` | cross_community | 5 |
+| `ErrorProvider → GuessGenericHints` | cross_community | 5 |
+| `ComponentDidCatch → CleanStack` | cross_community | 5 |
+| `ComponentDidCatch → GuessGenericTitle` | cross_community | 5 |
+| `ComponentDidCatch → GuessGenericHints` | cross_community | 5 |
+| `ErrorReportModal → TryRequireElectron` | intra_community | 4 |
+| `PickFile → PickStringContext` | cross_community | 4 |
+| `ResolveStaleReceipt → PickStringContext` | cross_community | 4 |
 
 ## Connected Areas
 
 | Area | Connections |
 |------|-------------|
-| Cluster_13 | 1 calls |
 | Pages | 1 calls |
 
 ## How to Explore

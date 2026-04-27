@@ -40,6 +40,7 @@ import { captureLoadOrder } from "../../../core/loadOrder";
 import { captureUserlist } from "../../../core/userlist";
 import { getCurrentPluginsTxtPath } from "../../../core/comparePlugins";
 import { buildManifest } from "../../../core/manifest/buildManifest";
+import { captureStagingFiles } from "../../../core/manifest/captureStagingFiles";
 import {
   packageEhcoll,
   type BundledArchiveSpec,
@@ -55,6 +56,7 @@ import {
 } from "../../../core/manifest/collectionConfig";
 import type {
   SupportedGameId,
+  VerificationLevel,
   VortexDeploymentMethod,
 } from "../../../types/ehcoll";
 
@@ -122,6 +124,7 @@ export interface BuildContext {
 
 export type BuildProgressPhase =
   | "hashing-mods"
+  | "inspecting-mods"
   | "capturing-deployment"
   | "capturing-load-order"
   | "capturing-userlist"
@@ -168,6 +171,19 @@ export interface BuildPipelineResult {
   pluginOrderCount: number;
   userlistPluginCount: number;
   userlistGroupCount: number;
+  /**
+   * What integrity level the build captured per mod. Surfaced in the
+   * Done card so the curator can confirm "yes, my package will let
+   * users detect Vortex's lost-file bug" or "I picked fast for speed
+   * and accept the trade-off".
+   */
+  verificationLevel: VerificationLevel;
+  /**
+   * Total number of `stagingFiles` entries across all mods. Useful as
+   * a "this build inspected N files" sanity check; zero when
+   * verificationLevel is `"none"`.
+   */
+  stagingFileCount: number;
 }
 
 export interface BuildOverrides {
@@ -175,6 +191,16 @@ export interface BuildOverrides {
   externalMods: Record<string, ExternalModConfigEntry>;
   readme: string;
   changelog: string;
+  /**
+   * Curator's chosen integrity-verification depth. Defaults to
+   * `"fast"` (file-list + sizes only — catches Vortex's "lost file"
+   * bug without making large builds painful). `"thorough"` adds
+   * SHA-256 per file, which catches silent corruption but reads
+   * every file's bytes on the curator's machine.
+   *
+   * `"none"` is the explicit opt-out.
+   */
+  verificationLevel?: VerificationLevel;
 }
 
 // ===========================================================================
@@ -339,7 +365,8 @@ export async function runBuildPipeline(
 
   checkAbort();
   const state = api.getState();
-  const { gameId, mods } = context;
+  const { gameId } = context;
+  let mods = context.mods;
 
   // ── 1. Apply form overrides on top of the loaded config ────────────────
   const slug = slugify(curator.name);
@@ -384,6 +411,45 @@ export async function runBuildPipeline(
   await saveCollectionConfig({ configDir, slug, config: collectionConfig });
 
   // ── 2. Capture deployment + load order + plugins.txt ───────────────────
+  // ── 2a. Inspect curator staging folders (file-integrity capture) ──────
+  // Walks `<install-path>/<mod.installationPath>` for each mod and
+  // records `{path, size, sha256?}` into `mod.stagingFiles`. The
+  // user-side `verifyModInstall` check uses this to detect Vortex's
+  // "lost file" bug after a mod install completes.
+  //
+  // `level === "none"` skips the walk entirely (no allocations, no
+  // I/O); chosen by the curator when they want fast builds and
+  // accept losing the post-install integrity check.
+  const verificationLevel: VerificationLevel = overrides.verificationLevel ?? "fast";
+  if (verificationLevel !== "none") {
+    checkAbort();
+    onProgress?.({
+      phase: "inspecting-mods",
+      message: `Inspecting ${mods.length} mod folders (${verificationLevel})...`,
+      done: 0,
+      total: mods.length,
+    });
+    mods = await captureStagingFiles(state, gameId, mods, {
+      level: verificationLevel,
+      signal,
+      onProgress: (done, total, mod) => {
+        onProgress?.({
+          phase: "inspecting-mods",
+          message:
+            verificationLevel === "thorough"
+              ? `Hashing files in mod folders (${done} / ${total})...`
+              : `Inspecting mod folders (${done} / ${total})...`,
+          done,
+          total,
+          currentItem: mod.name,
+        });
+      },
+      onWarn: (mod, message) => {
+        console.warn(`[event-horizon] inspect ${mod.name}: ${message}`);
+      },
+    });
+  }
+
   checkAbort();
   onProgress?.({ phase: "capturing-deployment" });
   const deploymentManifests = await captureDeploymentManifests(
@@ -427,6 +493,7 @@ export async function runBuildPipeline(
       author: curator.author,
       description: curator.description.length > 0 ? curator.description : undefined,
       strictMissingMods: false,
+      verificationLevel,
     },
     game: {
       version: resolveGameVersion(state, gameId),
@@ -468,6 +535,11 @@ export async function runBuildPipeline(
   });
 
   void configPath;
+  let stagingFileCount = 0;
+  for (const m of manifest.mods) {
+    stagingFileCount += m.state.stagingFiles?.length ?? 0;
+  }
+
   return {
     outputPath,
     outputBytes: result.outputBytes,
@@ -479,6 +551,8 @@ export async function runBuildPipeline(
     pluginOrderCount: manifest.plugins.order.length,
     userlistPluginCount: manifest.userlist.plugins.length,
     userlistGroupCount: manifest.userlist.groups.length,
+    verificationLevel,
+    stagingFileCount,
   };
 }
 

@@ -309,6 +309,17 @@ export async function installFromBundledArchive(
     sevenZip?: SevenZipApi;
     /** Optional cancellation token; see {@link installNexusViaApi}. */
     signal?: AbortSignal;
+    /**
+     * Optional pre-extracted bundle from
+     * {@link BundledPrefetchPool.take}. When supplied, skips the 7z
+     * extraction step and uses the supplied paths directly. The
+     * caller transfers tempDir ownership to this function — we keep
+     * the same on-failure cleanup contract as the cold path
+     * (cleanup tempDir if start-install rejects) and the same
+     * happy-path contract (return tempDir, caller schedules
+     * cleanup after Vortex consumes the archive).
+     */
+    preExtracted?: { extractedPath: string; tempDir: string };
   },
 ): Promise<{
   vortexModId: string;
@@ -321,11 +332,13 @@ export async function installFromBundledArchive(
     throw makeAbortErrorLocal("install from bundled archive");
   }
 
-  const { extractedPath, tempDir } = await extractBundledFromEhcoll(
-    args.ehcollZipPath,
-    args.bundledZipEntry,
-    sevenZip,
-  );
+  const { extractedPath, tempDir } =
+    args.preExtracted ??
+    (await extractBundledFromEhcoll(
+      args.ehcollZipPath,
+      args.bundledZipEntry,
+      sevenZip,
+    ));
 
   try {
     if (args.signal?.aborted) {

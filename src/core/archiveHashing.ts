@@ -7,6 +7,7 @@ import type { types } from "vortex-api";
 
 import type { AuditorMod } from "./getModsListForProfile";
 import { AbortError } from "../utils/abortError";
+import { pMap } from "../utils/pMap";
 
 /**
  * Sentinel error emitted by `pMap` and `enrichModsWithArchiveHashes`
@@ -102,50 +103,6 @@ export function getModArchivePath(
   }
 
   return path.join(baseDir, download.localPath);
-}
-
-/**
- * Bounded-concurrency map. We don't pull in p-limit just for this.
- *
- * If `signal` is provided and gets aborted, in-flight workers stop
- * scheduling new items and the resulting promise rejects with an
- * `AbortError`. Already-completed work is discarded — the partial
- * `results` array is not surfaced because the caller's per-item
- * callback (e.g. `onProgress`) already had a chance to record it.
- */
-async function pMap<T, R>(
-  items: T[],
-  concurrency: number,
-  fn: (item: T, index: number) => Promise<R>,
-  signal?: AbortSignal,
-): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let cursor = 0;
-
-  if (signal?.aborted) {
-    throw new AbortError();
-  }
-
-  const workerCount = Math.max(1, Math.min(concurrency, items.length));
-  const workers: Promise<void>[] = [];
-
-  for (let w = 0; w < workerCount; w++) {
-    workers.push(
-      (async () => {
-        while (cursor < items.length) {
-          if (signal?.aborted) return;
-          const idx = cursor++;
-          results[idx] = await fn(items[idx], idx);
-        }
-      })(),
-    );
-  }
-
-  await Promise.all(workers);
-  if (signal?.aborted) {
-    throw new AbortError();
-  }
-  return results;
 }
 
 export type EnrichOptions = {

@@ -1,11 +1,11 @@
 ---
 name: runtime
-description: "Skill for the Runtime area of vortex-mod-monitor. 11 symbols across 4 files."
+description: "Skill for the Runtime area of vortex-mod-monitor. 6 symbols across 3 files."
 ---
 
 # Runtime
 
-11 symbols | 4 files | Cohesion: 76%
+6 symbols | 3 files | Cohesion: 83%
 
 ## When to Use
 
@@ -17,8 +17,7 @@ description: "Skill for the Runtime area of vortex-mod-monitor. 11 symbols acros
 
 | File | Symbols |
 |------|---------|
-| `src/ui/runtime/ehRuntime.ts` | EHRuntime, getSnapshot, subscribe, getEHRuntime, setBuildBusy (+2) |
-| `src/ui/pages/install/installSession.ts` | getSnapshot, notify |
+| `src/ui/runtime/ehRuntime.ts` | EHRuntime, getSnapshot, subscribe, getEHRuntime |
 | `src/ui/runtime/useEHRuntime.ts` | useEHRuntime |
 | `src/ui/runtime/ConcurrentOpBanner.tsx` | ConcurrentOpBanner |
 
@@ -40,26 +39,21 @@ Start here when exploring this area:
 | `EHRuntime` | Class | `src/ui/runtime/ehRuntime.ts` | 38 |
 | `getSnapshot` | Method | `src/ui/runtime/ehRuntime.ts` | 42 |
 | `subscribe` | Method | `src/ui/runtime/ehRuntime.ts` | 46 |
-| `setBuildBusy` | Method | `src/ui/runtime/ehRuntime.ts` | 53 |
-| `setInstallBusy` | Method | `src/ui/runtime/ehRuntime.ts` | 59 |
-| `notify` | Method | `src/ui/runtime/ehRuntime.ts` | 65 |
-| `getSnapshot` | Method | `src/ui/pages/install/installSession.ts` | 92 |
-| `notify` | Method | `src/ui/pages/install/installSession.ts` | 421 |
 
 ## Execution Flows
 
 | Flow | Type | Steps |
 |------|------|-------|
 | `ReceiptDetailModal → EHRuntime` | cross_community | 7 |
-| `ReceiptDetailModal → Notify` | cross_community | 7 |
-| `ReceiptDetailModal → GetSnapshot` | cross_community | 6 |
 | `ApplyGroupRule → EHRuntime` | cross_community | 6 |
-| `ApplyGroupRule → Notify` | cross_community | 6 |
 | `ApplyGroupDefinition → EHRuntime` | cross_community | 6 |
-| `ApplyGroupDefinition → Notify` | cross_community | 6 |
 | `ApplyPluginGroup → EHRuntime` | cross_community | 6 |
-| `ApplyPluginGroup → Notify` | cross_community | 6 |
 | `DecisionsStep → EHRuntime` | cross_community | 5 |
+| `OnBuild → EHRuntime` | cross_community | 5 |
+| `PickFile → EHRuntime` | cross_community | 5 |
+| `ResolveStaleReceipt → EHRuntime` | cross_community | 5 |
+| `OpenConfirm → EHRuntime` | cross_community | 5 |
+| `StartInstall → EHRuntime` | cross_community | 5 |
 
 ## How to Explore
 

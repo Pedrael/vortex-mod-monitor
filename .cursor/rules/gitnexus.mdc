@@ -1,0 +1,146 @@
+---
+description: GitNexus is the primary code-navigation tool. Triggers, anti-patterns, and full feature surface so we never fall back to grepping.
+alwaysApply: true
+---
+
+# GitNexus is the primary navigation tool
+
+This repo is indexed by GitNexus (`vortex-mod-monitor`): **2316 nodes, 4801 edges, 199 execution flows, 69 communities, 2186 vector embeddings**. Every tool below is hot. Use them BEFORE Grep / Glob / Read / SemanticSearch on any code-understanding question.
+
+## First move (mandatory triage)
+
+Before reaching for `Grep`, `Glob`, `Read`, or `SemanticSearch` to understand code, ask: "Could a GitNexus tool answer this in one shot?" Almost always: yes. Map your intent below:
+
+| Intent / user phrasing | First-move tool |
+| --- | --- |
+| "how does X work?" / "trace this" / "show me the flow" / fuzzy concept lookup | `gitnexus_query({query: "..."})` (hybrid BM25 + vector) |
+| "what calls X?" / "who uses X?" / 360° view of one symbol | `gitnexus_context({name: "X"})` |
+| "what breaks if I change X?" / pre-edit safety | `gitnexus_impact({target: "X", direction: "upstream"})` |
+| "did my edits affect anything else?" / pre-commit check | `gitnexus_detect_changes({scope: "unstaged" \| "staged" \| "all" \| "compare"})` |
+| "rename X to Y" across the repo | `gitnexus_rename({symbol_name: "X", new_name: "Y", dry_run: true})` |
+| "what does endpoint /api/x do?" / API consumer breakdown | `api_impact({route: "/api/x"})` |
+| "find all places that read or write field foo" | `gitnexus_cypher` with `ACCESSES` (see schema below) |
+| "what's the codebase shape?" / list functional areas | READ `gitnexus://repo/vortex-mod-monitor/clusters` |
+| "trace execution of <flow>" | READ `gitnexus://repo/vortex-mod-monitor/process/<name>` |
+| "is the index up to date?" / staleness check | READ `gitnexus://repo/vortex-mod-monitor/context` |
+| Reviewing a PR | `detect_changes({scope: "compare", base_ref: "main"})` then `impact` per changed symbol |
+
+`Grep` / `Glob` are appropriate ONLY when:
+
+- Searching string literals, comments, or raw text inside JSON / YAML / Markdown.
+- The thing you want isn't a code symbol (config keys, build flags, log messages).
+- You already know the exact unique string and just need its file:line.
+
+## Anti-patterns — STOP and reconsider
+
+- About to type `Grep("functionName")` — STOP. Use `gitnexus_context({name: "functionName"})`. It returns callers, callees, file location, AND every process the symbol participates in. Grep gives you file:line strings with no relationships.
+- About to `Read` a file end-to-end to figure out what it does — STOP. Use `gitnexus_query` on the concept, then `gitnexus_context` on the symbols that come back. `Read` is for exact bytes, not for understanding.
+- About to do `git diff | grep` to assess a change — STOP. Use `gitnexus_detect_changes({scope: "unstaged"})`. It maps diff hunks to symbols AND processes AND a risk level.
+- About to write find-and-replace for a rename — STOP. Use `gitnexus_rename` with `dry_run: true`. It tags edits as `graph` (high confidence) vs `text_search` (review carefully).
+- About to skip `gitnexus_impact` to "save time" before editing a function/class/method — STOP. The workspace contract requires it. Honor it.
+- Tool returned multiple candidates for a name — DO NOT GUESS. Re-call with `uid` (or `target_uid`) from the candidate list for zero-ambiguity lookup.
+
+## Full feature surface (don't forget any of this)
+
+### Tools
+
+| Tool | Killer use case |
+| --- | --- |
+| `query` | **Hybrid BM25 + vector semantic search** of the graph (RRF-ranked). Returns processes (execution flows) grouped with their symbols. Pass `task_context` and `goal` to bias ranking. Use this for fuzzy concept lookup ("the part that hashes archives", "where we apply LOOT rules") — embeddings beat keyword matching. |
+| `context` | 360° symbol view: incoming/outgoing CALLS + IMPORTS + EXTENDS + IMPLEMENTS + HAS_METHOD + HAS_PROPERTY + METHOD_OVERRIDES + ACCESSES, plus processes the symbol participates in. Use `uid` from prior tool output for zero-ambiguity. |
+| `impact` | Blast radius grouped by depth (d=1 will-break, d=2 likely, d=3 maybe). Returns risk level + affected processes + affected modules. Pass `relationTypes: ["CALLS","IMPORTS","HAS_METHOD","ACCESSES"]` to widen when you care about field reads or class-member impact. Use `target_uid` to skip resolution. |
+| `detect_changes` | Map current git diff to changed symbols AND affected execution flows. `scope`: `unstaged` (default), `staged`, `all`, `compare` (with `base_ref`). Run before every commit and during PR review. |
+| `rename` | Multi-file coordinated rename. Edits are tagged `graph` (safe to accept) vs `text_search` (review). Always `dry_run: true` first. |
+| `cypher` | Raw Kuzu Cypher queries. READ `gitnexus://repo/vortex-mod-monitor/schema` first. Powerful for: ACCESSES (field read/write tracking), METHOD_OVERRIDES (MRO resolution), HAS_METHOD/HAS_PROPERTY (class shape), STEP_IN_PROCESS (custom traces), diamond inheritance. Returns markdown-formatted tables. |
+| `api_impact` | One-shot pre-change report for an HTTP route: handlers + middleware chain + consumers + response-shape mismatches + risk level. Use this BEFORE touching any HTTP handler. |
+| `route_map` | All API routes with handlers, middleware wrappers, and consumers. |
+| `shape_check` | Detect drift between route response shapes and consumer property accesses. |
+| `tool_map` | Find MCP / RPC tool definitions and their handler files (relevant for this project's own MCP-shaped APIs). |
+| `list_repos` | Inventory of indexed repos with staleness hints + embedding counts. |
+| `group_list` / `group_sync` | Cross-repo (monorepo) groups: pass `repo: "@<groupName>"` to `query`/`context`/`impact` for cross-boundary analysis via the Contract Registry. |
+
+### Resources (read-only, lightweight — 100-500 tokens)
+
+Prefer reading these BEFORE running tools when you're orienting. They're cheap and dense.
+
+| URI | Content |
+| --- | --- |
+| `gitnexus://repos` | All indexed repos at a glance |
+| `gitnexus://repo/vortex-mod-monitor/context` | Stats, **staleness check**, run-analyze hint |
+| `gitnexus://repo/vortex-mod-monitor/clusters` | All Leiden-detected communities (functional areas) with cohesion + keywords |
+| `gitnexus://repo/vortex-mod-monitor/cluster/<name>` | Members of one community with file paths |
+| `gitnexus://repo/vortex-mod-monitor/processes` | All 199 execution flows |
+| `gitnexus://repo/vortex-mod-monitor/process/<name>` | Step-by-step trace of one flow (great for debugging) |
+| `gitnexus://repo/vortex-mod-monitor/schema` | Full graph schema — read before writing Cypher |
+
+### Embeddings (don't forget!)
+
+The repo has **2186 vector embeddings** generated. `query` already uses them under the hood (BM25 + vector, fused via Reciprocal Rank Fusion). When the user asks something conceptually fuzzy ("payment processing", "the LOOT rules application", "where we hash archives"), trust `query` over keyword search — it surfaces semantically related processes even if the literal words don't appear in code. Pass `task_context` (what you're working on) and `goal` (what you want to find) to sharpen ranking further.
+
+Embeddings are preserved across re-indexes by default. `npx gitnexus analyze` keeps them; only `--drop-embeddings` rebuilds them.
+
+### Graph schema cheat sheet
+
+**Nodes:** `File`, `Folder`, `Function`, `Class`, `Method`, `Interface`, `CodeElement`, `Community` (Leiden-detected functional area), `Process` (execution flow), `Route` (HTTP), `Tool` (MCP/RPC).
+
+**Edges** — single `CodeRelation` table, filter by `type`:
+
+- `CALLS` — function/method invocation. Resolves through field-access chains and method-call chains (e.g. `user.address.getCity().save()` produces CALLS at each step).
+- `IMPORTS` — module dependency.
+- `EXTENDS` / `IMPLEMENTS` — class/interface inheritance.
+- `HAS_METHOD` / `HAS_PROPERTY` — class shape.
+- `METHOD_OVERRIDES` / `METHOD_IMPLEMENTS` — MRO resolution.
+- `ACCESSES` — field read (`reason: 'read'`) or write (`reason: 'write'`). Niche but powerful for tracing data flow.
+- `DEFINES` — file/folder ownership of a symbol.
+- `MEMBER_OF` — symbol → community.
+- `STEP_IN_PROCESS` — symbol → process (with `step` int for ordering).
+- `HANDLES_ROUTE` / `FETCHES` / `HANDLES_TOOL` / `ENTRY_POINT_OF` — API/tool plumbing.
+
+**Edge props:** `type`, `confidence` (0-1), `reason`, `step`.
+
+**Cypher quickies:**
+
+```cypher
+# Find all writers of a field
+MATCH (f:Function)-[r:CodeRelation {type: 'ACCESSES', reason: 'write'}]->(p:Property {name: 'foo'})
+RETURN f.name, f.filePath
+
+# Trace a process
+MATCH (s)-[r:CodeRelation {type: 'STEP_IN_PROCESS'}]->(p:Process {heuristicLabel: 'OnBuild'})
+RETURN s.name, r.step ORDER BY r.step
+
+# Find all methods of a class
+MATCH (c:Class {name: 'BuildSession'})-[:CodeRelation {type: 'HAS_METHOD'}]->(m:Method)
+RETURN m.name, m.parameterCount, m.returnType
+```
+
+### Disambiguation discipline
+
+If `context` or `impact` returns multiple candidates for a name, **never guess**. Pick the candidate from the ranked list and re-call with its `uid` (or `target_uid` for impact). Symbols collide across files; the graph is precise about which one you mean.
+
+### Index freshness
+
+Every tool checks staleness. If you see "Index is N commits behind HEAD," run `npx gitnexus analyze` (preserves embeddings by default; pass `--drop-embeddings` only when you genuinely want to rebuild them). After analyze, re-run the failed tool. After Vortex restarts (or this MCP server restarts), the freshly-indexed graph is reloaded automatically.
+
+## Workspace contract — non-negotiable
+
+These remain hard requirements (mirrored in `AGENTS.md` / `CLAUDE.md`):
+
+- Run `gitnexus_impact({target, direction: "upstream"})` BEFORE editing any function / class / method. Report blast radius + risk to the user.
+- Run `gitnexus_detect_changes()` BEFORE committing. Verify only the expected scope is affected.
+- Warn the user on HIGH or CRITICAL risk before proceeding with the edit.
+- NEVER use find-and-replace for renames — use `gitnexus_rename`.
+
+## Per-task skill files (for deeper workflows)
+
+When the task is non-trivial, read the matching skill before starting:
+
+- Architecture / "how does X work?" → `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md`
+- Blast radius / "what breaks?" → `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md`
+- Bug tracing / "why is X failing?" → `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md`
+- Rename / extract / split / refactor → `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md`
+- PR review → `C:/Users/BubuZefirka/.cursor/skills/gitnexus-pr-review/SKILL.md`
+- CLI (analyze / wiki / clean / status) → `.claude/skills/gitnexus/gitnexus-cli/SKILL.md`
+- Tools / resources / schema reference → `.claude/skills/gitnexus/gitnexus-guide/SKILL.md`
+
+For area-specific work, the auto-generated cluster skills under `.claude/skills/generated/<area>/SKILL.md` give you the local conventions and entry points (Manifest, Installer, Resolver, Actions, Install, Build, Pages, Errors, Runtime, Components, Dashboard, etc.).

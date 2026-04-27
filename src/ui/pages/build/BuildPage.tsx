@@ -43,6 +43,7 @@ import {
   type CuratorInput,
 } from "./engine";
 import type { ExternalModConfigEntry } from "../../../core/manifest/collectionConfig";
+import type { VerificationLevel } from "../../../types/ehcoll";
 import { getAppDataPath, saveDraft } from "../../../core/draftStorage";
 import {
   getBuildSession,
@@ -178,6 +179,7 @@ function BuildWizard(props: BuildPageProps): JSX.Element {
         overrides: formState.overrides,
         readme: formState.readme,
         changelog: formState.changelog,
+        verificationLevel: formState.verificationLevel,
       };
       void saveDraft(getAppDataPath(), "build", formState.ctx.gameId, payload);
     }, DRAFT_AUTOSAVE_DEBOUNCE_MS);
@@ -190,6 +192,7 @@ function BuildWizard(props: BuildPageProps): JSX.Element {
     state.kind === "form" ? state.overrides : undefined,
     state.kind === "form" ? state.readme : undefined,
     state.kind === "form" ? state.changelog : undefined,
+    state.kind === "form" ? state.verificationLevel : undefined,
   ]);
 
   // ── Step indicator ───────────────────────────────────────────────
@@ -309,6 +312,7 @@ function BuildWizard(props: BuildPageProps): JSX.Element {
       overrides: formState.overrides,
       readme: formState.readme,
       changelog: formState.changelog,
+      verificationLevel: formState.verificationLevel,
     });
   };
 
@@ -716,6 +720,14 @@ function FormPanel(props: FormPanelProps): JSX.Element {
         />
       </Card>
 
+      <IntegrityLevelCard
+        level={state.verificationLevel}
+        modCount={ctx.mods.length}
+        onChange={(verificationLevel): void =>
+          onChange({ verificationLevel })
+        }
+      />
+
       <div
         style={{
           display: "flex",
@@ -750,6 +762,137 @@ function FormPanel(props: FormPanelProps): JSX.Element {
         </Button>
       </div>
     </div>
+  );
+}
+
+// ===========================================================================
+// Integrity verification level
+// ===========================================================================
+
+interface IntegrityLevelCardProps {
+  level: VerificationLevel;
+  modCount: number;
+  onChange: (level: VerificationLevel) => void;
+}
+
+/**
+ * Curator-facing integrity-verification picker. Every option produces
+ * a valid `.ehcoll`; the trade-off is build-time cost vs. how much of
+ * Vortex's "lost / corrupted file" failure mode the user-side install
+ * can detect.
+ *
+ * - `"fast"` (default): walks each mod's staging folder, records
+ *   `{path, size}` per file. Catches Vortex dropping files entirely
+ *   plus any zero-byte / truncated writes. Cheap — no read of file
+ *   contents.
+ *
+ * - `"thorough"`: same plus SHA-256 per file. Catches silent
+ *   corruption (wrong content with right size). Reads every byte of
+ *   every file in every mod's staging folder; cost scales with mod
+ *   size, not count.
+ *
+ * - `"none"`: skip the check. Useful when build time matters more
+ *   than catching post-install integrity bugs (or for re-builds of
+ *   the same data where the curator already trusts their machine).
+ */
+function IntegrityLevelCard(props: IntegrityLevelCardProps): JSX.Element {
+  const { level, modCount, onChange } = props;
+  return (
+    <Card title="Integrity verification">
+      <p
+        style={{
+          margin: 0,
+          marginBottom: "var(--eh-sp-3)",
+          color: "var(--eh-text-secondary)",
+          fontSize: "var(--eh-text-sm)",
+        }}
+      >
+        Captures a per-mod fingerprint of the curator's staging folder
+        so users can detect when Vortex drops or corrupts files during
+        install.
+      </p>
+      <div
+        role="radiogroup"
+        aria-label="Integrity verification level"
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "var(--eh-sp-2)",
+        }}
+      >
+        <IntegrityOption
+          checked={level === "fast"}
+          onChange={(): void => onChange("fast")}
+          title="Fast (recommended)"
+          subtitle={
+            `Records file paths + sizes for all ${modCount} mods. ` +
+            "Catches missing or truncated files. Build cost: minimal."
+          }
+        />
+        <IntegrityOption
+          checked={level === "thorough"}
+          onChange={(): void => onChange("thorough")}
+          title="Thorough"
+          subtitle={
+            "Adds SHA-256 per file. Catches silent corruption. " +
+            "Build cost: reads every byte of every mod (slower for large collections)."
+          }
+        />
+        <IntegrityOption
+          checked={level === "none"}
+          onChange={(): void => onChange("none")}
+          title="Skip"
+          subtitle={
+            "No staging folder inspection. Builds fastest but users " +
+            "can't detect post-install file loss / corruption."
+          }
+        />
+      </div>
+    </Card>
+  );
+}
+
+function IntegrityOption(props: {
+  checked: boolean;
+  onChange: () => void;
+  title: string;
+  subtitle: string;
+}): JSX.Element {
+  const { checked, onChange, title, subtitle } = props;
+  return (
+    <label
+      style={{
+        display: "flex",
+        gap: "var(--eh-sp-3)",
+        padding: "var(--eh-sp-3)",
+        border: `1px solid ${
+          checked ? "var(--eh-accent)" : "var(--eh-border)"
+        }`,
+        borderRadius: "var(--eh-radius-md)",
+        background: checked ? "var(--eh-bg-elevated)" : "transparent",
+        cursor: "pointer",
+        alignItems: "flex-start",
+      }}
+    >
+      <input
+        type="radio"
+        name="eh-integrity-level"
+        checked={checked}
+        onChange={onChange}
+        style={{ marginTop: 3 }}
+      />
+      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        <span style={{ fontWeight: 600 }}>{title}</span>
+        <span
+          style={{
+            fontSize: "var(--eh-text-sm)",
+            color: "var(--eh-text-secondary)",
+          }}
+        >
+          {subtitle}
+        </span>
+      </div>
+    </label>
   );
 }
 
@@ -1271,8 +1414,16 @@ function BuildRulesScopeSummary(props: {
     result.loadOrderCount +
     result.pluginOrderCount +
     result.userlistPluginCount +
-    result.userlistGroupCount;
+    result.userlistGroupCount +
+    result.stagingFileCount;
   if (total === 0) return null;
+
+  const integrityLabel =
+    result.verificationLevel === "thorough"
+      ? "thorough (sha256)"
+      : result.verificationLevel === "fast"
+        ? "fast (size only)"
+        : "skipped";
 
   return (
     <div
@@ -1321,6 +1472,12 @@ function BuildRulesScopeSummary(props: {
           <Stat
             label="LOOT groups"
             value={String(result.userlistGroupCount)}
+          />
+        )}
+        {result.stagingFileCount > 0 && (
+          <Stat
+            label={`Integrity (${integrityLabel})`}
+            value={`${result.stagingFileCount.toLocaleString()} files`}
           />
         )}
       </div>
@@ -1410,6 +1567,8 @@ function phaseToLabel(phase: BuildProgress["phase"] | undefined): string | undef
   switch (phase) {
     case "hashing-mods":
       return "Hashing mod archives...";
+    case "inspecting-mods":
+      return "Inspecting mod folders for integrity capture...";
     case "capturing-deployment":
       return "Capturing deployment manifests...";
     case "capturing-load-order":

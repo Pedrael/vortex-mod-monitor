@@ -70,6 +70,7 @@ import {
   buildManifest,
   BuildManifestError,
 } from "../core/manifest/buildManifest";
+import { captureStagingFiles } from "../core/manifest/captureStagingFiles";
 import {
   packageEhcoll,
   PackageEhcollError,
@@ -143,7 +144,7 @@ export default function createBuildPackageAction(
       });
       hashingNotificationShown = true;
 
-      const mods = await enrichModsWithArchiveHashes(
+      let mods = await enrichModsWithArchiveHashes(
         state,
         gameId,
         rawMods,
@@ -152,6 +153,18 @@ export default function createBuildPackageAction(
 
       context.api.dismissNotification?.(hashingNotificationId);
       hashingNotificationShown = false;
+
+      // Toolbar action defaults to "fast" — file list + sizes per mod
+      // staging folder. The React BuildPage exposes a UI to override
+      // this; the toolbar is the no-prompt happy path.
+      mods = await captureStagingFiles(state, gameId, mods, {
+        level: "fast",
+        onWarn: (mod, message) => {
+          console.warn(
+            `[Vortex Event Horizon] inspect ${mod.name}: ${message}`,
+          );
+        },
+      });
 
       const deploymentManifests = await captureDeploymentManifests(
         context.api,
@@ -220,6 +233,7 @@ export default function createBuildPackageAction(
           description:
             curator.description.length > 0 ? curator.description : undefined,
           strictMissingMods: false,
+          verificationLevel: "fast",
         },
         game: {
           version: resolveGameVersion(state, gameId),

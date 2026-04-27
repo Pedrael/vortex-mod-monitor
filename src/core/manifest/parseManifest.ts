@@ -44,6 +44,7 @@ import type {
   EhcollMod,
   EhcollPluginEntry,
   EhcollRule,
+  EhcollStagingFile,
   EhcollUserlist,
   EhcollUserlistGroup,
   EhcollUserlistPlugin,
@@ -61,6 +62,7 @@ import type {
   RequiredExtension,
   SchemaVersion,
   SupportedGameId,
+  VerificationLevel,
   VortexDeploymentMethod,
   VortexMetadata,
 } from "../../types/ehcoll";
@@ -252,6 +254,24 @@ function validatePackage(
       ? undefined
       : expectString(obj.description, "package.description", errors);
 
+  // verificationLevel is back-filled to "none" when missing so manifests
+  // built before file-integrity capture parse cleanly. Unknown values
+  // become a hard error — silently coercing would mask schema drift.
+  let verificationLevel: VerificationLevel | undefined;
+  if (obj.verificationLevel !== undefined) {
+    const raw2 = obj.verificationLevel;
+    if (raw2 === "none" || raw2 === "fast" || raw2 === "thorough") {
+      verificationLevel = raw2;
+    } else {
+      errors.push(
+        `package.verificationLevel must be "none" | "fast" | "thorough", ` +
+          `got ${describe(raw2)}.`,
+      );
+    }
+  } else {
+    verificationLevel = "none";
+  }
+
   if (
     id === undefined ||
     name === undefined ||
@@ -271,6 +291,7 @@ function validatePackage(
     createdAt,
     strictMissingMods,
     ...(description !== undefined ? { description } : {}),
+    ...(verificationLevel !== undefined ? { verificationLevel } : {}),
   };
 }
 
@@ -703,6 +724,14 @@ function validateInstallState(
           `${path}.enabledINITweaks`,
           errors,
         );
+  const stagingFiles =
+    obj.stagingFiles === undefined
+      ? undefined
+      : validateStagingFiles(
+          obj.stagingFiles,
+          `${path}.stagingFiles`,
+          errors,
+        );
 
   if (
     enabled === undefined ||
@@ -719,7 +748,59 @@ function validateInstallState(
     ...(modType !== undefined ? { modType } : {}),
     ...(fileOverrides !== undefined ? { fileOverrides } : {}),
     ...(enabledINITweaks !== undefined ? { enabledINITweaks } : {}),
+    ...(stagingFiles !== undefined ? { stagingFiles } : {}),
   };
+}
+
+/**
+ * Validate per-mod `stagingFiles` array. Each entry must be an object
+ * with `path: string`, `size: number >= 0`, optional `sha256: string`.
+ *
+ * Hash format check: when present, `sha256` must be 64 lowercase hex
+ * chars. Mismatched hash format becomes an error rather than silently
+ * dropping the field — the integrity check is the whole point.
+ */
+function validateStagingFiles(
+  raw: unknown,
+  path: string,
+  errors: string[],
+): EhcollStagingFile[] | undefined {
+  const arr = expectArray(raw, path, errors);
+  if (arr === undefined) return undefined;
+
+  const out: EhcollStagingFile[] = [];
+  arr.forEach((entry, i) => {
+    if (!isObject(entry)) {
+      errors.push(
+        `${path}[${i}] must be an object, got ${describe(entry)}.`,
+      );
+      return;
+    }
+    const obj = entry as Record<string, unknown>;
+    const filePath = expectString(obj.path, `${path}[${i}].path`, errors);
+    const size = expectNonNegativeInt(
+      obj.size,
+      `${path}[${i}].size`,
+      errors,
+    );
+    const sha256Raw =
+      obj.sha256 === undefined
+        ? undefined
+        : expectString(obj.sha256, `${path}[${i}].sha256`, errors);
+    if (filePath === undefined || size === undefined) return;
+    if (sha256Raw !== undefined && !/^[0-9a-f]{64}$/.test(sha256Raw)) {
+      errors.push(
+        `${path}[${i}].sha256 must be 64 lowercase hex chars, got "${sha256Raw}".`,
+      );
+      return;
+    }
+    out.push({
+      path: filePath,
+      size,
+      ...(sha256Raw !== undefined ? { sha256: sha256Raw } : {}),
+    });
+  });
+  return out;
 }
 
 function validateUiAttributes(

@@ -62,6 +62,7 @@ import {
 } from "../../../core/draftStorage";
 import { getEHRuntime } from "../../runtime/ehRuntime";
 import type { ExternalModConfigEntry } from "../../../core/manifest/collectionConfig";
+import type { VerificationLevel } from "../../../types/ehcoll";
 import {
   loadBuildContext,
   runBuildPipeline,
@@ -90,6 +91,12 @@ export interface BuildDraftPayload {
   overrides: Record<string, ExternalModConfigEntry>;
   readme: string;
   changelog: string;
+  /**
+   * Optional — older drafts (pre-Tier-1) won't have it. Loaders
+   * back-fill `"fast"` to keep restored sessions consistent with
+   * the new default.
+   */
+  verificationLevel?: VerificationLevel;
 }
 
 export interface BuildErrorRecord {
@@ -120,6 +127,7 @@ export type BuildSessionState =
       overrides: Record<string, ExternalModConfigEntry>;
       readme: string;
       changelog: string;
+      verificationLevel: VerificationLevel;
       validationError?: string;
       /**
        * ISO timestamp of the autosaved draft we restored from.
@@ -162,6 +170,12 @@ export interface BuildAttemptInput {
   overrides: Record<string, ExternalModConfigEntry>;
   readme: string;
   changelog: string;
+  /**
+   * Curator's chosen integrity verification depth. Defaults to
+   * `"fast"` if omitted (form persistence layer migrates older
+   * drafts to fast on load).
+   */
+  verificationLevel?: VerificationLevel;
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -239,6 +253,7 @@ class BuildSession {
       overrides: { ...ctx.collectionConfig.externalMods },
       readme: ctx.collectionConfig.readme ?? "",
       changelog: ctx.collectionConfig.changelog ?? "",
+      verificationLevel: "fast",
       restoredAt: undefined,
     });
   }
@@ -300,6 +315,7 @@ class BuildSession {
           overrides: { ...ctx.collectionConfig.externalMods },
           readme: ctx.collectionConfig.readme ?? "",
           changelog: ctx.collectionConfig.changelog ?? "",
+          verificationLevel: "fast",
         };
 
         let envelope: Awaited<
@@ -326,6 +342,8 @@ class BuildSession {
             },
             readme: envelope.payload.readme,
             changelog: envelope.payload.changelog,
+            verificationLevel:
+              envelope.payload.verificationLevel ?? baseForm.verificationLevel,
             restoredAt: envelope.savedAt,
           });
         } else {
@@ -378,6 +396,7 @@ class BuildSession {
       overrides: input.overrides,
       readme: input.readme,
       changelog: input.changelog,
+      verificationLevel: input.verificationLevel ?? "fast",
     };
     this.setState({
       kind: "building",
@@ -396,6 +415,7 @@ class BuildSession {
             externalMods: input.overrides,
             readme: input.readme,
             changelog: input.changelog,
+            verificationLevel: input.verificationLevel ?? "fast",
           },
           {
             signal: controller.signal,

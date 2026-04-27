@@ -1,39 +1,41 @@
 ---
-name: cluster-13
-description: "Skill for the Cluster_13 area of vortex-mod-monitor. 5 symbols across 1 files."
+name: cluster-18
+description: "Skill for the Cluster_18 area of vortex-mod-monitor. 7 symbols across 1 files."
 ---
 
-# Cluster_13
+# Cluster_18
 
-5 symbols | 1 files | Cohesion: 71%
+7 symbols | 1 files | Cohesion: 76%
 
 ## When to Use
 
 - Working with code in `src/`
 - Understanding how parseReceipt work
-- Modifying cluster_13-related functionality
+- Modifying cluster_18-related functionality
 
 ## Key Files
 
 | File | Symbols |
 |------|---------|
-| `src/core/installLedger.ts` | parseReceipt, validateModEntries, expectString, isSemverLike, isIso8601 |
+| `src/core/installLedger.ts` | parseReceipt, passthroughObject, passthroughArray, validateModEntries, expectString (+2) |
 
 ## Entry Points
 
 Start here when exploring this area:
 
-- **`parseReceipt`** (Function) — `src/core/installLedger.ts:152`
+- **`parseReceipt`** (Function) — `src/core/installLedger.ts:155`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `parseReceipt` | Function | `src/core/installLedger.ts` | 152 |
-| `validateModEntries` | Function | `src/core/installLedger.ts` | 380 |
-| `expectString` | Function | `src/core/installLedger.ts` | 433 |
-| `isSemverLike` | Function | `src/core/installLedger.ts` | 476 |
-| `isIso8601` | Function | `src/core/installLedger.ts` | 484 |
+| `parseReceipt` | Function | `src/core/installLedger.ts` | 155 |
+| `passthroughObject` | Function | `src/core/installLedger.ts` | 287 |
+| `passthroughArray` | Function | `src/core/installLedger.ts` | 300 |
+| `validateModEntries` | Function | `src/core/installLedger.ts` | 446 |
+| `expectString` | Function | `src/core/installLedger.ts` | 499 |
+| `isSemverLike` | Function | `src/core/installLedger.ts` | 542 |
+| `isIso8601` | Function | `src/core/installLedger.ts` | 550 |
 
 ## Execution Flows
 
@@ -52,10 +54,10 @@ Start here when exploring this area:
 
 | Area | Connections |
 |------|-------------|
-| Errors | 2 calls |
+| Cluster_16 | 2 calls |
 
 ## How to Explore
 
 1. `gitnexus_context({name: "parseReceipt"})` — see callers and callees
-2. `gitnexus_query({query: "cluster_13"})` — find related execution flows
+2. `gitnexus_query({query: "cluster_18"})` — find related execution flows
 3. Read key files listed above for implementation details

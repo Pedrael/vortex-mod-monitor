@@ -113,6 +113,26 @@ export type InstallReceipt = {
    * tracked separately as `overwrittenGroupAssignmentCount`.
    */
   userlistApplication?: UserlistApplicationReceipt;
+  /**
+   * Slice 7 — Per-mod file integrity verification summary.
+   *
+   * Optional and additive: receipts written before slice 7 shipped
+   * will not have it. Consumers must default to `[]` when missing.
+   *
+   * One entry per installed mod that the driver attempted to verify
+   * against the curator's `stagingFiles` snapshot from the manifest.
+   * Entries with `kind === "skip"` are still recorded — they form
+   * the audit trail for "we tried but the manifest didn't carry
+   * verification data for this mod" cases (e.g. mod added by the
+   * curator before slice 7's verification level was wired).
+   *
+   * Re-installs (one retry attempt per failing mod) collapse into a
+   * single entry whose `kind` reflects the FINAL outcome, with the
+   * intermediate failure recorded under `retryAttempted: true`.
+   * This keeps the receipt's row count == installed mod count
+   * regardless of how many recovery cycles ran.
+   */
+  verifications?: ModVerificationReceipt[];
 };
 
 /**
@@ -223,6 +243,106 @@ export type ReceiptSkippedLoadOrderEntry = {
 export type ReceiptPluginEntry = {
   name: string;
   enabled: boolean;
+};
+
+/**
+ * On-disk per-mod verification record. The driver writes one of
+ * these for every mod in `installedMods` (and never for skipped /
+ * carried mods — those weren't installed by this run, so verifying
+ * them would conflate "did Vortex truncate during this install"
+ * with "is the user's mod folder still pristine months later").
+ *
+ * `kind === "ok"` ⇒ everything matched. `verifiedFileCount` is the
+ *   number of files we cross-referenced. `extraFileCount` (always
+ *   ≥ 0) reports user-side files outside the manifest's snapshot —
+ *   informational, not a problem (FOMOD divergence, mod version
+ *   drift, etc.).
+ *
+ * `kind === "skip"` ⇒ we did not run the comparison. `reason` says
+ *   why (manifest had no stagingFiles for this mod, or
+ *   verificationLevel="none").
+ *
+ * `kind === "fail"` ⇒ at least one mismatch was detected.
+ *   `missingFileCount` / `sizeMismatchCount` / `hashMismatchCount`
+ *   are the bucketed counts; `examples` carries up to 10 sample
+ *   paths PER bucket so the user gets actionable detail in the
+ *   Done card without bloating the receipt JSON for huge mods.
+ *   `retryAttempted` is true when we attempted a reinstall+reverify
+ *   cycle. `retrySucceeded` is true when that recovery worked
+ *   (even though the FINAL `kind` is "fail" — we keep `kind` as
+ *   "fail" only when the LAST verify still failed; recovered mods
+ *   surface as `kind === "ok"` with `retryAttempted: true`).
+ */
+export type ModVerificationReceipt =
+  | ModVerificationOkReceipt
+  | ModVerificationSkipReceipt
+  | ModVerificationFailReceipt;
+
+export type ModVerificationOkReceipt = {
+  vortexModId: string;
+  compareKey: string;
+  /** Display name. UI-only, captured at verify time. */
+  name: string;
+  kind: "ok";
+  /** verificationLevel that was actually run for this mod. */
+  level: "fast" | "thorough";
+  verifiedFileCount: number;
+  /** Files on disk not in the manifest snapshot (FOMOD divergence). */
+  extraFileCount: number;
+  /**
+   * True when the initial verify failed but a one-shot reinstall
+   * recovered the mod. Surfaced in the Done card as a soft
+   * warning ("we re-installed mod X to fix lost files").
+   */
+  retryAttempted?: boolean;
+};
+
+export type ModVerificationSkipReceipt = {
+  vortexModId: string;
+  compareKey: string;
+  name: string;
+  kind: "skip";
+  reason: ModVerificationSkipReason;
+};
+
+export type ModVerificationSkipReason =
+  | "no-staging-files-in-manifest"
+  | "verification-level-none"
+  | "vortex-mod-missing-from-state"
+  | "install-path-unresolvable"
+  | "errored";
+
+export type ModVerificationFailReceipt = {
+  vortexModId: string;
+  compareKey: string;
+  name: string;
+  kind: "fail";
+  level: "fast" | "thorough";
+  expectedFileCount: number;
+  missingFileCount: number;
+  sizeMismatchCount: number;
+  hashMismatchCount: number;
+  /** Up to ~30 representative paths across all buckets. */
+  examples: ModVerificationFailExample[];
+  /** True when a reinstall+reverify cycle was attempted. */
+  retryAttempted: boolean;
+  /**
+   * True when retry FIXED the mismatch. When this is true, callers
+   * should expect `kind === "ok"` instead — the type system can't
+   * narrow that automatically, but the runtime always upgrades the
+   * record on success. Surfaced as `false` here purely for receipts
+   * representing genuine post-retry failures.
+   */
+  retrySucceeded: boolean;
+};
+
+export type ModVerificationFailExample = {
+  bucket: "missing" | "size" | "hash";
+  path: string;
+  /** For size: the manifest's expected size. For hash: expected sha256. */
+  expected?: string;
+  /** For size: the on-disk size. For hash: actual sha256. */
+  actual?: string;
 };
 
 export type InstallTargetMode = "current-profile" | "fresh-profile";

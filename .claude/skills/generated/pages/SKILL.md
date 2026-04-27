@@ -1,67 +1,67 @@
 ---
 name: pages
-description: "Skill for the Pages area of vortex-mod-monitor. 29 symbols across 14 files."
+description: "Skill for the Pages area of vortex-mod-monitor. 28 symbols across 13 files."
 ---
 
 # Pages
 
-29 symbols | 14 files | Cohesion: 76%
+28 symbols | 13 files | Cohesion: 80%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how pickEhcollFile, useApi, useErrorReporter work
+- Understanding how pickEhcollFile, deleteReceipt, useApi work
 - Modifying pages-related functionality
 
 ## Key Files
 
 | File | Symbols |
 |------|---------|
-| `src/ui/pages/CollectionsPage.tsx` | CollectionsList, ReceiptDetailModal, handleExportDiagnostic, saveDiagnosticReport, CollectionsPage (+1) |
+| `src/ui/pages/CollectionsPage.tsx` | CollectionsList, ReceiptDetailModal, handleExportDiagnostic, handleUninstall, saveDiagnosticReport (+1) |
 | `src/ui/pages/HomePage.tsx` | Dashboard, HomePage, PlayerPanel, CuratorPanel |
-| `src/ui/pages/install/steps.tsx` | PickStep, StaleReceiptStep, formatTime, handleDelete |
+| `src/ui/pages/install/steps.tsx` | PickStep, StaleReceiptStep, handleDelete, formatTime |
 | `src/ui/errors/ErrorContext.tsx` | useErrorReporter, useErrorReporterFormatted |
 | `src/ui/pages/build/BuildPage.tsx` | ImportPreviousButton, BuildPage |
 | `src/ui/pages/dashboard/data.ts` | formatBytes, formatRelativeTime |
 | `src/ui/pages/AboutPage.tsx` | handleClick, openExternal |
 | `src/utils/utils.ts` | pickEhcollFile |
+| `src/core/installLedger.ts` | deleteReceipt |
 | `src/ui/state/ApiContext.tsx` | useApi |
-| `src/ui/components/Toast.tsx` | useToast |
 
 ## Entry Points
 
 Start here when exploring this area:
 
 - **`pickEhcollFile`** (Function) — `src/utils/utils.ts:70`
+- **`deleteReceipt`** (Function) — `src/core/installLedger.ts:382`
 - **`useApi`** (Function) — `src/ui/state/ApiContext.tsx:33`
 - **`useErrorReporter`** (Function) — `src/ui/errors/ErrorContext.tsx:48`
 - **`useToast`** (Function) — `src/ui/components/Toast.tsx:50`
-- **`PickStep`** (Function) — `src/ui/pages/install/steps.tsx:183`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
 | `pickEhcollFile` | Function | `src/utils/utils.ts` | 70 |
+| `deleteReceipt` | Function | `src/core/installLedger.ts` | 382 |
 | `useApi` | Function | `src/ui/state/ApiContext.tsx` | 33 |
 | `useErrorReporter` | Function | `src/ui/errors/ErrorContext.tsx` | 48 |
 | `useToast` | Function | `src/ui/components/Toast.tsx` | 50 |
 | `PickStep` | Function | `src/ui/pages/install/steps.tsx` | 183 |
 | `StaleReceiptStep` | Function | `src/ui/pages/install/steps.tsx` | 435 |
+| `handleDelete` | Function | `src/ui/pages/install/steps.tsx` | 450 |
 | `HomePage` | Function | `src/ui/pages/HomePage.tsx` | 48 |
 | `CollectionsPage` | Function | `src/ui/pages/CollectionsPage.tsx` | 56 |
 | `useErrorReporterFormatted` | Function | `src/ui/errors/ErrorContext.tsx` | 64 |
 | `InstallPage` | Function | `src/ui/pages/install/InstallPage.tsx` | 50 |
-| `BuildPage` | Function | `src/ui/pages/build/BuildPage.tsx` | 71 |
-| `deleteReceipt` | Function | `src/core/installLedger.ts` | 316 |
-| `uninstallMod` | Function | `src/core/installer/modInstall.ts` | 258 |
-| `handleDelete` | Function | `src/ui/pages/install/steps.tsx` | 450 |
+| `BuildPage` | Function | `src/ui/pages/build/BuildPage.tsx` | 72 |
 | `formatBytes` | Function | `src/ui/pages/dashboard/data.ts` | 307 |
 | `formatRelativeTime` | Function | `src/ui/pages/dashboard/data.ts` | 314 |
 | `Dashboard` | Function | `src/ui/pages/HomePage.tsx` | 61 |
 | `CollectionsList` | Function | `src/ui/pages/CollectionsPage.tsx` | 71 |
 | `ReceiptDetailModal` | Function | `src/ui/pages/CollectionsPage.tsx` | 503 |
 | `handleExportDiagnostic` | Function | `src/ui/pages/CollectionsPage.tsx` | 520 |
+| `handleUninstall` | Function | `src/ui/pages/CollectionsPage.tsx` | 567 |
 
 ## Execution Flows
 
@@ -82,11 +82,11 @@ Start here when exploring this area:
 
 | Area | Connections |
 |------|-------------|
-| Errors | 2 calls |
 | Build | 2 calls |
-| Dashboard | 1 calls |
+| Dashboard | 2 calls |
+| Installer | 2 calls |
+| Cluster_16 | 1 calls |
 | Resolver | 1 calls |
-| Installer | 1 calls |
 | Install | 1 calls |
 | Manifest | 1 calls |
 

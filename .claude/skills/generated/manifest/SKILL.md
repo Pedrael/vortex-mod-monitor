@@ -1,39 +1,39 @@
 ---
 name: manifest
-description: "Skill for the Manifest area of vortex-mod-monitor. 122 symbols across 9 files."
+description: "Skill for the Manifest area of vortex-mod-monitor. 123 symbols across 9 files."
 ---
 
 # Manifest
 
-122 symbols | 9 files | Cohesion: 87%
+123 symbols | 9 files | Cohesion: 87%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how parseManifest, buildManifest, readEhcoll work
+- Understanding how parseManifest, buildManifest, resolveSevenZip work
 - Modifying manifest-related functionality
 
 ## Key Files
 
 | File | Symbols |
 |------|---------|
-| `src/core/manifest/parseManifest.ts` | ParseManifestError, parseManifest, validatePackage, validateGame, validateVortex (+43) |
+| `src/core/manifest/parseManifest.ts` | ParseManifestError, parseManifest, validatePackage, validateGame, validateVortex (+44) |
 | `src/core/manifest/buildManifest.ts` | BuildManifestError, buildManifest, validateGameId, buildPackageMetadata, buildRules (+15) |
 | `src/core/manifest/packageZip.ts` | packageEhcoll, checkAbort, validateInput, prepareStagingDir, writeOptionalMarkdown (+12) |
 | `src/core/manifest/readEhcoll.ts` | ReadEhcollError, readEhcoll, assertReadableFile, listZipEntries, crossCheckBundled (+7) |
 | `src/core/manifest/collectionConfig.ts` | getCollectionConfigPath, loadOrCreateCollectionConfig, saveCollectionConfig, createDefaultConfig, writeConfigFile (+5) |
 | `src/utils/utils.ts` | getModCompareKey, sortDeep, deepEqualStable, compareMods, buildModsMap (+1) |
 | `src/core/comparePlugins.ts` | normalizePluginName, parsePluginsTxt, toPluginMap, comparePluginsEntries, comparePluginsTxtFiles |
-| `src/core/manifest/sevenZip.ts` | list, add |
-| `src/core/archiveHashing.ts` | hashFileSha256, cleanup |
+| `src/core/manifest/sevenZip.ts` | resolveSevenZip, list, add |
+| `src/core/installer/bundledPrefetch.ts` | constructor |
 
 ## Entry Points
 
 Start here when exploring this area:
 
-- **`parseManifest`** (Function) — `src/core/manifest/parseManifest.ts:140`
-- **`buildManifest`** (Function) — `src/core/manifest/buildManifest.ts:187`
-- **`readEhcoll`** (Function) — `src/core/manifest/readEhcoll.ts:154`
+- **`parseManifest`** (Function) — `src/core/manifest/parseManifest.ts:142`
+- **`buildManifest`** (Function) — `src/core/manifest/buildManifest.ts:199`
+- **`resolveSevenZip`** (Function) — `src/core/manifest/sevenZip.ts:118`
 - **`packageEhcoll`** (Function) — `src/core/manifest/packageZip.ts:128`
 - **`checkAbort`** (Function) — `src/core/manifest/packageZip.ts:138`
 
@@ -41,26 +41,26 @@ Start here when exploring this area:
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `ParseManifestError` | Class | `src/core/manifest/parseManifest.ts` | 118 |
-| `BuildManifestError` | Class | `src/core/manifest/buildManifest.ts` | 171 |
+| `ParseManifestError` | Class | `src/core/manifest/parseManifest.ts` | 120 |
+| `BuildManifestError` | Class | `src/core/manifest/buildManifest.ts` | 183 |
 | `ReadEhcollError` | Class | `src/core/manifest/readEhcoll.ts` | 124 |
 | `PackageEhcollError` | Class | `src/core/manifest/packageZip.ts` | 106 |
 | `CollectionConfigError` | Class | `src/core/manifest/collectionConfig.ts` | 132 |
-| `parseManifest` | Function | `src/core/manifest/parseManifest.ts` | 140 |
-| `buildManifest` | Function | `src/core/manifest/buildManifest.ts` | 187 |
-| `readEhcoll` | Function | `src/core/manifest/readEhcoll.ts` | 154 |
+| `parseManifest` | Function | `src/core/manifest/parseManifest.ts` | 142 |
+| `buildManifest` | Function | `src/core/manifest/buildManifest.ts` | 199 |
+| `resolveSevenZip` | Function | `src/core/manifest/sevenZip.ts` | 118 |
 | `packageEhcoll` | Function | `src/core/manifest/packageZip.ts` | 128 |
 | `checkAbort` | Function | `src/core/manifest/packageZip.ts` | 138 |
+| `readEhcoll` | Function | `src/core/manifest/readEhcoll.ts` | 154 |
 | `getModCompareKey` | Function | `src/utils/utils.ts` | 232 |
 | `sortDeep` | Function | `src/utils/utils.ts` | 253 |
 | `deepEqualStable` | Function | `src/utils/utils.ts` | 270 |
 | `compareMods` | Function | `src/utils/utils.ts` | 274 |
 | `compareSnapshots` | Function | `src/utils/utils.ts` | 325 |
-| `hashFileSha256` | Function | `src/core/archiveHashing.ts` | 32 |
-| `cleanup` | Function | `src/core/archiveHashing.ts` | 52 |
 | `parsePluginsTxt` | Function | `src/core/comparePlugins.ts` | 51 |
 | `comparePluginsEntries` | Function | `src/core/comparePlugins.ts` | 80 |
 | `comparePluginsTxtFiles` | Function | `src/core/comparePlugins.ts` | 167 |
+| `getCollectionConfigPath` | Function | `src/core/manifest/collectionConfig.ts` | 151 |
 
 ## Execution Flows
 
@@ -81,7 +81,7 @@ Start here when exploring this area:
 
 | Area | Connections |
 |------|-------------|
-| Installer | 7 calls |
+| Installer | 5 calls |
 
 ## How to Explore
 

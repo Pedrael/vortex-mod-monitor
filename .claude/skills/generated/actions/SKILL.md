@@ -1,16 +1,16 @@
 ---
 name: actions
-description: "Skill for the Actions area of vortex-mod-monitor. 58 symbols across 8 files."
+description: "Skill for the Actions area of vortex-mod-monitor. 51 symbols across 6 files."
 ---
 
 # Actions
 
-58 symbols | 8 files | Cohesion: 71%
+51 symbols | 6 files | Cohesion: 75%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how createBuildPackageAction, getModArchivePath, openFolder work
+- Understanding how createBuildPackageAction, reconcileExternalModsConfig, getModArchivePath work
 - Modifying actions-related functionality
 
 ## Key Files
@@ -19,68 +19,63 @@ description: "Skill for the Actions area of vortex-mod-monitor. 58 symbols acros
 |------|---------|
 | `src/actions/installCollectionAction.ts` | renderPlanDialog, formatPlanText, formatVerdict, formatInstallTarget, formatSummary (+24) |
 | `src/actions/buildPackageAction.ts` | createBuildPackageAction, promptCuratorMetadata, validateCuratorInput, resolveVortexVersion, resolveGameVersion (+10) |
-| `src/utils/utils.ts` | openFolder, pickTxtFile, openFile, pickJsonFile, exportDiffReport |
 | `src/ui/pages/build/engine.ts` | isNexusMod, resolveBundledArchives, readPluginsTxtIfPresent |
-| `src/core/comparePlugins.ts` | exportPluginsDiffReport, getLocalAppDataPath, getCurrentPluginsTxtPath |
+| `src/core/comparePlugins.ts` | getLocalAppDataPath, getCurrentPluginsTxtPath |
+| `src/core/manifest/collectionConfig.ts` | reconcileExternalModsConfig |
 | `src/core/archiveHashing.ts` | getModArchivePath |
-| `src/actions/comparePluginsAction.ts` | createComparePluginsAction |
-| `src/actions/compareModsAction.ts` | createCompareModsAction |
 
 ## Entry Points
 
 Start here when exploring this area:
 
-- **`createBuildPackageAction`** (Function) — `src/actions/buildPackageAction.ts:106`
-- **`getModArchivePath`** (Function) — `src/core/archiveHashing.ts:77`
-- **`openFolder`** (Function) — `src/utils/utils.ts:8`
-- **`pickTxtFile`** (Function) — `src/utils/utils.ts:410`
-- **`exportPluginsDiffReport`** (Function) — `src/core/comparePlugins.ts:186`
+- **`createBuildPackageAction`** (Function) — `src/actions/buildPackageAction.ts:107`
+- **`reconcileExternalModsConfig`** (Function) — `src/core/manifest/collectionConfig.ts:208`
+- **`getModArchivePath`** (Function) — `src/core/archiveHashing.ts:78`
+- **`getCurrentPluginsTxtPath`** (Function) — `src/core/comparePlugins.ts:157`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `createBuildPackageAction` | Function | `src/actions/buildPackageAction.ts` | 106 |
-| `getModArchivePath` | Function | `src/core/archiveHashing.ts` | 77 |
-| `openFolder` | Function | `src/utils/utils.ts` | 8 |
-| `pickTxtFile` | Function | `src/utils/utils.ts` | 410 |
-| `exportPluginsDiffReport` | Function | `src/core/comparePlugins.ts` | 186 |
-| `createComparePluginsAction` | Function | `src/actions/comparePluginsAction.ts` | 13 |
-| `openFile` | Function | `src/utils/utils.ts` | 11 |
-| `pickJsonFile` | Function | `src/utils/utils.ts` | 42 |
-| `exportDiffReport` | Function | `src/utils/utils.ts` | 391 |
-| `createCompareModsAction` | Function | `src/actions/compareModsAction.ts` | 19 |
+| `createBuildPackageAction` | Function | `src/actions/buildPackageAction.ts` | 107 |
+| `reconcileExternalModsConfig` | Function | `src/core/manifest/collectionConfig.ts` | 208 |
+| `getModArchivePath` | Function | `src/core/archiveHashing.ts` | 78 |
 | `getCurrentPluginsTxtPath` | Function | `src/core/comparePlugins.ts` | 157 |
-| `BundleResolutionError` | Class | `src/actions/buildPackageAction.ts` | 549 |
-| `promptCuratorMetadata` | Function | `src/actions/buildPackageAction.ts` | 324 |
-| `validateCuratorInput` | Function | `src/actions/buildPackageAction.ts` | 418 |
-| `resolveVortexVersion` | Function | `src/actions/buildPackageAction.ts` | 436 |
-| `resolveGameVersion` | Function | `src/actions/buildPackageAction.ts` | 447 |
-| `resolveDeploymentMethod` | Function | `src/actions/buildPackageAction.ts` | 473 |
-| `buildOutputFileName` | Function | `src/actions/buildPackageAction.ts` | 527 |
-| `slugify` | Function | `src/actions/buildPackageAction.ts` | 533 |
-| `formatError` | Function | `src/actions/buildPackageAction.ts` | 654 |
+| `BundleResolutionError` | Class | `src/actions/buildPackageAction.ts` | 563 |
+| `promptCuratorMetadata` | Function | `src/actions/buildPackageAction.ts` | 338 |
+| `validateCuratorInput` | Function | `src/actions/buildPackageAction.ts` | 432 |
+| `resolveVortexVersion` | Function | `src/actions/buildPackageAction.ts` | 450 |
+| `resolveGameVersion` | Function | `src/actions/buildPackageAction.ts` | 461 |
+| `resolveDeploymentMethod` | Function | `src/actions/buildPackageAction.ts` | 487 |
+| `buildOutputFileName` | Function | `src/actions/buildPackageAction.ts` | 541 |
+| `slugify` | Function | `src/actions/buildPackageAction.ts` | 547 |
+| `formatError` | Function | `src/actions/buildPackageAction.ts` | 668 |
+| `formatBytes` | Function | `src/actions/buildPackageAction.ts` | 692 |
+| `renderPlanDialog` | Function | `src/actions/installCollectionAction.ts` | 318 |
+| `formatPlanText` | Function | `src/actions/installCollectionAction.ts` | 349 |
+| `formatVerdict` | Function | `src/actions/installCollectionAction.ts` | 421 |
+| `formatInstallTarget` | Function | `src/actions/installCollectionAction.ts` | 434 |
+| `formatSummary` | Function | `src/actions/installCollectionAction.ts` | 456 |
+| `formatModBuckets` | Function | `src/actions/installCollectionAction.ts` | 549 |
 
 ## Execution Flows
 
 | Flow | Type | Steps |
 |------|------|-------|
 | `CreateBuildPackageAction → ValidateCuratorInput` | intra_community | 3 |
-| `Init → PickJsonFile` | cross_community | 3 |
-| `Init → PickTxtFile` | cross_community | 3 |
 | `CreateComparePluginsAction → GetLocalAppDataPath` | cross_community | 3 |
 
 ## Connected Areas
 
 | Area | Connections |
 |------|-------------|
-| Resolver | 9 calls |
-| Manifest | 6 calls |
-| Build | 4 calls |
-| Cluster_16 | 2 calls |
+| Resolver | 6 calls |
+| Manifest | 4 calls |
+| Build | 3 calls |
+| Installer | 2 calls |
 | Install | 1 calls |
-| Installer | 1 calls |
-| Cluster_10 | 1 calls |
+| Cluster_21 | 1 calls |
+| Cluster_14 | 1 calls |
 
 ## How to Explore
 
