@@ -56,6 +56,7 @@
 import { actions, types } from "vortex-api";
 
 import type { EhcollLoadOrderEntry } from "../../types/ehcoll";
+import { AbortError } from "../../utils/abortError";
 
 export type ApplyLoadOrderInput = {
   api: types.IExtensionApi;
@@ -87,13 +88,6 @@ export type SkippedLoadOrderEntry = {
   pos: number;
   reason: string;
 };
-
-class AbortError extends Error {
-  constructor() {
-    super("Aborted");
-    this.name = "AbortError";
-  }
-}
 
 /**
  * Build the user-side LoadOrder payload from the manifest entries and

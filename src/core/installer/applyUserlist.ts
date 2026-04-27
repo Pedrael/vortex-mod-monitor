@@ -93,6 +93,7 @@ import type {
   EhcollUserlistGroup,
   EhcollUserlistPlugin,
 } from "../../types/ehcoll";
+import { AbortError } from "../../utils/abortError";
 
 // ---------------------------------------------------------------------------
 // Action type strings (must match
@@ -166,13 +167,6 @@ export type SkippedUserlistEntry = {
   /** Verbose, actionable explanation. */
   reason: string;
 };
-
-class AbortError extends Error {
-  constructor() {
-    super("Aborted");
-    this.name = "AbortError";
-  }
-}
 
 /**
  * Apply the curator's userlist to the user's `state.userlist`. Returns

@@ -54,7 +54,7 @@ Start here when exploring this area:
 | Area | Connections |
 |------|-------------|
 | Resolver | 1 calls |
-| Installer | 1 calls |
+| Errors | 1 calls |
 
 ## How to Explore
 

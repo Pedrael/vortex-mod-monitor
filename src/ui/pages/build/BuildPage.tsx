@@ -1053,6 +1053,7 @@ function DonePanel(props: {
           <Stat label="Bundled archives" value={String(result.bundledCount)} />
           <Stat label="Warnings" value={String(result.warnings.length)} />
         </div>
+        <BuildRulesScopeSummary result={result} />
         <div
           style={{
             padding: "var(--eh-sp-3)",
@@ -1244,6 +1245,84 @@ function Stat(props: { label: string; value: string }): JSX.Element {
         }}
       >
         {props.value}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Curator-side mirror of the install Done card's "Rules & ordering"
+ * section. Reads the rule/loadOrder/userlist counts from the build
+ * pipeline result so the curator gets immediate feedback that the
+ * curator's mod rules + LOOT plugin rules + load order baselines
+ * landed in the package — without this, the only way to know was
+ * to install the .ehcoll on a fresh Vortex.
+ *
+ * Hidden when the curator authored none of these. A collection
+ * with zero rules / zero load order / zero plugins (e.g. a tiny
+ * texture pack) shouldn't get a noisy empty section.
+ */
+function BuildRulesScopeSummary(props: {
+  result: BuildPipelineResult;
+}): JSX.Element | null {
+  const { result } = props;
+  const total =
+    result.ruleCount +
+    result.loadOrderCount +
+    result.pluginOrderCount +
+    result.userlistPluginCount +
+    result.userlistGroupCount;
+  if (total === 0) return null;
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "var(--eh-sp-2)",
+      }}
+    >
+      <div
+        style={{
+          color: "var(--eh-text-muted)",
+          fontSize: "var(--eh-text-xs)",
+          textTransform: "uppercase",
+          letterSpacing: "var(--eh-tracking-widest)",
+        }}
+      >
+        Captured into the package
+      </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          gap: "var(--eh-sp-2)",
+        }}
+      >
+        {result.ruleCount > 0 && (
+          <Stat label="Mod rules" value={String(result.ruleCount)} />
+        )}
+        {result.loadOrderCount > 0 && (
+          <Stat
+            label="Load order entries"
+            value={String(result.loadOrderCount)}
+          />
+        )}
+        {result.pluginOrderCount > 0 && (
+          <Stat label="Plugins" value={String(result.pluginOrderCount)} />
+        )}
+        {result.userlistPluginCount > 0 && (
+          <Stat
+            label="LOOT plugin rules"
+            value={String(result.userlistPluginCount)}
+          />
+        )}
+        {result.userlistGroupCount > 0 && (
+          <Stat
+            label="LOOT groups"
+            value={String(result.userlistGroupCount)}
+          />
+        )}
       </div>
     </div>
   );

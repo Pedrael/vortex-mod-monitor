@@ -32,7 +32,7 @@ Start here when exploring this area:
 
 - **`deleteDraft`** (Function) — `src/core/draftStorage.ts:192`
 - **`getAppDataPath`** (Function) — `src/core/draftStorage.ts:218`
-- **`validateCuratorInput`** (Function) — `src/ui/pages/build/engine.ts:466`
+- **`validateCuratorInput`** (Function) — `src/ui/pages/build/engine.ts:488`
 - **`captureLoadOrder`** (Function) — `src/core/loadOrder.ts:40`
 - **`collectDistinctModTypes`** (Function) — `src/core/deploymentManifest.ts:53`
 
@@ -40,16 +40,16 @@ Start here when exploring this area:
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `BundleResolutionError` | Class | `src/ui/pages/build/engine.ts` | 166 |
+| `BundleResolutionError` | Class | `src/ui/pages/build/engine.ts` | 183 |
 | `deleteDraft` | Function | `src/core/draftStorage.ts` | 192 |
 | `getAppDataPath` | Function | `src/core/draftStorage.ts` | 218 |
-| `validateCuratorInput` | Function | `src/ui/pages/build/engine.ts` | 466 |
+| `validateCuratorInput` | Function | `src/ui/pages/build/engine.ts` | 488 |
 | `captureLoadOrder` | Function | `src/core/loadOrder.ts` | 40 |
 | `collectDistinctModTypes` | Function | `src/core/deploymentManifest.ts` | 53 |
 | `captureDeploymentManifests` | Function | `src/core/deploymentManifest.ts` | 133 |
 | `reconcileExternalModsConfig` | Function | `src/core/manifest/collectionConfig.ts` | 208 |
 | `toBuildManifestExternalMods` | Function | `src/core/manifest/collectionConfig.ts` | 249 |
-| `runBuildPipeline` | Function | `src/ui/pages/build/engine.ts` | 307 |
+| `runBuildPipeline` | Function | `src/ui/pages/build/engine.ts` | 324 |
 | `nativeNotify` | Function | `src/ui/runtime/nativeNotify.ts` | 39 |
 | `getBuildSession` | Function | `src/ui/pages/build/buildSession.ts` | 493 |
 | `BuildSession` | Class | `src/ui/pages/build/buildSession.ts` | 170 |
@@ -59,7 +59,7 @@ Start here when exploring this area:
 | `handleDismissDraftBanner` | Function | `src/ui/pages/build/BuildPage.tsx` | 289 |
 | `onBuild` | Function | `src/ui/pages/build/BuildPage.tsx` | 293 |
 | `normalizeManifest` | Function | `src/core/deploymentManifest.ts` | 73 |
-| `resolveVortexVersion` | Function | `src/ui/pages/build/engine.ts` | 563 |
+| `resolveVortexVersion` | Function | `src/ui/pages/build/engine.ts` | 585 |
 
 ## Execution Flows
 
@@ -80,13 +80,14 @@ Start here when exploring this area:
 
 | Area | Connections |
 |------|-------------|
-| Manifest | 5 calls |
-| Resolver | 4 calls |
+| Manifest | 4 calls |
 | Pages | 4 calls |
-| Cluster_14 | 3 calls |
+| Cluster_17 | 3 calls |
+| Resolver | 3 calls |
+| Actions | 2 calls |
 | Runtime | 2 calls |
-| Cluster_9 | 1 calls |
-| Actions | 1 calls |
+| Installer | 1 calls |
+| Cluster_10 | 1 calls |
 
 ## How to Explore
 

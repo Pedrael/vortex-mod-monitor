@@ -1,11 +1,11 @@
 ---
 name: manifest
-description: "Skill for the Manifest area of vortex-mod-monitor. 127 symbols across 11 files."
+description: "Skill for the Manifest area of vortex-mod-monitor. 122 symbols across 9 files."
 ---
 
 # Manifest
 
-127 symbols | 11 files | Cohesion: 85%
+122 symbols | 9 files | Cohesion: 87%
 
 ## When to Use
 
@@ -19,14 +19,13 @@ description: "Skill for the Manifest area of vortex-mod-monitor. 127 symbols acr
 |------|---------|
 | `src/core/manifest/parseManifest.ts` | ParseManifestError, parseManifest, validatePackage, validateGame, validateVortex (+43) |
 | `src/core/manifest/buildManifest.ts` | BuildManifestError, buildManifest, validateGameId, buildPackageMetadata, buildRules (+15) |
-| `src/core/manifest/packageZip.ts` | checkAbort, writeManifestJson, packageEhcoll, validateInput, prepareStagingDir (+12) |
+| `src/core/manifest/packageZip.ts` | packageEhcoll, checkAbort, validateInput, prepareStagingDir, writeOptionalMarkdown (+12) |
 | `src/core/manifest/readEhcoll.ts` | ReadEhcollError, readEhcoll, assertReadableFile, listZipEntries, crossCheckBundled (+7) |
 | `src/core/manifest/collectionConfig.ts` | getCollectionConfigPath, loadOrCreateCollectionConfig, saveCollectionConfig, createDefaultConfig, writeConfigFile (+5) |
 | `src/utils/utils.ts` | getModCompareKey, sortDeep, deepEqualStable, compareMods, buildModsMap (+1) |
-| `src/core/archiveHashing.ts` | AbortError, hashFileSha256, onAbort, cleanup, pMap |
 | `src/core/comparePlugins.ts` | normalizePluginName, parsePluginsTxt, toPluginMap, comparePluginsEntries, comparePluginsTxtFiles |
 | `src/core/manifest/sevenZip.ts` | list, add |
-| `src/ui/pages/install/engine.ts` | checkAbort |
+| `src/core/archiveHashing.ts` | hashFileSha256, cleanup |
 
 ## Entry Points
 
@@ -35,8 +34,8 @@ Start here when exploring this area:
 - **`parseManifest`** (Function) — `src/core/manifest/parseManifest.ts:140`
 - **`buildManifest`** (Function) — `src/core/manifest/buildManifest.ts:187`
 - **`readEhcoll`** (Function) — `src/core/manifest/readEhcoll.ts:154`
-- **`hashFileSha256`** (Function) — `src/core/archiveHashing.ts:31`
-- **`onAbort`** (Function) — `src/core/archiveHashing.ts:43`
+- **`packageEhcoll`** (Function) — `src/core/manifest/packageZip.ts:128`
+- **`checkAbort`** (Function) — `src/core/manifest/packageZip.ts:138`
 
 ## Key Symbols
 
@@ -45,29 +44,28 @@ Start here when exploring this area:
 | `ParseManifestError` | Class | `src/core/manifest/parseManifest.ts` | 118 |
 | `BuildManifestError` | Class | `src/core/manifest/buildManifest.ts` | 171 |
 | `ReadEhcollError` | Class | `src/core/manifest/readEhcoll.ts` | 124 |
-| `AbortError` | Class | `src/core/archiveHashing.ts` | 16 |
 | `PackageEhcollError` | Class | `src/core/manifest/packageZip.ts` | 106 |
 | `CollectionConfigError` | Class | `src/core/manifest/collectionConfig.ts` | 132 |
 | `parseManifest` | Function | `src/core/manifest/parseManifest.ts` | 140 |
 | `buildManifest` | Function | `src/core/manifest/buildManifest.ts` | 187 |
 | `readEhcoll` | Function | `src/core/manifest/readEhcoll.ts` | 154 |
-| `hashFileSha256` | Function | `src/core/archiveHashing.ts` | 31 |
-| `onAbort` | Function | `src/core/archiveHashing.ts` | 43 |
-| `cleanup` | Function | `src/core/archiveHashing.ts` | 51 |
+| `packageEhcoll` | Function | `src/core/manifest/packageZip.ts` | 128 |
 | `checkAbort` | Function | `src/core/manifest/packageZip.ts` | 138 |
-| `checkAbort` | Function | `src/ui/pages/install/engine.ts` | 103 |
-| `checkAbort` | Function | `src/ui/pages/build/engine.ts` | 316 |
 | `getModCompareKey` | Function | `src/utils/utils.ts` | 232 |
 | `sortDeep` | Function | `src/utils/utils.ts` | 253 |
 | `deepEqualStable` | Function | `src/utils/utils.ts` | 270 |
 | `compareMods` | Function | `src/utils/utils.ts` | 274 |
 | `compareSnapshots` | Function | `src/utils/utils.ts` | 325 |
+| `hashFileSha256` | Function | `src/core/archiveHashing.ts` | 32 |
+| `cleanup` | Function | `src/core/archiveHashing.ts` | 52 |
+| `parsePluginsTxt` | Function | `src/core/comparePlugins.ts` | 51 |
+| `comparePluginsEntries` | Function | `src/core/comparePlugins.ts` | 80 |
+| `comparePluginsTxtFiles` | Function | `src/core/comparePlugins.ts` | 167 |
 
 ## Execution Flows
 
 | Flow | Type | Steps |
 |------|------|-------|
-| `OnBuild → AbortError` | cross_community | 5 |
 | `OnBuild → GetCollectionConfigPath` | cross_community | 5 |
 | `OnBuild → CreateDefaultConfig` | cross_community | 5 |
 | `OnBuild → WriteConfigFile` | cross_community | 5 |
@@ -77,12 +75,13 @@ Start here when exploring this area:
 | `RunLoadingPipeline → ReadEhcollError` | cross_community | 4 |
 | `CreateInstallCollectionAction → ReadEhcollError` | cross_community | 4 |
 | `CreateInstallCollectionAction → List` | cross_community | 4 |
+| `ImportPreviousButton → ReadEhcollError` | cross_community | 4 |
 
 ## Connected Areas
 
 | Area | Connections |
 |------|-------------|
-| Installer | 3 calls |
+| Installer | 7 calls |
 
 ## How to Explore
 

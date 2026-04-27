@@ -82,10 +82,11 @@ Start here when exploring this area:
 
 | Area | Connections |
 |------|-------------|
-| Installer | 3 calls |
+| Errors | 2 calls |
 | Build | 2 calls |
 | Dashboard | 1 calls |
 | Resolver | 1 calls |
+| Installer | 1 calls |
 | Install | 1 calls |
 | Manifest | 1 calls |
 

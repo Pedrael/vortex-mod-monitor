@@ -656,6 +656,8 @@ export function PreviewStep(props: PreviewStepProps): JSX.Element {
         />
       </div>
 
+      <RulesScopePreview summary={summary} />
+
       <Card title="Install target" footer={null}>
         {target.kind === "fresh-profile" ? (
           <div>
@@ -806,6 +808,89 @@ function SummaryTile(props: {
       >
         {props.value}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Preview-time scope tiles for slice 6c + 6d curator content. The
+ * top SummaryTile row covers mods only; without this section the
+ * user has no way to know that a "small" 12-mod collection might
+ * actually ship 200 plugin entries and 80 LOOT rules. Hidden
+ * entirely when the curator authored none of these — collections
+ * built before slice 6d landed (or that genuinely have no rules)
+ * shouldn't gain a noisy empty section.
+ */
+function RulesScopePreview(props: {
+  summary: InstallPlan["summary"];
+}): JSX.Element | null {
+  const { summary } = props;
+  const total =
+    summary.ruleCount +
+    summary.loadOrderCount +
+    summary.pluginOrderCount +
+    summary.userlistPluginCount +
+    summary.userlistGroupCount;
+  if (total === 0) return null;
+
+  return (
+    <div
+      style={{
+        marginBottom: "var(--eh-sp-5)",
+        display: "flex",
+        flexDirection: "column",
+        gap: "var(--eh-sp-3)",
+      }}
+    >
+      <div
+        style={{
+          color: "var(--eh-text-muted)",
+          fontSize: "var(--eh-text-xs)",
+          textTransform: "uppercase",
+          letterSpacing: "var(--eh-tracking-widest)",
+        }}
+      >
+        Rules &amp; ordering this collection ships
+      </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          gap: "var(--eh-sp-3)",
+        }}
+      >
+        {summary.ruleCount > 0 && (
+          <SummaryTile label="Mod rules" value={summary.ruleCount} />
+        )}
+        {summary.loadOrderCount > 0 && (
+          <SummaryTile label="Load order entries" value={summary.loadOrderCount} />
+        )}
+        {summary.pluginOrderCount > 0 && (
+          <SummaryTile label="Plugins" value={summary.pluginOrderCount} />
+        )}
+        {summary.userlistPluginCount > 0 && (
+          <SummaryTile
+            label="LOOT plugin rules"
+            value={summary.userlistPluginCount}
+          />
+        )}
+        {summary.userlistGroupCount > 0 && (
+          <SummaryTile label="LOOT groups" value={summary.userlistGroupCount} />
+        )}
+      </div>
+      <p
+        style={{
+          margin: 0,
+          color: "var(--eh-text-muted)",
+          fontSize: "var(--eh-text-xs)",
+          lineHeight: "var(--eh-leading-relaxed)",
+        }}
+      >
+        Mod rules and LOOT plugin rules will be applied to your Vortex setup.
+        The collection&apos;s rules win over any conflicting rules you may
+        already have. Pre-existing rules unrelated to this collection are
+        left alone.
+      </p>
     </div>
   );
 }
@@ -1562,7 +1647,6 @@ const PHASE_LABELS: Record<DriverProgress["phase"], string> = {
   "installing-mods": "Installing mods",
   "applying-mod-rules": "Applying mod rules",
   "applying-userlist": "Applying LOOT plugin rules",
-  "writing-plugins-txt": "Finalizing plugin order",
   deploying: "Deploying",
   "applying-load-order": "Applying load order",
   "writing-receipt": "Writing receipt",
@@ -1850,6 +1934,11 @@ function SuccessBody(props: {
         </details>
       )}
 
+      <RulesAndUserlistSection
+        rules={result.rulesApplication}
+        userlist={result.userlistApplication}
+      />
+
       <p
         style={{
           margin: 0,
@@ -1861,6 +1950,168 @@ function SuccessBody(props: {
       >
         receipt: {result.receiptPath}
       </p>
+    </div>
+  );
+}
+
+/**
+ * Surfaces the slice 6c (mod rules + LoadOrder) and slice 6d
+ * (LOOT userlist) application summaries the driver writes into
+ * the receipt. Without this section, the user has no way to know
+ * whether Vortex's reducers actually accepted the curator's rules
+ * or whether some were silently rejected — the verification-on-
+ * dispatch we wired into `applyUserlist` would record failures
+ * into a JSON file the user never opens.
+ *
+ * Layout is intentionally compact: collapsed by default if there
+ * is nothing meaningful to surface (zero applies, zero skips), so
+ * collections without rules don't add noise. Skipped entries open
+ * in a `<details>` expander so the danger signal is one click
+ * away — same UX pattern as "Show skipped mods" above.
+ */
+function RulesAndUserlistSection(props: {
+  rules: Extract<InstallResult, { kind: "success" }>["rulesApplication"];
+  userlist: Extract<InstallResult, { kind: "success" }>["userlistApplication"];
+}): JSX.Element | null {
+  const { rules, userlist } = props;
+  const totalApplied =
+    rules.appliedRuleCount +
+    rules.appliedLoadOrderCount +
+    userlist.appliedRuleCount +
+    userlist.appliedGroupAssignmentCount +
+    userlist.appliedNewGroupCount +
+    userlist.appliedGroupRuleCount;
+  const totalSkipped =
+    rules.skippedRules.length +
+    rules.skippedLoadOrderEntries.length +
+    userlist.skippedUserlistEntries.length;
+  const hasOverwrites =
+    rules.overwrittenUserRuleCount > 0 ||
+    userlist.overwrittenGroupAssignmentCount > 0;
+
+  if (totalApplied === 0 && totalSkipped === 0) {
+    return null;
+  }
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "var(--eh-sp-3)",
+      }}
+    >
+      <div
+        style={{
+          color: "var(--eh-text-muted)",
+          fontSize: "var(--eh-text-xs)",
+          textTransform: "uppercase",
+          letterSpacing: "var(--eh-tracking-widest)",
+        }}
+      >
+        Rules &amp; ordering
+      </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+          gap: "var(--eh-sp-2)",
+        }}
+      >
+        <Tile
+          label="Mod rules applied"
+          value={String(rules.appliedRuleCount)}
+        />
+        <Tile
+          label="Load order entries"
+          value={String(rules.appliedLoadOrderCount)}
+        />
+        <Tile
+          label="Plugin rules applied"
+          value={String(userlist.appliedRuleCount)}
+        />
+        <Tile
+          label="Plugin groups"
+          value={`${userlist.appliedGroupAssignmentCount} assigned · ${userlist.appliedNewGroupCount} new`}
+        />
+        {hasOverwrites && (
+          <Tile
+            label="User rules overwritten"
+            value={String(
+              rules.overwrittenUserRuleCount +
+                userlist.overwrittenGroupAssignmentCount,
+            )}
+            accent="var(--eh-warning)"
+          />
+        )}
+        {totalSkipped > 0 && (
+          <Tile
+            label="Skipped"
+            value={String(totalSkipped)}
+            accent="var(--eh-danger)"
+          />
+        )}
+      </div>
+      {totalSkipped > 0 && (
+        <details>
+          <summary
+            style={{
+              color: "var(--eh-danger)",
+              cursor: "pointer",
+              fontSize: "var(--eh-text-sm)",
+            }}
+          >
+            Show skipped rules ({totalSkipped})
+          </summary>
+          <p
+            style={{
+              margin: "var(--eh-sp-2) 0 var(--eh-sp-2) 0",
+              color: "var(--eh-text-muted)",
+              fontSize: "var(--eh-text-xs)",
+              lineHeight: "var(--eh-leading-relaxed)",
+            }}
+          >
+            These came from the collection but did not land. Common causes:
+            Vortex&apos;s mod-rule or userlist contract changed, the rule
+            referenced a mod/plugin that did not install, or the curator
+            ignored the rule before publishing. The full per-rule reason
+            lives in the receipt JSON.
+          </p>
+          <ul
+            style={{
+              margin: 0,
+              paddingLeft: "var(--eh-sp-5)",
+              color: "var(--eh-text-secondary)",
+              fontSize: "var(--eh-text-sm)",
+            }}
+          >
+            {rules.skippedRules.map((s, i) => (
+              <li key={`mr-${i}`}>
+                <code>{s.source}</code> {s.ruleType} <code>{s.reference}</code>{" "}
+                <em style={{ color: "var(--eh-text-muted)" }}>— {s.reason}</em>
+              </li>
+            ))}
+            {rules.skippedLoadOrderEntries.map((s, i) => (
+              <li key={`lo-${i}`}>
+                load-order <code>{s.compareKey}</code> @ {s.pos}{" "}
+                <em style={{ color: "var(--eh-text-muted)" }}>— {s.reason}</em>
+              </li>
+            ))}
+            {userlist.skippedUserlistEntries.map((s, i) => (
+              <li key={`ul-${i}`}>
+                {s.kind} <code>{s.subject}</code>
+                {s.reference !== undefined && (
+                  <>
+                    {" "}
+                    {s.ruleKind ?? ""} <code>{s.reference}</code>
+                  </>
+                )}{" "}
+                <em style={{ color: "var(--eh-text-muted)" }}>— {s.reason}</em>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
     </div>
   );
 }

@@ -46,6 +46,7 @@
 import { actions, types } from "vortex-api";
 
 import type { EhcollRule, ModRuleType } from "../../types/ehcoll";
+import { AbortError } from "../../utils/abortError";
 
 /**
  * Inputs the caller computes once before the apply phase. Keyed maps
@@ -118,13 +119,6 @@ export type SkippedRule = {
   reference: string;
   reason: string;
 };
-
-class AbortError extends Error {
-  constructor() {
-    super("Aborted");
-    this.name = "AbortError";
-  }
-}
 
 /**
  * Dispatch every applicable rule in `input.rules` to Vortex. Returns

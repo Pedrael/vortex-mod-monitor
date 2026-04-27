@@ -6,6 +6,7 @@ import { selectors } from "vortex-api";
 import type { types } from "vortex-api";
 
 import type { AuditorMod } from "./getModsListForProfile";
+import { AbortError } from "../utils/abortError";
 
 /**
  * Sentinel error emitted by `pMap` and `enrichModsWithArchiveHashes`
@@ -13,13 +14,13 @@ import type { AuditorMod } from "./getModsListForProfile";
  * cancellation by checking `err instanceof AbortError` (or
  * `err.name === "AbortError"`) and treat it as "user cancelled, no
  * recovery needed" rather than a real failure.
+ *
+ * Re-exported from `src/utils/abortError.ts` — see that file for the
+ * canonical class. Kept here for backward compat with existing
+ * `import { AbortError } from "../core/archiveHashing"` sites; new
+ * code should import from `src/utils/abortError` directly.
  */
-export class AbortError extends Error {
-  constructor(message = "Operation aborted") {
-    super(message);
-    this.name = "AbortError";
-  }
-}
+export { AbortError };
 
 /**
  * Streaming SHA-256 of a file. Lower memory footprint than reading the

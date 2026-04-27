@@ -1,9 +1,9 @@
 ---
-name: cluster-9
-description: "Skill for the Cluster_9 area of vortex-mod-monitor. 4 symbols across 1 files."
+name: cluster-10
+description: "Skill for the Cluster_10 area of vortex-mod-monitor. 4 symbols across 1 files."
 ---
 
-# Cluster_9
+# Cluster_10
 
 4 symbols | 1 files | Cohesion: 80%
 
@@ -11,7 +11,7 @@ description: "Skill for the Cluster_9 area of vortex-mod-monitor. 4 symbols acro
 
 - Working with code in `src/`
 - Understanding how captureUserlist work
-- Modifying cluster_9-related functionality
+- Modifying cluster_10-related functionality
 
 ## Key Files
 
@@ -37,5 +37,5 @@ Start here when exploring this area:
 ## How to Explore
 
 1. `gitnexus_context({name: "captureUserlist"})` — see callers and callees
-2. `gitnexus_query({query: "cluster_9"})` — find related execution flows
+2. `gitnexus_query({query: "cluster_10"})` — find related execution flows
 3. Read key files listed above for implementation details

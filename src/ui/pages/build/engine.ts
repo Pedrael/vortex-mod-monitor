@@ -151,6 +151,23 @@ export interface BuildPipelineResult {
   bundledCount: number;
   modCount: number;
   warnings: string[];
+  /**
+   * Counts of curator-authored rules + ordering surfaces baked into
+   * the manifest. Surfaced in the build Done card so the curator
+   * gets immediate feedback that their LOOT userlist + mod rules
+   * + load order made it into the package — without these the
+   * curator has to test on a fresh machine to verify round-trip.
+   *
+   * Read directly from `EhcollManifest` after `buildManifest`
+   * returns; no separate computation. `pluginOrderCount` is the
+   * `plugins.txt` baseline; `userlistPluginCount` and
+   * `userlistGroupCount` are LOOT userlist scope.
+   */
+  ruleCount: number;
+  loadOrderCount: number;
+  pluginOrderCount: number;
+  userlistPluginCount: number;
+  userlistGroupCount: number;
 }
 
 export interface BuildOverrides {
@@ -457,6 +474,11 @@ export async function runBuildPipeline(
     bundledCount: result.bundledCount,
     modCount: manifest.mods.length,
     warnings: [...manifestWarnings, ...result.warnings],
+    ruleCount: manifest.rules.length,
+    loadOrderCount: manifest.loadOrder.length,
+    pluginOrderCount: manifest.plugins.order.length,
+    userlistPluginCount: manifest.userlist.plugins.length,
+    userlistGroupCount: manifest.userlist.groups.length,
   };
 }
 

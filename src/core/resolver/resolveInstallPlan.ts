@@ -767,6 +767,11 @@ function summarize(input: {
     needsUserConfirmation,
     missing,
     orphans: orphanedMods.length,
+    ruleCount: manifest.rules.length,
+    loadOrderCount: manifest.loadOrder.length,
+    pluginOrderCount: manifest.plugins.order.length,
+    userlistPluginCount: manifest.userlist.plugins.length,
+    userlistGroupCount: manifest.userlist.groups.length,
     canProceed,
   };
 }

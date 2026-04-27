@@ -34,6 +34,10 @@
 
 import type { ReadEhcollResult } from "../core/manifest/readEhcoll";
 import type { InstallPlan } from "./installPlan";
+import type {
+  RulesApplicationReceipt,
+  UserlistApplicationReceipt,
+} from "./installLedger";
 
 // ===========================================================================
 // User-confirmed decisions (input alongside the plan)
@@ -159,18 +163,19 @@ export type DriverContext = {
  * Coarse-grained driver state. Surfaced for UI/logging only; the
  * action handler does NOT branch on this for control flow.
  *
- * Fresh-profile happy-path (slice 6a) progresses linearly:
+ * Fresh-profile happy-path progresses linearly:
  *
  *   preflight → creating-profile → switching-profile → installing-mods
- *   → writing-plugins-txt → deploying → writing-receipt → complete
+ *   → applying-mod-rules → applying-userlist → deploying
+ *   → applying-load-order → writing-receipt → complete
  *
- * Current-profile mode (slice 6b) skips `creating-profile` and
- * `switching-profile` entirely (we install into the active profile)
- * and inserts a `removing-mods` phase between `preflight` and
- * `installing-mods`:
+ * Current-profile mode skips `creating-profile` and `switching-profile`
+ * entirely (we install into the active profile) and inserts a
+ * `removing-mods` phase between `preflight` and `installing-mods`:
  *
- *   preflight → removing-mods → installing-mods → writing-plugins-txt
- *   → deploying → writing-receipt → complete
+ *   preflight → removing-mods → installing-mods → applying-mod-rules
+ *   → applying-userlist → deploying → applying-load-order
+ *   → writing-receipt → complete
  *
  * `removing-mods` runs every replace-existing and orphan-uninstall
  * choice the user has confirmed. It is skipped when there's nothing
@@ -178,6 +183,12 @@ export type DriverContext = {
  *
  * Failures emit `failed` with the phase that broke. `aborted` is
  * emitted on cooperative cancel via `abortSignal`.
+ *
+ * Note: there is no longer a `writing-plugins-txt` phase. The
+ * rules-only strategy lets Vortex's gamebryo-plugin-management +
+ * LOOT auto-sort produce `plugins.txt` during deploy from the mod
+ * rules + userlist we apply above. See the comment at the top of
+ * `runInstall.ts` for the full rationale.
  */
 export type DriverPhase =
   | "preflight"
@@ -188,7 +199,6 @@ export type DriverPhase =
   | "applying-mod-rules"
   | "applying-load-order"
   | "applying-userlist"
-  | "writing-plugins-txt"
   | "deploying"
   | "writing-receipt"
   | "complete"
@@ -275,6 +285,23 @@ export type InstallSuccess = {
    * docs/business/INSTALL_DRIVER.md § "Carry-forward semantics".
    */
   carriedMods: CarriedModReportEntry[];
+  /**
+   * Slice 6c summary — what `applyModRules` + `applyLoadOrder` did.
+   * Mirrors the receipt's `rulesApplication` field exactly so the UI
+   * can render counts, breakdowns, and skipped entries without
+   * re-reading the receipt JSON from disk. Always present (zeroed
+   * when the manifest had no rules / load order).
+   */
+  rulesApplication: RulesApplicationReceipt;
+  /**
+   * Slice 6d summary — what `applyUserlist` did. Mirrors the
+   * receipt's `userlistApplication` field. Surfaced in the post-
+   * install Done card so verification-on-dispatch failures
+   * (Vortex's userlist reducer ignored a dispatch, action contract
+   * changed, etc.) are visible to the user — without it those
+   * failures would only live on disk in the receipt JSON.
+   */
+  userlistApplication: UserlistApplicationReceipt;
 };
 
 export type InstallAborted = {

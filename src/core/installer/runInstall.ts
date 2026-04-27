@@ -54,9 +54,12 @@
  *   5. installing-mods    — sequentially per mod (downloads/installs).
  *   5b. applying-mod-rules — dispatch curator's mod rules (slice 6c).
  *                           Skipped when manifest.rules is empty.
- *   6. writing-plugins-txt — NO-OP under rules-only strategy (kept
- *                            as a phase identifier for backward
- *                            progress-callback compatibility).
+ *   5c. applying-userlist  — dispatch curator's LOOT userlist plugin
+ *                           rules + group assignments (slice 6d).
+ *                           Skipped when manifest.userlist is empty.
+ *   6. plugins.txt is intentionally NOT written. The rules-only
+ *      strategy lets Vortex + LOOT auto-sort produce it during
+ *      deploy from the rules + userlist we applied above.
  *   7. deploying          — emit `deploy-mods`, await activation.
  *   7b. applying-load-order — dispatch curator's Vortex LoadOrder
  *                            (slice 6c). Skipped when manifest's
@@ -144,12 +147,11 @@ import {
   safeRmTempDir,
   uninstallMod,
 } from "./modInstall";
-// NOTE: `writePluginsTxtWithBackup` is intentionally NOT imported.
-// The "rules-only" strategy (locked design choice) lets Vortex +
-// LOOT auto-sort produce plugins.txt during deploy. The module
-// remains in the codebase for emergency manual recovery, but the
-// driver no longer calls it. See the writing-plugins-txt phase
-// comment for the full rationale.
+// NOTE: there used to be a `pluginsTxt.ts` writer module here. It
+// was deleted along with the `writing-plugins-txt` driver phase
+// when the rules-only strategy locked. Vortex's
+// gamebryo-plugin-management + LOOT auto-sort produce plugins.txt
+// during deploy from the mod rules + userlist we apply above.
 
 const DEPLOY_TIMEOUT_MS = 5 * 60_000;
 
@@ -471,6 +473,20 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
           signal: ctx.abortSignal,
         });
         rulesApplication = mergeRuleResult(rulesApplication, ruleResult);
+        // Advance the bar to N/N so the UI doesn't sit at "0 of 137"
+        // for the entire phase. applyModRules is currently a single
+        // synchronous pass; if it ever grows incremental progress
+        // we'd thread an onProgress callback instead.
+        reportProgress(
+          "applying-mod-rules",
+          plan.manifest.rules.length,
+          plan.manifest.rules.length,
+          `Applied ${ruleResult.applied} mod rule(s)` +
+            (ruleResult.skipped.length > 0
+              ? ` (${ruleResult.skipped.length} skipped)`
+              : "") +
+            ".",
+        );
       } catch (err) {
         if (
           (err as Error)?.name === "AbortError" ||
@@ -541,6 +557,21 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
           userlistApplication,
           ulResult,
         );
+        const ulApplied =
+          ulResult.appliedRuleCount +
+          ulResult.appliedGroupAssignmentCount +
+          ulResult.appliedNewGroupCount +
+          ulResult.appliedGroupRuleCount;
+        reportProgress(
+          "applying-userlist",
+          ulPlugins + ulGroups,
+          ulPlugins + ulGroups,
+          `Applied ${ulApplied} userlist entr${ulApplied === 1 ? "y" : "ies"}` +
+            (ulResult.skipped.length > 0
+              ? ` (${ulResult.skipped.length} skipped)`
+              : "") +
+            ".",
+        );
       } catch (err) {
         if (
           (err as Error)?.name === "AbortError" ||
@@ -566,11 +597,11 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
       if (aborted) return aborted;
     }
 
-    // ── 6. plugins.txt (no-op write under rules-only strategy) ──────
+    // ── 6. plugins.txt (intentionally NOT written) ──────────────────
     // We deliberately do NOT overwrite plugins.txt directly. Locked
-    // design choice: applying mod rules above lets Vortex's
-    // gamebryo-plugin-management + LOOT auto-sort produce the
-    // user's plugins.txt during deploy, using OUR rules + the
+    // design choice: applying mod rules + LOOT userlist above lets
+    // Vortex's gamebryo-plugin-management + LOOT auto-sort produce
+    // the user's plugins.txt during deploy, using OUR rules + the
     // user's local LOOT masterlist + any mods the user has on top.
     //
     // This is the answer to the "LOOT gives a slightly different
@@ -585,8 +616,11 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
     // surface a "your current order differs from collection's by N
     // plugins" hint. Drift detection is informational only — it
     // never blocks the user from making their own changes.
-    aborted = checkAbort("writing-plugins-txt");
-    if (aborted) return aborted;
+    //
+    // The `writing-plugins-txt` driver phase used to live here as a
+    // no-op barrier; it's been retired now that the rules-only
+    // strategy is the locked design and there's nothing to write.
+    // The previous `pluginsTxt.ts` writer module has been deleted.
 
     // ── 7. deploy ───────────────────────────────────────────────────
     reportProgress("deploying", 0, 1, "Deploying mods...");
@@ -634,6 +668,16 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
           signal: ctx.abortSignal,
         });
         rulesApplication = mergeLoadOrderResult(rulesApplication, loResult);
+        reportProgress(
+          "applying-load-order",
+          plan.manifest.loadOrder.length,
+          plan.manifest.loadOrder.length,
+          `Applied ${loResult.applied} load order entr${loResult.applied === 1 ? "y" : "ies"}` +
+            (loResult.skipped.length > 0
+              ? ` (${loResult.skipped.length} skipped)`
+              : "") +
+            ".",
+        );
       } catch (err) {
         if (
           (err as Error)?.name === "AbortError" ||
@@ -713,6 +757,8 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
       skippedMods,
       removedMods,
       carriedMods,
+      rulesApplication,
+      userlistApplication,
     };
   } finally {
     // Cleanup of bundled-extract temp dirs is fire-and-forget. Each

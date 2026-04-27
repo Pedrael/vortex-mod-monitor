@@ -959,6 +959,48 @@ export type PlanSummary = {
    */
   orphans: number;
   /**
+   * `manifest.rules.length`. Mod-to-mod rules (file conflict
+   * resolution, dependencies) the curator authored. Surfaced in
+   * the Preview tile group so users see the scope of curator
+   * intent before clicking install.
+   *
+   * Note: counts ALL rules in the manifest including ones the
+   * curator marked as ignored — `applyModRules` filters those at
+   * apply time. The pre-install number is a "this collection ships
+   * N rules" signal, not a "N rules WILL apply" guarantee. Use the
+   * post-install `rulesApplication.appliedRuleCount` for the
+   * actual landed count.
+   */
+  ruleCount: number;
+  /**
+   * `manifest.loadOrder.length`. Vortex-generic LoadOrder entries
+   * (distinct from plugins.txt — this is the per-game LoadOrder API
+   * used by games without bethesda-style plugin files).
+   */
+  loadOrderCount: number;
+  /**
+   * `manifest.plugins.order.length`. Number of plugins the curator
+   * captured in their plugin order baseline. Under the rules-only
+   * strategy these are not written manually — LOOT computes the
+   * final order from userlist rules — but the count gives users a
+   * sense of "this is a 200-plugin collection vs a 5-plugin one".
+   */
+  pluginOrderCount: number;
+  /**
+   * `manifest.userlist.plugins.length`. Number of LOOT userlist
+   * plugin entries the curator captured (each may carry multiple
+   * after/req/inc rules + an optional group assignment).
+   */
+  userlistPluginCount: number;
+  /**
+   * `manifest.userlist.groups.length`. Number of LOOT userlist
+   * group definitions the curator captured. Surfaced separately
+   * because adding new groups is more invasive than per-plugin
+   * rules — the user's other collection installs (or hand-authored
+   * groups) coexist with these.
+   */
+  userlistGroupCount: number;
+  /**
    * Final verdict. `false` iff:
    *  - `compatibility.errors.length > 0`, OR
    *  - any `compatibility.extensions[i].status !== "ok"` for a required

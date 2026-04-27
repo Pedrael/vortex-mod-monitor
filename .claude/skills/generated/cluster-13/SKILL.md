@@ -1,63 +1,61 @@
 ---
 name: cluster-13
-description: "Skill for the Cluster_13 area of vortex-mod-monitor. 11 symbols across 1 files."
+description: "Skill for the Cluster_13 area of vortex-mod-monitor. 5 symbols across 1 files."
 ---
 
 # Cluster_13
 
-11 symbols | 1 files | Cohesion: 74%
+5 symbols | 1 files | Cohesion: 71%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how getModsForProfile work
+- Understanding how parseReceipt work
 - Modifying cluster_13-related functionality
 
 ## Key Files
 
 | File | Symbols |
 |------|---------|
-| `src/core/getModsListForProfile.ts` | pickInstallerChoices, normalizeCollectionIds, normalizeInstallTime, normalizeStringArray, normalizeFomodSelections (+6) |
+| `src/core/installLedger.ts` | parseReceipt, validateModEntries, expectString, isSemverLike, isIso8601 |
 
 ## Entry Points
 
 Start here when exploring this area:
 
-- **`getModsForProfile`** (Function) — `src/core/getModsListForProfile.ts:423`
+- **`parseReceipt`** (Function) — `src/core/installLedger.ts:152`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `getModsForProfile` | Function | `src/core/getModsListForProfile.ts` | 423 |
-| `pickInstallerChoices` | Function | `src/core/getModsListForProfile.ts` | 206 |
-| `normalizeCollectionIds` | Function | `src/core/getModsListForProfile.ts` | 219 |
-| `normalizeInstallTime` | Function | `src/core/getModsListForProfile.ts` | 244 |
-| `normalizeStringArray` | Function | `src/core/getModsListForProfile.ts` | 270 |
-| `normalizeFomodSelections` | Function | `src/core/getModsListForProfile.ts` | 286 |
-| `hasAnySelectedFomodChoices` | Function | `src/core/getModsListForProfile.ts` | 320 |
-| `normalizeRuleReference` | Function | `src/core/getModsListForProfile.ts` | 334 |
-| `rulesSortKey` | Function | `src/core/getModsListForProfile.ts` | 373 |
-| `normalizeModRules` | Function | `src/core/getModsListForProfile.ts` | 384 |
-| `assignInstallOrder` | Function | `src/core/getModsListForProfile.ts` | 498 |
+| `parseReceipt` | Function | `src/core/installLedger.ts` | 152 |
+| `validateModEntries` | Function | `src/core/installLedger.ts` | 380 |
+| `expectString` | Function | `src/core/installLedger.ts` | 433 |
+| `isSemverLike` | Function | `src/core/installLedger.ts` | 476 |
+| `isIso8601` | Function | `src/core/installLedger.ts` | 484 |
 
 ## Execution Flows
 
 | Flow | Type | Steps |
 |------|------|-------|
-| `Begin → NormalizeRuleReference` | cross_community | 5 |
-| `Begin → RulesSortKey` | cross_community | 5 |
-| `RunLoadingPipelineWithReceipt → NormalizeRuleReference` | cross_community | 4 |
-| `RunLoadingPipelineWithReceipt → RulesSortKey` | cross_community | 4 |
-| `CreateExportModsAction → NormalizeRuleReference` | cross_community | 4 |
-| `CreateExportModsAction → RulesSortKey` | cross_community | 4 |
-| `Begin → PickInstallerChoices` | cross_community | 4 |
-| `Begin → NormalizeFomodSelections` | cross_community | 4 |
-| `Begin → NormalizeCollectionIds` | cross_community | 4 |
-| `ResolveStaleReceipt → PickInstallerChoices` | cross_community | 4 |
+| `Dashboard → InstallLedgerError` | cross_community | 6 |
+| `LoadDashboardData → ExpectString` | cross_community | 5 |
+| `LoadDashboardData → IsUuid` | cross_community | 5 |
+| `LoadDashboardData → IsSemverLike` | cross_community | 5 |
+| `WriteReceiptWithRetry → InstallLedgerError` | cross_community | 5 |
+| `WriteReceiptWithRetry → ExpectString` | cross_community | 5 |
+| `WriteReceiptWithRetry → IsUuid` | cross_community | 5 |
+| `WriteReceiptWithRetry → IsSemverLike` | cross_community | 5 |
+
+## Connected Areas
+
+| Area | Connections |
+|------|-------------|
+| Errors | 2 calls |
 
 ## How to Explore
 
-1. `gitnexus_context({name: "getModsForProfile"})` — see callers and callees
+1. `gitnexus_context({name: "parseReceipt"})` — see callers and callees
 2. `gitnexus_query({query: "cluster_13"})` — find related execution flows
 3. Read key files listed above for implementation details

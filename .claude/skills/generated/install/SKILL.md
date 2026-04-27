@@ -1,11 +1,11 @@
 ---
 name: install
-description: "Skill for the Install area of vortex-mod-monitor. 43 symbols across 9 files."
+description: "Skill for the Install area of vortex-mod-monitor. 49 symbols across 9 files."
 ---
 
 # Install
 
-43 symbols | 9 files | Cohesion: 75%
+49 symbols | 9 files | Cohesion: 70%
 
 ## When to Use
 
@@ -17,13 +17,13 @@ description: "Skill for the Install area of vortex-mod-monitor. 43 symbols acros
 
 | File | Symbols |
 |------|---------|
-| `src/ui/pages/install/installSession.ts` | InstallSession, subscribe, cancelLoading, openDecisionsFromPreview, setConflictChoice (+10) |
+| `src/ui/pages/install/installSession.ts` | InstallSession, subscribe, cancelLoading, openDecisionsFromPreview, setOrphanChoice (+13) |
 | `src/ui/pages/install/steps.tsx` | ConflictRow, handlePickFile, OrphanRow, decisionLabel, describeConflict (+6) |
-| `src/ui/pages/install/state.ts` | selectConflictResolutions, defaultConflictChoice, defaultOrphanChoice, canProceedFromDecisions, fillDefaultConflictChoices (+1) |
+| `src/ui/pages/install/state.ts` | selectConflictResolutions, defaultConflictChoice, defaultOrphanChoice, canProceedFromDecisions, fillDefaultConflictChoices (+2) |
 | `src/ui/pages/build/BuildPage.tsx` | FormPanel, updateCurator, updateOverride, ExternalModsTable |
+| `src/core/installer/profile.ts` | onChange, createFreshProfile, pickNonCollidingName |
 | `src/utils/diskSpace.ts` | getFreeBytes, findExistingAncestor, formatBytes |
 | `src/utils/utils.ts` | pickModArchiveFile |
-| `src/core/installer/profile.ts` | onChange |
 | `src/ui/pages/install/InstallPage.tsx` | InstallWizard |
 | `src/ui/hooks/useKeyboardShortcut.ts` | useKeyboardShortcut |
 
@@ -50,42 +50,42 @@ Start here when exploring this area:
 | `canProceedFromDecisions` | Function | `src/ui/pages/install/state.ts` | 361 |
 | `fillDefaultConflictChoices` | Function | `src/ui/pages/install/state.ts` | 378 |
 | `fillDefaultOrphanChoices` | Function | `src/ui/pages/install/state.ts` | 394 |
-| `DecisionsStep` | Function | `src/ui/pages/install/steps.tsx` | 902 |
+| `DecisionsStep` | Function | `src/ui/pages/install/steps.tsx` | 987 |
 | `getFreeBytes` | Function | `src/utils/diskSpace.ts` | 28 |
 | `formatBytes` | Function | `src/utils/diskSpace.ts` | 84 |
 | `useKeyboardShortcut` | Function | `src/ui/hooks/useKeyboardShortcut.ts` | 35 |
 | `PreviewStep` | Function | `src/ui/pages/install/steps.tsx` | 601 |
-| `ConfirmStep` | Function | `src/ui/pages/install/steps.tsx` | 1382 |
+| `ConfirmStep` | Function | `src/ui/pages/install/steps.tsx` | 1467 |
+| `createFreshProfile` | Function | `src/core/installer/profile.ts` | 38 |
+| `pickNonCollidingName` | Function | `src/core/installer/profile.ts` | 206 |
+| `wizardReducer` | Function | `src/ui/pages/install/state.ts` | 175 |
 | `isAbortError` | Function | `src/ui/pages/install/installSession.ts` | 460 |
 | `InstallSession` | Class | `src/ui/pages/install/installSession.ts` | 79 |
-| `ConflictRow` | Function | `src/ui/pages/install/steps.tsx` | 1069 |
-| `handlePickFile` | Function | `src/ui/pages/install/steps.tsx` | 1079 |
-| `OrphanRow` | Function | `src/ui/pages/install/steps.tsx` | 1207 |
 
 ## Execution Flows
 
 | Flow | Type | Steps |
 |------|------|-------|
+| `ReceiptDetailModal → EHRuntime` | cross_community | 7 |
+| `ReceiptDetailModal → Notify` | cross_community | 7 |
+| `ReceiptDetailModal → GetSnapshot` | cross_community | 6 |
+| `ApplyGroupRule → EHRuntime` | cross_community | 6 |
+| `ApplyGroupRule → Notify` | cross_community | 6 |
+| `ApplyGroupDefinition → EHRuntime` | cross_community | 6 |
+| `ApplyGroupDefinition → Notify` | cross_community | 6 |
+| `ApplyPluginGroup → EHRuntime` | cross_community | 6 |
+| `ApplyPluginGroup → Notify` | cross_community | 6 |
 | `DecisionsStep → EHRuntime` | cross_community | 5 |
-| `DecisionsStep → Notify` | cross_community | 5 |
-| `PickFile → EHRuntime` | cross_community | 5 |
-| `PickFile → Notify` | cross_community | 5 |
-| `PickFile → ReadEhcollError` | cross_community | 5 |
-| `ResolveStaleReceipt → EHRuntime` | cross_community | 5 |
-| `ResolveStaleReceipt → Notify` | cross_community | 5 |
-| `OpenConfirm → EHRuntime` | cross_community | 5 |
-| `OpenConfirm → Notify` | cross_community | 5 |
-| `StartInstall → EHRuntime` | cross_community | 5 |
 
 ## Connected Areas
 
 | Area | Connections |
 |------|-------------|
-| Installer | 16 calls |
 | Pages | 5 calls |
-| Resolver | 2 calls |
+| Resolver | 3 calls |
+| Installer | 3 calls |
+| Runtime | 2 calls |
 | Errors | 1 calls |
-| Runtime | 1 calls |
 | Build | 1 calls |
 
 ## How to Explore
