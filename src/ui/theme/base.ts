@@ -14,7 +14,17 @@ export const BASE_CSS = `
   line-height: var(--eh-leading-normal);
   color: var(--eh-text-primary);
   background: var(--eh-gradient-page);
-  min-height: 100%;
+  /* Vortex's MainPage container is a flex column that gives us a
+     definite height via flex sizing, NOT via height:100%. Hooking
+     into that flex chain (flex:1 + min-height:0) guarantees a real
+     pixel height for our descendants — without this our inner flex
+     column collapses and the main scroll region never overflows
+     (the "dashboard not scrollable" bug). */
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
   width: 100%;
   position: relative;
   overflow: hidden;
@@ -119,13 +129,20 @@ export const BASE_CSS = `
   z-index: var(--eh-z-raised);
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
   height: 100%;
   width: 100%;
 }
 
 .eh-app__main {
-  flex: 1;
+  flex: 1 1 auto;
+  /* min-height: 0 is required so this flex child can actually shrink
+     below its intrinsic content height — otherwise overflow-y:auto
+     never kicks in and the page grows past the viewport. */
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   scrollbar-gutter: stable;
 }
 

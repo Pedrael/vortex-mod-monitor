@@ -21,7 +21,10 @@
 import { util } from "vortex-api";
 import type { types } from "vortex-api";
 
-import { enrichModsWithArchiveHashes } from "../../../core/archiveHashing";
+import {
+  AbortError,
+  enrichModsWithArchiveHashes,
+} from "../../../core/archiveHashing";
 import {
   getActiveGameId,
   getActiveProfileIdFromState,
@@ -56,6 +59,16 @@ const SUPPORTED_GAME_IDS: ReadonlySet<string> = new Set<SupportedGameId>([
 
 export interface LoadProgressEvents {
   onPhase: (phase: import("./state").LoadingPhase, hashCount?: number) => void;
+  /**
+   * Live "X / Y" hashing counter. Called once per mod as its archive
+   * hash completes (or is skipped). Always paired with phase ===
+   * "hashing-mods".
+   */
+  onHashProgress?: (
+    done: number,
+    total: number,
+    currentItem: string,
+  ) => void;
 }
 
 export type LoadOutcome =
@@ -85,15 +98,23 @@ export async function runLoadingPipeline(args: {
   api: types.IExtensionApi;
   zipPath: string;
   events: LoadProgressEvents;
+  signal?: AbortSignal;
 }): Promise<LoadOutcome> {
-  const { api, zipPath, events } = args;
+  const { api, zipPath, events, signal } = args;
+  const checkAbort = (): void => {
+    if (signal?.aborted) {
+      throw new AbortError("Loading cancelled by user");
+    }
+  };
 
   // ── 1. read .ehcoll ───────────────────────────────────────────────
+  checkAbort();
   events.onPhase("reading-package");
   const ehcoll = await readEhcoll(zipPath);
   const { manifest } = ehcoll;
 
   // ── 2. early game-id gate ────────────────────────────────────────
+  checkAbort();
   events.onPhase("checking-game");
   const state = api.getState();
   const activeGameId = getActiveGameId(state);
@@ -120,6 +141,7 @@ export async function runLoadingPipeline(args: {
   }
 
   // ── 3. read receipt ──────────────────────────────────────────────
+  checkAbort();
   events.onPhase("reading-receipt");
   const appDataPath = util.getVortexPath("appData");
   const receipt = await readReceipt(appDataPath, manifest.package.id);
@@ -132,16 +154,24 @@ export async function runLoadingPipeline(args: {
   }
 
   // ── 4. snapshot pipeline (hash mods) ─────────────────────────────
+  checkAbort();
   const rawMods = getModsForProfile(state, activeGameId, activeProfileId);
   events.onPhase("hashing-mods", rawMods.length);
   const installedMods = await enrichModsWithArchiveHashes(
     state,
     activeGameId,
     rawMods,
-    { concurrency: 4 },
+    {
+      concurrency: 4,
+      signal,
+      onProgress: (done, total, mod) => {
+        events.onHashProgress?.(done, total, mod.name);
+      },
+    },
   );
 
   // ── 5. resolve plan ──────────────────────────────────────────────
+  checkAbort();
   events.onPhase("resolving-plan");
   const activeProfileName =
     resolveProfileName(state, activeProfileId) ?? activeProfileId;
@@ -185,15 +215,22 @@ export async function runLoadingPipelineWithReceipt(args: {
   receipt: InstallReceipt | undefined;
   appDataPath: string;
   events: LoadProgressEvents;
+  signal?: AbortSignal;
 }): Promise<{
   ehcoll: ReadEhcollResult;
   receipt: InstallReceipt | undefined;
   plan: InstallPlan;
   appDataPath: string;
 }> {
-  const { api, ehcoll, receipt, appDataPath, events } = args;
+  const { api, ehcoll, receipt, appDataPath, events, signal } = args;
   const { manifest } = ehcoll;
+  const checkAbort = (): void => {
+    if (signal?.aborted) {
+      throw new AbortError("Loading cancelled by user");
+    }
+  };
 
+  checkAbort();
   events.onPhase("checking-game");
   const state = api.getState();
   const activeGameId = getActiveGameId(state);
@@ -207,15 +244,23 @@ export async function runLoadingPipelineWithReceipt(args: {
     throw new Error(`No profile found for game "${activeGameId}".`);
   }
 
+  checkAbort();
   const rawMods = getModsForProfile(state, activeGameId, activeProfileId);
   events.onPhase("hashing-mods", rawMods.length);
   const installedMods = await enrichModsWithArchiveHashes(
     state,
     activeGameId,
     rawMods,
-    { concurrency: 4 },
+    {
+      concurrency: 4,
+      signal,
+      onProgress: (done, total, mod) => {
+        events.onHashProgress?.(done, total, mod.name);
+      },
+    },
   );
 
+  checkAbort();
   events.onPhase("resolving-plan");
   const activeProfileName =
     resolveProfileName(state, activeProfileId) ?? activeProfileId;

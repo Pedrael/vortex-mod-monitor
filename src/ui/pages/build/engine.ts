@@ -25,6 +25,7 @@ import { util } from "vortex-api";
 import type { types } from "vortex-api";
 
 import {
+  AbortError,
   enrichModsWithArchiveHashes,
   getModArchivePath,
 } from "../../../core/archiveHashing";
@@ -131,6 +132,15 @@ export type BuildProgressPhase =
 export interface BuildProgress {
   phase: BuildProgressPhase;
   message?: string;
+  /**
+   * For phases that iterate over a known number of items (today only
+   * "hashing-mods"), the live counter so the UI can render an exact
+   * "X / Y archives hashed" string. Omitted for non-iterative phases.
+   */
+  done?: number;
+  total?: number;
+  /** Human-readable name of the item currently being processed. */
+  currentItem?: string;
 }
 
 export interface BuildPipelineResult {
@@ -174,6 +184,10 @@ export class BundleResolutionError extends Error {
 /**
  * Pre-flight: read state, hash mods, load (or create) the collection
  * config. Returns the form-population shape the React BuildPage needs.
+ *
+ * Pass `signal` to make the (potentially long) hashing pass
+ * cancellable. Cancellation rejects with `AbortError` from
+ * `core/archiveHashing`. Hashing is read-only so abort is always safe.
  */
 export async function loadBuildContext(
   api: types.IExtensionApi,
@@ -185,9 +199,11 @@ export async function loadBuildContext(
      * in the form and we want to load (or create) the new file.
      */
     nameOverride?: string;
+    signal?: AbortSignal;
   },
 ): Promise<BuildContext> {
   const onProgress = opts?.onProgress;
+  const signal = opts?.signal;
   const state = api.getState();
 
   const gameId = getActiveGameId(state);
@@ -214,9 +230,21 @@ export async function loadBuildContext(
   onProgress?.({
     phase: "hashing-mods",
     message: `Hashing ${rawMods.length} mod archives...`,
+    done: 0,
+    total: rawMods.length,
   });
   const mods = await enrichModsWithArchiveHashes(state, gameId, rawMods, {
     concurrency: 4,
+    signal,
+    onProgress: (done, total, mod) => {
+      onProgress?.({
+        phase: "hashing-mods",
+        message: `Hashing mod archives (${done} / ${total})...`,
+        done,
+        total,
+        currentItem: mod.name,
+      });
+    },
   });
 
   const externalMods = mods.filter((m) => !isNexusMod(m));
@@ -266,15 +294,31 @@ export async function loadBuildContext(
  * Run the full build pipeline using the curator's form input.
  * Persists the latest overrides back into the per-collection config
  * file before producing the package.
+ *
+ * Pass `signal` to allow cancellation between phases. The pipeline
+ * is checkpointed at each phase boundary — if the signal is aborted
+ * the pipeline throws `AbortError` from the next checkpoint and no
+ * .ehcoll file is written. Phases that have already completed (e.g.
+ * the per-collection config was just saved) are persistent, but
+ * those writes are read-only-state changes that the curator can
+ * trivially overwrite by clicking Build again.
  */
 export async function runBuildPipeline(
   api: types.IExtensionApi,
   context: BuildContext,
   curator: CuratorInput,
   overrides: BuildOverrides,
-  opts?: { onProgress?: (p: BuildProgress) => void },
+  opts?: { onProgress?: (p: BuildProgress) => void; signal?: AbortSignal },
 ): Promise<BuildPipelineResult> {
   const onProgress = opts?.onProgress;
+  const signal = opts?.signal;
+  const checkAbort = (): void => {
+    if (signal?.aborted) {
+      throw new AbortError("Build cancelled by user");
+    }
+  };
+
+  checkAbort();
   const state = api.getState();
   const { gameId, mods } = context;
 
@@ -316,10 +360,12 @@ export async function runBuildPipeline(
     changelog: overrides.changelog,
   };
 
+  checkAbort();
   onProgress?.({ phase: "writing-config" });
   await saveCollectionConfig({ configDir, slug, config: collectionConfig });
 
   // ── 2. Capture deployment + load order + plugins.txt ───────────────────
+  checkAbort();
   onProgress?.({ phase: "capturing-deployment" });
   const deploymentManifests = await captureDeploymentManifests(
     api,
@@ -327,13 +373,16 @@ export async function runBuildPipeline(
     gameId,
   );
 
+  checkAbort();
   onProgress?.({ phase: "capturing-load-order" });
   const loadOrder = captureLoadOrder(state, gameId);
 
+  checkAbort();
   onProgress?.({ phase: "reading-plugins-txt" });
   const pluginsTxtContent = await readPluginsTxtIfPresent(gameId);
 
   // ── 3. Build the manifest ──────────────────────────────────────────────
+  checkAbort();
   onProgress?.({ phase: "building-manifest" });
   const snapshot = {
     exportedAt: new Date().toISOString(),
@@ -368,6 +417,7 @@ export async function runBuildPipeline(
   });
 
   // ── 4. Resolve bundled archives ────────────────────────────────────────
+  checkAbort();
   onProgress?.({ phase: "resolving-bundled-archives" });
   const { bundledArchives, errors: bundleErrors } = resolveBundledArchives(
     state,
@@ -380,6 +430,7 @@ export async function runBuildPipeline(
   }
 
   // ── 5. Package the .ehcoll ─────────────────────────────────────────────
+  checkAbort();
   const outputFileName = buildOutputFileName(curator.name, curator.version);
   const outputPath = path.join(outputDir, outputFileName);
   onProgress?.({ phase: "packaging" });

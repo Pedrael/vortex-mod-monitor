@@ -26,6 +26,7 @@ import {
   Button,
   Card,
   EventHorizonLogo,
+  HashingCard,
   Pill,
   ProgressRing,
   StepDots,
@@ -270,16 +271,20 @@ const LOADING_PHASE_LABELS: Record<LoadingPhase, string> = {
 export function LoadingStep(props: {
   phase: LoadingPhase;
   hashCount?: number;
+  hashDone?: number;
+  hashCurrent?: string;
+  onCancel?: () => void;
 }): JSX.Element {
   const phaseIdx =
     Object.keys(LOADING_PHASE_LABELS).indexOf(props.phase);
   const totalPhases = Object.keys(LOADING_PHASE_LABELS).length;
   const ratio = totalPhases > 0 ? (phaseIdx + 1) / totalPhases : 0;
 
-  const phaseExtra =
-    props.phase === "hashing-mods" && props.hashCount !== undefined
-      ? `Hashing ${props.hashCount} archive${props.hashCount === 1 ? "" : "s"}...`
-      : "";
+  // Specialised UI for the hashing pass: live counter + scanner +
+  // cancel button. Hashing is read-only so cancellation is always
+  // safe — see `core/archiveHashing.ts`.
+  const isHashing = props.phase === "hashing-mods";
+  const total = props.hashCount ?? 0;
 
   return (
     <StepFrame
@@ -287,39 +292,54 @@ export function LoadingStep(props: {
       title="Working on it..."
       subtitle="Event Horizon needs to inspect the archive, your installed mods, and any previous install of this collection before it can show you a plan."
     >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "var(--eh-sp-5)",
-          padding: "var(--eh-sp-6)",
-          background: "var(--eh-bg-raised)",
-          border: "1px solid var(--eh-border-default)",
-          borderRadius: "var(--eh-radius-lg)",
-        }}
-      >
-        <ProgressRing value={ratio} size={88} />
-        <div>
-          <strong
-            style={{
-              color: "var(--eh-text-primary)",
-              fontSize: "var(--eh-text-lg)",
-            }}
-          >
-            {LOADING_PHASE_LABELS[props.phase]}
-          </strong>
-          <p
-            style={{
-              margin: "var(--eh-sp-1) 0 0 0",
-              color: "var(--eh-text-secondary)",
-              fontSize: "var(--eh-text-sm)",
-            }}
-          >
-            {phaseExtra ||
-              "Hold tight — this can take a moment for large mod lists."}
-          </p>
+      {isHashing && total > 0 ? (
+        <HashingCard
+          title="Hashing your installed mods"
+          subtitle="Computing SHA-256 of every archive — this is read-only and safe to cancel."
+          done={props.hashDone ?? 0}
+          total={total}
+          currentItem={props.hashCurrent}
+          onCancel={props.onCancel}
+        />
+      ) : (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--eh-sp-5)",
+            padding: "var(--eh-sp-6)",
+            background: "var(--eh-bg-raised)",
+            border: "1px solid var(--eh-border-default)",
+            borderRadius: "var(--eh-radius-lg)",
+          }}
+        >
+          <ProgressRing value={ratio} size={88} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <strong
+              style={{
+                color: "var(--eh-text-primary)",
+                fontSize: "var(--eh-text-lg)",
+              }}
+            >
+              {LOADING_PHASE_LABELS[props.phase]}
+            </strong>
+            <p
+              style={{
+                margin: "var(--eh-sp-1) 0 0 0",
+                color: "var(--eh-text-secondary)",
+                fontSize: "var(--eh-text-sm)",
+              }}
+            >
+              Hold tight — this can take a moment for large mod lists.
+            </p>
+          </div>
+          {props.onCancel !== undefined && (
+            <Button intent="ghost" size="sm" onClick={props.onCancel}>
+              Cancel
+            </Button>
+          )}
         </div>
-      </div>
+      )}
     </StepFrame>
   );
 }

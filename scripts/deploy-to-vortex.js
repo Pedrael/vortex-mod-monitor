@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const repoRoot = path.resolve(__dirname, "../..");
+const repoRoot = path.resolve(__dirname, "..");
 const sourceDistDir = path.join(repoRoot, "dist");
 
 const appData = process.env.APPDATA;
@@ -36,6 +36,15 @@ function copyRecursiveSync(src, dest) {
 console.log(`Deploying to ${targetDir} ...`);
 
 copyRecursiveSync(sourceDistDir, path.join(targetDir, "dist"));
+
+// Ship the static asset folder verbatim. Currently it carries the
+// monochrome sidebar icon SVG sprite (loaded via util.installIconSet);
+// future runtime assets (READMEs, fallback images, sample data, ...)
+// can drop in here without touching the deploy script.
+const sourceAssetsDir = path.join(repoRoot, "assets");
+if (fs.existsSync(sourceAssetsDir)) {
+  copyRecursiveSync(sourceAssetsDir, path.join(targetDir, "assets"));
+}
 
 for (const file of ["index.js", "info.json"]) {
   const src = path.join(repoRoot, file);

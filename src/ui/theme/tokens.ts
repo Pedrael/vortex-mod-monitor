@@ -172,9 +172,12 @@ export const TOKENS_CSS = `
   --eh-dur-base: 280ms;
   --eh-dur-slow: 480ms;
   --eh-dur-deliberate: 720ms;
-  --eh-dur-warp: 6000ms;
-  --eh-dur-orbit: 20000ms;
-  --eh-dur-orbit-fast: 12000ms;
+  /* Orbit speeds tuned so motion is *clearly* visible at a glance.
+     20s orbit reads as static for the first few seconds — bump to
+     ~12s/7s so the user immediately sees the disk turning. */
+  --eh-dur-warp: 4500ms;
+  --eh-dur-orbit: 12000ms;
+  --eh-dur-orbit-fast: 7000ms;
 
   /* ── Layout ───────────────────────────────────────────────────── */
   --eh-max-content: 1280px;

@@ -118,12 +118,22 @@ function Hero(): JSX.Element {
       style={{ paddingTop: "var(--eh-sp-5)", paddingBottom: "var(--eh-sp-5)" }}
     >
       <span className="eh-hero__logo">
-        <EventHorizonLogo size={120} />
+        <EventHorizonLogo size={168} />
       </span>
       <span className="eh-hero__tagline">A Vortex collection installer</span>
       <h1 className="eh-hero__title" style={{ fontSize: "var(--eh-text-3xl)" }}>
         <span className="eh-text-gradient">Event Horizon</span>
       </h1>
+      <span
+        style={{
+          color: "var(--eh-text-muted)",
+          fontSize: "var(--eh-text-xs)",
+          letterSpacing: "var(--eh-tracking-widest)",
+          textTransform: "uppercase",
+        }}
+      >
+        by DuduPhudu &amp; Bluuuk
+      </span>
     </section>
   );
 }

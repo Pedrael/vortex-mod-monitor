@@ -460,9 +460,59 @@ export const COMPONENTS_CSS = `
 }
 
 .eh-hero__logo {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   margin-bottom: var(--eh-sp-4);
   animation:
     eh-fade-scale var(--eh-dur-deliberate) var(--eh-easing) both;
+}
+
+/* Outer conic aura — pure CSS, no SVG. Spins continuously to make
+   the dashboard logo *visibly* alive at a glance. The conic
+   gradient is the same Gargantua palette the SVG uses, just
+   rendered as a soft halo instead of the disk itself. */
+.eh-hero__logo::before {
+  content: "";
+  position: absolute;
+  inset: -16%;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    rgba(255, 177, 92, 0.0) 0%,
+    rgba(255, 107, 61, 0.45) 18%,
+    rgba(240, 56, 107, 0.55) 38%,
+    rgba(169, 50, 137, 0.45) 60%,
+    rgba(95, 44, 165, 0.30) 80%,
+    rgba(255, 177, 92, 0.0) 100%
+  );
+  filter: blur(18px);
+  opacity: 0.55;
+  z-index: -1;
+  animation: eh-rotate-cw var(--eh-dur-orbit) linear infinite;
+  pointer-events: none;
+}
+
+/* Faint counter-rotating ring on top of the aura for parallax. */
+.eh-hero__logo::after {
+  content: "";
+  position: absolute;
+  inset: -6%;
+  border-radius: 50%;
+  border: 1px solid rgba(118, 228, 247, 0.20);
+  box-shadow:
+    inset 0 0 18px rgba(118, 228, 247, 0.10),
+    0 0 24px rgba(118, 228, 247, 0.08);
+  animation: eh-rotate-ccw var(--eh-dur-orbit) linear infinite;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eh-hero__logo::before,
+  .eh-hero__logo::after {
+    animation: none;
+  }
 }
 
 .eh-hero__title {
@@ -592,5 +642,113 @@ export const COMPONENTS_CSS = `
   font-family: var(--eh-font-mono);
   font-size: var(--eh-text-xs);
   line-height: var(--eh-leading-relaxed);
+}
+
+/* ── Hashing card (long, slow operation reassurance) ──────────────
+   Used by BuildPage and InstallPage to show:
+     - the "we're doing something" scanner sweep (always animating),
+     - the exact "X / Y" counter (determinate),
+     - the current item being processed (live updating).
+   The combination is critical: progress can move very slowly when
+   archives are huge, but the scanner gives immediate visual proof
+   that the process isn't frozen. */
+.eh-hashing {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--eh-sp-3);
+  padding: var(--eh-sp-5);
+  background: var(--eh-bg-raised);
+  border: 1px solid var(--eh-border-default);
+  border-radius: var(--eh-radius-lg);
+  overflow: hidden;
+  animation: eh-card-pulse 3.2s ease-in-out infinite;
+}
+
+.eh-hashing__scanner {
+  position: relative;
+  height: 6px;
+  width: 100%;
+  background: var(--eh-bg-base);
+  border-radius: var(--eh-radius-pill);
+  overflow: hidden;
+}
+
+.eh-hashing__scanner::before {
+  /* Determinate fill — tied to --eh-progress (0-1). */
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: calc(var(--eh-progress, 0) * 100%);
+  background: var(--eh-gradient-disk);
+  border-radius: var(--eh-radius-pill);
+  transition: width var(--eh-dur-base) var(--eh-easing);
+  z-index: 1;
+}
+
+.eh-hashing__scanner::after {
+  /* Always-on shimmer overlay so the user sees motion even when
+     determinate progress hasn't ticked yet. */
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 25%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.55) 50%,
+    transparent 100%
+  );
+  animation: eh-scanner-sweep 1.4s linear infinite;
+  z-index: 2;
+}
+
+.eh-hashing__row {
+  display: flex;
+  align-items: center;
+  gap: var(--eh-sp-3);
+  flex-wrap: wrap;
+}
+
+.eh-hashing__counter {
+  font-family: var(--eh-font-mono);
+  font-size: var(--eh-text-md);
+  color: var(--eh-cyan-bright);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.eh-hashing__current {
+  flex: 1 1 200px;
+  min-width: 0;
+  color: var(--eh-text-secondary);
+  font-size: var(--eh-text-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eh-hashing__title {
+  margin: 0;
+  font-size: var(--eh-text-lg);
+  color: var(--eh-text-primary);
+}
+
+.eh-hashing__subtitle {
+  margin: 0;
+  color: var(--eh-text-secondary);
+  font-size: var(--eh-text-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eh-hashing { animation: none; }
+  .eh-hashing__scanner::after {
+    /* Don't kill the scanner entirely — it's the user's only proof
+       that the process isn't frozen. Slow it instead. */
+    animation-duration: 4s;
+  }
 }
 `;

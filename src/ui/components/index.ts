@@ -13,6 +13,9 @@ export type { PillProps, PillIntent } from "./Pill";
 export { ProgressRing } from "./ProgressRing";
 export type { ProgressRingProps } from "./ProgressRing";
 
+export { HashingCard } from "./HashingCard";
+export type { HashingCardProps } from "./HashingCard";
+
 export { StepDots } from "./StepDots";
 export type { StepDotsProps } from "./StepDots";
 

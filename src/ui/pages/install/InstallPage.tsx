@@ -74,20 +74,48 @@ function InstallWizard(props: InstallPageProps): JSX.Element {
     initialWizardState,
   );
 
+  // Active AbortController for the in-flight loading pipeline.
+  // Stored in a ref so the LoadingStep's Cancel button can reach it
+  // without prop-drilling through the reducer state.
+  const loadAbortRef = React.useRef<AbortController | undefined>(undefined);
+
+  const handleCancelLoading = React.useCallback((): void => {
+    loadAbortRef.current?.abort();
+  }, []);
+
+  // Always abort any in-flight load when the page unmounts.
+  React.useEffect(() => {
+    return () => {
+      loadAbortRef.current?.abort();
+    };
+  }, []);
+
   // ── Effect: loading pipeline ───────────────────────────────────────
   React.useEffect(() => {
     if (state.kind !== "loading") return;
     let alive = true;
+    const controller = new AbortController();
+    loadAbortRef.current = controller;
 
     void (async (): Promise<void> => {
       try {
         const outcome = await runLoadingPipeline({
           api,
           zipPath: state.zipPath,
+          signal: controller.signal,
           events: {
             onPhase: (phase, hashCount): void => {
               if (!alive) return;
               dispatch({ type: "loading-phase", phase, hashCount });
+            },
+            onHashProgress: (done, total, currentItem): void => {
+              if (!alive) return;
+              dispatch({
+                type: "hash-progress",
+                done,
+                total,
+                currentItem,
+              });
             },
           },
         });
@@ -116,6 +144,12 @@ function InstallWizard(props: InstallPageProps): JSX.Element {
         });
       } catch (err) {
         if (!alive) return;
+        // User-initiated cancel: bounce back to the picker silently
+        // instead of opening the error modal.
+        if (isAbortError(err)) {
+          dispatch({ type: "reset" });
+          return;
+        }
         const formatted = formatError(err, {
           title: "Couldn't prepare the install",
           context: { step: "loading", zipPath: state.zipPath },
@@ -130,6 +164,7 @@ function InstallWizard(props: InstallPageProps): JSX.Element {
 
     return (): void => {
       alive = false;
+      loadAbortRef.current = undefined;
     };
     // We only care about state.kind changing into 'loading' — re-running
     // when zipPath changes is impossible because zipPath only exists
@@ -197,7 +232,13 @@ function InstallWizard(props: InstallPageProps): JSX.Element {
 
     case "loading":
       return (
-        <LoadingStep phase={state.phase} hashCount={state.hashCount} />
+        <LoadingStep
+          phase={state.phase}
+          hashCount={state.hashCount}
+          hashDone={state.hashDone}
+          hashCurrent={state.hashCurrent}
+          onCancel={handleCancelLoading}
+        />
       );
 
     case "stale-receipt":
@@ -303,6 +344,24 @@ function InstallWizard(props: InstallPageProps): JSX.Element {
 }
 
 // ===========================================================================
+// Helpers
+// ===========================================================================
+
+/**
+ * True for AbortController-originated cancellations. Distinguishes
+ * user cancel (silent reset) from genuine pipeline failures (error
+ * modal). Mirrors the same helper in BuildPage.
+ */
+function isAbortError(err: unknown): boolean {
+  if (err instanceof Error) {
+    if (err.name === "AbortError") return true;
+    const message = err.message ?? "";
+    if (message.toLowerCase().includes("cancelled")) return true;
+  }
+  return false;
+}
+
+// ===========================================================================
 // Resume-after-stale helper
 // ===========================================================================
 
@@ -331,6 +390,14 @@ async function runResumeAfterStaleResolution(args: {
         onPhase: (phase, hashCount): void => {
           dispatch({ type: "loading-phase", phase, hashCount });
         },
+        onHashProgress: (done, total, currentItem): void => {
+          dispatch({
+            type: "hash-progress",
+            done,
+            total,
+            currentItem,
+          });
+        },
       },
     });
     dispatch({
@@ -344,6 +411,10 @@ async function runResumeAfterStaleResolution(args: {
       },
     });
   } catch (err) {
+    if (isAbortError(err)) {
+      dispatch({ type: "reset" });
+      return;
+    }
     const formatted = formatError(err, {
       title: "Couldn't prepare the install",
       context: {

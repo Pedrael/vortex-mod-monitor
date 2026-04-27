@@ -144,6 +144,30 @@ export const KEYFRAMES_CSS = `
   100% { transform: translateX(100%) scaleX(0.4); }
 }
 
+/* Hash-scanner: a perpetually moving "lensing" sweep used to convey
+   liveness during slow hashing passes (where determinate progress
+   only ticks every few hundred ms / per-mod). Decoupled from progress
+   so the user always sees motion. */
+@keyframes eh-scanner-sweep {
+  0%   { transform: translateX(-30%); }
+  100% { transform: translateX(130%); }
+}
+
+/* Soft pulse used by hashing card to show the panel itself is "alive"
+   even when the underlying numbers don't change. */
+@keyframes eh-card-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 0 rgba(76, 201, 240, 0.0),
+      var(--eh-shadow-card);
+  }
+  50% {
+    box-shadow:
+      0 0 0 4px rgba(76, 201, 240, 0.10),
+      var(--eh-shadow-card);
+  }
+}
+
 @keyframes eh-spinner {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }

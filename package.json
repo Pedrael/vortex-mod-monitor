@@ -6,9 +6,10 @@
   "private": true,
   "scripts": {
     "build": "tsc",
-    "build:vortex": "vortex-api build && npm run deploy:vortex",
+    "build:vortex": "npm run build && npm run deploy:vortex",
     "deploy:vortex": "node scripts/deploy-to-vortex.js",
-    "watch": "tsc -w"
+    "watch": "tsc -w",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

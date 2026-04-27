@@ -69,7 +69,12 @@ export type WizardState =
       kind: "loading";
       zipPath: string;
       phase: LoadingPhase;
+      /** Total mods that will be hashed in the hashing-mods phase. */
       hashCount?: number;
+      /** Live counter — number of archives that have completed hashing. */
+      hashDone?: number;
+      /** Name of the mod whose archive is being hashed right now. */
+      hashCurrent?: string;
     }
   | {
       kind: "stale-receipt";
@@ -119,6 +124,12 @@ export const initialWizardState: WizardState = { kind: "pick" };
 export type WizardAction =
   | { type: "pick-file"; zipPath: string }
   | { type: "loading-phase"; phase: LoadingPhase; hashCount?: number }
+  | {
+      type: "hash-progress";
+      done: number;
+      total: number;
+      currentItem: string;
+    }
   | {
       type: "needs-stale-resolution";
       zipPath: string;
@@ -179,6 +190,22 @@ export function wizardReducer(
         ...state,
         phase: action.phase,
         hashCount: action.hashCount ?? state.hashCount,
+        // Reset live counters whenever we leave the hashing phase so
+        // the hashing card doesn't flash stale numbers if we ever
+        // re-enter it later.
+        hashDone:
+          action.phase === "hashing-mods" ? state.hashDone ?? 0 : undefined,
+        hashCurrent:
+          action.phase === "hashing-mods" ? state.hashCurrent : undefined,
+      };
+    case "hash-progress":
+      if (state.kind !== "loading") return state;
+      return {
+        ...state,
+        phase: "hashing-mods",
+        hashCount: action.total,
+        hashDone: action.done,
+        hashCurrent: action.currentItem,
       };
     case "needs-stale-resolution":
       return {

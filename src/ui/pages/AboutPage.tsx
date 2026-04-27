@@ -60,6 +60,24 @@ export function AboutPage(): JSX.Element {
             Skyrim Special Edition / Anniversary Edition, Fallout 3,
             Fallout: New Vegas, Fallout 4, Starfield.
           </p>
+          <h4
+            style={{
+              marginTop: "var(--eh-sp-4)",
+              marginBottom: "var(--eh-sp-2)",
+            }}
+          >
+            Authors
+          </h4>
+          <p style={{ color: "var(--eh-text-muted)" }}>
+            <strong style={{ color: "var(--eh-text-secondary)" }}>
+              DuduPhudu
+            </strong>{" "}
+            and{" "}
+            <strong style={{ color: "var(--eh-text-secondary)" }}>
+              Bluuuk
+            </strong>
+            .
+          </p>
         </div>
       </div>
 
