@@ -39,6 +39,7 @@ import type {
   EhcollExternalDependency,
   EhcollFileOverride,
   EhcollIniTweak,
+  EhcollLoadOrderEntry,
   EhcollManifest,
   EhcollMod,
   EhcollPluginEntry,
@@ -167,6 +168,10 @@ export function parseManifest(raw: string): ParseManifestResult {
   const rules = validateRules(obj.rules, errors);
   const fileOverrides = validateFileOverrides(obj.fileOverrides, errors);
   const plugins = validatePlugins(obj.plugins, errors);
+  // loadOrder is back-filled to [] when missing so older v1 manifests
+  // (written before slice 6c added the field) parse cleanly. Schema
+  // version stays at 1 because the field is additive.
+  const loadOrder = validateLoadOrder(obj.loadOrder, errors);
   const iniTweaks = validateIniTweaks(obj.iniTweaks, errors);
   const externalDependencies = validateExternalDependencies(
     obj.externalDependencies,
@@ -185,6 +190,7 @@ export function parseManifest(raw: string): ParseManifestResult {
       mods: mods!,
       rules: rules!,
       fileOverrides: fileOverrides!,
+      loadOrder: loadOrder!,
     },
     warnings,
   );
@@ -198,6 +204,7 @@ export function parseManifest(raw: string): ParseManifestResult {
     rules: rules!,
     fileOverrides: fileOverrides!,
     plugins: plugins!,
+    loadOrder: loadOrder!,
     iniTweaks: iniTweaks!,
     externalDependencies: externalDependencies!,
   };
@@ -883,6 +890,66 @@ function validatePlugins(
 }
 
 // ---------------------------------------------------------------------------
+// LoadOrder (top-level — Vortex per-game load order, slice 6c)
+// ---------------------------------------------------------------------------
+
+/**
+ * Back-compat note: pre-slice-6c manifests don't carry `loadOrder`.
+ * `undefined` is treated as `[]` so older `.ehcoll` files parse cleanly
+ * (schema version stays at 1; the field is additive).
+ */
+function validateLoadOrder(
+  raw: unknown,
+  errors: string[],
+): EhcollLoadOrderEntry[] | undefined {
+  if (raw === undefined) return [];
+  const arr = expectArray(raw, "loadOrder", errors);
+  if (arr === undefined) return undefined;
+  const out: EhcollLoadOrderEntry[] = [];
+  const seenCompareKeys = new Set<string>();
+  arr.forEach((entry, i) => {
+    if (!isObject(entry)) {
+      errors.push(`loadOrder[${i}] must be an object, got ${describe(entry)}.`);
+      return;
+    }
+    const obj = entry as Record<string, unknown>;
+    const compareKey = expectNonEmptyString(
+      obj.compareKey,
+      `loadOrder[${i}].compareKey`,
+      errors,
+    );
+    const pos = expectNonNegativeInt(obj.pos, `loadOrder[${i}].pos`, errors);
+    const enabled = expectBoolean(
+      obj.enabled,
+      `loadOrder[${i}].enabled`,
+      errors,
+    );
+    const locked =
+      obj.locked === undefined
+        ? undefined
+        : expectBoolean(obj.locked, `loadOrder[${i}].locked`, errors);
+    if (compareKey === undefined || pos === undefined || enabled === undefined) {
+      return;
+    }
+    if (seenCompareKeys.has(compareKey)) {
+      errors.push(
+        `loadOrder[${i}].compareKey "${compareKey}" appears more than once. ` +
+          `Each mod can occupy only one load-order position.`,
+      );
+      return;
+    }
+    seenCompareKeys.add(compareKey);
+    out.push({
+      compareKey,
+      pos,
+      enabled,
+      ...(locked !== undefined ? { locked } : {}),
+    });
+  });
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // INI tweaks (placeholder until Phase 5)
 // ---------------------------------------------------------------------------
 
@@ -1039,6 +1106,7 @@ function crossReferenceValidate(
     mods: EhcollMod[];
     rules: EhcollRule[];
     fileOverrides: EhcollFileOverride[];
+    loadOrder: EhcollLoadOrderEntry[];
   },
   warnings: string[],
 ): void {
@@ -1085,6 +1153,20 @@ function crossReferenceValidate(
         `rules[${i}].reference "${rule.reference}" does not match any mod's ` +
           `compareKey. The rule's target may resolve via partial pin at ` +
           `install time, or be unenforceable.`,
+      );
+    }
+  }
+
+  // LoadOrder references — every entry must match a manifest mod.
+  // Loose entries (capturing a mod the curator had locally but didn't
+  // pack) are warned-only because the install driver will skip them
+  // gracefully; we don't refuse the whole install over them.
+  for (let i = 0; i < parts.loadOrder.length; i++) {
+    const entry = parts.loadOrder[i]!;
+    if (!compareKeys.has(entry.compareKey)) {
+      warnings.push(
+        `loadOrder[${i}].compareKey "${entry.compareKey}" does not match ` +
+          `any mod's compareKey. The entry will be skipped at install time.`,
       );
     }
   }

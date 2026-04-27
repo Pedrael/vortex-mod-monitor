@@ -26,11 +26,13 @@ import type {
   FomodSelectionStep,
 } from "../getModsListForProfile";
 import type { CapturedDeploymentManifest } from "../deploymentManifest";
+import type { CapturedLoadOrderEntry } from "../loadOrder";
 import { parsePluginsTxt } from "../comparePlugins";
 import type { ExportedModsSnapshot } from "../../utils/utils";
 import type {
   EhcollExternalDependency,
   EhcollFileOverride,
+  EhcollLoadOrderEntry,
   EhcollManifest,
   EhcollMod,
   EhcollPluginEntry,
@@ -225,6 +227,12 @@ export function buildManifest(input: BuildManifestInput): BuildManifestResult {
 
   const pluginsOrder = buildPluginsOrder(input.pluginsTxtContent);
 
+  const loadOrder = buildLoadOrder(
+    input.snapshot.loadOrder ?? [],
+    compareKeyById,
+    warnings,
+  );
+
   const manifest: EhcollManifest = {
     schemaVersion: SCHEMA_VERSION,
     package: buildPackageMetadata(input.package),
@@ -242,6 +250,7 @@ export function buildManifest(input: BuildManifestInput): BuildManifestResult {
     rules,
     fileOverrides,
     plugins: { order: pluginsOrder },
+    loadOrder,
     iniTweaks: [],
     externalDependencies: input.externalDependencies ?? [],
   };
@@ -572,4 +581,61 @@ function buildPluginsOrder(content: string | undefined): EhcollPluginEntry[] {
     name: entry.name,
     enabled: entry.enabled,
   }));
+}
+
+// ---------------------------------------------------------------------------
+// LoadOrder (top-level — Vortex per-game load order, slice 6c)
+// ---------------------------------------------------------------------------
+
+/**
+ * Translate the curator's `CapturedLoadOrderEntry[]` (keyed by Vortex
+ * internal modId) into the manifest's `EhcollLoadOrderEntry[]` (keyed
+ * by `compareKey`). Entries whose modId can't be mapped to a manifest
+ * mod are dropped with a warning — they're typically:
+ *   - external/synthesized entries Vortex generated from on-disk files
+ *     outside its mod table (`external: true`),
+ *   - mods we excluded from the package (e.g. unbuildable due to a
+ *     missing archive sha256),
+ *   - stale load-order entries left behind by a since-removed mod.
+ *
+ * Re-numbers `pos` 0..N-1 in original sort order so the manifest is
+ * dense and portable. The user-side installer doesn't depend on the
+ * exact integer values, only the relative order.
+ */
+function buildLoadOrder(
+  entries: CapturedLoadOrderEntry[],
+  compareKeyById: Map<string, string>,
+  warnings: string[],
+): EhcollLoadOrderEntry[] {
+  if (entries.length === 0) return [];
+
+  const sorted = [...entries].sort((a, b) => {
+    if (a.pos !== b.pos) return a.pos - b.pos;
+    return a.modId < b.modId ? -1 : a.modId > b.modId ? 1 : 0;
+  });
+
+  const out: EhcollLoadOrderEntry[] = [];
+  let densePos = 0;
+  for (const entry of sorted) {
+    const compareKey = compareKeyById.get(entry.modId);
+    if (compareKey === undefined) {
+      if (entry.external !== true) {
+        // External/synthesized entries are expected; only warn for
+        // real mod-table entries we couldn't map (stale lo, snapshot
+        // skew, etc.).
+        warnings.push(
+          `Load-order entry for modId "${entry.modId}" (pos=${entry.pos}) ` +
+            `has no matching mod in the snapshot. Skipping.`,
+        );
+      }
+      continue;
+    }
+    out.push({
+      compareKey,
+      pos: densePos++,
+      enabled: entry.enabled,
+      ...(entry.locked === true ? { locked: true } : {}),
+    });
+  }
+  return out;
 }

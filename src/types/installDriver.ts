@@ -185,6 +185,8 @@ export type DriverPhase =
   | "switching-profile"
   | "removing-mods"
   | "installing-mods"
+  | "applying-mod-rules"
+  | "applying-load-order"
   | "writing-plugins-txt"
   | "deploying"
   | "writing-receipt"

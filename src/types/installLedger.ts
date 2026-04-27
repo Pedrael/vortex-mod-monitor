@@ -84,6 +84,76 @@ export type InstallReceipt = {
    * orphan-detection key set.
    */
   mods: InstallReceiptMod[];
+  /**
+   * Slice 6c — Mod rule + LoadOrder application summary.
+   *
+   * Optional and additive: receipts written before slice 6c shipped
+   * will not have it. Consumers must default to a zero-value record
+   * when missing. Used by the post-install summary screen and as a
+   * provenance trail when the user later asks "did the collection's
+   * rules actually get applied on my machine?"
+   */
+  rulesApplication?: RulesApplicationReceipt;
+};
+
+/**
+ * On-disk summary of what `applyModRules` + `applyLoadOrder` did. The
+ * driver writes this at receipt time; the post-install summary surfaces
+ * it. None of the fields drive future-release resolution — they exist
+ * purely so the user (and our error reports) can audit slice 6c
+ * outcomes after the fact.
+ *
+ * INVARIANT: this struct describes the *attempted* application, not
+ * the current Vortex state. Re-running LOOT or the user dragging
+ * plugins around in Vortex's UI does NOT update the receipt; the
+ * receipt is a write-once record of what we dispatched.
+ */
+export type RulesApplicationReceipt = {
+  /** Mod rules from the manifest the driver successfully dispatched. */
+  appliedRuleCount: number;
+  /**
+   * Pre-existing user rules the driver removed because of the
+   * collection-wins conflict policy. UI-only; surfaced so the user
+   * understands why their custom rules may have changed.
+   */
+  overwrittenUserRuleCount: number;
+  /**
+   * Rules the driver could not apply (unresolvable compareKey,
+   * curator-ignored, Vortex rejected dispatch). Each carries a
+   * short reason for the post-install report.
+   */
+  skippedRules: ReceiptSkippedRule[];
+  /** LoadOrder entries the driver successfully dispatched. */
+  appliedLoadOrderCount: number;
+  /** LoadOrder entries the driver dropped (unresolved compareKey). */
+  skippedLoadOrderEntries: ReceiptSkippedLoadOrderEntry[];
+  /**
+   * Snapshot of the plugins.txt order we wrote at install time.
+   * Used for the drift-detection helper that surfaces "your current
+   * plugin order does not match what this collection installed" in
+   * the post-install summary. Empty when the install was current-
+   * profile-mode and we did not write plugins.txt, or when the game
+   * does not use plugins.txt.
+   */
+  baselinePluginOrder: ReceiptPluginEntry[];
+};
+
+export type ReceiptSkippedRule = {
+  ruleType: string;
+  source: string;
+  reference: string;
+  reason: string;
+};
+
+export type ReceiptSkippedLoadOrderEntry = {
+  compareKey: string;
+  pos: number;
+  reason: string;
+};
+
+export type ReceiptPluginEntry = {
+  name: string;
+  enabled: boolean;
 };
 
 export type InstallTargetMode = "current-profile" | "fresh-profile";

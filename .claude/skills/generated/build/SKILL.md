@@ -1,11 +1,11 @@
 ---
 name: build
-description: "Skill for the Build area of vortex-mod-monitor. 45 symbols across 8 files."
+description: "Skill for the Build area of vortex-mod-monitor. 48 symbols across 9 files."
 ---
 
 # Build
 
-45 symbols | 8 files | Cohesion: 71%
+48 symbols | 9 files | Cohesion: 73%
 
 ## When to Use
 
@@ -20,6 +20,7 @@ description: "Skill for the Build area of vortex-mod-monitor. 45 symbols across 
 | `src/ui/pages/build/buildSession.ts` | patchForm, dismissDraftBanner, discardDraft, setValidationError, begin (+9) |
 | `src/ui/pages/build/BuildPage.tsx` | handleChange, handleDiscardDraft, handleDismissDraftBanner, onBuild, BuildWizard (+9) |
 | `src/ui/pages/build/engine.ts` | validateCuratorInput, BundleResolutionError, runBuildPipeline, resolveVortexVersion, resolveGameVersion (+3) |
+| `src/ui/runtime/ehRuntime.ts` | setBuildBusy, setInstallBusy, notify |
 | `src/core/deploymentManifest.ts` | collectDistinctModTypes, normalizeManifest, captureDeploymentManifests |
 | `src/core/draftStorage.ts` | deleteDraft, getAppDataPath |
 | `src/core/manifest/collectionConfig.ts` | reconcileExternalModsConfig, toBuildManifestExternalMods |
@@ -65,16 +66,16 @@ Start here when exploring this area:
 
 | Flow | Type | Steps |
 |------|------|-------|
+| `ReceiptDetailModal → Notify` | cross_community | 7 |
+| `DecisionsStep → Notify` | cross_community | 5 |
 | `OnBuild → EHRuntime` | cross_community | 5 |
-| `OnBuild → Notify` | cross_community | 5 |
+| `OnBuild → Notify` | intra_community | 5 |
 | `OnBuild → AbortError` | cross_community | 5 |
 | `OnBuild → GetCollectionConfigPath` | cross_community | 5 |
 | `OnBuild → CreateDefaultConfig` | cross_community | 5 |
 | `OnBuild → WriteConfigFile` | cross_community | 5 |
 | `OnBuild → SanitizeKey` | cross_community | 5 |
 | `Begin → NormalizeRuleReference` | cross_community | 5 |
-| `Begin → RulesSortKey` | cross_community | 5 |
-| `Build → CollectionConfigError` | cross_community | 5 |
 
 ## Connected Areas
 
@@ -82,10 +83,11 @@ Start here when exploring this area:
 |------|-------------|
 | Manifest | 5 calls |
 | Pages | 4 calls |
-| Cluster_13 | 3 calls |
-| Resolver | 3 calls |
+| Cluster_21 | 3 calls |
+| Installer | 2 calls |
 | Actions | 2 calls |
-| Runtime | 2 calls |
+| Resolver | 1 calls |
+| Runtime | 1 calls |
 
 ## How to Explore
 

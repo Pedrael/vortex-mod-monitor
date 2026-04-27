@@ -260,6 +260,7 @@ export default function createBuildPackageAction(
         `[Vortex Event Horizon] Built collection package | ${curator.name} v${curator.version} | ` +
           `mods=${manifest.mods.length} | rules=${manifest.rules.length} | ` +
           `fileOverrides=${manifest.fileOverrides.length} | plugins=${manifest.plugins.order.length} | ` +
+          `loadOrder=${manifest.loadOrder.length} | ` +
           `bundled=${result.bundledCount} | bytes=${result.outputBytes} | ` +
           `warnings=${warnings.length + result.warnings.length} | ` +
           `configFile=${loaded.configPath}${loaded.created ? " (NEW)" : ""}`,

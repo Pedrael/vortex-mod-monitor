@@ -24,7 +24,7 @@
  * ──────────────────────────────────────────────────────────────────────
  */
 
-import { randomUUID } from "crypto";
+import { randomBytes, randomUUID } from "crypto";
 import { actions, types } from "vortex-api";
 
 const PROFILE_SWITCH_TIMEOUT_MS = 30_000;
@@ -62,13 +62,26 @@ export function createFreshProfile(
  * Dispatch a profile switch and wait for Vortex to finish activating
  * the new profile (deployments purged + new profile applied).
  *
+ * Cancellation:
+ *  - If `signal` aborts before Vortex emits `profile-did-change`,
+ *    the promise rejects with an `AbortError` immediately rather
+ *    than waiting for the 30s timeout. Vortex's setNextProfile
+ *    dispatch has already been issued at that point and we cannot
+ *    cancel the underlying switch — but we *can* stop blocking the
+ *    install driver, which is the part the user pays attention to.
+ *    {@link runInstall} re-checks `state.settings.profiles.activeProfileId`
+ *    in its abort-cleanup path so the eventual completion of the
+ *    switch is reconciled with whatever profile state actually exists.
+ *
  * @throws if the switch doesn't complete within
- *   `PROFILE_SWITCH_TIMEOUT_MS` ms — usually means Vortex hit a
- *   deployment lock the user must resolve manually.
+ *   `PROFILE_SWITCH_TIMEOUT_MS` ms (usually means Vortex hit a
+ *   deployment lock the user must resolve manually) or if `signal`
+ *   aborts.
  */
 export async function switchToProfile(
   api: types.IExtensionApi,
   profileId: string,
+  signal?: AbortSignal,
 ): Promise<void> {
   const state = api.getState();
   const currentProfileId =
@@ -78,13 +91,46 @@ export async function switchToProfile(
     return; // already active — no-op
   }
 
+  // Pre-check abort before we even dispatch — saves a wasted round-trip.
+  if (signal?.aborted) {
+    throw makeAbortError("profile switch");
+  }
+
   await new Promise<void>((resolve, reject) => {
     let settled = false;
+    let onAbort: (() => void) | undefined;
+
+    const finalize = (): void => {
+      api.events.removeListener("profile-did-change", onChange);
+      clearTimeout(timeout);
+      if (onAbort && signal) {
+        signal.removeEventListener("abort", onAbort);
+      }
+    };
 
     const timeout = setTimeout(() => {
       if (settled) return;
+
+      // Belt-and-braces: state is the source of truth for "current
+      // profile", and the event channel can be out of order with it
+      // (Vortex emits profile-did-change AFTER the dispatch is fully
+      // applied, but a listener that registered too late or got
+      // replaced can miss it). Re-read state directly before
+      // declaring a failure — if Vortex has already switched, treat
+      // it as success.
+      const finalState = api.getState();
+      const finalActiveId =
+        finalState.settings?.profiles?.activeProfileId ??
+        finalState.settings?.profiles?.nextProfileId;
+      if (finalActiveId === profileId) {
+        settled = true;
+        finalize();
+        resolve();
+        return;
+      }
+
       settled = true;
-      api.events.removeListener("profile-did-change", onChange);
+      finalize();
       reject(
         new Error(
           `Profile switch to "${profileId}" did not complete within ` +
@@ -97,15 +143,35 @@ export async function switchToProfile(
     const onChange = (newProfileId: string): void => {
       if (newProfileId !== profileId || settled) return;
       settled = true;
-      clearTimeout(timeout);
-      api.events.removeListener("profile-did-change", onChange);
+      finalize();
       resolve();
     };
 
     api.events.on("profile-did-change", onChange);
 
+    if (signal) {
+      onAbort = (): void => {
+        if (settled) return;
+        settled = true;
+        finalize();
+        reject(makeAbortError("profile switch"));
+      };
+      signal.addEventListener("abort", onAbort);
+    }
+
     api.store?.dispatch(actions.setNextProfile(profileId));
   });
+}
+
+/**
+ * AbortError that matches the DOM AbortError shape (name === "AbortError")
+ * so it survives the same `err.name === "AbortError"` checks the rest of
+ * the codebase uses (see useErrorReporter, runInstall.checkAbort).
+ */
+function makeAbortError(operation: string): Error {
+  const err = new Error(`${operation} aborted by user`);
+  err.name = "AbortError";
+  return err;
 }
 
 /**
@@ -128,6 +194,15 @@ export function enableModInProfile(
 /**
  * Walk the existing profile list for `gameId` and pick a name that
  * doesn't collide. Appends `" (2)"`, `" (3)"`, … until unique.
+ *
+ * The numeric suffix probe is bounded at {@link COLLIDING_NAME_PROBE_LIMIT}
+ * to keep this O(1) for pathological state (a corrupted profile store
+ * with thousands of name-conflicting entries shouldn't make profile
+ * creation linear). After the probe limit we fall back to a
+ * cryptographically-random hex suffix that's collision-resistant by
+ * construction (4 bytes = 1 in 4 billion, so we'd need a profile
+ * store with billions of EH-named profiles for a second collision —
+ * not a real-world concern).
  */
 export function pickNonCollidingName(
   state: types.IState,
@@ -144,11 +219,17 @@ export function pickNonCollidingName(
 
   if (!existingNames.has(base)) return base;
 
-  for (let suffix = 2; suffix < 1000; suffix++) {
+  for (let suffix = 2; suffix < COLLIDING_NAME_PROBE_LIMIT; suffix++) {
     const candidate = `${base} (${suffix})`;
     if (!existingNames.has(candidate)) return candidate;
   }
 
-  // Fallback — astronomically unlikely. Random suffix avoids infinite loop.
-  return `${base} ${Date.now()}`;
+  // Fallback — only reached if the user has 1000+ EH-prefixed profiles
+  // with sequential collision suffixes (extreme corruption / abuse).
+  // Cryptographic random suffix instead of Date.now() so two callers
+  // running in the same millisecond don't collide on the fallback.
+  const suffix = randomBytes(4).toString("hex");
+  return `${base} (${suffix})`;
 }
+
+const COLLIDING_NAME_PROBE_LIMIT = 1000;

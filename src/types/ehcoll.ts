@@ -45,6 +45,21 @@ export type EhcollManifest = {
   rules: EhcollRule[];
   fileOverrides: EhcollFileOverride[];
   plugins: EhcollPlugins;
+  /**
+   * Curator's per-game LoadOrder snapshot — Vortex's
+   * `state.persistent.loadOrder[gameId]` projection. Distinct from
+   * {@link EhcollPlugins.order}: plugins.txt covers ESPs/ESMs/ESLs only,
+   * this covers every Vortex-managed mod (including script extenders,
+   * ENB binaries, and other non-plugin payloads) for games that use
+   * Vortex's LoadOrder API. Empty array for games that drive load
+   * order purely via plugins.txt.
+   *
+   * Required field — older v1 manifests written before slice 6c
+   * landed will not have it; the parser back-fills with `[]` so the
+   * type stays clean. `compareKey` references resolve to user-side
+   * Vortex modIds at install time (mirrors `EhcollRule.source`).
+   */
+  loadOrder: EhcollLoadOrderEntry[];
   iniTweaks: EhcollIniTweak[];
   externalDependencies: EhcollExternalDependency[];
 };
@@ -316,6 +331,35 @@ export type EhcollPluginEntry = {
   /** Plugin filename, e.g. `"Skyrim.esm"`. Original casing preserved. */
   name: string;
   enabled: boolean;
+};
+
+// ---------------------------------------------------------------------------
+// LoadOrder (top-level — Vortex's per-game load order)
+// ---------------------------------------------------------------------------
+
+/**
+ * One entry in the curator's per-game LoadOrder, normalized for
+ * cross-machine portability. Mirrors the on-disk shape of
+ * `state.persistent.loadOrder[gameId]` after `captureLoadOrder`.
+ *
+ * INVARIANT: `compareKey` is mandatory and always resolvable against
+ * `EhcollManifest.mods`. Curator-side capture skips load-order entries
+ * whose Vortex modId can't be mapped to a manifest compareKey (a
+ * loose archive on disk, an external Vortex mod we didn't pack, etc.).
+ */
+export type EhcollLoadOrderEntry = {
+  /** Mirrors `EhcollMod.compareKey`. */
+  compareKey: string;
+  /** 0-indexed position in the curator's load order. */
+  pos: number;
+  /** Whether the curator had this entry enabled in the load-order view. */
+  enabled: boolean;
+  /**
+   * Curator marked this entry as locked (cannot be moved by the user).
+   * Informational — the installer does not enforce locking on the user
+   * side; Vortex's UI uses this for display + drag-disable hints only.
+   */
+  locked?: boolean;
 };
 
 // ---------------------------------------------------------------------------

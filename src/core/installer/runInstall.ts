@@ -1,18 +1,34 @@
 /**
- * Install driver — Phase 3 slice 6 (slices 6a + 6b).
+ * Install driver — Phase 3 slices 6a + 6b + 6c.
  *
  * Consumes a resolved {@link InstallPlan} and the user's confirmed
  * decisions, then mutates the user's machine to match the curator's
  * intent: optionally creates a fresh Vortex profile, removes
- * replaced/orphaned mods, installs each new mod, writes
- * `plugins.txt`, deploys, and finally writes the install ledger
- * receipt.
+ * replaced/orphaned mods, installs each new mod, applies mod rules
+ * + Vortex's per-game LoadOrder, deploys, and finally writes the
+ * install ledger receipt.
  *
- * **Slice 6b scope**:
+ * **Slice 6c scope** (additive over 6a/6b):
+ *  - `applying-mod-rules` phase — dispatch every manifest
+ *    `EhcollRule` via `actions.addModRule`, with a "collection-wins"
+ *    conflict pass that overwrites pre-existing user rules pointing
+ *    at the same target. Rules ignored by the curator are NOT
+ *    applied. Skipped/applied/overwritten counts go into the receipt.
+ *  - `applying-load-order` phase — dispatch the curator's per-game
+ *    LoadOrder (Vortex's generic LoadOrder API, distinct from
+ *    plugins.txt) via `actions.setLoadOrder`. Empty manifests no-op.
+ *  - **plugins.txt is no longer written manually.** Locked design
+ *    choice: rules-only strategy. Vortex + LOOT auto-sort during
+ *    deploy compute the user's plugins.txt from our rules + the
+ *    user's local masterlist + any layered mods. The manifest's
+ *    plugin order is captured into the receipt's `baselinePluginOrder`
+ *    for drift detection in the post-install summary.
+ *
+ * **Slice 6b scope** (preserved):
  *  - `installTarget.kind === "fresh-profile"` — fresh profile create
  *    + switch + install. (Slice 6a behavior; unchanged.)
  *  - `installTarget.kind === "current-profile"` — install in-place
- *    into the user's active profile. NEW in slice 6b.
+ *    into the user's active profile.
  *  - `*-version-diverged`, `*-bytes-diverged`, `external-prompt-user`
  *    decisions are accepted IF the action handler supplied a
  *    matching `ConflictChoice` in `decisions.conflictChoices`. Without
@@ -22,14 +38,13 @@
  *    `decisions.orphanChoices` (default `keep`).
  *  - `nexus-unreachable` and `external-missing` remain hard-blocking;
  *    they have no user-resolution path.
- *  - Mod rules and Vortex `setLoadOrder` are NOT applied here. Slice
- *    6c handles them.
  *
  * Spec: docs/business/INSTALL_DRIVER.md
  *
  * ─── EXECUTION MODEL ───────────────────────────────────────────────────
  * The driver progresses through a fixed sequence of phases. Some
- * phases are skipped depending on `installTarget.kind`:
+ * phases are skipped depending on `installTarget.kind` and the
+ * manifest contents:
  *
  *   1. preflight          — sanity-check plan + decisions.
  *   2. creating-profile   — fresh-profile only; dispatch new profile.
@@ -37,14 +52,26 @@
  *   4. removing-mods      — current-profile only; uninstall replaced
  *                           and orphan-uninstall mods.
  *   5. installing-mods    — sequentially per mod (downloads/installs).
- *   6. writing-plugins-txt — back up + overwrite plugins.txt.
+ *   5b. applying-mod-rules — dispatch curator's mod rules (slice 6c).
+ *                           Skipped when manifest.rules is empty.
+ *   6. writing-plugins-txt — NO-OP under rules-only strategy (kept
+ *                            as a phase identifier for backward
+ *                            progress-callback compatibility).
  *   7. deploying          — emit `deploy-mods`, await activation.
+ *   7b. applying-load-order — dispatch curator's Vortex LoadOrder
+ *                            (slice 6c). Skipped when manifest's
+ *                            loadOrder is empty.
  *   8. writing-receipt    — persist the install ledger entry.
  *   9. complete           — emit final progress beat.
  *
  * Failures at any phase return {@link InstallResult.kind === "failed"};
  * the partial state is preserved (NOT rolled back) so the user can
  * inspect it manually. Idempotent on retry.
+ *
+ * Slice-6c phases are **non-fatal**: if rule application or
+ * LoadOrder application throws unexpectedly, we log + continue to
+ * the receipt. The user gets a successful install with a partial
+ * rule application surfaced via `receipt.rulesApplication.skippedRules`.
  *
  * Concurrency: mod installs run **sequentially**. Vortex's install
  * pipeline serializes internally (FOMOD UI is modal); parallel calls
@@ -62,6 +89,8 @@ import {
 import {
   type InstallReceipt,
   type InstallReceiptMod,
+  type ReceiptPluginEntry,
+  type RulesApplicationReceipt,
   INSTALL_LEDGER_SCHEMA_VERSION,
 } from "../../types/installLedger";
 import type {
@@ -89,6 +118,15 @@ import type {
 } from "../../types/installPlan";
 import type { SupportedGameId } from "../../types/ehcoll";
 import {
+  applyModRules,
+  type ApplyModRulesResult,
+  type ExistingRule,
+} from "./applyModRules";
+import {
+  applyLoadOrder,
+  type ApplyLoadOrderResult,
+} from "./applyLoadOrder";
+import {
   createFreshProfile,
   enableModInProfile,
   switchToProfile,
@@ -101,7 +139,12 @@ import {
   safeRmTempDir,
   uninstallMod,
 } from "./modInstall";
-import { writePluginsTxtWithBackup } from "./pluginsTxt";
+// NOTE: `writePluginsTxtWithBackup` is intentionally NOT imported.
+// The "rules-only" strategy (locked design choice) lets Vortex +
+// LOOT auto-sort produce plugins.txt during deploy. The module
+// remains in the codebase for emergency manual recovery, but the
+// driver no longer calls it. See the writing-plugins-txt phase
+// comment for the full rationale.
 
 const DEPLOY_TIMEOUT_MS = 5 * 60_000;
 
@@ -129,10 +172,13 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
   let activeProfileName: string | undefined;
   let createdProfileId: string | undefined;
 
-  // D2 fix: lookup manifest entries by compareKey, not by index.
-  // The resolver currently maps 1:1 by index but that's an implicit
-  // invariant the driver shouldn't depend on.
+  // Lookup manifest entries by compareKey rather than by index.
+  // The resolver currently produces a 1:1 index alignment, but that
+  // is an implementation detail the driver should not depend on —
+  // compareKey is the canonical identity (it's what receipts use,
+  // what conflict-choice maps key on, etc.).
   const manifestByCompareKey = buildManifestIndex(plan.manifest.mods);
+  let rulesApplication: RulesApplicationReceipt = emptyRulesApplication();
 
   const reportProgress = (
     phase: DriverPhase,
@@ -199,7 +245,29 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
         `Switching to "${activeProfileName}"...`,
       );
 
-      await switchToProfile(api, activeProfileId);
+      try {
+        await switchToProfile(api, activeProfileId, ctx.abortSignal);
+      } catch (err) {
+        // AbortError → fall through to the usual abort handling
+        // (caller has already cleared the active profile in Vortex
+        // OR Vortex will eventually catch up and emit
+        // profile-did-change; either way the install can't proceed).
+        if ((err as Error)?.name === "AbortError") {
+          aborted = checkAbort("switching-profile");
+          if (aborted) return aborted;
+          // Defensive: if the signal isn't aborted but we got an
+          // AbortError anyway (impossible by construction, but
+          // belt-and-suspenders for future refactors), treat it as
+          // a user-aborted switch.
+          return {
+            kind: "aborted",
+            phase: "switching-profile",
+            partialProfileId: createdProfileId,
+            reason: "Profile switch aborted before completion.",
+          };
+        }
+        throw err;
+      }
 
       aborted = checkAbort("switching-profile");
       if (aborted) return aborted;
@@ -294,6 +362,21 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
           onCarry: (entry) => carriedMods.push(entry),
         });
       } catch (err) {
+        // Honor user aborts even if they bubbled out of a primitive
+        // before checkAbort had a chance to catch them. The signal is
+        // the source of truth — the AbortError is only a faster
+        // exit path than letting the timeout/watchdog trip.
+        if (
+          (err as Error)?.name === "AbortError" ||
+          ctx.abortSignal?.aborted
+        ) {
+          return {
+            kind: "aborted",
+            phase: "installing-mods",
+            partialProfileId: createdProfileId,
+            reason: `Install aborted while processing "${resolution.name}".`,
+          };
+        }
         const phase: DriverPhase = "installing-mods";
         return {
           kind: "failed",
@@ -330,34 +413,102 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
       carriedMods.push(buildOrphanCarriedEntry(api, plan, orphan));
     }
 
-    // ── 6. write plugins.txt ────────────────────────────────────────
-    if (
-      plan.pluginOrder.kind === "replace" &&
-      plan.manifest.plugins.order.length > 0
-    ) {
+    // ── 5b. apply mod rules ─────────────────────────────────────────
+    // Rules must land BEFORE plugins.txt + deploy: Vortex's
+    // gamebryo-plugin-management runs LOOT auto-sort during deploy,
+    // and LOOT picks up `state.persistent.mods[gameId][modId].rules`
+    // when computing the topological sort. Applying rules later
+    // would race the auto-sort and require a second deploy.
+    //
+    // Build the resolution map from EVERYTHING that ended up on the
+    // user's machine for this collection: freshly installed mods
+    // (`installedMods`), kept-existing carries (`carriedMods` from
+    // the diverged-keep-existing path), already-installed re-uses
+    // (the `*-already-installed` decisions surface via
+    // `installedMods`), and orphan-keep carries. The map is the
+    // single source of truth — `applyModRules` does not look anywhere
+    // else.
+    const modIdByCompareKey = buildPostInstallModIdMap(
+      installedMods,
+      carriedMods,
+    );
+
+    if (plan.manifest.rules.length > 0) {
       reportProgress(
-        "writing-plugins-txt",
+        "applying-mod-rules",
         0,
-        1,
-        `Writing plugins.txt (${plan.manifest.plugins.order.length} entries)...`,
+        plan.manifest.rules.length,
+        `Applying ${plan.manifest.rules.length} mod rule(s)...`,
+      );
+
+      const modIdByNexusModId = buildNexusModIdMap(
+        api,
+        plan.manifest.game.id,
+        installedMods,
+        carriedMods,
+      );
+      const existingRulesBySourceModId = collectExistingRules(
+        api,
+        plan.manifest.game.id,
+        modIdByCompareKey,
       );
 
       try {
-        await writePluginsTxtWithBackup({
+        const ruleResult = applyModRules({
+          api,
           gameId: plan.manifest.game.id,
-          entries: plan.manifest.plugins.order,
+          rules: plan.manifest.rules,
+          modIdByCompareKey,
+          modIdByNexusModId,
+          existingRulesBySourceModId,
+          signal: ctx.abortSignal,
         });
+        rulesApplication = mergeRuleResult(rulesApplication, ruleResult);
       } catch (err) {
-        return {
-          kind: "failed",
-          phase: "writing-plugins-txt",
-          partialProfileId: createdProfileId,
-          error: `Failed writing plugins.txt: ${formatError(err)}`,
-          installedSoFar: installedMods.map((m) => m.vortexModId),
-        };
+        if (
+          (err as Error)?.name === "AbortError" ||
+          ctx.abortSignal?.aborted
+        ) {
+          return {
+            kind: "aborted",
+            phase: "applying-mod-rules",
+            partialProfileId: createdProfileId,
+            reason: "Install aborted while applying mod rules.",
+          };
+        }
+        // Mod-rule failures are non-fatal — they don't block install.
+        // We log and continue; the receipt's skippedRules list will
+        // still surface the issue in the post-install summary.
+        console.warn(
+          `[Vortex Event Horizon] applyModRules threw unexpectedly: ` +
+            (err instanceof Error ? err.message : String(err)) +
+            `. Continuing without rule application.`,
+        );
       }
+
+      aborted = checkAbort("applying-mod-rules");
+      if (aborted) return aborted;
     }
 
+    // ── 6. plugins.txt (no-op write under rules-only strategy) ──────
+    // We deliberately do NOT overwrite plugins.txt directly. Locked
+    // design choice: applying mod rules above lets Vortex's
+    // gamebryo-plugin-management + LOOT auto-sort produce the
+    // user's plugins.txt during deploy, using OUR rules + the
+    // user's local LOOT masterlist + any mods the user has on top.
+    //
+    // This is the answer to the "LOOT gives a slightly different
+    // load order than what the curator baked in" report: that drift
+    // is *expected* — LOOT incorporates per-machine masterlist
+    // updates and the user's own mods. Hard-pinning plugins.txt
+    // would fight Vortex and re-introduce the drift on the next
+    // deploy anyway.
+    //
+    // We still capture the manifest's plugin order into the receipt
+    // (`baselinePluginOrder`) so the post-install summary can
+    // surface a "your current order differs from collection's by N
+    // plugins" hint. Drift detection is informational only — it
+    // never blocks the user from making their own changes.
     aborted = checkAbort("writing-plugins-txt");
     if (aborted) return aborted;
 
@@ -379,6 +530,69 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
     aborted = checkAbort("deploying");
     if (aborted) return aborted;
 
+    // ── 7b. apply Vortex per-game LoadOrder ─────────────────────────
+    // Distinct from plugins.txt: this is Vortex's generic LoadOrder
+    // API for non-plugin payloads (script extenders, ENB binaries,
+    // generic-game mods on titles like Starfield). Applied AFTER
+    // deploy because Vortex registers loose-archive mods during the
+    // deploy pass — we want the LoadOrder dispatch to land on a
+    // fully-populated mod table.
+    if (plan.manifest.loadOrder.length > 0) {
+      reportProgress(
+        "applying-load-order",
+        0,
+        plan.manifest.loadOrder.length,
+        `Applying load order (${plan.manifest.loadOrder.length} entries)...`,
+      );
+
+      try {
+        const loResult = applyLoadOrder({
+          api,
+          gameId: plan.manifest.game.id,
+          entries: plan.manifest.loadOrder,
+          modIdByCompareKey,
+          displayNameByModId: buildDisplayNameByModId(
+            installedMods,
+            carriedMods,
+          ),
+          signal: ctx.abortSignal,
+        });
+        rulesApplication = mergeLoadOrderResult(rulesApplication, loResult);
+      } catch (err) {
+        if (
+          (err as Error)?.name === "AbortError" ||
+          ctx.abortSignal?.aborted
+        ) {
+          return {
+            kind: "aborted",
+            phase: "applying-load-order",
+            partialProfileId: createdProfileId,
+            reason: "Install aborted while applying load order.",
+          };
+        }
+        // Non-fatal — log and continue to receipt.
+        console.warn(
+          `[Vortex Event Horizon] applyLoadOrder threw unexpectedly: ` +
+            (err instanceof Error ? err.message : String(err)) +
+            `. Continuing without LoadOrder application.`,
+        );
+      }
+
+      aborted = checkAbort("applying-load-order");
+      if (aborted) return aborted;
+    }
+
+    // Capture the manifest's plugin order into the receipt for
+    // drift detection. This always happens (even when LoadOrder is
+    // empty) so the post-install summary can surface the
+    // collection's expected baseline.
+    rulesApplication = {
+      ...rulesApplication,
+      baselinePluginOrder: plan.manifest.plugins.order.map(
+        (p): ReceiptPluginEntry => ({ name: p.name, enabled: p.enabled }),
+      ),
+    };
+
     // ── 8. write receipt ────────────────────────────────────────────
     reportProgress("writing-receipt", 0, 1, "Writing install receipt...");
 
@@ -388,6 +602,7 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
       profileName: activeProfileName ?? activeProfileId,
       installedMods,
       carriedMods,
+      rulesApplication,
     });
 
     let receiptPath: string;
@@ -423,9 +638,12 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
       carriedMods,
     };
   } finally {
-    // Cleanup of bundled-extract temp dirs is fire-and-forget.
-    for (const tempPath of tempArchivesToCleanup) {
-      void safeRmTempDir(tempPath);
+    // Cleanup of bundled-extract temp dirs is fire-and-forget. Each
+    // entry is the **directory** returned by extractBundledFromEhcoll
+    // (one per successful bundled install). Failures here don't
+    // reach the user — the OS temp GC reclaims leftovers eventually.
+    for (const tempDir of tempArchivesToCleanup) {
+      void safeRmTempDir(tempDir);
     }
   }
 }
@@ -468,6 +686,7 @@ async function executeDecision(args: {
         nexusModId: decision.modId,
         nexusFileId: decision.fileId,
         fileName: decision.archiveName,
+        signal: ctx.abortSignal,
       });
       return {
         compareKey,
@@ -483,6 +702,7 @@ async function executeDecision(args: {
       const result = await installFromExistingDownload(ctx.api, {
         gameId: manifest.game.id,
         archiveId: decision.archiveId,
+        signal: ctx.abortSignal,
       });
       return {
         compareKey,
@@ -498,8 +718,11 @@ async function executeDecision(args: {
         gameId: manifest.game.id,
         ehcollZipPath: ctx.ehcollZipPath,
         bundledZipEntry: decision.zipPath,
+        signal: ctx.abortSignal,
       });
-      onTempArchive(result.extractedPath);
+      // Track the temp **directory**, not the file: cherry-picked
+      // entries can have nested paths inside the dir.
+      onTempArchive(result.tempDir);
       return {
         compareKey,
         name: resolution.name,
@@ -705,6 +928,7 @@ async function executePromptUserChoice(args: {
   const result = await installFromLocalArchive(ctx.api, {
     gameId: ctx.plan.manifest.game.id,
     archivePath: choice.localPath,
+    signal: ctx.abortSignal,
   });
 
   return {
@@ -749,6 +973,7 @@ async function installManifestEntry(args: {
       nexusModId: nx.source.modId,
       nexusFileId: nx.source.fileId,
       fileName: nx.source.archiveName,
+      signal: ctx.abortSignal,
     });
     return {
       compareKey,
@@ -773,8 +998,9 @@ async function installManifestEntry(args: {
     gameId,
     ehcollZipPath: ctx.ehcollZipPath,
     bundledZipEntry: bundledEntry,
+    signal: ctx.abortSignal,
   });
-  onTempArchive(result.extractedPath);
+  onTempArchive(result.tempDir);
 
   return {
     compareKey,
@@ -1128,8 +1354,9 @@ function buildReceipt(args: {
   profileName: string;
   installedMods: InstalledModReportEntry[];
   carriedMods: CarriedModReportEntry[];
+  rulesApplication: RulesApplicationReceipt;
 }): InstallReceipt {
-  const { ctx, profileId, profileName, installedMods, carriedMods } = args;
+  const { ctx, profileId, profileName, installedMods, carriedMods, rulesApplication } = args;
   const { manifest } = ctx.plan;
   const now = new Date().toISOString();
 
@@ -1172,6 +1399,7 @@ function buildReceipt(args: {
     vortexProfileName: profileName,
     installTargetMode: ctx.plan.installTarget.kind,
     mods: modEntries,
+    rulesApplication,
   };
 }
 
@@ -1184,6 +1412,16 @@ function buildReceipt(args: {
  * Both clear on a quick second attempt. Two attempts is the right
  * number: it covers the transient window without masking real
  * permanent failures behind a long retry loop.
+ *
+ * Permanent failures (ENOENT for missing parent dir, ENOSPC, EROFS,
+ * EACCES on a perm-mismatched path) will not improve on retry — we
+ * surface them immediately so the user gets a fast, actionable
+ * error instead of a 250ms-delayed copy of the same one.
+ *
+ * {@link InstallLedgerError} is also non-retryable: it's our own
+ * structured error type, raised when the receipt itself is invalid
+ * (schema mismatch, programmer bug). Retrying would just hit the
+ * same validation code path.
  */
 async function writeReceiptWithRetry(
   appDataPath: string,
@@ -1196,12 +1434,46 @@ async function writeReceiptWithRetry(
       return writtenPath;
     } catch (err) {
       lastErr = err;
-      if (attempt < RECEIPT_WRITE_ATTEMPTS) {
+      if (attempt < RECEIPT_WRITE_ATTEMPTS && isTransientReceiptError(err)) {
         await delay(RECEIPT_WRITE_RETRY_DELAY_MS);
+      } else {
+        // Either the last attempt or a non-transient error — fail fast.
+        throw lastErr;
       }
     }
   }
   throw lastErr;
+}
+
+/**
+ * Decide whether a receipt-write error is worth retrying. We only
+ * retry codes that have a track record of being caused by transient
+ * external interference (AV scanners, parallel I/O, briefly-held
+ * locks). Everything else (missing dir, permission denied on the
+ * actual target, disk full, ledger validation failure) won't improve
+ * by waiting and is surfaced immediately.
+ */
+function isTransientReceiptError(err: unknown): boolean {
+  if (err instanceof InstallLedgerError) return false;
+
+  const code = (err as NodeJS.ErrnoException | undefined)?.code;
+  if (typeof code !== "string") return false;
+
+  // EBUSY    — Windows file lock (AV / explorer.exe / OneDrive)
+  // EPERM    — Windows "operation not permitted" while another
+  //            process has a handle (often AV-related)
+  // EAGAIN   — POSIX "try again", file system busy
+  // EMFILE / ENFILE — too many open file descriptors transiently
+  // ENOTEMPTY — lingering tmp dir contents from a prior write that
+  //             the OS hasn't fully GC'd yet
+  return (
+    code === "EBUSY" ||
+    code === "EPERM" ||
+    code === "EAGAIN" ||
+    code === "EMFILE" ||
+    code === "ENFILE" ||
+    code === "ENOTEMPTY"
+  );
 }
 
 function delay(ms: number): Promise<void> {
@@ -1330,3 +1602,231 @@ export function isNexusEhcollMod(mod: EhcollMod): mod is NexusEhcollMod {
 
 // Used to preserve the EhcollManifest import for type tooling.
 export type _EhcollManifestRef = EhcollManifest;
+
+// ===========================================================================
+// Slice 6c helpers — modId resolution maps + rules-application bookkeeping
+// ===========================================================================
+
+/**
+ * Build the compareKey → vortex modId map used by both `applyModRules`
+ * and `applyLoadOrder`. Sources, last-write-wins:
+ *  1. `installedMods` — freshly-installed AND already-installed re-uses
+ *     (the `*-already-installed` decision arms produce entries here).
+ *  2. `carriedMods` — diverged-keep-existing (existing user mod kept)
+ *     and orphan-keep (previous-release mod kept).
+ *
+ * Last-write-wins is fine: a single compareKey can appear at most once
+ * across both lists by construction (the resolver enforces unique
+ * compareKeys per plan).
+ */
+function buildPostInstallModIdMap(
+  installedMods: InstalledModReportEntry[],
+  carriedMods: CarriedModReportEntry[],
+): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const m of installedMods) map.set(m.compareKey, m.vortexModId);
+  for (const c of carriedMods) map.set(c.compareKey, c.vortexModId);
+  return map;
+}
+
+/**
+ * Build vortex modId → display name. Used by `applyLoadOrder` to
+ * populate `ILoadOrderEntry_2.name` (Vortex's array shape requires a
+ * display name). We pull from the same install + carry buckets the
+ * compareKey map uses so the display matches what the install
+ * summary will show.
+ */
+function buildDisplayNameByModId(
+  installedMods: InstalledModReportEntry[],
+  carriedMods: CarriedModReportEntry[],
+): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const m of installedMods) map.set(m.vortexModId, m.name);
+  for (const c of carriedMods) map.set(c.vortexModId, c.name);
+  return map;
+}
+
+/**
+ * Build the partial-Nexus-pin resolution map. For every Nexus-source
+ * mod in the install/carry buckets, look up the underlying Vortex mod
+ * record and index by `attributes.modId` (the Nexus mod id).
+ *
+ * Multiple installed files for the same Nexus modId would collide
+ * here; last-write-wins matches what `applyModRules` documents
+ * (curator intent is fuzzy by construction when they only pinned the
+ * modId without a fileId).
+ */
+function buildNexusModIdMap(
+  api: types.IExtensionApi,
+  gameId: string,
+  installedMods: InstalledModReportEntry[],
+  carriedMods: CarriedModReportEntry[],
+): Map<string, string> {
+  const map = new Map<string, string>();
+  const state = api.getState();
+  const modsForGame = (
+    state as unknown as {
+      persistent?: {
+        mods?: Record<
+          string,
+          Record<string, { attributes?: { modId?: unknown } }>
+        >;
+      };
+    }
+  ).persistent?.mods?.[gameId];
+  if (!modsForGame) return map;
+
+  const collect = (vortexModId: string, source: "nexus" | "external"): void => {
+    if (source !== "nexus") return;
+    const record = modsForGame[vortexModId];
+    const nexusModId = record?.attributes?.modId;
+    if (typeof nexusModId === "number") {
+      map.set(String(nexusModId), vortexModId);
+    } else if (typeof nexusModId === "string" && nexusModId.length > 0) {
+      map.set(nexusModId, vortexModId);
+    }
+  };
+
+  for (const m of installedMods) collect(m.vortexModId, m.source);
+  for (const c of carriedMods) collect(c.vortexModId, c.source);
+
+  return map;
+}
+
+/**
+ * Walk Vortex's mod-rules state for every source mod in the rule
+ * targets and return an `ExistingRule[]` projection keyed by source
+ * vortex modId. This is what `applyModRules` consumes for the
+ * collection-wins conflict pass.
+ *
+ * We only collect rules for mods we're *about* to add a rule on
+ * (i.e. mods present in `modIdByCompareKey`). Pulling the entire
+ * mod table would be wasteful for large profiles.
+ */
+function collectExistingRules(
+  api: types.IExtensionApi,
+  gameId: string,
+  modIdByCompareKey: ReadonlyMap<string, string>,
+): Map<string, ExistingRule[]> {
+  const out = new Map<string, ExistingRule[]>();
+  const state = api.getState();
+  const modsForGame = (
+    state as unknown as {
+      persistent?: {
+        mods?: Record<
+          string,
+          Record<
+            string,
+            {
+              rules?: Array<{
+                type?: unknown;
+                reference?: {
+                  id?: unknown;
+                  repo?: { modId?: unknown; fileId?: unknown };
+                  archiveId?: unknown;
+                };
+              }>;
+            }
+          >
+        >;
+      };
+    }
+  ).persistent?.mods?.[gameId];
+  if (!modsForGame) return out;
+
+  const sourceModIds = new Set(modIdByCompareKey.values());
+  for (const sourceModId of sourceModIds) {
+    const record = modsForGame[sourceModId];
+    const rawRules = record?.rules ?? [];
+    if (rawRules.length === 0) continue;
+
+    const projected: ExistingRule[] = [];
+    for (const r of rawRules) {
+      if (typeof r.type !== "string") continue;
+      const ref = r.reference ?? {};
+      projected.push({
+        type: r.type,
+        reference: {
+          id: typeof ref.id === "string" ? ref.id : undefined,
+          repo:
+            ref.repo &&
+            typeof ref.repo === "object" &&
+            ref.repo !== null
+              ? {
+                  modId:
+                    typeof ref.repo.modId === "string"
+                      ? ref.repo.modId
+                      : undefined,
+                  fileId:
+                    typeof ref.repo.fileId === "string"
+                      ? ref.repo.fileId
+                      : undefined,
+                }
+              : undefined,
+          archiveId:
+            typeof ref.archiveId === "string" ? ref.archiveId : undefined,
+        },
+      });
+    }
+    if (projected.length > 0) {
+      out.set(sourceModId, projected);
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Initial empty value for the rules-application receipt. The driver
+ * mutates this incrementally as each phase completes; the final
+ * value lands in the receipt.
+ */
+function emptyRulesApplication(): RulesApplicationReceipt {
+  return {
+    appliedRuleCount: 0,
+    overwrittenUserRuleCount: 0,
+    skippedRules: [],
+    appliedLoadOrderCount: 0,
+    skippedLoadOrderEntries: [],
+    baselinePluginOrder: [],
+  };
+}
+
+function mergeRuleResult(
+  base: RulesApplicationReceipt,
+  ruleResult: ApplyModRulesResult,
+): RulesApplicationReceipt {
+  return {
+    ...base,
+    appliedRuleCount: base.appliedRuleCount + ruleResult.applied,
+    overwrittenUserRuleCount:
+      base.overwrittenUserRuleCount + ruleResult.overwrittenUserRules,
+    skippedRules: [
+      ...base.skippedRules,
+      ...ruleResult.skipped.map((s) => ({
+        ruleType: s.type,
+        source: s.source,
+        reference: s.reference,
+        reason: s.reason,
+      })),
+    ],
+  };
+}
+
+function mergeLoadOrderResult(
+  base: RulesApplicationReceipt,
+  loResult: ApplyLoadOrderResult,
+): RulesApplicationReceipt {
+  return {
+    ...base,
+    appliedLoadOrderCount: base.appliedLoadOrderCount + loResult.applied,
+    skippedLoadOrderEntries: [
+      ...base.skippedLoadOrderEntries,
+      ...loResult.skipped.map((s) => ({
+        compareKey: s.compareKey,
+        pos: s.pos,
+        reason: s.reason,
+      })),
+    ],
+  };
+}

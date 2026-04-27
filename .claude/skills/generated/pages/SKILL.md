@@ -54,7 +54,7 @@ Start here when exploring this area:
 | `InstallPage` | Function | `src/ui/pages/install/InstallPage.tsx` | 50 |
 | `BuildPage` | Function | `src/ui/pages/build/BuildPage.tsx` | 71 |
 | `deleteReceipt` | Function | `src/core/installLedger.ts` | 316 |
-| `uninstallMod` | Function | `src/core/installer/modInstall.ts` | 209 |
+| `uninstallMod` | Function | `src/core/installer/modInstall.ts` | 258 |
 | `handleDelete` | Function | `src/ui/pages/install/steps.tsx` | 450 |
 | `formatBytes` | Function | `src/ui/pages/dashboard/data.ts` | 307 |
 | `formatRelativeTime` | Function | `src/ui/pages/dashboard/data.ts` | 314 |
@@ -82,11 +82,10 @@ Start here when exploring this area:
 
 | Area | Connections |
 |------|-------------|
-| Errors | 2 calls |
+| Installer | 4 calls |
 | Build | 2 calls |
-| Install | 2 calls |
 | Dashboard | 1 calls |
-| Resolver | 1 calls |
+| Install | 1 calls |
 | Manifest | 1 calls |
 
 ## How to Explore

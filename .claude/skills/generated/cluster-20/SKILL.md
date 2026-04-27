@@ -1,9 +1,9 @@
 ---
-name: cluster-12
-description: "Skill for the Cluster_12 area of vortex-mod-monitor. 11 symbols across 1 files."
+name: cluster-20
+description: "Skill for the Cluster_20 area of vortex-mod-monitor. 11 symbols across 1 files."
 ---
 
-# Cluster_12
+# Cluster_20
 
 11 symbols | 1 files | Cohesion: 74%
 
@@ -11,7 +11,7 @@ description: "Skill for the Cluster_12 area of vortex-mod-monitor. 11 symbols ac
 
 - Working with code in `src/`
 - Understanding how getModsForProfile work
-- Modifying cluster_12-related functionality
+- Modifying cluster_20-related functionality
 
 ## Key Files
 
@@ -59,5 +59,5 @@ Start here when exploring this area:
 ## How to Explore
 
 1. `gitnexus_context({name: "getModsForProfile"})` — see callers and callees
-2. `gitnexus_query({query: "cluster_12"})` — find related execution flows
+2. `gitnexus_query({query: "cluster_20"})` — find related execution flows
 3. Read key files listed above for implementation details

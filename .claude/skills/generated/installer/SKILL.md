@@ -1,11 +1,11 @@
 ---
 name: installer
-description: "Skill for the Installer area of vortex-mod-monitor. 43 symbols across 4 files."
+description: "Skill for the Installer area of vortex-mod-monitor. 87 symbols across 12 files."
 ---
 
 # Installer
 
-43 symbols | 4 files | Cohesion: 83%
+87 symbols | 12 files | Cohesion: 75%
 
 ## When to Use
 
@@ -17,70 +17,73 @@ description: "Skill for the Installer area of vortex-mod-monitor. 43 symbols acr
 
 | File | Symbols |
 |------|---------|
-| `src/core/installer/runInstall.ts` | runInstall, reportProgress, checkAbort, collectRemovalPlan, deployAndWait (+21) |
-| `src/core/installer/modInstall.ts` | safeRmTempDir, installNexusViaApi, installFromExistingDownload, installFromLocalArchive, installFromBundledArchive (+3) |
+| `src/core/installer/runInstall.ts` | runInstall, reportProgress, checkAbort, collectRemovalPlan, deployAndWait (+30) |
+| `src/core/installLedger.ts` | InstallLedgerError, getReceiptPath, getInstallLedgerDir, parseReceipt, serializeReceipt (+8) |
+| `src/core/installer/modInstall.ts` | installNexusViaApi, installFromExistingDownload, installFromLocalArchive, makeAbortErrorLocal, waitForInstallCompletion (+8) |
 | `src/core/installer/pluginsTxt.ts` | resolvePluginsTxtPath, serializePluginsTxt, writePluginsTxtWithBackup, serializeAsteriskFormat, serializeLegacyFormat (+2) |
+| `src/core/installer/profile.ts` | createFreshProfile, pickNonCollidingName, switchToProfile, finalize, makeAbortError (+1) |
+| `src/core/installer/applyModRules.ts` | AbortError, applyModRules, resolveReferenceToModId, refMatchesModId |
 | `src/actions/installCollectionAction.ts` | onProgress, formatProgressMessage |
+| `src/core/installer/applyLoadOrder.ts` | AbortError, applyLoadOrder |
+| `src/core/manifest/sevenZip.ts` | extract, resolveSevenZip |
+| `src/ui/pages/build/buildSession.ts` | getState |
 
 ## Entry Points
 
 Start here when exploring this area:
 
-- **`runInstall`** (Function) — `src/core/installer/runInstall.ts:120`
-- **`reportProgress`** (Function) — `src/core/installer/runInstall.ts:136`
-- **`checkAbort`** (Function) — `src/core/installer/runInstall.ts:145`
-- **`safeRmTempDir`** (Function) — `src/core/installer/modInstall.ts:489`
-- **`installNexusViaApi`** (Function) — `src/core/installer/modInstall.ts:66`
+- **`runInstall`** (Function) — `src/core/installer/runInstall.ts:163`
+- **`reportProgress`** (Function) — `src/core/installer/runInstall.ts:182`
+- **`checkAbort`** (Function) — `src/core/installer/runInstall.ts:191`
+- **`createFreshProfile`** (Function) — `src/core/installer/profile.ts:38`
+- **`pickNonCollidingName`** (Function) — `src/core/installer/profile.ts:206`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `runInstall` | Function | `src/core/installer/runInstall.ts` | 120 |
-| `reportProgress` | Function | `src/core/installer/runInstall.ts` | 136 |
-| `checkAbort` | Function | `src/core/installer/runInstall.ts` | 145 |
-| `safeRmTempDir` | Function | `src/core/installer/modInstall.ts` | 489 |
-| `installNexusViaApi` | Function | `src/core/installer/modInstall.ts` | 66 |
-| `installFromExistingDownload` | Function | `src/core/installer/modInstall.ts` | 116 |
-| `installFromLocalArchive` | Function | `src/core/installer/modInstall.ts` | 152 |
-| `installFromBundledArchive` | Function | `src/core/installer/modInstall.ts` | 245 |
+| `InstallLedgerError` | Class | `src/core/installLedger.ts` | 67 |
+| `runInstall` | Function | `src/core/installer/runInstall.ts` | 163 |
+| `reportProgress` | Function | `src/core/installer/runInstall.ts` | 182 |
+| `checkAbort` | Function | `src/core/installer/runInstall.ts` | 191 |
+| `createFreshProfile` | Function | `src/core/installer/profile.ts` | 38 |
+| `pickNonCollidingName` | Function | `src/core/installer/profile.ts` | 206 |
+| `applyLoadOrder` | Function | `src/core/installer/applyLoadOrder.ts` | 105 |
+| `getReceiptPath` | Function | `src/core/installLedger.ts` | 121 |
+| `getInstallLedgerDir` | Function | `src/core/installLedger.ts` | 137 |
+| `parseReceipt` | Function | `src/core/installLedger.ts` | 152 |
+| `serializeReceipt` | Function | `src/core/installLedger.ts` | 253 |
+| `readReceipt` | Function | `src/core/installLedger.ts` | 270 |
+| `writeReceipt` | Function | `src/core/installLedger.ts` | 294 |
+| `listReceipts` | Function | `src/core/installLedger.ts` | 342 |
+| `onError` | Function | `src/ui/errors/ErrorContext.tsx` | 121 |
+| `installNexusViaApi` | Function | `src/core/installer/modInstall.ts` | 88 |
+| `installFromExistingDownload` | Function | `src/core/installer/modInstall.ts` | 151 |
+| `installFromLocalArchive` | Function | `src/core/installer/modInstall.ts` | 194 |
 | `resolvePluginsTxtPath` | Function | `src/core/installer/pluginsTxt.ts` | 78 |
 | `serializePluginsTxt` | Function | `src/core/installer/pluginsTxt.ts` | 96 |
-| `writePluginsTxtWithBackup` | Function | `src/core/installer/pluginsTxt.ts` | 114 |
-| `onProgress` | Function | `src/actions/installCollectionAction.ts` | 1075 |
-| `formatProgressMessage` | Function | `src/actions/installCollectionAction.ts` | 1115 |
-| `collectRemovalPlan` | Function | `src/core/installer/runInstall.ts` | 824 |
-| `deployAndWait` | Function | `src/core/installer/runInstall.ts` | 1055 |
-| `buildReceipt` | Function | `src/core/installer/runInstall.ts` | 1124 |
-| `writeReceiptWithRetry` | Function | `src/core/installer/runInstall.ts` | 1187 |
-| `delay` | Function | `src/core/installer/runInstall.ts` | 1206 |
-| `buildManifestIndex` | Function | `src/core/installer/runInstall.ts` | 1216 |
-| `buildOrphanCarriedEntry` | Function | `src/core/installer/runInstall.ts` | 1232 |
 
 ## Execution Flows
 
 | Flow | Type | Steps |
 |------|------|-------|
-| `ExecuteDecision → GetSnapshot` | cross_community | 6 |
-| `ExecuteDecision → Cleanup` | intra_community | 6 |
-| `ExecuteDecision → Extract` | cross_community | 6 |
-| `ExecuteDivergedChoice → EHRuntime` | cross_community | 6 |
-| `ExecuteDivergedChoice → Notify` | cross_community | 6 |
-| `ExecuteDecision → WizardReducer` | cross_community | 5 |
-| `ExecuteDecision → ResolveSevenZip` | cross_community | 5 |
-| `StartInstall → FormatProgressMessage` | cross_community | 5 |
-| `StartInstall → NeedsConflictChoice` | cross_community | 5 |
-| `RunInstall → ValidateConflictChoice` | cross_community | 4 |
+| `ReceiptDetailModal → EHRuntime` | cross_community | 7 |
+| `ReceiptDetailModal → Notify` | cross_community | 7 |
+| `ReceiptDetailModal → GetSnapshot` | cross_community | 6 |
+| `Dashboard → InstallLedgerError` | cross_community | 6 |
+| `InstallFromBundledArchive → Cleanup` | cross_community | 6 |
+| `InstallFromExistingDownload → Cleanup` | cross_community | 6 |
+| `InstallFromLocalArchive → Cleanup` | cross_community | 6 |
+| `ReceiptDetailModal → WizardReducer` | cross_community | 5 |
+| `Dashboard → GetInstallLedgerDir` | cross_community | 5 |
+| `Dashboard → IsUuid` | cross_community | 5 |
 
 ## Connected Areas
 
 | Area | Connections |
 |------|-------------|
-| Install | 4 calls |
-| Resolver | 2 calls |
-| Manifest | 2 calls |
+| Install | 5 calls |
 | Pages | 1 calls |
-| Errors | 1 calls |
 
 ## How to Explore
 

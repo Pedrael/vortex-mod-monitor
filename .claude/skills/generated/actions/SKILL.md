@@ -34,7 +34,7 @@ Start here when exploring this area:
 - **`getModArchivePath`** (Function) — `src/core/archiveHashing.ts:76`
 - **`openFolder`** (Function) — `src/utils/utils.ts:7`
 - **`pickTxtFile`** (Function) — `src/utils/utils.ts:392`
-- **`exportPluginsDiffReport`** (Function) — `src/core/comparePlugins.ts:186`
+- **`createComparePluginsAction`** (Function) — `src/actions/comparePluginsAction.ts:13`
 
 ## Key Symbols
 
@@ -44,28 +44,27 @@ Start here when exploring this area:
 | `getModArchivePath` | Function | `src/core/archiveHashing.ts` | 76 |
 | `openFolder` | Function | `src/utils/utils.ts` | 7 |
 | `pickTxtFile` | Function | `src/utils/utils.ts` | 392 |
-| `exportPluginsDiffReport` | Function | `src/core/comparePlugins.ts` | 186 |
 | `createComparePluginsAction` | Function | `src/actions/comparePluginsAction.ts` | 13 |
+| `exportPluginsDiffReport` | Function | `src/core/comparePlugins.ts` | 186 |
 | `openFile` | Function | `src/utils/utils.ts` | 10 |
 | `pickJsonFile` | Function | `src/utils/utils.ts` | 41 |
 | `exportDiffReport` | Function | `src/utils/utils.ts` | 373 |
 | `createCompareModsAction` | Function | `src/actions/compareModsAction.ts` | 19 |
 | `getCurrentPluginsTxtPath` | Function | `src/core/comparePlugins.ts` | 157 |
-| `BundleResolutionError` | Class | `src/actions/buildPackageAction.ts` | 543 |
-| `promptCuratorMetadata` | Function | `src/actions/buildPackageAction.ts` | 318 |
-| `validateCuratorInput` | Function | `src/actions/buildPackageAction.ts` | 412 |
-| `resolveVortexVersion` | Function | `src/actions/buildPackageAction.ts` | 430 |
-| `resolveGameVersion` | Function | `src/actions/buildPackageAction.ts` | 441 |
-| `resolveDeploymentMethod` | Function | `src/actions/buildPackageAction.ts` | 467 |
-| `buildOutputFileName` | Function | `src/actions/buildPackageAction.ts` | 521 |
-| `slugify` | Function | `src/actions/buildPackageAction.ts` | 527 |
-| `formatError` | Function | `src/actions/buildPackageAction.ts` | 648 |
+| `BundleResolutionError` | Class | `src/actions/buildPackageAction.ts` | 544 |
+| `promptCuratorMetadata` | Function | `src/actions/buildPackageAction.ts` | 319 |
+| `validateCuratorInput` | Function | `src/actions/buildPackageAction.ts` | 413 |
+| `resolveVortexVersion` | Function | `src/actions/buildPackageAction.ts` | 431 |
+| `resolveGameVersion` | Function | `src/actions/buildPackageAction.ts` | 442 |
+| `resolveDeploymentMethod` | Function | `src/actions/buildPackageAction.ts` | 468 |
+| `buildOutputFileName` | Function | `src/actions/buildPackageAction.ts` | 522 |
+| `slugify` | Function | `src/actions/buildPackageAction.ts` | 528 |
+| `formatError` | Function | `src/actions/buildPackageAction.ts` | 649 |
 
 ## Execution Flows
 
 | Flow | Type | Steps |
 |------|------|-------|
-| `FormatPlanText → Pad` | intra_community | 4 |
 | `CreateBuildPackageAction → ValidateCuratorInput` | intra_community | 3 |
 | `Init → PickJsonFile` | cross_community | 3 |
 | `Init → PickTxtFile` | cross_community | 3 |
@@ -75,12 +74,12 @@ Start here when exploring this area:
 
 | Area | Connections |
 |------|-------------|
-| Resolver | 9 calls |
+| Resolver | 6 calls |
 | Manifest | 6 calls |
+| Installer | 4 calls |
 | Build | 4 calls |
-| Cluster_12 | 2 calls |
+| Cluster_20 | 2 calls |
 | Install | 1 calls |
-| Installer | 1 calls |
 
 ## How to Explore
 

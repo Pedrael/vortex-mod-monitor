@@ -1,16 +1,16 @@
 ---
 name: resolver
-description: "Skill for the Resolver area of vortex-mod-monitor. 61 symbols across 12 files."
+description: "Skill for the Resolver area of vortex-mod-monitor. 60 symbols across 11 files."
 ---
 
 # Resolver
 
-61 symbols | 12 files | Cohesion: 79%
+60 symbols | 11 files | Cohesion: 79%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how getActiveGameId, getActiveProfileId, getActiveProfileIdFromState work
+- Understanding how createInstallCollectionAction, createExportModsAction, getActiveGameId work
 - Modifying resolver-related functionality
 
 ## Key Files
@@ -24,31 +24,31 @@ description: "Skill for the Resolver area of vortex-mod-monitor. 61 symbols acro
 | `src/ui/pages/install/engine.ts` | runLoadingPipeline, runLoadingPipelineWithReceipt, profileExistsInState |
 | `src/index.ts` | installEventHorizonIconSet, init |
 | `src/ui/pages/dashboard/data.ts` | readSystemStatus, formatGameLabel |
+| `src/actions/exportModsAction.ts` | createExportModsAction |
 | `src/core/exportMods.ts` | exportModsToJsonFile |
 | `src/core/archiveHashing.ts` | enrichModsWithArchiveHashes |
-| `src/actions/exportModsAction.ts` | createExportModsAction |
 
 ## Entry Points
 
 Start here when exploring this area:
 
+- **`createInstallCollectionAction`** (Function) — `src/actions/installCollectionAction.ts:107`
+- **`createExportModsAction`** (Function) — `src/actions/exportModsAction.ts:15`
 - **`getActiveGameId`** (Function) — `src/core/getModsListForProfile.ts:166`
 - **`getActiveProfileId`** (Function) — `src/core/getModsListForProfile.ts:171`
 - **`getActiveProfileIdFromState`** (Function) — `src/core/getModsListForProfile.ts:181`
-- **`exportModsToJsonFile`** (Function) — `src/core/exportMods.ts:6`
-- **`enrichModsWithArchiveHashes`** (Function) — `src/core/archiveHashing.ts:175`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
+| `createInstallCollectionAction` | Function | `src/actions/installCollectionAction.ts` | 107 |
+| `createExportModsAction` | Function | `src/actions/exportModsAction.ts` | 15 |
 | `getActiveGameId` | Function | `src/core/getModsListForProfile.ts` | 166 |
 | `getActiveProfileId` | Function | `src/core/getModsListForProfile.ts` | 171 |
 | `getActiveProfileIdFromState` | Function | `src/core/getModsListForProfile.ts` | 181 |
 | `exportModsToJsonFile` | Function | `src/core/exportMods.ts` | 6 |
 | `enrichModsWithArchiveHashes` | Function | `src/core/archiveHashing.ts` | 175 |
-| `createInstallCollectionAction` | Function | `src/actions/installCollectionAction.ts` | 107 |
-| `createExportModsAction` | Function | `src/actions/exportModsAction.ts` | 15 |
 | `buildUserSideState` | Function | `src/core/resolver/userState.ts` | 120 |
 | `pickInstallTarget` | Function | `src/core/resolver/userState.ts` | 150 |
 | `previousInstallFromReceipt` | Function | `src/core/resolver/userState.ts` | 175 |
@@ -83,15 +83,14 @@ Start here when exploring this area:
 | Area | Connections |
 |------|-------------|
 | Actions | 10 calls |
+| Installer | 9 calls |
 | Manifest | 7 calls |
-| Cluster_12 | 5 calls |
+| Cluster_20 | 5 calls |
 | Build | 4 calls |
 | Pages | 2 calls |
-| Errors | 2 calls |
-| Installer | 1 calls |
 
 ## How to Explore
 
-1. `gitnexus_context({name: "getActiveGameId"})` — see callers and callees
+1. `gitnexus_context({name: "createInstallCollectionAction"})` — see callers and callees
 2. `gitnexus_query({query: "resolver"})` — find related execution flows
 3. Read key files listed above for implementation details

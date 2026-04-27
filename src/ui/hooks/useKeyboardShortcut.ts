@@ -13,6 +13,13 @@
  *     because the user is plainly typing, not commanding.
  *   - We skip when any modifier (Ctrl, Meta, Alt) is held — those are
  *     for global Vortex/OS shortcuts.
+ *   - We use `stopImmediatePropagation()` rather than
+ *     `stopPropagation()` so the event is killed in BOTH phases
+ *     (capture and bubble) and so other listeners on the same window
+ *     element don't also fire. Without this, a Vortex-level bubble
+ *     listener could still see our Enter/Escape and trigger an
+ *     unrelated action — e.g. Vortex's main-menu navigation
+ *     intercepting Escape in modal-context contexts.
  *   - Listener is rebuilt only when `key` or `enabled` change. The
  *     callback is read through a ref so callers can pass inline
  *     arrows without thrashing the listener every render.
@@ -44,7 +51,10 @@ export function useKeyboardShortcut(
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (isEditableTarget(e.target)) return;
       e.preventDefault();
-      e.stopPropagation();
+      // stopImmediatePropagation kills both capture- and bubble-phase
+      // listeners (vs stopPropagation which only stops further
+      // capture-phase ones from this point on); see header comment.
+      e.stopImmediatePropagation();
       cbRef.current();
     };
     window.addEventListener("keydown", handler, true);

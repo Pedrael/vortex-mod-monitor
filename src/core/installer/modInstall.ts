@@ -53,11 +53,33 @@ import {
 } from "../manifest/sevenZip";
 
 /**
- * How long we'll wait for `did-install-mod` after starting an install
- * before giving up. Real installs of FOMODs with hundreds of files
- * routinely take 30–60s on slow disks; we err on the side of patience.
+ * Install completion is policed by **two** timers, not one:
+ *
+ *  1. {@link INSTALL_STALL_WATCHDOG_MS} — the **stall watchdog**. We
+ *     reset it every time we observe a relevant progress signal (a
+ *     download chunk landed, the entry's state transitioned, the mod
+ *     count for our gameId mutated, etc.). If Vortex makes zero
+ *     observable progress for this long we conclude the pipeline is
+ *     hung and reject. This is the timer that actually matters for
+ *     real-world UX — most installs reset it dozens of times per
+ *     second during the download phase, so it never trips on a
+ *     healthy install no matter how big the archive is.
+ *
+ *  2. {@link INSTALL_ABSOLUTE_CAP_MS} — the **absolute cap**. Pure
+ *     safety net for the pathological case where Vortex is reporting
+ *     progress but is actually livelocked (e.g. retrying a network
+ *     call forever). In healthy operation this never trips.
+ *
+ * Why not a single fixed deadline? The previous design used a 10 min
+ * fixed deadline, which was simultaneously too short for slow
+ * connections (a 4 GB download on 10 Mbps is ~55 min, all of it
+ * Vortex working fine) and too long for diagnosing real hangs (a
+ * stuck FOMOD dialog had to sit for 10 min before we'd error out).
+ * The two-timer design solves both: hangs surface in 90s; legitimate
+ * long-running installs are bounded only by the 60 min absolute cap.
  */
-const INSTALL_COMPLETION_TIMEOUT_MS = 10 * 60_000; // 10 minutes
+const INSTALL_STALL_WATCHDOG_MS = 90_000; // 90s of zero progress = hung
+const INSTALL_ABSOLUTE_CAP_MS = 60 * 60_000; // 60 min hard ceiling
 
 /**
  * Install a Nexus mod by triggering Vortex's typed `nexusDownload`
@@ -71,6 +93,14 @@ export async function installNexusViaApi(
     nexusModId: number;
     nexusFileId: number;
     fileName?: string;
+    /**
+     * Optional cancellation token. If aborted before
+     * `did-install-mod` fires, the awaited promise rejects with an
+     * `AbortError`. Vortex's `nexusDownload` itself cannot be
+     * cancelled (the API doesn't expose a hook), but the driver
+     * stops blocking immediately.
+     */
+    signal?: AbortSignal;
   },
 ): Promise<{ archiveId: string; vortexModId: string }> {
   if (!api.ext?.nexusDownload) {
@@ -80,11 +110,16 @@ export async function installNexusViaApi(
     );
   }
 
+  if (args.signal?.aborted) {
+    throw makeAbortErrorLocal("nexus install");
+  }
+
   // Subscribe BEFORE triggering — `did-install-mod` can fire before the
   // `nexusDownload` promise resolves on hot caches.
   const completed = waitForInstallCompletion(api, {
     gameId: args.gameId,
     matchArchiveId: undefined, // we don't know it yet; matched below
+    signal: args.signal,
   });
 
   const archiveId = await api.ext.nexusDownload(
@@ -119,11 +154,18 @@ export async function installFromExistingDownload(
   args: {
     gameId: string;
     archiveId: string;
+    /** Optional cancellation token; see {@link installNexusViaApi}. */
+    signal?: AbortSignal;
   },
 ): Promise<{ vortexModId: string }> {
+  if (args.signal?.aborted) {
+    throw makeAbortErrorLocal("install from existing download");
+  }
+
   const completed = waitForInstallCompletion(api, {
     gameId: args.gameId,
     matchArchiveId: args.archiveId,
+    signal: args.signal,
   });
 
   api.events.emit("start-install-download", args.archiveId);
@@ -155,12 +197,19 @@ export async function installFromLocalArchive(
   args: {
     gameId: string;
     archivePath: string;
+    /** Optional cancellation token; see {@link installNexusViaApi}. */
+    signal?: AbortSignal;
   },
 ): Promise<{ vortexModId: string }> {
+  if (args.signal?.aborted) {
+    throw makeAbortErrorLocal("install from local archive");
+  }
+
   const completed = waitForInstallCompletion(api, {
     gameId: args.gameId,
     matchArchiveId: undefined,
     acceptAny: true,
+    signal: args.signal,
   });
 
   // Same dual-path race as installFromBundledArchive: synchronous
@@ -238,10 +287,18 @@ export async function uninstallMod(
  * The temp file is left in place after install — Vortex copies it into
  * the downloads folder during `start-install`, so it's safe to delete.
  * The driver's caller is responsible for cleanup at the end of the
- * install run.
+ * install run via {@link safeRmTempDir} on `tempDir`.
  *
- * @returns the resulting Vortex mod id and the temp archive path so
- *   the caller can clean up after the run completes.
+ * Failure modes that own cleanup here (rather than the driver):
+ *  - 7z extraction fails before we can hand the file to Vortex →
+ *    {@link extractBundledFromEhcoll} cleans up its own tempDir.
+ *  - `start-install` rejects (synchronous callback path) before
+ *    Vortex copies the archive into its downloads folder → we
+ *    cleanup tempDir here. The driver's cleanup list never sees it.
+ *
+ * @returns the resulting Vortex mod id, the extracted path on disk,
+ *   and the temp directory the caller must remove once Vortex has
+ *   finished with the archive.
  */
 export async function installFromBundledArchive(
   api: types.IExtensionApi,
@@ -250,52 +307,81 @@ export async function installFromBundledArchive(
     ehcollZipPath: string;
     bundledZipEntry: string; // e.g. "bundled/abc...123.zip"
     sevenZip?: SevenZipApi;
+    /** Optional cancellation token; see {@link installNexusViaApi}. */
+    signal?: AbortSignal;
   },
-): Promise<{ vortexModId: string; extractedPath: string }> {
+): Promise<{
+  vortexModId: string;
+  extractedPath: string;
+  tempDir: string;
+}> {
   const sevenZip = args.sevenZip ?? resolveSevenZip();
 
-  const extractedPath = await extractBundledFromEhcoll(
+  if (args.signal?.aborted) {
+    throw makeAbortErrorLocal("install from bundled archive");
+  }
+
+  const { extractedPath, tempDir } = await extractBundledFromEhcoll(
     args.ehcollZipPath,
     args.bundledZipEntry,
     sevenZip,
   );
 
-  const completed = waitForInstallCompletion(api, {
-    gameId: args.gameId,
-    // start-install registers a NEW archiveId we cannot know in
-    // advance. acceptAny: true makes the did-install-mod listener a
-    // real fallback for Vortex builds where the synchronous callback
-    // below isn't invoked reliably.
-    matchArchiveId: undefined,
-    acceptAny: true,
-  });
+  try {
+    if (args.signal?.aborted) {
+      // User aborted between extraction and start-install; skip the
+      // start-install dispatch entirely. The catch below cleans up
+      // tempDir.
+      throw makeAbortErrorLocal("install from bundled archive");
+    }
 
-  // `start-install` accepts a callback `(err, modId) => void`. We use
-  // both: the callback gives us the most precise modId (Vortex resolves
-  // it synchronously after install), and `did-install-mod` is a fallback
-  // for older Vortex builds that don't invoke the cb reliably.
-  const callbackPromise = new Promise<{ modId: string }>((resolve, reject) => {
-    api.events.emit(
-      "start-install",
-      extractedPath,
-      (err: Error | null | undefined, modId: string) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-        if (!modId) {
-          reject(new Error("start-install completed without a modId."));
-          return;
-        }
-        resolve({ modId });
+    const completed = waitForInstallCompletion(api, {
+      gameId: args.gameId,
+      // start-install registers a NEW archiveId we cannot know in
+      // advance. acceptAny: true makes the did-install-mod listener a
+      // real fallback for Vortex builds where the synchronous callback
+      // below isn't invoked reliably.
+      matchArchiveId: undefined,
+      acceptAny: true,
+      signal: args.signal,
+    });
+
+    // `start-install` accepts a callback `(err, modId) => void`. We use
+    // both: the callback gives us the most precise modId (Vortex resolves
+    // it synchronously after install), and `did-install-mod` is a fallback
+    // for older Vortex builds that don't invoke the cb reliably.
+    const callbackPromise = new Promise<{ modId: string }>(
+      (resolve, reject) => {
+        api.events.emit(
+          "start-install",
+          extractedPath,
+          (err: Error | null | undefined, modId: string) => {
+            if (err) {
+              reject(err);
+              return;
+            }
+            if (!modId) {
+              reject(new Error("start-install completed without a modId."));
+              return;
+            }
+            resolve({ modId });
+          },
+        );
       },
     );
-  });
 
-  // Whichever resolves first wins. The other settles silently.
-  const result = await Promise.race([callbackPromise, completed.promise]);
+    // Whichever resolves first wins. The other settles silently.
+    const result = await Promise.race([callbackPromise, completed.promise]);
 
-  return { vortexModId: result.modId, extractedPath };
+    return { vortexModId: result.modId, extractedPath, tempDir };
+  } catch (err) {
+    // start-install rejected before Vortex took ownership of the
+    // archive — no copy was made into the downloads folder, so we
+    // own the tempDir and must clean it up here. Otherwise it leaks
+    // until OS temp GC.
+    await safeRmTempDir(tempDir);
+    throw err;
+  }
 }
 
 // ===========================================================================
@@ -342,8 +428,27 @@ function waitForInstallCompletion(
      * When true, the listener resolves on the FIRST `did-install-mod`
      * for `opts.gameId` regardless of archiveId. Cannot be combined
      * with `matchArchiveId`.
+     *
+     * SAFETY: this mode is only sound when callers guarantee at most
+     * one install pipeline is running globally for `opts.gameId` —
+     * otherwise we can race and resolve with a modId that belongs to
+     * a *different* concurrent install. Today that invariant is held
+     * by EHRuntime (see src/ui/runtime/ehRuntime.ts), which serializes
+     * EH's build/install pipelines, AND by the install driver itself
+     * which installs mods sequentially. If you ever want parallel
+     * installs, do NOT use acceptAny.
      */
     acceptAny?: boolean;
+    /**
+     * If provided, the promise rejects with an `AbortError` as soon
+     * as the signal aborts. The synchronous `start-install` callback
+     * in {@link installFromBundledArchive} / {@link installFromLocalArchive}
+     * cannot itself be cancelled (Vortex's API doesn't expose that),
+     * but at least the *driver* stops blocking on this promise so
+     * the rest of the abort cleanup can proceed. Vortex's pipeline
+     * eventually completes or errors on its own.
+     */
+    signal?: AbortSignal;
   },
 ): {
   promise: Promise<{ modId: string; archiveId: string }>;
@@ -379,6 +484,130 @@ function waitForInstallCompletion(
     },
   );
 
+  // ── Two-timer watchdog (see header for rationale) ────────────────
+  let stallTimer: ReturnType<typeof setTimeout> | undefined;
+  let absoluteCapTimer: ReturnType<typeof setTimeout> | undefined;
+  let storeUnsubscribe: (() => void) | undefined;
+  let lastProgressAt = Date.now();
+
+  /**
+   * Snapshot of the download entry under
+   * `state.persistent.downloads.files[expectedArchiveId]` from the
+   * last time we observed it. We detect "progress" as any change in
+   * `received` (download chunk landed), `state` (lifecycle
+   * transition), or `size` (Vortex learned the total bytes).
+   */
+  let lastDownloadSnapshot:
+    | { received: number; state: string; size: number }
+    | undefined;
+  /**
+   * Mod count for our gameId at the last observation. Used as a
+   * coarse-grained progress signal when archiveId isn't known yet
+   * (Nexus path before nexusDownload returns) or when the install
+   * pipeline phase doesn't update download.received (post-extract,
+   * pre-deploy).
+   */
+  let lastModCount = -1;
+
+  const armStallWatchdog = (): void => {
+    if (stallTimer !== undefined) clearTimeout(stallTimer);
+    stallTimer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      const idleSec = Math.round((Date.now() - lastProgressAt) / 1000);
+      rejectFn(
+        new Error(
+          `Mod install stalled — Vortex made no observable progress for ` +
+            `${idleSec}s. The install pipeline may be waiting on a stuck ` +
+            `dialog (FOMOD prompt, error notification) or be hung. Check ` +
+            `Vortex's notification panel and try again.`,
+        ),
+      );
+    }, INSTALL_STALL_WATCHDOG_MS);
+  };
+
+  const noteProgress = (): void => {
+    lastProgressAt = Date.now();
+    armStallWatchdog();
+  };
+
+  /**
+   * Redux store listener. Fires after every action — we filter to
+   * just the slices that move during a healthy install: the download
+   * entry for our archive, and the mod pool for our gameId.
+   *
+   * Cost: ~O(1) state-tree walks per redux action. setTimeout
+   * arm/disarm is similarly cheap. This is fine even during the
+   * "100 progress events per second" early phase of a fast download.
+   */
+  const onStoreChange = (): void => {
+    if (settled) return;
+
+    // api.getState() is vortex-api's typed accessor; the underlying
+    // ThunkStore exposes getState/subscribe but its TypeScript surface
+    // doesn't, so we go through api.getState() for reads and cast for
+    // the subscribe handle below.
+    const state = api.getState() as unknown as
+      | {
+          persistent?: {
+            downloads?: {
+              files?: Record<
+                string,
+                {
+                  received?: number;
+                  state?: string;
+                  size?: number;
+                }
+              >;
+            };
+            mods?: Record<string, Record<string, unknown>>;
+          };
+        }
+      | undefined;
+    if (!state) return;
+
+    // Signal 1: the specific download entry we expect (Nexus &
+    // existing-download paths). expectedArchiveId starts undefined
+    // for the Nexus flow and gets filled in by setExpectedArchiveId.
+    if (expectedArchiveId !== undefined) {
+      const entry = state?.persistent?.downloads?.files?.[expectedArchiveId];
+      if (entry) {
+        const snap = {
+          received: entry.received ?? 0,
+          state: entry.state ?? "",
+          size: entry.size ?? 0,
+        };
+        if (
+          lastDownloadSnapshot === undefined ||
+          lastDownloadSnapshot.received !== snap.received ||
+          lastDownloadSnapshot.state !== snap.state ||
+          lastDownloadSnapshot.size !== snap.size
+        ) {
+          lastDownloadSnapshot = snap;
+          noteProgress();
+          return;
+        }
+      }
+    }
+
+    // Signal 2: total mod count for our gameId (covers bundled-archive
+    // and any phase the download entry doesn't move during). One mod
+    // appearing or disappearing is enough to reset the watchdog —
+    // Vortex's install pipeline mutates this slice on completion and
+    // the action handler's middleware also touches it during failure
+    // recovery.
+    const modsForGame = state?.persistent?.mods?.[opts.gameId];
+    const modCount =
+      modsForGame !== undefined ? Object.keys(modsForGame).length : 0;
+    if (lastModCount === -1) {
+      lastModCount = modCount;
+    } else if (modCount !== lastModCount) {
+      lastModCount = modCount;
+      noteProgress();
+    }
+  };
+
   const onDidInstall = (
     gameId: string,
     archiveId: string,
@@ -386,6 +615,11 @@ function waitForInstallCompletion(
   ): void => {
     if (settled) return;
     if (gameId !== opts.gameId) return;
+
+    // did-install-mod is by definition a progress signal; reset the
+    // watchdog before deciding whether to settle (covers the case
+    // where the event is for a different archiveId in exact-mode).
+    noteProgress();
 
     if (acceptAny) {
       settled = true;
@@ -408,28 +642,94 @@ function waitForInstallCompletion(
 
   api.events.on("did-install-mod", onDidInstall);
 
-  const timeout = setTimeout(() => {
+  // Subscribe to the store if available. In test/mock environments
+  // where api.store is undefined, the watchdog still works — it just
+  // can't observe download progress, so the stall timer effectively
+  // becomes a fixed deadline. did-install-mod still resolves the
+  // promise on the happy path.
+  //
+  // vortex-api's ThunkStore<any> typing doesn't expose .subscribe but
+  // the runtime object is a Redux store and definitely has it; cast.
+  const storeWithSubscribe = api.store as unknown as
+    | { subscribe?: (listener: () => void) => () => void }
+    | undefined;
+  const subscribeFn = storeWithSubscribe?.subscribe;
+  if (typeof subscribeFn === "function") {
+    storeUnsubscribe = subscribeFn(onStoreChange);
+    // Seed the snapshots so the next mutation is detected as a delta.
+    onStoreChange();
+  }
+
+  // Arm both timers.
+  armStallWatchdog();
+  absoluteCapTimer = setTimeout(() => {
     if (settled) return;
     settled = true;
     cleanup();
     rejectFn(
       new Error(
-        `Mod install did not complete within ${
-          INSTALL_COMPLETION_TIMEOUT_MS / 1000
-        }s.`,
+        `Mod install exceeded the absolute time cap of ` +
+          `${INSTALL_ABSOLUTE_CAP_MS / 60_000} min. Vortex was reporting ` +
+          `progress but never completed — assuming the pipeline is ` +
+          `livelocked.`,
       ),
     );
-  }, INSTALL_COMPLETION_TIMEOUT_MS);
+  }, INSTALL_ABSOLUTE_CAP_MS);
+
+  // Wire abort. If the signal is already aborted, settle synchronously
+  // — but defer the rejection a microtask so cleanup runs on a fully-
+  // constructed promise (avoids "leaks" of un-awaited cleanup).
+  let abortListener: (() => void) | undefined;
+  if (opts.signal) {
+    if (opts.signal.aborted) {
+      // Use a microtask so the caller has a chance to attach .catch
+      // before the rejection lands. (Without this, a synchronous
+      // throw here would surface before await.)
+      Promise.resolve().then(() => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        rejectFn(makeAbortErrorLocal("install"));
+      });
+    } else {
+      abortListener = (): void => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        rejectFn(makeAbortErrorLocal("install"));
+      };
+      opts.signal.addEventListener("abort", abortListener);
+    }
+  }
 
   function cleanup(): void {
     api.events.removeListener("did-install-mod", onDidInstall);
-    clearTimeout(timeout);
+    if (stallTimer !== undefined) clearTimeout(stallTimer);
+    if (absoluteCapTimer !== undefined) clearTimeout(absoluteCapTimer);
+    if (storeUnsubscribe !== undefined) {
+      try {
+        storeUnsubscribe();
+      } catch {
+        // Vortex's store occasionally throws during teardown; we
+        // don't care, the listener is dropped either way.
+      }
+    }
+    if (abortListener !== undefined && opts.signal) {
+      opts.signal.removeEventListener("abort", abortListener);
+    }
   }
 
   return {
     promise,
     setExpectedArchiveId: (archiveId: string) => {
       expectedArchiveId = archiveId;
+      // Reset the download snapshot so the next store tick captures
+      // the entry for the *new* archiveId as fresh progress.
+      lastDownloadSnapshot = undefined;
+      // Also count "we now know the archiveId" itself as progress —
+      // it means nexusDownload resolved, which definitionally means
+      // Vortex made forward progress.
+      noteProgress();
 
       // Drain the buffer for any events we got before we knew the id.
       const match = buffer.find((entry) => entry.archiveId === archiveId);
@@ -444,54 +744,91 @@ function waitForInstallCompletion(
 
 /**
  * Extract a single bundled archive entry out of a `.ehcoll` package
- * into a uniquely-named temp file. Returns the absolute path of the
- * extracted file.
+ * into a uniquely-named temp directory. Returns both the extracted
+ * file's absolute path and the temp directory that contains it — the
+ * caller must use the temp directory (not the file's parent) when
+ * cleaning up, because cherry-picked entries can have nested paths
+ * (e.g. `bundled/abc.zip` lands at `<tempDir>/bundled/abc.zip` and
+ * `path.dirname` would only delete `<tempDir>/bundled`, leaking the
+ * outer mkdtemp dir).
  *
- * The extraction directory is deliberately fresh per-call so two
- * concurrent extractions can't trample each other.
+ * The extraction directory is deliberately fresh per-call (mkdtemp's
+ * 6-char random suffix makes it unique even within the same ms) so
+ * two concurrent extractions can't trample each other.
+ *
+ * On 7z failure or post-extract sanity-check failure the temp dir is
+ * removed before the error propagates — extraction owns its own
+ * cleanup until it successfully returns.
  */
 export async function extractBundledFromEhcoll(
   ehcollZipPath: string,
   bundledZipEntry: string,
   sevenZip: SevenZipApi,
-): Promise<string> {
+): Promise<{ extractedPath: string; tempDir: string }> {
   const tempDir = await fsp.mkdtemp(
     path.join(os.tmpdir(), "event-horizon-install-"),
   );
 
-  await new Promise<void>((resolve, reject) => {
-    const stream = sevenZip.extract(ehcollZipPath, tempDir, {
-      $cherryPick: [bundledZipEntry],
-    });
-    stream.on("end", () => resolve());
-    stream.on("error", (err: Error) =>
-      reject(
-        new Error(
-          `7z failed to extract "${bundledZipEntry}" from "${ehcollZipPath}": ${err.message}.`,
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const stream = sevenZip.extract(ehcollZipPath, tempDir, {
+        $cherryPick: [bundledZipEntry],
+      });
+      stream.on("end", () => resolve());
+      stream.on("error", (err: Error) =>
+        reject(
+          new Error(
+            `7z failed to extract "${bundledZipEntry}" from "${ehcollZipPath}": ${err.message}.`,
+          ),
         ),
-      ),
-    );
-  });
+      );
+    });
 
-  // The cherry-pick preserves the entry's path inside `tempDir`.
-  const extracted = path.join(tempDir, ...bundledZipEntry.split("/"));
+    // The cherry-pick preserves the entry's path inside `tempDir`.
+    const extractedPath = path.join(tempDir, ...bundledZipEntry.split("/"));
 
-  // Sanity-check: confirm the file actually landed.
-  await fsp.access(extracted);
+    // Sanity-check: confirm the file actually landed.
+    await fsp.access(extractedPath);
 
-  return extracted;
+    return { extractedPath, tempDir };
+  } catch (err) {
+    // Extraction never succeeded — clean up the empty/partial tempDir
+    // here so the caller doesn't have to learn about it just to drop it.
+    await safeRmTempDir(tempDir);
+    throw err;
+  }
 }
 
 /**
- * Best-effort cleanup of a directory created by
- * {@link extractBundledFromEhcoll}. Errors are swallowed — the OS
- * temp GC will eventually reclaim leftovers.
+ * Best-effort cleanup of a temp directory created by
+ * {@link extractBundledFromEhcoll}. Pass the **directory** returned
+ * by extraction (not the extracted file's path) — cherry-picked
+ * entries can have nested paths inside the temp dir, so deriving the
+ * dir from `path.dirname(extractedPath)` would leak the outer
+ * mkdtemp dir.
+ *
+ * Errors are swallowed — the OS temp GC will eventually reclaim any
+ * leftovers and we don't want install-driver cleanup to mask a real
+ * failure earlier in the pipeline.
  */
-export async function safeRmTempDir(filePath: string): Promise<void> {
+export async function safeRmTempDir(tempDir: string): Promise<void> {
   try {
-    const dir = path.dirname(filePath);
-    await fsp.rm(dir, { recursive: true, force: true });
+    await fsp.rm(tempDir, { recursive: true, force: true });
   } catch {
     // ignore
   }
+}
+
+/**
+ * AbortError that matches the DOM AbortError shape (name === "AbortError")
+ * so it survives the same `err.name === "AbortError"` checks the rest of
+ * the codebase uses (see useErrorReporter, runInstall.checkAbort).
+ *
+ * Local copy rather than importing from profile.ts to avoid a circular
+ * import — profile.ts has its own version with the same shape.
+ */
+function makeAbortErrorLocal(operation: string): Error {
+  const err = new Error(`${operation} aborted by user`);
+  err.name = "AbortError";
+  return err;
 }
