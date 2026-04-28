@@ -215,9 +215,23 @@ async function readDraftFile<T>(
   if (typeof env.version !== "number") return undefined;
   if (env.version > DRAFT_SCHEMA_VERSION) {
     // Newer than us — refuse to corrupt by misinterpreting fields.
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[Event Horizon] draft ${filePath} has schema v${env.version} ` +
+        `(this build supports up to v${DRAFT_SCHEMA_VERSION}); skipping. ` +
+        `This usually means a newer Event Horizon build wrote the file.`,
+    );
     return undefined;
   }
-  if (env.version < DRAFT_OLDEST_MIGRATABLE) return undefined;
+  if (env.version < DRAFT_OLDEST_MIGRATABLE) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[Event Horizon] draft ${filePath} has schema v${env.version} ` +
+        `(below oldest migratable v${DRAFT_OLDEST_MIGRATABLE}); skipping. ` +
+        `The file will be silently ignored — no draft will be restored.`,
+    );
+    return undefined;
+  }
   if (env.scope !== scope) return undefined;
   if (typeof env.savedAt !== "string") return undefined;
   if (!("payload" in env)) return undefined;
@@ -238,6 +252,27 @@ async function readDraftFile<T>(
   // specific migrators live below; defaulting to "rekey only" is
   // safe because v1 payloads are a strict subset of v2 payloads
   // for every existing scope.
+  //
+  // Race-free claim protocol (two BuildPages mounting at the same
+  // time, two listDrafts passes, etc.):
+  //
+  //   1. rename(filePath → claimTmp): only one caller wins, the
+  //      others see ENOENT and treat it as "no draft" (the winner
+  //      will re-surface the upgraded draft on the next read).
+  //   2. write the v2 envelope to a freshly-minted UUID-keyed
+  //      target via the standard tmp+rename pattern. UUID
+  //      collisions are vanishingly improbable, so this rename
+  //      lands on virgin ground (no Windows-overwrite issue).
+  //   3. unlink the claim file.
+  //
+  // Crash windows:
+  //   • after step 1, before step 2 → stale `.migrating-*` file,
+  //     no targetPath; next listDrafts ignores it (extension
+  //     mismatch) and the user has lost that draft. Acceptable —
+  //     drafts are autosaved at most every 500ms and v1 drafts
+  //     pre-date this code path.
+  //   • after step 2, before step 3 → both files exist; the
+  //     stale `.migrating-*` is invisible to listDrafts.
   if (env.version === 1) {
     const newKey = randomUUID();
     const migratedPayload = migrateV1Payload<T>(scope, env);
@@ -248,29 +283,49 @@ async function readDraftFile<T>(
       key: newKey,
       payload: migratedPayload,
     };
-    // Best-effort persistence; if the rewrite fails we still hand
-    // the user the in-memory upgrade so their session works.
-    //
-    // The drafts dir is always `<appData>/Vortex/event-horizon/drafts`
-    // — derive the new file path by sibling-renaming inside the same
-    // folder rather than re-deriving from appDataPath (which we don't
-    // hold here, only filePath).
+
     const draftsDir = path.dirname(filePath);
     const targetPath = path.join(
       draftsDir,
       `${scope}-${sanitizeKey(newKey)}.json`,
     );
+    const claimTmp = `${filePath}.migrating-${randomUUID()}`;
+
+    let claimed = false;
     try {
       await fsp.mkdir(draftsDir, { recursive: true });
-      const tmp = `${targetPath}.tmp`;
-      await fsp.writeFile(tmp, JSON.stringify(migrated, null, 2), "utf8");
-      await fsp.rename(tmp, targetPath);
-      // Drop the legacy gameId-keyed file so listDrafts doesn't
-      // surface the same draft twice.
+      // Step 1: atomic claim. Only one racer wins; losers get
+      // ENOENT and bail with `undefined` so they don't write a
+      // duplicate UUID-keyed draft.
       try {
-        await fsp.unlink(filePath);
+        await fsp.rename(filePath, claimTmp);
+        claimed = true;
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException | undefined)?.code;
+        if (code === "ENOENT") {
+          // Lost the race — another caller has already migrated
+          // this file. Returning undefined means listDrafts will
+          // pick up the new UUID-keyed entry on this same pass
+          // (or the next one) without us double-creating it.
+          return undefined;
+        }
+        throw err;
+      }
+
+      // Step 2: write v2 content to targetPath via tmp+rename.
+      const targetTmp = `${targetPath}.tmp`;
+      await fsp.writeFile(
+        targetTmp,
+        JSON.stringify(migrated, null, 2),
+        "utf8",
+      );
+      await fsp.rename(targetTmp, targetPath);
+
+      // Step 3: drop the claim file.
+      try {
+        await fsp.unlink(claimTmp);
       } catch {
-        /* swallow — best-effort cleanup */
+        /* best-effort cleanup */
       }
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -278,6 +333,17 @@ async function readDraftFile<T>(
         `[Event Horizon] draft migration v1→v${DRAFT_SCHEMA_VERSION} failed for ${filePath}:`,
         err,
       );
+      // Best-effort restore: if we claimed but failed to write
+      // the v2 file, put the v1 file back so a future load can
+      // retry the migration. Swallow restore failures — at worst
+      // the user loses one draft, never crashes the wizard.
+      if (claimed) {
+        try {
+          await fsp.rename(claimTmp, filePath);
+        } catch {
+          /* swallow */
+        }
+      }
     }
     return migrated;
   }

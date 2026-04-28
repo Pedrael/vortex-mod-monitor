@@ -1,9 +1,9 @@
 ---
-name: cluster-17
-description: "Skill for the Cluster_17 area of vortex-mod-monitor. 11 symbols across 1 files."
+name: cluster-11
+description: "Skill for the Cluster_11 area of vortex-mod-monitor. 11 symbols across 1 files."
 ---
 
-# Cluster_17
+# Cluster_11
 
 11 symbols | 1 files | Cohesion: 74%
 
@@ -11,7 +11,7 @@ description: "Skill for the Cluster_17 area of vortex-mod-monitor. 11 symbols ac
 
 - Working with code in `src/`
 - Understanding how getModsForProfile work
-- Modifying cluster_17-related functionality
+- Modifying cluster_11-related functionality
 
 ## Key Files
 
@@ -46,9 +46,9 @@ Start here when exploring this area:
 | Flow | Type | Steps |
 |------|------|-------|
 | `Begin → NormalizeRuleReference` | cross_community | 5 |
-| `Begin → RulesSortKey` | cross_community | 5 |
 | `RunLoadingPipelineWithReceipt → NormalizeRuleReference` | cross_community | 4 |
 | `RunLoadingPipelineWithReceipt → RulesSortKey` | cross_community | 4 |
+| `LoadBuildContext → RulesSortKey` | cross_community | 4 |
 | `CreateExportModsAction → NormalizeRuleReference` | cross_community | 4 |
 | `CreateExportModsAction → RulesSortKey` | cross_community | 4 |
 | `Begin → PickInstallerChoices` | cross_community | 4 |
@@ -59,5 +59,5 @@ Start here when exploring this area:
 ## How to Explore
 
 1. `gitnexus_context({name: "getModsForProfile"})` — see callers and callees
-2. `gitnexus_query({query: "cluster_17"})` — find related execution flows
+2. `gitnexus_query({query: "cluster_11"})` — find related execution flows
 3. Read key files listed above for implementation details

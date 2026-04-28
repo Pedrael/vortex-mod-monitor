@@ -1,59 +1,50 @@
 ---
 name: install
-description: "Skill for the Install area of vortex-mod-monitor. 68 symbols across 17 files."
+description: "Skill for the Install area of vortex-mod-monitor. 49 symbols across 10 files."
 ---
 
 # Install
 
-68 symbols | 17 files | Cohesion: 79%
+49 symbols | 10 files | Cohesion: 69%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how pickEhcollFile, deleteReceipt, useApi work
+- Understanding how pickModArchiveFile, onChange, getInstallSession work
 - Modifying install-related functionality
 
 ## Key Files
 
 | File | Symbols |
 |------|---------|
-| `src/ui/pages/install/installSession.ts` | InstallSession, getSnapshot, subscribe, pickFile, cancelLoading (+15) |
-| `src/ui/pages/install/steps.tsx` | PickStep, StaleReceiptStep, handleDelete, formatTime, ConflictRow (+8) |
-| `src/ui/pages/install/state.ts` | wizardReducer, selectConflictResolutions, defaultConflictChoice, defaultOrphanChoice, canProceedFromDecisions (+2) |
-| `src/ui/pages/CollectionsPage.tsx` | CollectionsList, ReceiptDetailModal, handleExportDiagnostic, handleUninstall, saveDiagnosticReport (+1) |
-| `src/ui/runtime/ehRuntime.ts` | setBuildBusy, setInstallBusy, notify |
-| `src/ui/pages/build/buildSession.ts` | patchForm, dismissDraftBanner, setState |
-| `src/ui/pages/build/BuildPage.tsx` | handleChange, handleDismissDraftBanner, ImportPreviousButton |
+| `src/ui/pages/install/installSession.ts` | InstallSession, subscribe, cancelLoading, openDecisionsFromPreview, setConflictChoice (+13) |
+| `src/ui/pages/install/steps.tsx` | ConflictRow, handlePickFile, OrphanRow, decisionLabel, describeConflict (+4) |
+| `src/ui/pages/install/state.ts` | selectConflictResolutions, defaultConflictChoice, defaultOrphanChoice, canProceedFromDecisions, fillDefaultConflictChoices (+2) |
+| `src/ui/pages/build/BuildPage.tsx` | FormPanel, updateCurator, updateOverride, IntegrityLevelCard, ExternalModsTable |
+| `src/core/installer/profile.ts` | onChange, createFreshProfile, pickNonCollidingName |
 | `src/utils/diskSpace.ts` | getFreeBytes, findExistingAncestor, formatBytes |
-| `src/core/installer/profile.ts` | switchToProfile, makeAbortError |
-| `src/utils/utils.ts` | pickEhcollFile |
+| `src/utils/utils.ts` | pickModArchiveFile |
+| `src/ui/pages/install/InstallPage.tsx` | InstallWizard |
+| `src/ui/hooks/useKeyboardShortcut.ts` | useKeyboardShortcut |
+| `src/core/installer/applyLoadOrder.ts` | applyLoadOrder |
 
 ## Entry Points
 
 Start here when exploring this area:
 
-- **`pickEhcollFile`** (Function) — `src/utils/utils.ts:70`
-- **`deleteReceipt`** (Function) — `src/core/installLedger.ts:382`
-- **`useApi`** (Function) — `src/ui/state/ApiContext.tsx:33`
-- **`useErrorReporter`** (Function) — `src/ui/errors/ErrorContext.tsx:48`
-- **`useToast`** (Function) — `src/ui/components/Toast.tsx:50`
+- **`pickModArchiveFile`** (Function) — `src/utils/utils.ts:103`
+- **`onChange`** (Function) — `src/core/installer/profile.ts:142`
+- **`getInstallSession`** (Function) — `src/ui/pages/install/installSession.ts:447`
+- **`selectConflictResolutions`** (Function) — `src/ui/pages/install/state.ts:311`
+- **`defaultConflictChoice`** (Function) — `src/ui/pages/install/state.ts:325`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `pickEhcollFile` | Function | `src/utils/utils.ts` | 70 |
-| `deleteReceipt` | Function | `src/core/installLedger.ts` | 382 |
-| `useApi` | Function | `src/ui/state/ApiContext.tsx` | 33 |
-| `useErrorReporter` | Function | `src/ui/errors/ErrorContext.tsx` | 48 |
-| `useToast` | Function | `src/ui/components/Toast.tsx` | 50 |
-| `PickStep` | Function | `src/ui/pages/install/steps.tsx` | 183 |
-| `StaleReceiptStep` | Function | `src/ui/pages/install/steps.tsx` | 437 |
-| `handleDelete` | Function | `src/ui/pages/install/steps.tsx` | 452 |
-| `switchToProfile` | Function | `src/core/installer/profile.ts` | 80 |
-| `wizardReducer` | Function | `src/ui/pages/install/state.ts` | 176 |
+| `pickModArchiveFile` | Function | `src/utils/utils.ts` | 103 |
+| `onChange` | Function | `src/core/installer/profile.ts` | 142 |
 | `getInstallSession` | Function | `src/ui/pages/install/installSession.ts` | 447 |
-| `isAbortError` | Function | `src/ui/pages/install/installSession.ts` | 460 |
 | `selectConflictResolutions` | Function | `src/ui/pages/install/state.ts` | 311 |
 | `defaultConflictChoice` | Function | `src/ui/pages/install/state.ts` | 325 |
 | `defaultOrphanChoice` | Function | `src/ui/pages/install/state.ts` | 343 |
@@ -62,6 +53,15 @@ Start here when exploring this area:
 | `fillDefaultOrphanChoices` | Function | `src/ui/pages/install/state.ts` | 399 |
 | `DecisionsStep` | Function | `src/ui/pages/install/steps.tsx` | 989 |
 | `getFreeBytes` | Function | `src/utils/diskSpace.ts` | 28 |
+| `formatBytes` | Function | `src/utils/diskSpace.ts` | 84 |
+| `useKeyboardShortcut` | Function | `src/ui/hooks/useKeyboardShortcut.ts` | 35 |
+| `PreviewStep` | Function | `src/ui/pages/install/steps.tsx` | 603 |
+| `ConfirmStep` | Function | `src/ui/pages/install/steps.tsx` | 1469 |
+| `createFreshProfile` | Function | `src/core/installer/profile.ts` | 38 |
+| `pickNonCollidingName` | Function | `src/core/installer/profile.ts` | 206 |
+| `applyLoadOrder` | Function | `src/core/installer/applyLoadOrder.ts` | 99 |
+| `wizardReducer` | Function | `src/ui/pages/install/state.ts` | 176 |
+| `isAbortError` | Function | `src/ui/pages/install/installSession.ts` | 460 |
 
 ## Execution Flows
 
@@ -70,29 +70,29 @@ Start here when exploring this area:
 | `ReceiptDetailModal → EHRuntime` | cross_community | 7 |
 | `ReceiptDetailModal → Notify` | cross_community | 7 |
 | `ReceiptDetailModal → GetSnapshot` | cross_community | 6 |
-| `Dashboard → InstallLedgerError` | cross_community | 6 |
 | `ApplyGroupRule → EHRuntime` | cross_community | 6 |
 | `ApplyGroupRule → Notify` | cross_community | 6 |
 | `ApplyGroupDefinition → EHRuntime` | cross_community | 6 |
 | `ApplyGroupDefinition → Notify` | cross_community | 6 |
 | `ApplyPluginGroup → EHRuntime` | cross_community | 6 |
 | `ApplyPluginGroup → Notify` | cross_community | 6 |
+| `DecisionsStep → EHRuntime` | cross_community | 5 |
 
 ## Connected Areas
 
 | Area | Connections |
 |------|-------------|
-| Installer | 4 calls |
-| Resolver | 4 calls |
-| Build | 3 calls |
+| Pages | 5 calls |
+| Resolver | 3 calls |
+| Installer | 3 calls |
 | Runtime | 2 calls |
-| Dashboard | 1 calls |
-| Errors | 1 calls |
+| Manifest | 1 calls |
 | Actions | 1 calls |
-| Pages | 1 calls |
+| Errors | 1 calls |
+| Build | 1 calls |
 
 ## How to Explore
 
-1. `gitnexus_context({name: "pickEhcollFile"})` — see callers and callees
+1. `gitnexus_context({name: "pickModArchiveFile"})` — see callers and callees
 2. `gitnexus_query({query: "install"})` — find related execution flows
 3. Read key files listed above for implementation details

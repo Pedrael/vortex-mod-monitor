@@ -79,7 +79,6 @@ import {
   getAppDataPath,
   loadDraft,
 } from "../../../core/draftStorage";
-import { getEHRuntime } from "../../runtime/ehRuntime";
 import type { ExternalModConfigEntry } from "../../../core/manifest/collectionConfig";
 import type { VerificationLevel } from "../../../types/ehcoll";
 import {
@@ -731,22 +730,6 @@ class BuildSession {
 
   private setState(next: BuildSessionState): void {
     this.state = next;
-    // Mirror "is heavy work in flight?" into the runtime so the
-    // install page can warn the user about concurrent operations.
-    // Loading + queued + building all hold (or wait to hold) shared
-    // resources; form / done / error / idle are user-thinking states.
-    //
-    // Note on multi-session aggregation: the runtime flag is global,
-    // not per-draft. The registry recomputes the OR across every
-    // session whenever any session emits, so flipping it here based
-    // on this single session's state is OK (the registry's listener
-    // immediately corrects if another session is still busy).
-    const busy =
-      next.kind === "loading" ||
-      next.kind === "queued" ||
-      next.kind === "building";
-    getEHRuntime().setBuildBusy(busy);
-
     for (const listener of this.listeners) {
       try {
         listener(next);
@@ -754,9 +737,15 @@ class BuildSession {
         /* one bad subscriber must not poison the others */
       }
     }
-    // Fan out to the registry so dashboard subscribers re-render.
-    // Done last so per-session listeners always see the new state
-    // before the dashboard does (avoids one-frame staleness loops).
+    // Fan out to the registry so dashboard subscribers re-render
+    // AND so the registry can recompute the global `buildBusy`
+    // runtime flag as the OR across every live session.
+    //
+    // The flag is owned by the registry (not this session) because
+    // it's a true global: with parallel drafts, session A going
+    // idle/form/done must not clear `buildBusy` while session B is
+    // still loading/queued/building. Letting the registry compute
+    // it is the only place with the full picture.
     this.hooks.notifyStateChanged(this);
   }
 }

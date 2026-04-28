@@ -39,10 +39,10 @@ Start here when exploring this area:
 | Flow | Type | Steps |
 |------|------|-------|
 | `Dashboard → InstallLedgerError` | cross_community | 6 |
+| `Dashboard → ExpectString` | cross_community | 6 |
 | `Dashboard → GetInstallLedgerDir` | cross_community | 5 |
 | `Dashboard → IsUuid` | cross_community | 5 |
 | `Dashboard → OnError` | cross_community | 5 |
-| `LoadDashboardData → ExpectString` | cross_community | 5 |
 | `LoadDashboardData → IsUuid` | cross_community | 5 |
 | `LoadDashboardData → IsSemverLike` | cross_community | 5 |
 | `Dashboard → GetState` | cross_community | 4 |

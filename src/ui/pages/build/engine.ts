@@ -549,6 +549,13 @@ export async function runBuildPipeline(
       lastBuiltVersion: curator.version,
       lastBuiltAt: new Date().toISOString(),
       lastBuiltName: curator.name,
+      // Pin the gameId at build time so the dashboard's "Update"
+      // affordance can refuse cross-game updates (which would
+      // silently rewrite the manifest's gameId and ship a malformed
+      // package). Older configs may lack this field; the dashboard
+      // treats missing as "unknown game" and shows the entry but
+      // cannot enforce the gate.
+      gameId,
     };
     await saveCollectionConfig({ configDir, slug, config: collectionConfig });
   } catch (err) {

@@ -54,6 +54,7 @@ import { getBuildSessionRegistry } from "./buildSessionRegistry";
 import { BuildDashboard } from "./BuildDashboard";
 import { ConcurrentOpBanner } from "../../runtime/ConcurrentOpBanner";
 import { nativeNotify } from "../../runtime/nativeNotify";
+import { getActiveGameId } from "../../../core/getModsListForProfile";
 
 export interface BuildPageProps {
   onNavigate: (route: EventHorizonRoute) => void;
@@ -124,17 +125,29 @@ function BuildWizard(props: BuildWizardProps): JSX.Element {
   const showToast = useToast();
   // Get-or-fail: the dashboard always creates the session before
   // routing here, so the `ensure` call below is effectively a get.
-  // We pass a fallback gameId of "" — `ensure` ignores gameId for
+  // We seed the fallback `gameId` with whatever Vortex thinks is the
+  // active game at recreate time — `ensure` ignores `gameId` for
   // existing sessions, which is what we always have at this point.
+  // The fallback only fires after a hot reload nuked the registry
+  // but `activeDraftId` state survived; in that case we want a
+  // sensible game to pin the recreated session to (an empty string
+  // would let `begin()` pick something arbitrary later, which races
+  // with the user switching profiles between reload and click).
   const session: BuildSession = React.useMemo(() => {
     const registry = getBuildSessionRegistry();
     const existing = registry.get(props.draftId);
     if (existing !== undefined) return existing;
-    // Defensive path: if a hot reload nuked the registry but the
-    // dashboard's activeDraftId state survived, recreate. The empty
-    // gameId will be back-filled when `begin()` reads the active
-    // game from Vortex state — same path a fresh draft would take.
-    return registry.ensure({ draftId: props.draftId, gameId: "" });
+    const fallbackGameId = getActiveGameId(api.getState()) ?? "";
+    return registry.ensure({
+      draftId: props.draftId,
+      gameId: fallbackGameId,
+    });
+    // We deliberately omit `api` from deps: the session is keyed by
+    // draftId. Re-evaluating on every state tick would either
+    // re-fetch the same instance (cheap, fine) or — if `api` changed
+    // identity, which it shouldn't — risk a no-op `ensure`. Either
+    // way the result is stable for this draftId.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.draftId]);
 
   // Mirror the session's state into local React state. The session
@@ -231,10 +244,16 @@ function BuildWizard(props: BuildWizardProps): JSX.Element {
   // of the form session (see auto-begin effect below) and then
   // written back on every autosave.
   const linkedFieldsRef = React.useRef<{
-    title?: string;
     linkedSlug?: string;
     linkedPackageId?: string;
   }>({});
+
+  // `title` lives in component state (not session form state)
+  // because it's a dashboard-only label — never sent to the
+  // manifest, never validated, just displayed on the DraftCard so
+  // a curator with five drafts can tell them apart at a glance.
+  // Initialised from any restored on-disk envelope below.
+  const [draftTitle, setDraftTitle] = React.useState<string>("");
 
   React.useEffect(() => {
     if (state.kind !== "form") return undefined;
@@ -243,7 +262,7 @@ function BuildWizard(props: BuildWizardProps): JSX.Element {
       const payload: BuildDraftPayload = {
         draftId: session.draftId,
         gameId: session.gameId,
-        title: linkedFieldsRef.current.title,
+        title: draftTitle.length > 0 ? draftTitle : undefined,
         linkedSlug: linkedFieldsRef.current.linkedSlug,
         linkedPackageId: linkedFieldsRef.current.linkedPackageId,
         curator: formState.curator,
@@ -260,6 +279,7 @@ function BuildWizard(props: BuildWizardProps): JSX.Element {
   }, [
     session,
     state.kind,
+    draftTitle,
     state.kind === "form" ? state.curator : undefined,
     state.kind === "form" ? state.overrides : undefined,
     state.kind === "form" ? state.readme : undefined,
@@ -267,18 +287,26 @@ function BuildWizard(props: BuildWizardProps): JSX.Element {
     state.kind === "form" ? state.verificationLevel : undefined,
   ]);
 
-  // ── Auto-begin / auto-restore-link-metadata ──────────────────────
-  // When the wizard is opened for a draft that's already in `idle`
-  // (e.g. user just clicked "Open" or "Update" on the dashboard,
-  // or a fresh draft was minted), kick `session.begin()` so the
-  // hashing pass starts immediately. Saves the curator a click and
-  // matches the legacy "you clicked Build, you want to build" UX.
+  // ── Restore link-metadata from disk ──────────────────────────────
+  // Pre-load `linkedSlug`/`linkedPackageId`/`title` from any on-disk
+  // draft into the ref + title state so the autosave keeps them
+  // stable across edits (the session's `form` state doesn't carry
+  // them — they're dashboard-side affordances).
   //
-  // We also pre-load `linkedSlug`/`linkedPackageId`/`title` from any
-  // on-disk draft into the ref so the autosave keeps them stable
-  // across edits (the session's `form` state doesn't carry them).
+  // Predictable-UX choice: we deliberately DO NOT call
+  // `session.begin(api)` here. Even though the hashing pass would be
+  // a "guessable next step" after Open / + New draft / Update, the
+  // legacy auto-begin had two real downsides:
+  //   • Surprise CPU. Tab-switching into the build page kicked off
+  //     a heavy read pass without the user touching anything.
+  //   • Race with the registry's defensive recreate path —
+  //     `session.gameId === ""` when the registry was nuked by a
+  //     hot reload, and `begin()` would silently re-bind to whatever
+  //     game is active *right now*, not what the draft was created
+  //     for.
+  // Curators land on `IdlePanel`, read what's about to happen, and
+  // press "Begin" explicitly. One extra click, zero surprise CPU.
   React.useEffect(() => {
-    if (state.kind !== "idle") return;
     let alive = true;
     void (async (): Promise<void> => {
       try {
@@ -291,21 +319,24 @@ function BuildWizard(props: BuildWizardProps): JSX.Element {
         if (!alive) return;
         if (env !== undefined) {
           linkedFieldsRef.current = {
-            title: env.payload.title,
             linkedSlug: env.payload.linkedSlug,
             linkedPackageId: env.payload.linkedPackageId,
           };
+          if (typeof env.payload.title === "string") {
+            setDraftTitle(env.payload.title);
+          }
         }
       } catch {
         /* swallow — best-effort */
       }
-      if (!alive) return;
-      session.begin(api);
     })();
     return (): void => {
       alive = false;
     };
-    // Only react to the initial idle landing, not every state tick.
+    // Run once per mounted draftId, not per state tick. Note we no
+    // longer key on `state.kind === "idle"`: link metadata might be
+    // missing from the ref if the user navigated away mid-form and
+    // came back, in which case we still want to re-hydrate.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
@@ -469,18 +500,82 @@ function BuildWizard(props: BuildWizardProps): JSX.Element {
     });
   };
 
+  // Game-mismatch banner: this draft was created for `session.gameId`,
+  // but Vortex is currently active on a different game. Building
+  // would still produce a manifest tied to `session.gameId` (the
+  // form's `ctx.gameId` was pinned at load time), but any "begin
+  // again" / "retry" path would re-read Vortex's active game and
+  // silently switch — so warn the curator before that happens.
+  const activeGameId = getActiveGameId(api.getState());
+  const gameMismatch =
+    typeof activeGameId === "string" &&
+    activeGameId.length > 0 &&
+    session.gameId.length > 0 &&
+    activeGameId !== session.gameId;
+
   return (
     <div className="eh-page">
       {backToDashboard}
       <Header stepIndex={stepIndex} stepLabel={stepLabels[stepIndex]} />
       <ConcurrentOpBanner self="build" />
+      {gameMismatch && (
+        <GameMismatchBanner
+          draftGameId={session.gameId}
+          activeGameId={activeGameId as string}
+        />
+      )}
       <FormPanel
         state={formState}
+        title={draftTitle}
+        onTitleChange={setDraftTitle}
         onChange={handleChange}
         onBuild={onBuild}
         onDiscardDraft={handleDiscardDraft}
         onDismissDraftBanner={handleDismissDraftBanner}
       />
+    </div>
+  );
+}
+
+/**
+ * Sticky orange notice at the top of the form when Vortex's active
+ * game has drifted away from the game this draft was created for.
+ * Doesn't disable Build (the form context is already pinned to the
+ * draft's game and a build will still produce a coherent manifest)
+ * — it just prevents the curator being surprised when their build
+ * doesn't match what they currently see in Vortex's mod list.
+ */
+function GameMismatchBanner(props: {
+  draftGameId: string;
+  activeGameId: string;
+}): JSX.Element {
+  return (
+    <div
+      role="alert"
+      style={{
+        marginBottom: "var(--eh-sp-3)",
+        padding: "var(--eh-sp-3) var(--eh-sp-4)",
+        background: "rgba(255, 198, 99, 0.08)",
+        border: "1px solid var(--eh-warning)",
+        borderRadius: "var(--eh-radius-md)",
+        color: "var(--eh-text-primary)",
+        fontSize: "var(--eh-text-sm)",
+        display: "flex",
+        gap: "var(--eh-sp-2)",
+        alignItems: "flex-start",
+      }}
+    >
+      <span aria-hidden="true">⚠</span>
+      <div>
+        <strong>Active game switched.</strong>{" "}
+        This draft was loaded for <code>{props.draftGameId}</code>, but
+        Vortex is now active on <code>{props.activeGameId}</code>. The
+        form data still reflects the original game and will build
+        correctly. Switch Vortex back to{" "}
+        <code>{props.draftGameId}</code> if you need to inspect
+        live mod state, or open this draft from the dashboard after
+        switching profiles.
+      </div>
     </div>
   );
 }
@@ -761,6 +856,15 @@ function LoadingPanel(props: {
 
 interface FormPanelProps {
   state: BuildFormState;
+  /**
+   * Optional dashboard-only label so curators with multiple drafts
+   * in flight can tell them apart at a glance ("Skyrim — main", "Skyrim
+   * — testing"). Independent from `curator.name` (which becomes the
+   * package name and goes into the manifest); the title is purely a
+   * draft-side affordance and never ships in the .ehcoll.
+   */
+  title: string;
+  onTitleChange: (next: string) => void;
   onChange: (next: Partial<BuildFormState>) => void;
   onBuild: () => void;
   onDiscardDraft: () => void;
@@ -768,7 +872,15 @@ interface FormPanelProps {
 }
 
 function FormPanel(props: FormPanelProps): JSX.Element {
-  const { state, onChange, onBuild, onDiscardDraft, onDismissDraftBanner } = props;
+  const {
+    state,
+    title,
+    onTitleChange,
+    onChange,
+    onBuild,
+    onDiscardDraft,
+    onDismissDraftBanner,
+  } = props;
   const { ctx, curator, overrides, readme, changelog, validationError, restoredAt } = state;
 
   const updateCurator = (patch: Partial<CuratorInput>): void =>
@@ -827,10 +939,26 @@ function FormPanel(props: FormPanelProps): JSX.Element {
         <div
           style={{
             display: "flex",
-            justifyContent: "flex-end",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: "var(--eh-sp-3)",
             marginBottom: "var(--eh-sp-3)",
+            flexWrap: "wrap",
           }}
         >
+          <Field
+            label="Draft label (dashboard only)"
+            hint="Optional. Helps you tell drafts apart on the dashboard. Not shipped in the .ehcoll."
+          >
+            <input
+              type="text"
+              className="eh-input"
+              value={title}
+              placeholder={`Untitled draft — e.g. "${ctx.gameId} main run"`}
+              onChange={(e) => onTitleChange(e.target.value)}
+              style={{ minWidth: 280 }}
+            />
+          </Field>
           <ImportPreviousButton
             onImported={(patch): void => {
               onChange({ curator: { ...curator, ...patch } });
@@ -844,7 +972,7 @@ function FormPanel(props: FormPanelProps): JSX.Element {
             gap: "var(--eh-sp-3)",
           }}
         >
-          <Field label="Name" hint="Curator-facing display name.">
+          <Field label="Name" hint="Curator-facing display name. Becomes the package name.">
             <input
               type="text"
               className="eh-input"

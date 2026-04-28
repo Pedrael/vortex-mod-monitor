@@ -106,6 +106,18 @@ export type CollectionConfig = {
    * configs.
    */
   lastBuiltName?: string;
+  /**
+   * Vortex `gameId` this collection was built for (e.g. "skyrimse").
+   * Recorded on every successful build so the curator dashboard can:
+   *   • filter the "Published" list to the active game,
+   *   • refuse to "Update" a published collection from the wrong
+   *     game's profile (which would silently rewrite the manifest's
+   *     `gameId` and produce a malformed package).
+   * Optional for legacy configs that pre-date this field; the
+   * dashboard treats missing `gameId` as "any game" (it will surface
+   * the entry but cannot guarantee compatibility).
+   */
+  gameId?: string;
 };
 
 export type LoadCollectionConfigInput = {
@@ -304,6 +316,12 @@ export type PublishedCollectionSummary = {
   lastBuiltAt?: string;
   /** Last-built display name, if recorded. Falls back to `slug` in UI. */
   lastBuiltName?: string;
+  /**
+   * Vortex `gameId` this collection was last built for, if recorded.
+   * Drives the dashboard's per-game filter and the wizard's
+   * "Update" gate (refuses cross-game updates).
+   */
+  gameId?: string;
   /** Absolute path to the config file. Useful for "Open in editor" actions. */
   configPath: string;
 };
@@ -374,6 +392,7 @@ export async function listPublishedCollections(
       lastBuiltVersion: config.lastBuiltVersion,
       lastBuiltAt: config.lastBuiltAt,
       lastBuiltName: config.lastBuiltName,
+      gameId: config.gameId,
       configPath,
     });
   }
@@ -498,6 +517,9 @@ function parseAndValidate(raw: string, configPath: string): CollectionConfig {
   if (obj.lastBuiltName !== undefined && typeof obj.lastBuiltName !== "string") {
     errors.push("lastBuiltName, when present, must be a string.");
   }
+  if (obj.gameId !== undefined && typeof obj.gameId !== "string") {
+    errors.push("gameId, when present, must be a string.");
+  }
 
   if (errors.length > 0) {
     throw new CollectionConfigError(errors);
@@ -518,6 +540,9 @@ function parseAndValidate(raw: string, configPath: string): CollectionConfig {
   }
   if (typeof obj.lastBuiltName === "string") {
     config.lastBuiltName = obj.lastBuiltName;
+  }
+  if (typeof obj.gameId === "string") {
+    config.gameId = obj.gameId;
   }
   return config;
 }

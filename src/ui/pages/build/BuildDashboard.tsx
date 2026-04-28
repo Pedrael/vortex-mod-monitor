@@ -104,9 +104,11 @@ export function BuildDashboard(props: BuildDashboardProps): JSX.Element {
   }, []);
 
   // Re-render whenever the registry mutates (a session changes state,
-  // is added, removed). Keeps "Building..." pills live without
-  // forcing a manual refresh.
-  const [, setRegistryTick] = React.useState(0);
+  // is added, removed). Keeps "Building..." pills live AND drives the
+  // `items` useMemo below to re-merge unsaved sessions, so a brand-new
+  // draft created via "+ New draft" appears immediately even before
+  // its first autosave hits disk.
+  const [registryTick, setRegistryTick] = React.useState(0);
   React.useEffect(() => {
     return registry.subscribe(() => {
       setRegistryTick((t) => t + 1);
@@ -194,6 +196,29 @@ export function BuildDashboard(props: BuildDashboardProps): JSX.Element {
     env: DraftEnvelope<BuildDraftPayload>,
   ): Promise<void> => {
     const draftId = env.payload.draftId ?? env.key;
+    const label =
+      env.payload.title ??
+      env.payload.curator?.name ??
+      "Untitled draft";
+    // Confirm before deleting — discard is destructive (the on-disk
+    // payload is unrecoverable) and drafts can take real effort to
+    // assemble (mod overrides, README, instructions). One stray
+    // click on a 20-mod draft is a bad day.
+    const result = await api.showDialog?.(
+      "question",
+      "Discard draft?",
+      {
+        text:
+          `"${label}" will be permanently deleted from disk. This cannot ` +
+          `be undone.`,
+      },
+      [
+        { label: "Keep", default: true },
+        { label: "Discard" },
+      ],
+    );
+    if (result === undefined) return;
+    if (result.action !== "Discard") return;
     // Drop the live session if any — there's nothing to come back to
     // since the disk file is being deleted.
     registry.remove(draftId);
@@ -201,10 +226,7 @@ export function BuildDashboard(props: BuildDashboardProps): JSX.Element {
     showToast({
       intent: "info",
       title: "Draft deleted",
-      message:
-        env.payload.title ??
-        env.payload.curator?.name ??
-        "Untitled draft",
+      message: label,
     });
     refresh();
   };
@@ -218,6 +240,32 @@ export function BuildDashboard(props: BuildDashboardProps): JSX.Element {
         title: "No active game",
         message:
           "Switch to the game this collection targets in Vortex, then click Update.",
+      });
+      return;
+    }
+    // Cross-game guard: the build pipeline derives `manifest.gameId`
+    // from the active Vortex profile, so updating from the wrong
+    // game would silently rewrite the manifest with a different
+    // `gameId` than the published collection's previous releases —
+    // breaking install-side compatibility. Refuse with a clear
+    // message instead.
+    //
+    // Skip the gate when `summary.gameId === undefined` (legacy
+    // configs that pre-date this field): we can't enforce something
+    // we don't know. The PublishedCard renders a "legacy" hint in
+    // that case so the curator sees what they're committing to.
+    if (
+      summary.gameId !== undefined &&
+      summary.gameId.length > 0 &&
+      summary.gameId !== activeGameId
+    ) {
+      showToast({
+        intent: "warning",
+        title: "Wrong active game",
+        message:
+          `"${summary.lastBuiltName ?? summary.slug}" was last built for ` +
+          `${summary.gameId}, but Vortex's active game is ${activeGameId}. ` +
+          `Switch profiles to ${summary.gameId} before clicking Update.`,
       });
       return;
     }
@@ -250,6 +298,11 @@ export function BuildDashboard(props: BuildDashboardProps): JSX.Element {
         readme: "",
         changelog: "",
       });
+      // Refresh BEFORE navigating so a back-button trip lands on a
+      // dashboard that already shows the new draft (and elides the
+      // published row, since they're now linked). Otherwise the user
+      // sees a stale list for ~one render after returning.
+      refresh();
       props.onOpenDraft(draftId);
     })();
   };
@@ -257,8 +310,65 @@ export function BuildDashboard(props: BuildDashboardProps): JSX.Element {
   // ── Filtering / merging ────────────────────────────────────────────
 
   const items = React.useMemo<DashboardItem[]>(() => {
+    // 1. Start with the on-disk drafts (envelope shape).
+    const draftEnvelopes: Array<DraftEnvelope<BuildDraftPayload>> = [
+      ...state.drafts,
+    ];
+    const seenDraftIds = new Set<string>(
+      draftEnvelopes.map((d) => d.payload.draftId ?? d.key),
+    );
+
+    // 2. Merge in any registry sessions that haven't yet autosaved
+    //    to disk. Without this, brand-new drafts ("+ New draft" →
+    //    user navigates back before the first autosave fires) are
+    //    invisible on the dashboard until they save, which makes
+    //    the registry feel unreliable.
+    //
+    //    Synthesise a minimal envelope so the renderer can treat
+    //    them uniformly. We use `now` as `savedAt` so they sort to
+    //    the top (which is correct: the user just opened them).
+    const now = new Date().toISOString();
+    for (const session of registry.list()) {
+      if (seenDraftIds.has(session.draftId)) continue;
+      seenDraftIds.add(session.draftId);
+      // Pull whatever the session already knows. For a fresh draft
+      // this is just gameId; for a draft that's loaded its form
+      // state we surface the title + version too so the placeholder
+      // doesn't read "Untitled".
+      const sessionState = session.getState();
+      const formish: Partial<BuildDraftPayload> = {};
+      if (
+        sessionState.kind === "form" ||
+        sessionState.kind === "queued" ||
+        sessionState.kind === "building"
+      ) {
+        formish.curator = {
+          name: sessionState.curator.name,
+          version: sessionState.curator.version,
+          author: sessionState.curator.author,
+          description: sessionState.curator.description,
+        };
+      }
+      draftEnvelopes.unshift({
+        version: 2,
+        savedAt: now,
+        scope: "build",
+        key: session.draftId,
+        payload: {
+          draftId: session.draftId,
+          gameId: session.gameId,
+          ...formish,
+        } as BuildDraftPayload,
+      });
+    }
+    // Re-sort by savedAt desc so freshly-merged sessions land first
+    // but real disk drafts retain their relative order.
+    draftEnvelopes.sort((a, b) =>
+      a.savedAt < b.savedAt ? 1 : a.savedAt > b.savedAt ? -1 : 0,
+    );
+
     const out: DashboardItem[] = [];
-    for (const env of state.drafts) {
+    for (const env of draftEnvelopes) {
       out.push({ kind: "draft", env });
     }
     for (const pub of state.published) {
@@ -266,7 +376,7 @@ export function BuildDashboard(props: BuildDashboardProps): JSX.Element {
       // at them — the draft IS the "in flight update" for that
       // published one, so listing both is noisy. Surface as a
       // subscript on the draft instead (handled in the row renderer).
-      const linkedDraft = state.drafts.find(
+      const linkedDraft = draftEnvelopes.find(
         (d) => d.payload.linkedPackageId === pub.packageId,
       );
       if (linkedDraft !== undefined) continue;
@@ -275,7 +385,11 @@ export function BuildDashboard(props: BuildDashboardProps): JSX.Element {
     if (filter === "drafts") return out.filter((i) => i.kind === "draft");
     if (filter === "published") return out.filter((i) => i.kind === "published");
     return out;
-  }, [state.drafts, state.published, filter]);
+    // `registry` is a stable singleton; `registryTick` is the
+    // observable surface that flips on session add/remove/state
+    // change and forces the merge to re-evaluate.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.drafts, state.published, filter, registryTick]);
 
   // ── Render ─────────────────────────────────────────────────────────
 
@@ -616,6 +730,8 @@ function DraftCard(props: {
               building
             </Pill>
           )}
+          {liveStatus === "error" && <Pill intent="danger">error</Pill>}
+          {liveStatus === "done" && <Pill intent="success">built</Pill>}
         </div>
         {payload.linkedSlug !== undefined && (
           <div style={{ color: "var(--eh-text-muted)" }}>
@@ -736,14 +852,36 @@ function DraftsRootHint(): JSX.Element {
 // ───────────────────────────────────────────────────────────────────────
 
 /**
- * Best-effort patch-bump for "Update from published" pre-fill. Treats
- * "1.2.3" → "1.2.4". Curators can edit the version anyway, so we
- * just nudge them in the right direction on open.
+ * Best-effort patch-bump for "Update from published" pre-fill.
+ *
+ *   "1.2.3"          → "1.2.4"
+ *   "1.2.3-rc.1"     → "1.2.4"   (drops the pre-release suffix —
+ *                                  the curator is shipping a new
+ *                                  release, not iterating the rc)
+ *   "1.2.3+build.7"  → "1.2.4"   (drops build metadata too)
+ *   "1.2.3.4"        → "1.2.4"   (truncates to semver)
+ *
+ * Curators can edit the version anyway, so we just nudge them in
+ * the right direction on open. Returns "1.0.0" for missing or
+ * unparseable versions; if the regex doesn't match a leading
+ * `MAJOR.MINOR.PATCH` we hand back the original string untouched
+ * so we don't overwrite a hand-rolled scheme with a meaningless
+ * default.
  */
 function bumpPatch(version: string | undefined): string {
   if (typeof version !== "string" || version.length === 0) return "1.0.0";
-  const m = /^(\d+)\.(\d+)\.(\d+)/.exec(version);
-  if (m === null) return version;
+  // Anchor at start; allow `-prerelease` and `+build` suffixes
+  // (semver-ish) to follow without polluting the bumped output.
+  const m = /^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(version);
+  if (m === null) {
+    // Fallback for "1.2.3.4" or other non-semver shapes — match a
+    // leading triple and bump it, leaving the user to clean up.
+    const loose = /^(\d+)\.(\d+)\.(\d+)/.exec(version);
+    if (loose === null) return version;
+    const patch = Number.parseInt(loose[3], 10);
+    if (!Number.isFinite(patch)) return version;
+    return `${loose[1]}.${loose[2]}.${patch + 1}`;
+  }
   const major = m[1];
   const minor = m[2];
   const patch = Number.parseInt(m[3], 10);

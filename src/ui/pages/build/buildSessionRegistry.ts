@@ -42,6 +42,7 @@
  *     `queuePosition` displayed by everyone behind it.
  */
 
+import { getEHRuntime } from "../../runtime/ehRuntime";
 import { BuildSession, type BuildSessionRegistryHooks } from "./buildSession";
 
 // ───────────────────────────────────────────────────────────────────────
@@ -141,18 +142,37 @@ class BuildSessionRegistry {
 
   // ── Build slot ───────────────────────────────────────────────────
 
+  /**
+   * Try to acquire the build slot for `session`.
+   *  • Returns `true` only on a *fresh* acquisition (slot was free).
+   *  • Returns `false` on re-entry (this session already holds the
+   *    slot). This is critical: re-entry must not re-fire the
+   *    `onSlotAcquired` callback, which would re-invoke `_runBuild`
+   *    on a session already inside `_runBuild` and produce two
+   *    parallel build pipelines for the same draft.
+   *  • Returns `false` when another session holds the slot.
+   *
+   * `BuildSession.build` already gates on `state.kind === "form"`, so
+   * a re-entry here would be a programming bug — but defending in
+   * depth is cheap and prevents a particularly nasty class of races
+   * if the gate ever weakens.
+   */
   private acquireSlot(session: BuildSession): boolean {
     if (this.currentBuilder === undefined) {
       this.currentBuilder = session;
       return true;
     }
-    return this.currentBuilder === session;
+    return false;
   }
 
   private enqueueBuild(
     session: BuildSession,
     onSlotAcquired: () => void,
   ): number {
+    // Re-entry: this session already holds the slot. Treat as a no-op
+    // (the build is already running; don't re-fire onSlotAcquired).
+    if (this.currentBuilder === session) return 0;
+
     if (this.acquireSlot(session)) {
       // Slot was free — start immediately. Callback runs synchronously
       // so the caller transitions straight to `building` without a
@@ -237,6 +257,16 @@ class BuildSessionRegistry {
   }
 
   private emit(): void {
+    // Recompute the runtime's global `buildBusy` flag as the OR
+    // across every live session. Owned by the registry because no
+    // single session knows whether its siblings are still busy —
+    // if session A goes form/idle/done while session B is queued
+    // or building, the flag must stay true.
+    //
+    // Cheap (one Map iteration); fires only on real session-state
+    // changes plus appear/disappear, never on per-keystroke patch.
+    getEHRuntime().setBuildBusy(this.isAnyBusy());
+
     for (const listener of this.registryListeners) {
       try {
         listener();

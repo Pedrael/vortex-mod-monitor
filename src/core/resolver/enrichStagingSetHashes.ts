@@ -36,6 +36,29 @@ import {
  *     matches at least one manifest mod's name are hashed. Most
  *     manifest entries have 0–1 candidates per typical setup.
  *
+ *     ─── KNOWN LIMITATION ────────────────────────────────────────
+ *     Name matching is the WEAKEST link in the identity ladder.
+ *     If the curator's "Better Combat (1.4)" was installed by the
+ *     user as "Better Combat - Final" (Vortex permits per-mod
+ *     renames, Nexus titles drift across versions, manual installs
+ *     pick whatever the archive's `info.txt` says), we won't even
+ *     consider that mod as a candidate — it'll fall through to
+ *     "missing" and the user gets a needless prompt-user / install.
+ *
+ *     TODO(stagingSetHash): broaden the oracle once we have data
+ *     on real curator/user name drift. Candidate strategies (in
+ *     ascending cost):
+ *       • alias map in `CollectionConfig` (curator hand-edits a
+ *         "this mod has been renamed to X by users" hint),
+ *       • token-set similarity (e.g. Jaccard ≥ 0.6 over normalized
+ *         word tokens) — catches "(1.4)" vs "- Final" tail drift,
+ *       • blanket-hash all installed mods on the user's machine
+ *         (currently rejected as too expensive: 100 mods × ~2GB
+ *         each = ~200GB read on first install).
+ *     For now we ship name-match-only because it's good enough for
+ *     ≥95% of pairings the curator vs user actually share, and the
+ *     prompt-user fallback is functional rather than catastrophic.
+ *
  * The result: O(name-matched mods) × (avg staging folder size)
  * per resolve, which is dominated by the user's deployed mod set
  * but bounded by name-match overlap. CPU-bound work runs through
