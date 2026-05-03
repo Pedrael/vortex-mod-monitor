@@ -31,7 +31,13 @@ const EH_SIDEBAR_ICON = "event-horizon-logo";
  */
 function installEventHorizonIconSet(): void {
   try {
-    const setPath = path.join(__dirname, "..", "assets", "icons", "event-horizon.svg");
+    const setPath = path.join(
+      __dirname,
+      "..",
+      "assets",
+      "icons",
+      "event-horizon.svg",
+    );
     void util.installIconSet("event-horizon", setPath).catch((err: unknown) => {
       // Best-effort — never crash extension load over a missing icon.
       // eslint-disable-next-line no-console
@@ -54,7 +60,6 @@ function init(context: types.IExtensionContext): boolean {
   // the icon registry must contain the symbol id by the time Vortex
   // first resolves the sidebar tab.
   installEventHorizonIconSet();
-
   // Register the Event Horizon mainPage. Vortex renders this in its
   // sidebar under the "global" group (visible regardless of which
   // game profile is active). Phase 5.0 wires up the shell, nav,

@@ -177,39 +177,32 @@ export const COMPONENTS_CSS = `
   cursor: not-allowed;
 }
 
-/* Primary: accretion-disk gradient with shimmer on hover. */
+/* Primary: solid disk-orange → disk pink on hover (smooth fill).
+   No gradient/shimmer overlay — avoids a bright vertical edge artifact
+   on the right. Border removed so a 1px hairline cannot sit on the fill. */
 .eh-button--primary {
-  background: var(--eh-gradient-disk);
-  border-color: transparent;
+  background-color: var(--eh-disk-hot);
+  background-image: none;
+  border-width: 0;
+  padding: calc(var(--eh-sp-3) + 1px) calc(var(--eh-sp-5) + 1px);
   color: var(--eh-text-inverse);
   box-shadow: var(--eh-shadow-button), var(--eh-glow-disk);
+  transition:
+    transform var(--eh-dur-fast) var(--eh-easing),
+    background-color var(--eh-dur-base) var(--eh-easing),
+    box-shadow var(--eh-dur-base) var(--eh-easing);
 }
 
 .eh-button--primary:hover:not(:disabled) {
-  background: var(--eh-gradient-disk);
-  border-color: transparent;
+  background-color: var(--eh-disk-pink);
   box-shadow:
     var(--eh-shadow-button),
-    0 0 32px rgba(255, 107, 61, 0.6);
+    0 0 28px rgba(240, 56, 107, 0.55);
 }
 
-.eh-button--primary::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    105deg,
-    transparent 30%,
-    rgba(255, 255, 255, 0.35) 50%,
-    transparent 70%
-  );
-  transform: translateX(-100%);
-  transition: transform 0s;
-  pointer-events: none;
-}
-
-.eh-button--primary:hover::before {
-  animation: eh-shimmer-x 900ms var(--eh-easing) 1;
+.eh-button--primary:active:not(:disabled) {
+  transition-duration: var(--eh-dur-instant), var(--eh-dur-instant),
+    var(--eh-dur-instant);
 }
 
 .eh-button--ghost {
@@ -240,6 +233,19 @@ export const COMPONENTS_CSS = `
 .eh-button--sm {
   padding: var(--eh-sp-2) var(--eh-sp-3);
   font-size: var(--eh-text-xs);
+}
+
+/* Primary drops the 1px border — keep tap targets aligned with sm/lg. */
+.eh-button--primary.eh-button--lg {
+  padding: calc(var(--eh-sp-4) + 1px) calc(var(--eh-sp-6) + 1px);
+}
+
+.eh-button--primary.eh-button--sm {
+  padding: calc(var(--eh-sp-2) + 1px) calc(var(--eh-sp-3) + 1px);
+}
+
+.eh-button--full-width {
+  width: 100%;
 }
 
 /* ── Card ─────────────────────────────────────────────────────── */
