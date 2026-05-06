@@ -1,6 +1,7 @@
 import { exec } from "child_process";
 import * as fs from "fs/promises";
 import * as path from "path";
+import type { types } from "vortex-api";
 import type { AuditorMod } from "../core/getModsListForProfile";
 import type { CapturedDeploymentManifest } from "../core/deploymentManifest";
 import type { CapturedLoadOrderEntry } from "../core/loadOrder";
@@ -40,32 +41,15 @@ export function findInObject(
   return results;
 }
 
-export async function pickJsonFile(): Promise<string | undefined> {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const electron = require("electron");
-
-  const dialog = electron.remote?.dialog ?? electron.dialog;
-
-  if (!dialog?.showOpenDialog) {
-    throw new Error("Electron dialog is not available");
-  }
-
-  const result = await dialog.showOpenDialog({
+export async function pickJsonFile(
+  api: types.IExtensionApi,
+): Promise<string | undefined> {
+  const filePath = await api.selectFile({
     title: "Select reference Mod Auditor JSON",
-    properties: ["openFile"],
-    filters: [
-      {
-        name: "JSON files",
-        extensions: ["json"],
-      },
-    ],
+    filters: [{ name: "JSON files", extensions: ["json"] }],
   });
 
-  if (result.canceled || !result.filePaths?.length) {
-    return undefined;
-  }
-
-  return result.filePaths[0];
+  return filePath?.length ? filePath : undefined;
 }
 
 export async function pickEhcollFile(): Promise<string | undefined> {
@@ -408,34 +392,16 @@ export async function exportDiffReport(params: {
   return filePath;
 }
 
-export async function pickTxtFile(): Promise<string | undefined> {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const electron = require("electron");
-
-  const dialog = electron.remote?.dialog ?? electron.dialog;
-
-  if (!dialog?.showOpenDialog) {
-    throw new Error("Electron dialog is not available");
-  }
-
-  const result = await dialog.showOpenDialog({
+export async function pickTxtFile(
+  api: types.IExtensionApi,
+): Promise<string | undefined> {
+  const filePath = await api.selectFile({
     title: "Select reference plugins.txt",
-    properties: ["openFile"],
     filters: [
-      {
-        name: "Text files",
-        extensions: ["txt"],
-      },
-      {
-        name: "All files",
-        extensions: ["*"],
-      },
+      { name: "Text files", extensions: ["txt"] },
+      { name: "All files", extensions: ["*"] },
     ],
   });
 
-  if (result.canceled || !result.filePaths?.length) {
-    return undefined;
-  }
-
-  return result.filePaths[0];
+  return filePath?.length ? filePath : undefined;
 }

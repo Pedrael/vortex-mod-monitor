@@ -34,7 +34,7 @@ export default function createCompareModsAction(
         throw new Error(`No profile found for game ${gameId}`);
       }
 
-      const referenceFilePath = await pickJsonFile();
+      const referenceFilePath = await pickJsonFile(context.api);
 
       if (!referenceFilePath) {
         return;

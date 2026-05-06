@@ -23,7 +23,7 @@ export function createComparePluginsAction(
         throw new Error("No active game found");
       }
 
-      const referenceFilePath = await pickTxtFile();
+      const referenceFilePath = await pickTxtFile(context.api);
 
       if (!referenceFilePath) {
         return;

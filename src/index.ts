@@ -104,8 +104,8 @@ function init(context: types.IExtensionContext): boolean {
   );
 
   context.registerAction(
-    "global-icons",
-    101,
+    "gamebryo-plugin-icons",
+    150,
     "show",
     {},
     "Compare Plugins With TXT",
