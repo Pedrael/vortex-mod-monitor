@@ -16,6 +16,7 @@ export type EventHorizonRoute =
   | "install"
   | "collections"
   | "build"
+  | "plugin-diffs"
   | "about";
 
 export interface RouteDescriptor {
@@ -58,6 +59,12 @@ export const ROUTES: RouteDescriptor[] = [
     label: "Build",
     description: "Package your current setup as a collection",
     icon: "save",
+  },
+  {
+    id: "plugin-diffs",
+    label: "Plugin Diffs",
+    description: "Review plugin comparison reports",
+    icon: "compare",
   },
   {
     id: "about",

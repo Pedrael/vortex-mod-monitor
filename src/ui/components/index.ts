@@ -32,3 +32,6 @@ export {
   type ToastInput,
   type ToastIntent,
 } from "./Toast";
+
+export { DiffSectionBlock } from "./DiffSectionBlock";
+export type { DiffSectionBlockProps } from "./DiffSectionBlock";
