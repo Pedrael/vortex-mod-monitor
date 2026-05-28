@@ -44,6 +44,7 @@ import { InstallPage } from "./pages/install/InstallPage";
 import { CollectionsPage } from "./pages/CollectionsPage";
 import { BuildPage } from "./pages/build/BuildPage";
 import { PluginDiffsPage } from "./pages/PluginDiffsPage";
+import { ModDiffsPage } from "./pages/ModDiffsPage";
 import { EXTENSION_VERSION } from "./version";
 
 export interface EventHorizonMainPageProps {
@@ -182,6 +183,8 @@ function RouteOutlet(props: RouteOutletProps): JSX.Element {
       return <BuildPage key="build" onNavigate={onNavigate} />;
     case "plugin-diffs":
       return <PluginDiffsPage key="plugin-diffs" onNavigate={onNavigate} />;
+    case "mod-diffs":
+      return <ModDiffsPage key="mod-diffs" onNavigate={onNavigate} />;
     case "about":
       return <AboutPage key="about" />;
     default: {

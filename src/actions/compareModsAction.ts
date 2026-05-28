@@ -47,12 +47,17 @@ export default function createCompareModsAction(
 
       const currentMods = getModsForProfile(state, gameId, profileId);
 
+      const enabledMods = currentMods.filter((m) => m.enabled);
+      const disabledMods = currentMods.filter((m) => !m.enabled);
+
       const currentSnapshot: ExportedModsSnapshot = {
         exportedAt: new Date().toISOString(),
         gameId,
         profileId,
         count: currentMods.length,
         mods: currentMods,
+        enabledMods,
+        disabledMods,
       };
 
       const diff = compareSnapshots(referenceSnapshot, currentSnapshot);

@@ -82,7 +82,7 @@ function init(context: types.IExtensionContext): boolean {
   );
 
   context.registerAction(
-    "global-icons",
+    "mod-icons",
     100,
     "show",
     {},
@@ -93,7 +93,7 @@ function init(context: types.IExtensionContext): boolean {
   );
 
   context.registerAction(
-    "global-icons",
+    "mod-icons",
     101,
     "show",
     {},

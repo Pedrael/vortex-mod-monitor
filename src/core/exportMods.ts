@@ -1,11 +1,12 @@
 import * as fs from "fs/promises";
 import * as path from "path";
 
+import type { AuditorMod } from "../core/getModsListForProfile";
 import type { CapturedDeploymentManifest } from "./deploymentManifest";
 import type { CapturedLoadOrderEntry } from "./loadOrder";
 
 export async function exportModsToJsonFile(params: {
-  mods: unknown[];
+  mods: AuditorMod[];
   gameId: string;
   profileId: string;
   outputDir: string;
@@ -38,12 +39,17 @@ export async function exportModsToJsonFile(params: {
   const fileName = `event-horizon-mods-${gameId}-${profileId}-${Date.now()}.json`;
   const filePath = path.join(outputDir, fileName);
 
+  const enabledMods = mods.filter((m) => m.enabled);
+  const disabledMods = mods.filter((m) => !m.enabled);
+
   const payload: Record<string, unknown> = {
     exportedAt: new Date().toISOString(),
     gameId,
     profileId,
     count: mods.length,
     mods,
+    enabledMods,
+    disabledMods,
   };
 
   if (deploymentManifests !== undefined) {

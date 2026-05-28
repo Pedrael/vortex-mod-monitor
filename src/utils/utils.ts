@@ -125,7 +125,25 @@ export type ExportedModsSnapshot = {
   gameId: string;
   profileId: string;
   count?: number;
+  /**
+   * All profile-managed mods (enabled + disabled). Always present for
+   * backward compatibility — `compareSnapshots` uses this as the
+   * authoritative list when `enabledMods`/`disabledMods` are absent.
+   */
   mods: AuditorMod[];
+
+  /**
+   * Profile-enabled mods, separated out for easier viewer display.
+   * Present in snapshots created by Phase 5.3+. Older reference files
+   * only have `mods`; derive the split by filtering on `mod.enabled`.
+   */
+  enabledMods?: AuditorMod[];
+
+  /**
+   * Profile-disabled mods, separated out for easier viewer display.
+   * Present in snapshots created by Phase 5.3+.
+   */
+  disabledMods?: AuditorMod[];
 
   /**
    * Per-modtype deployment manifests captured on export only.

@@ -1,0 +1,477 @@
+/**
+ * ModDiffsPage — viewer for mod comparison reports.
+ *
+ * Reads all `event-horizon-mod-diff-*.json` files from
+ * `<appData>/event-horizon/diffs/`, lets the user pick one via a
+ * dropdown (default: latest), and renders the three diff categories in
+ * collapsible `DiffSectionBlock` panels — mirroring PluginDiffsPage.
+ *
+ * Sections:
+ *   1. Only in Reference — mods that were in the reference but not current
+ *   2. Only in Current   — mods that are new since the reference
+ *   3. Changed           — mods present in both but with field-level diffs
+ *
+ * Future: `onPluginClick`-style hook to focus a mod in Vortex's mod list.
+ */
+
+import * as React from "react";
+import { util } from "vortex-api";
+
+import {
+  listModDiffFiles,
+  readModDiffReport,
+  type ModDiffFileEntry,
+} from "../../core/modDiffStorage";
+import type {
+  ModsDiffReport,
+  ChangedModReport,
+  ModFieldDifference,
+} from "../../utils/utils";
+import type { AuditorMod } from "../../core/getModsListForProfile";
+import { DiffSectionBlock, Page } from "../components";
+import {
+  ErrorBoundary,
+  useErrorReporter,
+  useErrorReporterFormatted,
+} from "../errors";
+import type { EventHorizonRoute } from "../routes";
+
+// ---------------------------------------------------------------------------
+// Page state types
+// ---------------------------------------------------------------------------
+
+type FileListState =
+  | { kind: "loading" }
+  | { kind: "empty" }
+  | { kind: "loaded"; files: ModDiffFileEntry[] };
+
+type ReportState =
+  | { kind: "loading" }
+  | { kind: "loaded"; report: ModsDiffReport }
+  | { kind: "error"; message: string };
+
+// ---------------------------------------------------------------------------
+// Public exports
+// ---------------------------------------------------------------------------
+
+export interface ModDiffsPageProps {
+  onNavigate: (route: EventHorizonRoute) => void;
+}
+
+export function ModDiffsPage(props: ModDiffsPageProps): JSX.Element {
+  const reportFormatted = useErrorReporterFormatted();
+  return (
+    <ErrorBoundary
+      where="ModDiffsPage"
+      variant="page"
+      onReport={reportFormatted}
+    >
+      <ModDiffsView />
+    </ErrorBoundary>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Inner view
+// ---------------------------------------------------------------------------
+
+function ModDiffsView(): JSX.Element {
+  const reportError = useErrorReporter();
+
+  const [fileListState, setFileListState] = React.useState<FileListState>({
+    kind: "loading",
+  });
+  const [selectedFilePath, setSelectedFilePath] = React.useState<string>("");
+  const [reportState, setReportState] = React.useState<ReportState>({
+    kind: "loading",
+  });
+
+  React.useEffect(() => {
+    let alive = true;
+    void (async (): Promise<void> => {
+      try {
+        const appData = util.getVortexPath("appData") as string;
+        const files = await listModDiffFiles(appData);
+        if (!alive) return;
+        if (files.length === 0) {
+          setFileListState({ kind: "empty" });
+        } else {
+          setFileListState({ kind: "loaded", files });
+          setSelectedFilePath(files[0].filePath);
+        }
+      } catch (err) {
+        if (!alive) return;
+        reportError(err, {
+          title: "Couldn't list mod diff files",
+          context: { step: "mod-diffs-list" },
+        });
+        setFileListState({ kind: "empty" });
+      }
+    })();
+    return (): void => {
+      alive = false;
+    };
+  }, [reportError]);
+
+  React.useEffect(() => {
+    if (!selectedFilePath) return;
+    let alive = true;
+    setReportState({ kind: "loading" });
+    void (async (): Promise<void> => {
+      try {
+        const report = await readModDiffReport(selectedFilePath);
+        if (!alive) return;
+        if (!report) {
+          setReportState({ kind: "error", message: "File not found." });
+        } else {
+          setReportState({ kind: "loaded", report });
+        }
+      } catch (err) {
+        if (!alive) return;
+        setReportState({
+          kind: "error",
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+    })();
+    return (): void => {
+      alive = false;
+    };
+  }, [selectedFilePath]);
+
+  if (fileListState.kind === "empty") {
+    return (
+      <Page
+        title="Mod Diffs"
+        subtitle="Compare two mod snapshots to generate a diff report."
+      >
+        <div className="eh-mod-diffs__empty-page">
+          <p className="eh-mod-diffs__empty-message">
+            No mod diff files found. Use the{" "}
+            <strong>Compare Current Mods With JSON</strong> toolbar action to
+            generate one.
+          </p>
+        </div>
+      </Page>
+    );
+  }
+
+  if (fileListState.kind === "loading") {
+    return (
+      <Page title="Mod Diffs">
+        <p className="eh-mod-diffs__loading">Loading diff files…</p>
+      </Page>
+    );
+  }
+
+  const { files } = fileListState;
+  const selectedEntry = files.find((f) => f.filePath === selectedFilePath);
+
+  return (
+    <Page
+      title="Mod Diffs"
+      subtitle="Review differences between two mod profile snapshots."
+    >
+      <div className="eh-mod-diffs">
+        <FileSelector
+          files={files}
+          selectedFilePath={selectedFilePath}
+          onSelect={setSelectedFilePath}
+          selectedEntry={selectedEntry}
+        />
+
+        {reportState.kind === "loading" && (
+          <p className="eh-mod-diffs__loading">Loading report…</p>
+        )}
+        {reportState.kind === "error" && (
+          <p className="eh-mod-diffs__error">
+            Failed to load report: {reportState.message}
+          </p>
+        )}
+        {reportState.kind === "loaded" && (
+          <ReportView report={reportState.report} />
+        )}
+      </div>
+    </Page>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// File selector
+// ---------------------------------------------------------------------------
+
+interface FileSelectorProps {
+  files: ModDiffFileEntry[];
+  selectedFilePath: string;
+  onSelect: (filePath: string) => void;
+  selectedEntry: ModDiffFileEntry | undefined;
+}
+
+function FileSelector(props: FileSelectorProps): JSX.Element {
+  const { files, selectedFilePath, onSelect, selectedEntry } = props;
+
+  const displayDate = selectedEntry
+    ? new Date(selectedEntry.timestampMs).toLocaleString()
+    : "";
+
+  return (
+    <div className="eh-mod-diffs__selector-row">
+      <label
+        htmlFor="eh-mod-diff-file-select"
+        className="eh-mod-diffs__selector-label"
+      >
+        Diff file
+      </label>
+      <select
+        id="eh-mod-diff-file-select"
+        className="eh-mod-diffs__select"
+        value={selectedFilePath}
+        onChange={(e): void => onSelect(e.target.value)}
+      >
+        {files.map((f) => (
+          <option key={f.filePath} value={f.filePath}>
+            {f.gameId} — {new Date(f.timestampMs).toLocaleString()}
+          </option>
+        ))}
+      </select>
+      {displayDate && (
+        <span
+          className="eh-mod-diffs__selector-date"
+          aria-label="Selected file date"
+        >
+          {displayDate}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Report view
+// ---------------------------------------------------------------------------
+
+interface ReportViewProps {
+  report: ModsDiffReport;
+}
+
+function ReportView(props: ReportViewProps): JSX.Element {
+  const { report } = props;
+
+  return (
+    <div className="eh-mod-diffs__report">
+      {/* Snapshot metadata */}
+      <div className="eh-mod-diffs__meta">
+        <SnapshotMeta label="Reference" info={report.reference} />
+        <span className="eh-mod-diffs__meta-separator" aria-hidden="true">
+          vs
+        </span>
+        <SnapshotMeta label="Current" info={report.current} />
+      </div>
+
+      {/* Diff section blocks */}
+      <div className="eh-mod-diffs__blocks">
+        <DiffSectionBlock
+          title="Only in Reference"
+          count={report.onlyInReference.length}
+        >
+          <ModEntryList mods={report.onlyInReference} />
+        </DiffSectionBlock>
+
+        <DiffSectionBlock
+          title="Only in Current"
+          count={report.onlyInCurrent.length}
+        >
+          <ModEntryList mods={report.onlyInCurrent} />
+        </DiffSectionBlock>
+
+        <DiffSectionBlock
+          title="Changed"
+          count={report.changed.length}
+          intent={report.changed.length > 0 ? "info" : "neutral"}
+        >
+          <ChangedModList entries={report.changed} />
+        </DiffSectionBlock>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Snapshot metadata strip
+// ---------------------------------------------------------------------------
+
+interface SnapshotMetaProps {
+  label: string;
+  info: ModsDiffReport["reference"];
+}
+
+function SnapshotMeta(props: SnapshotMetaProps): JSX.Element {
+  const { label, info } = props;
+
+  return (
+    <span className="eh-mod-diffs__meta-item">
+      <span className="eh-mod-diffs__meta-label">{label}</span>
+      <span className="eh-mod-diffs__meta-detail">
+        {info.gameId ?? "—"}
+        {info.profileId ? ` / ${info.profileId}` : ""}
+      </span>
+      <span className="eh-mod-diffs__meta-count">{info.count} mods</span>
+      {info.exportedAt && (
+        <span className="eh-mod-diffs__meta-date">
+          {new Date(info.exportedAt).toLocaleString()}
+        </span>
+      )}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Simple mod list (only-in-reference / only-in-current)
+// ---------------------------------------------------------------------------
+
+interface ModEntryListProps {
+  mods: AuditorMod[];
+}
+
+function ModEntryList(props: ModEntryListProps): JSX.Element {
+  const { mods } = props;
+  return (
+    <ul className="eh-mod-diffs__mod-list">
+      {mods.map((mod) => (
+        <li key={mod.id} className="eh-mod-diffs__mod-row">
+          <span className="eh-mod-diffs__mod-name" title={mod.id}>
+            {mod.name}
+          </span>
+          {mod.version !== undefined && (
+            <span className="eh-mod-diffs__mod-version">v{mod.version}</span>
+          )}
+          <span
+            className={`eh-mod-diffs__enabled-badge eh-mod-diffs__enabled-badge--${mod.enabled ? "on" : "off"}`}
+          >
+            {mod.enabled ? "enabled" : "disabled"}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Changed mod list
+// ---------------------------------------------------------------------------
+
+interface ChangedModListProps {
+  entries: ChangedModReport[];
+}
+
+function ChangedModList(props: ChangedModListProps): JSX.Element {
+  const { entries } = props;
+  return (
+    <ul className="eh-mod-diffs__mod-list">
+      {entries.map((entry) => (
+        <ChangedModRow key={entry.compareKey} entry={entry} />
+      ))}
+    </ul>
+  );
+}
+
+interface ChangedModRowProps {
+  entry: ChangedModReport;
+}
+
+function ChangedModRow(props: ChangedModRowProps): JSX.Element {
+  const { entry } = props;
+  const [expanded, setExpanded] = React.useState(false);
+
+  return (
+    <li className="eh-mod-diffs__mod-row eh-mod-diffs__mod-row--changed">
+      <button
+        type="button"
+        className="eh-mod-diffs__changed-header"
+        onClick={(): void => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+      >
+        <span className="eh-mod-diffs__changed-chevron" aria-hidden="true">
+          {expanded ? "▾" : "▸"}
+        </span>
+        <span className="eh-mod-diffs__mod-name">
+          {entry.current.name}
+        </span>
+        {entry.current.version !== undefined && (
+          <span className="eh-mod-diffs__mod-version">
+            v{entry.current.version}
+          </span>
+        )}
+        <span className="eh-mod-diffs__changed-count">
+          {entry.differences.length}{" "}
+          {entry.differences.length === 1 ? "change" : "changes"}
+        </span>
+      </button>
+
+      {expanded && (
+        <ul className="eh-mod-diffs__field-list">
+          {entry.differences.map((diff) => (
+            <FieldDiffRow key={diff.field} diff={diff} />
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Field-level diff row (inside a changed mod)
+// ---------------------------------------------------------------------------
+
+interface FieldDiffRowProps {
+  diff: ModFieldDifference;
+}
+
+function FieldDiffRow(props: FieldDiffRowProps): JSX.Element {
+  const { diff } = props;
+
+  return (
+    <li className="eh-mod-diffs__field-row">
+      <span className="eh-mod-diffs__field-name">{diff.field}</span>
+      <span className="eh-mod-diffs__field-values">
+        <span className="eh-mod-diffs__field-value eh-mod-diffs__field-value--ref">
+          {formatFieldValue(diff.field, diff.referenceValue)}
+        </span>
+        <span className="eh-mod-diffs__arrow" aria-hidden="true">→</span>
+        <span className="eh-mod-diffs__field-value eh-mod-diffs__field-value--cur">
+          {formatFieldValue(diff.field, diff.currentValue)}
+        </span>
+      </span>
+    </li>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Field value formatter
+// ---------------------------------------------------------------------------
+
+function formatFieldValue(field: string, value: unknown): string {
+  if (value === undefined || value === null) return "—";
+
+  if (field === "enabled") {
+    return value === true ? "enabled" : "disabled";
+  }
+
+  if (typeof value === "boolean") return value ? "yes" : "no";
+  if (typeof value === "number") return String(value);
+
+  if (typeof value === "string") {
+    return value.length > 60 ? `${value.slice(0, 57)}…` : value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.length === 0 ? "(empty)" : `[${value.length} items]`;
+  }
+
+  if (typeof value === "object") {
+    const keys = Object.keys(value as object);
+    return keys.length === 0 ? "{}" : `{${keys.slice(0, 3).join(", ")}…}`;
+  }
+
+  return String(value);
+}

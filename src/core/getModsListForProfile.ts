@@ -473,7 +473,13 @@ export function getModsForProfile(
 
   const enabledMods = profile?.modState ?? {};
 
-  const mods: AuditorMod[] = Object.entries(modsByGame).map(([modId, rawMod]) => {
+  // Only include mods that this profile explicitly tracks (have a modState
+  // entry). Mods installed for the game but never added to this profile have
+  // no entry in profile.modState and are excluded — they belong to a
+  // different profile or were never associated with this one.
+  const mods: AuditorMod[] = Object.entries(modsByGame)
+    .filter(([modId]) => enabledMods[modId] !== undefined)
+    .map(([modId, rawMod]) => {
     const mod = rawMod as any;
     const attributes = (mod?.attributes ?? {}) as Record<string, unknown>;
 
