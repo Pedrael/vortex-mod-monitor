@@ -10,6 +10,7 @@
     "deploy:vortex": "node scripts/deploy-to-vortex.js",
     "watch": "tsc -w",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "gitnexus:setup": "bash scripts/gitnexus-setup.sh",
     "gitnexus:refresh": "gitnexus analyze --embeddings --skills",
     "gitnexus:full": "gitnexus analyze --force --embeddings --skills",
@@ -23,6 +24,7 @@
     "@types/react": "^16.14.69",
     "react": "^16.14.0",
     "typescript": "^5.7.0",
+    "vitest": "^4.1.8",
     "vortex-api": "github:Nexus-Mods/vortex-api"
   }
 }

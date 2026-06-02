@@ -110,29 +110,31 @@ Three keys checked in order: `collectionIds`, `collections`, `collection`. Whate
 
 ## Mod identity — `compareKey`
 
-The `getModCompareKey(mod)` function (in `src/utils/utils.ts`) produces a stable string key used to match the same mod across two snapshots. **Three-tier priority**:
+Matching the same mod across two snapshots is done by the universal, source-agnostic matcher `matchSnapshots` (in `src/core/identity/modIdentity.ts`). Instead of a single key, it walks a **strongest-first tier ladder** and matches greedily (each mod consumed once):
 
-| Tier | Condition | Key format |
+| Tier | Condition | Confidence |
 |---|---|---|
-| 1 | `nexusModId !== undefined` AND `nexusFileId !== undefined` | `nexus:{nexusModId}:{nexusFileId}` |
-| 2 | `archiveId` is truthy | `archive:{archiveId}` |
-| 3 | (always) | `id:{id}` |
+| `nexus-file` | same Nexus `modId` + `fileId` | 1.0 |
+| `archive-sha` | identical `archiveSha256` (byte-identical) | 1.0 |
+| `staging-set` | identical `stagingSetHash` (deployed file set) | 1.0 |
+| `nexus-mod` | same Nexus `modId`, different `fileId` (version drift) | 0.95 |
+| `fuzzy-name-version` | normalized name + normalized version | 0.9 |
+| `fuzzy-name` | normalized name, version differs | 0.75 |
+| `fuzzy-similar` | token-set Dice >= threshold, mutual best | score |
 
-**Why this order:**
+**Why a ladder, not a single key:** the old `getModCompareKey` fell back to `archive:{archiveId}` then `id:{id}` for any non-Nexus mod. Both are **machine-LOCAL**, so the same manually-installed / LoversLab mod got a different key on each machine and was reported as BOTH "only in reference" AND "only in current" (a "false split"). The hash and fuzzy tiers recover these cross-machine.
 
-- Tier 1 (Nexus pin) is portable across machines, since Nexus mod/file IDs are global. Best for collections — same modId+fileId on curator and user means same mod, same file.
-- Tier 2 (archive id) is local to one Vortex instance but stable across reinstalls of the same archive. Useful for mods downloaded once and reinstalled.
-- Tier 3 (Vortex internal id) is the lowest-trust fallback. Stable per-machine, but two machines installing the same mod will have different ids.
+**Auto-merge + safety**: a match is accepted when its confidence is >= `fuzzyThreshold` (default 0.7). The fuzzy keyed tiers require a 1:1 candidate (colliding normalized keys are left unmatched), and `fuzzy-similar` only commits mutual-best pairs above the threshold — so two genuinely different mods are never silently merged.
 
-**Implication for diff matching**: when comparing snapshots between two machines (e.g., curator → user), Tier-1 matches are the only ones that meaningfully line up. A mod that landed in Tier 3 on the curator's snapshot will likely be reported as "only in reference" on the user's machine even if they have the same mod, because their internal ids differ.
+This is why **`archiveSha256` matters even when Nexus IDs match**: a `nexus-file` match means we _think_ it's the same mod+file; an `archive-sha` match means it _is_ the same bytes. When IDs match but bytes differ, `compareMods` reports an `archiveSha256` content drift.
 
-This is why **`archiveSha256` matters even when Nexus IDs match**: same `compareKey` means we _think_ it's the same mod; same `archiveSha256` means it _is_ the same bytes.
+`getModCompareKey` is retained but **deprecated** — used only to derive a stable `compareKey` label per report entry, never to match snapshots.
 
 ### Diff identity vs. installer identity
 
-The three-tier `compareKey` rule above is for **diffing two snapshots** —
-both sides of the comparison already exist in Vortex, so the Vortex
-internal id is a usable lowest-tier fallback.
+The tiered matcher above is for **diffing two snapshots** — both sides
+already exist in Vortex, so fuzzy name/version tiers are an acceptable
+last resort for archive-less mods.
 
 The future installer (Phase 4+) cannot use that fallback. Before install,
 the user's Vortex has no mods, no internal ids, nothing. So the installer
@@ -171,7 +173,8 @@ path of every export — which it currently is.
 - `normalizeFomodSelections`: `src/core/getModsListForProfile.ts:121-153`
 - `hasAnySelectedFomodChoices`: `src/core/getModsListForProfile.ts:155-159`
 - `getModsForProfile`: `src/core/getModsListForProfile.ts:161-209`
-- `getModCompareKey`: `src/utils/utils.ts:117-127`
+- Universal matcher (`matchSnapshots`, normalization, tiers): `src/core/identity/modIdentity.ts` (tests: `src/core/identity/modIdentity.test.ts`)
+- `getModCompareKey` (deprecated label helper): `src/utils/utils.ts`
 - `archiveSha256` field: `src/core/getModsListForProfile.ts`; populated by `src/core/archiveHashing.ts`
 - `rules` field + capture types: `src/core/getModsListForProfile.ts` — see [`MOD_RULES_CAPTURE.md`](MOD_RULES_CAPTURE.md)
 - `modType` / `fileOverrides` / `enabledINITweaks` fields: `src/core/getModsListForProfile.ts` — see [`FILE_OVERRIDES_CAPTURE.md`](FILE_OVERRIDES_CAPTURE.md)

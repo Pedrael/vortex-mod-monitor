@@ -1419,4 +1419,68 @@ export const COMPONENTS_CSS = `
   flex-direction: column;
   gap: var(--eh-sp-4);
 }
+
+/* Match-tier badge + confidence (how a pair was matched) */
+.eh-mod-diffs__tier-badge {
+  font-size: var(--eh-text-xs);
+  font-family: var(--eh-font-mono);
+  color: var(--eh-text-muted);
+  background: var(--eh-bg-elevated);
+  border: 1px solid var(--eh-border-subtle);
+  border-radius: 999px;
+  padding: 1px var(--eh-sp-2);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.eh-mod-diffs__tier-badge--fuzzy {
+  color: var(--eh-warning, var(--eh-cyan-dim));
+}
+
+.eh-mod-diffs__confidence {
+  font-size: var(--eh-text-xs);
+  color: var(--eh-text-muted);
+  margin-left: var(--eh-sp-1);
+}
+
+/* Category grouping inside an expanded changed mod */
+.eh-mod-diffs__field-cat {
+  display: block;
+  font-size: var(--eh-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--eh-text-muted);
+  padding: var(--eh-sp-2) var(--eh-sp-4) var(--eh-sp-1)
+    calc(var(--eh-sp-4) + 14px + var(--eh-sp-3));
+}
+
+.eh-mod-diffs__more-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--eh-sp-1);
+  margin: var(--eh-sp-1) 0 0
+    calc(var(--eh-sp-4) + 14px + var(--eh-sp-3));
+  background: transparent;
+  border: none;
+  color: var(--eh-cyan-dim);
+  font-family: inherit;
+  font-size: var(--eh-text-xs);
+  cursor: pointer;
+  padding: var(--eh-sp-1) 0;
+}
+
+.eh-mod-diffs__more-toggle:hover {
+  text-decoration: underline;
+}
+
+/* Matched-no-change list reuses mod-list; small tier suffix */
+.eh-mod-diffs__mod-tier {
+  margin-left: auto;
+  font-size: var(--eh-text-xs);
+  color: var(--eh-text-muted);
+  font-family: var(--eh-font-mono);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
 `;
