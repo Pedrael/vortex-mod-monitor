@@ -42,13 +42,13 @@ Start here when exploring this area:
 | Flow | Type | Steps |
 |------|------|-------|
 | `RouteOutlet → InstallLedgerError` | cross_community | 8 |
-| `RouteOutlet → ExpectString` | cross_community | 8 |
-| `RouteOutlet → IsUuid` | cross_community | 8 |
-| `HomePage → IsSemverLike` | cross_community | 7 |
+| `HomePage → ExpectString` | cross_community | 7 |
+| `Dashboard → IsSemverLike` | cross_community | 6 |
+| `Dashboard → IsUuid` | cross_community | 6 |
 | `WriteReceipt → InstallLedgerError` | cross_community | 4 |
 | `WriteReceipt → ExpectString` | cross_community | 4 |
-| `WriteReceipt → IsUuid` | cross_community | 4 |
 | `WriteReceipt → IsSemverLike` | cross_community | 4 |
+| `WriteReceipt → IsUuid` | cross_community | 4 |
 
 ## How to Explore
 

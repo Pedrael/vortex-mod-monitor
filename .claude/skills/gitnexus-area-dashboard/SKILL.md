@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-dashboard
-description: "Skill for the Dashboard area of vortex-mod-monitor. 6 symbols across 2 files."
+description: "Skill for the Dashboard area of vortex-mod-monitor. 7 symbols across 2 files."
 ---
 
 # Dashboard
 
-6 symbols | 2 files | Cohesion: 67%
+7 symbols | 2 files | Cohesion: 67%
 
 ## When to Use
 
@@ -18,7 +18,7 @@ description: "Skill for the Dashboard area of vortex-mod-monitor. 6 symbols acro
 | File | Symbols |
 |------|---------|
 | `src/ui/pages/dashboard/data.ts` | loadBuiltPackages, loadCuratorConfigs, loadDashboardData, loadReceipts |
-| `src/core/installLedger.ts` | getInstallLedgerDir, listReceipts |
+| `src/core/installLedger.ts` | getInstallLedgerDir, isUuid, listReceipts |
 
 ## Entry Points
 
@@ -35,6 +35,7 @@ Start here when exploring this area:
 | `getInstallLedgerDir` | Function | `src/core/installLedger.ts` | 140 |
 | `listReceipts` | Function | `src/core/installLedger.ts` | 408 |
 | `loadDashboardData` | Function | `src/ui/pages/dashboard/data.ts` | 108 |
+| `isUuid` | Function | `src/core/installLedger.ts` | 535 |
 | `loadBuiltPackages` | Function | `src/ui/pages/dashboard/data.ts` | 254 |
 | `loadCuratorConfigs` | Function | `src/ui/pages/dashboard/data.ts` | 184 |
 | `loadReceipts` | Function | `src/ui/pages/dashboard/data.ts` | 156 |
@@ -44,15 +45,15 @@ Start here when exploring this area:
 | Flow | Type | Steps |
 |------|------|-------|
 | `RouteOutlet → InstallLedgerError` | cross_community | 8 |
-| `RouteOutlet → ExpectString` | cross_community | 8 |
-| `RouteOutlet → IsUuid` | cross_community | 8 |
 | `RouteOutlet → GetInstallLedgerDir` | cross_community | 7 |
-| `HomePage → IsSemverLike` | cross_community | 7 |
+| `RouteOutlet → IsUuid` | cross_community | 7 |
+| `RouteOutlet → BelongsToGame` | cross_community | 7 |
+| `HomePage → ExpectString` | cross_community | 7 |
 | `RouteOutlet → GetActiveGameId` | cross_community | 6 |
-| `RouteOutlet → GetActiveProfileIdFromState` | cross_community | 6 |
 | `RouteOutlet → ResolveProfileName` | cross_community | 6 |
 | `RouteOutlet → ResolveVortexVersion` | cross_community | 6 |
-| `Dashboard → LoadBuiltPackages` | cross_community | 3 |
+| `Dashboard → IsSemverLike` | cross_community | 6 |
+| `Dashboard → IsUuid` | cross_community | 6 |
 
 ## How to Explore
 

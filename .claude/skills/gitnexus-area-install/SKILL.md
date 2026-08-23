@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-install
-description: "Skill for the Install area of vortex-mod-monitor. 48 symbols across 6 files."
+description: "Skill for the Install area of vortex-mod-monitor. 43 symbols across 5 files."
 ---
 
 # Install
 
-48 symbols | 6 files | Cohesion: 74%
+43 symbols | 5 files | Cohesion: 77%
 
 ## When to Use
 
@@ -18,9 +18,8 @@ description: "Skill for the Install area of vortex-mod-monitor. 48 symbols acros
 | File | Symbols |
 |------|---------|
 | `src/ui/pages/install/installSession.ts` | onHashProgress, onPhase, onHashProgress, onPhase, onProgress (+16) |
-| `src/ui/pages/install/steps.tsx` | DecisionsStep, ConflictRow, handlePickFile, OrphanRow, RadioOption (+9) |
+| `src/ui/pages/install/steps.tsx` | DecisionsStep, ConflictRow, handlePickFile, OrphanRow, RadioOption (+8) |
 | `src/ui/pages/install/state.ts` | wizardReducer, canProceedFromDecisions, defaultConflictChoice, defaultOrphanChoice, fillDefaultConflictChoices (+2) |
-| `src/core/installLedger.ts` | InstallLedgerError, deleteReceipt, getReceiptPath, isUuid |
 | `src/utils/utils.ts` | pickModArchiveFile |
 | `src/ui/pages/install/InstallPage.tsx` | session |
 
@@ -38,7 +37,6 @@ Start here when exploring this area:
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `InstallLedgerError` | Class | `src/core/installLedger.ts` | 70 |
 | `wizardReducer` | Function | `src/ui/pages/install/state.ts` | 176 |
 | `canProceedFromDecisions` | Function | `src/ui/pages/install/state.ts` | 366 |
 | `defaultConflictChoice` | Function | `src/ui/pages/install/state.ts` | 325 |
@@ -48,9 +46,6 @@ Start here when exploring this area:
 | `selectConflictResolutions` | Function | `src/ui/pages/install/state.ts` | 311 |
 | `DecisionsStep` | Function | `src/ui/pages/install/steps.tsx` | 990 |
 | `pickModArchiveFile` | Function | `src/utils/utils.ts` | 91 |
-| `deleteReceipt` | Function | `src/core/installLedger.ts` | 382 |
-| `getReceiptPath` | Function | `src/core/installLedger.ts` | 124 |
-| `handleDelete` | Function | `src/ui/pages/install/steps.tsx` | 453 |
 | `isAbortError` | Function | `src/ui/pages/install/installSession.ts` | 460 |
 | `getInstallSession` | Function | `src/ui/pages/install/installSession.ts` | 447 |
 | `InstallSession` | Class | `src/ui/pages/install/installSession.ts` | 79 |
@@ -58,13 +53,15 @@ Start here when exploring this area:
 | `onPhase` | Function | `src/ui/pages/install/installSession.ts` | 128 |
 | `onHashProgress` | Function | `src/ui/pages/install/installSession.ts` | 228 |
 | `onPhase` | Function | `src/ui/pages/install/installSession.ts` | 224 |
+| `onProgress` | Function | `src/ui/pages/install/installSession.ts` | 347 |
+| `ConflictRow` | Function | `src/ui/pages/install/steps.tsx` | 1157 |
+| `handlePickFile` | Function | `src/ui/pages/install/steps.tsx` | 1167 |
+| `OrphanRow` | Function | `src/ui/pages/install/steps.tsx` | 1295 |
 
 ## Execution Flows
 
 | Flow | Type | Steps |
 |------|------|-------|
-| `RouteOutlet → InstallLedgerError` | cross_community | 8 |
-| `RouteOutlet → IsUuid` | cross_community | 8 |
 | `StartInstall → EHRuntime` | cross_community | 6 |
 | `StartInstall → Notify` | cross_community | 6 |
 | `StartInstall → GetSnapshot` | cross_community | 5 |
@@ -73,6 +70,8 @@ Start here when exploring this area:
 | `OnPhase → EHRuntime` | cross_community | 5 |
 | `OnPhase → Notify` | cross_community | 5 |
 | `OnHashProgress → EHRuntime` | cross_community | 5 |
+| `OnHashProgress → Notify` | cross_community | 5 |
+| `OnPhase → EHRuntime` | cross_community | 5 |
 
 ## How to Explore
 

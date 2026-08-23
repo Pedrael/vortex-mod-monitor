@@ -30,7 +30,7 @@ description: "Skill for the Resolver area of vortex-mod-monitor. 63 symbols acro
 Start here when exploring this area:
 
 - **`createInstallCollectionAction`** (Function) — `src/actions/installCollectionAction.ts:109`
-- **`getModsForProfile`** (Function) — `src/core/getModsListForProfile.ts:465`
+- **`getModsForProfile`** (Function) — `src/core/getModsListForProfile.ts:500`
 - **`readReceipt`** (Function) — `src/core/installLedger.ts:336`
 - **`buildUserSideState`** (Function) — `src/core/resolver/userState.ts:120`
 - **`pickInstallTarget`** (Function) — `src/core/resolver/userState.ts:150`
@@ -40,7 +40,7 @@ Start here when exploring this area:
 | Symbol | Type | File | Line |
 |--------|------|------|------|
 | `createInstallCollectionAction` | Function | `src/actions/installCollectionAction.ts` | 109 |
-| `getModsForProfile` | Function | `src/core/getModsListForProfile.ts` | 465 |
+| `getModsForProfile` | Function | `src/core/getModsListForProfile.ts` | 500 |
 | `readReceipt` | Function | `src/core/installLedger.ts` | 336 |
 | `buildUserSideState` | Function | `src/core/resolver/userState.ts` | 120 |
 | `pickInstallTarget` | Function | `src/core/resolver/userState.ts` | 150 |

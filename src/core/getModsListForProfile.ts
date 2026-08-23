@@ -221,29 +221,64 @@ export function getActiveProfileId(state: types.IState): string | undefined {
   return getActiveProfileIdFromState(state, gameId);
 }
 
+/**
+ * Resolve which profile of `gameId` the user is actually on.
+ *
+ * ─── WHY THIS IS NOT A ONE-LINER ──────────────────────────────────────
+ * The previous implementation looked for `profile.active === true` and, failing
+ * that, returned the FIRST profile of the game in object-iteration order.
+ *
+ * `IProfile` has no `active` field — it is
+ * `{ id, gameId, name, modState, lastActivated, pendingRemove?, features? }`.
+ * So the first test could never match and EVERY call took the fallback,
+ * returning an arbitrary profile. On a game with more than one profile that
+ * silently resolved to the wrong one: a build reported "your active profile has
+ * no mods" against a profile the user had never selected.
+ *
+ * For a tool whose whole promise is reproducing an exact profile, capturing the
+ * WRONG profile is worse than capturing nothing — the output looks valid.
+ *
+ * Vortex tracks the active profile in settings, never on the profile object.
+ * Resolution order, most authoritative first; every candidate is checked to
+ * actually belong to `gameId` before it is trusted.
+ * ──────────────────────────────────────────────────────────────────────
+ */
 export function getActiveProfileIdFromState(
   state: types.IState | any,
   gameId: string,
 ): string | undefined {
-  const profiles = state?.persistent?.profiles ?? {};
+  const profiles = (state?.persistent?.profiles ?? {}) as Record<string, any>;
+  const belongsToGame = (id: string | undefined): id is string =>
+    typeof id === "string" && profiles[id]?.gameId === gameId;
 
-  for (const [profileId, profile] of Object.entries(profiles)) {
-    const p = profile as any;
-
-    if (p?.gameId === gameId && p?.active === true) {
-      return profileId;
-    }
+  // 1. Vortex's own selector — the profile the user is on right now.
+  try {
+    const activeId = selectors.activeProfileId(state as types.IState);
+    if (belongsToGame(activeId)) return activeId;
+  } catch {
+    // Selector unavailable (tests, or a partial state object). Fall through.
   }
 
-  for (const [profileId, profile] of Object.entries(profiles)) {
-    const p = profile as any;
+  // 2. The same fact read straight from settings, in case the selector is
+  //    absent but the state is real.
+  const settingsActive = state?.settings?.profiles?.activeProfileId;
+  if (belongsToGame(settingsActive)) return settingsActive;
 
-    if (p?.gameId === gameId) {
-      return profileId;
-    }
-  }
+  // 3. Vortex remembers the last profile used per game. Correct when the user
+  //    is currently on a DIFFERENT game — which is exactly when 1 and 2 miss.
+  const lastForGame = state?.settings?.profiles?.lastActiveProfile?.[gameId];
+  if (belongsToGame(lastForGame)) return lastForGame;
 
-  return undefined;
+  // 4. Last resort: the most recently activated profile of this game.
+  //    Deterministic, unlike "whichever key enumerated first".
+  const candidates = Object.entries(profiles).filter(
+    ([, p]) => p?.gameId === gameId && p?.pendingRemove !== true,
+  );
+  if (candidates.length === 0) return undefined;
+  candidates.sort(
+    ([, a], [, b]) => (b?.lastActivated ?? 0) - (a?.lastActivated ?? 0),
+  );
+  return candidates[0][0];
 }
 
 function pickInstallerChoices(attributes: Record<string, unknown>): any {
