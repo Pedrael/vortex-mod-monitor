@@ -72,11 +72,16 @@ Hidden routes (`RouteDescriptor.hidden = true`) are filtered out of the visible 
 
 | Route id | Page component | Status |
 |---|---|---|
-| `home` | `HomePage` | Shipped (5.0) |
-| `install` | `ComingSoonPage` (5.1 placeholder) | Pending Phase 5.1 |
-| `collections` | `ComingSoonPage` (5.2 placeholder) | Pending Phase 5.2 |
-| `build` | `ComingSoonPage` (5.3 placeholder) | Pending Phase 5.3 |
-| `about` | `AboutPage` | Shipped (5.0) |
+| `home` | `HomePage` | Shipped |
+| `install` | `InstallPage` | Shipped |
+| `collections` | `CollectionsPage` | Shipped |
+| `build` | `BuildPage` | Shipped |
+| `plugin-diffs` | `PluginDiffsPage` | Shipped |
+| `mod-diffs` | `ModDiffsPage` | Shipped |
+| `about` | `AboutPage` | Shipped |
+
+All seven routes now resolve to a real page. `ComingSoonPage` was the placeholder
+used while 5.1-5.3 were in flight; it has been deleted along with its barrel export.
 
 The exhaustiveness check at the bottom of `RouteOutlet` (`const exhaustive: never = route`) guarantees TypeScript will fail the build if a new `EventHorizonRoute` member is added without a matching case.
 
@@ -178,14 +183,18 @@ When a user clicks a CTA card or nav tab, the only effect is `setRoute(...)`, wh
 | `src/ui/routes.ts` | Route id type + descriptor table |
 | `src/ui/version.ts` | Hardcoded `EXTENSION_VERSION` |
 | `src/ui/EventHorizonMainPage.tsx` | Top-level component registered with Vortex; owns route state and `RouteOutlet` |
-| `src/ui/pages/HomePage.tsx`, `ComingSoonPage.tsx`, `AboutPage.tsx` | Page bodies |
+| `src/ui/pages/` (`HomePage`, `InstallPage`, `CollectionsPage`, `BuildPage`, `PluginDiffsPage`, `ModDiffsPage`, `AboutPage`) | Page bodies |
 | `src/index.ts` | Calls `context.registerMainPage(...)` to wire the page into Vortex |
 
-## What lands next
+## Landed since this document was written
 
-| Phase | Page | Replaces |
+| Phase | Page | Replaced |
 |---|---|---|
-| **5.1** | `InstallPage` (multi-step wizard) | Every `showDialog` chain in `installCollectionAction.ts` |
-| **5.2** | `CollectionsPage` (receipt list + details) | Nothing today — currently you'd have to inspect ledger files manually |
+| **5.1** | `InstallPage` (multi-step wizard) | The `showDialog` chain in `installCollectionAction.ts` |
+| **5.2** | `CollectionsPage` (receipt list + details) | Manual inspection of ledger files |
 | **5.3** | `BuildPage` (curator wizard) | The dialog chain in `buildPackageAction.ts` |
+
+The `installCollectionAction` and `buildPackageAction` dialog chains still exist and are
+still registered on `global-icons`, deliberately, as scriptable fallbacks — see the
+"legacy dialog" entries in the README. The pages are the recommended path.
 | **5.4** | Polish — toasts, error boundary, empty-state illustrations, full a11y audit | — |

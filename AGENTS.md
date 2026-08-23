@@ -1,7 +1,7 @@
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **vortex-mod-monitor** (4799 symbols, 10447 relationships, 333 execution flows).
+This project is indexed by GitNexus as **vortex-mod-monitor** (4793 symbols, 10434 relationships, 333 execution flows).
 
 > Index stale? Run `node .gitnexus/run.cjs analyze --index-only` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? Bootstrap with `npx`, `bunx`, or `pnpm dlx` — e.g. `bunx gitnexus@latest analyze` (npm 11 npx crash; #1939).
 
@@ -42,7 +42,7 @@ This project is indexed by GitNexus as **vortex-mod-monitor** (4799 symbols, 104
 | Tools, resources, schema reference | `.claude/skills/gitnexus-guide/SKILL.md` |
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus-cli/SKILL.md` |
 | Work in the Manifest area (132 symbols) | `.claude/skills/gitnexus-area-manifest/SKILL.md` |
-| Work in the Pages area (123 symbols) | `.claude/skills/gitnexus-area-pages/SKILL.md` |
+| Work in the Pages area (122 symbols) | `.claude/skills/gitnexus-area-pages/SKILL.md` |
 | Work in the Installer area (101 symbols) | `.claude/skills/gitnexus-area-installer/SKILL.md` |
 | Work in the Build area (97 symbols) | `.claude/skills/gitnexus-area-build/SKILL.md` |
 | Work in the Resolver area (75 symbols) | `.claude/skills/gitnexus-area-resolver/SKILL.md` |

@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-pages
-description: "Skill for the Pages area of vortex-mod-monitor. 123 symbols across 33 files."
+description: "Skill for the Pages area of vortex-mod-monitor. 122 symbols across 32 files."
 ---
 
 # Pages
 
-123 symbols | 33 files | Cohesion: 76%
+122 symbols | 32 files | Cohesion: 77%
 
 ## When to Use
 
