@@ -102,7 +102,8 @@ completion accumulating problems into the same `errors[]` list. After
 all sections finish, if any errors exist, the function throws.
 
 This mirrors the collection behavior of `buildManifest`,
-`packageEhcoll`, and `validateBuildManifestInput`. Curators get the
+`packageEhcoll`, and `validateCuratorInput` (`src/ui/pages/build/engine.ts`).
+Curators get the
 full diagnosis from one parse, every parse.
 
 The only place we short-circuit is `schemaVersion` — if that's wrong we

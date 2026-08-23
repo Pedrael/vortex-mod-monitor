@@ -124,7 +124,7 @@ By sorting on `JSON.stringify(rule)` we guarantee that **two snapshots with the 
 
 ## Diff implications
 
-`rules` is added to the `compareFields` list in `compareMods`. Two same-key mods with different sorted rule arrays produce a `ModFieldDifference { field: "rules", … }` entry in the diff report.
+`rules` is added to the `COMPARE_FIELDS` list in `compareMods`. Two same-key mods with different sorted rule arrays produce a `ModFieldDifference { field: "rules", … }` entry in the diff report.
 
 Because rules are sorted before capture, **any non-empty difference is meaningful** — it represents an actual change in the rule set, not noise from add-order. Read the diff entries straight; no need to re-sort or compare-as-set on the consumer side.
 
@@ -164,4 +164,4 @@ Because rules are sorted before capture, **any non-empty difference is meaningfu
 - `rulesSortKey`: `src/core/getModsListForProfile.ts:241-243`
 - `normalizeModRules`: `src/core/getModsListForProfile.ts:251-289`
 - Wired into `getModsForProfile`: `src/core/getModsListForProfile.ts:307` (build) and `:331` (output)
-- Diff inclusion: `src/utils/utils.ts:154-169` (`compareFields` list)
+- Diff inclusion: `src/utils/utils.ts:154-169` (`COMPARE_FIELDS` list)

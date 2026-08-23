@@ -98,9 +98,9 @@ On `componentDidCatch`, the boundary:
 - `useErrorReporter()` → `(err: unknown, opts?) => void`. Auto-formats with `formatError`. The default for callers that just want to report a thrown value.
 - `useErrorReporterFormatted()` → `(formatted: FormattedError) => void`. For places (like `ErrorBoundary`) that have already classified the error.
 
-Both shape into the same `setActiveError(formatted)` call. The provider also installs `window.addEventListener("error", ...)` and `addEventListener("unhandledrejection", ...)` on mount, so out-of-tree async failures (timer callbacks, microtasks) end up in the same modal.
+Both shape into the same `setCurrent(formatted)` call. The provider also installs `window.addEventListener("error", ...)` and `addEventListener("unhandledrejection", ...)` on mount, so out-of-tree async failures (timer callbacks, microtasks) end up in the same modal.
 
-When `activeError` is set, `<ErrorReportModal>` renders inside `.eh-app` (not portaled to body — see `Modal` rationale in UI_FOUNDATION).
+When that state (`current` in `ErrorContext.tsx`) is set, `<ErrorReportModal>` renders inside `.eh-app` (not portaled to body — see `Modal` rationale in UI_FOUNDATION).
 
 ### 4. ErrorReportModal
 
@@ -119,7 +119,7 @@ The modal's anatomy:
 
 **Save as file…** opens an Electron save dialog (`remote.dialog.showSaveDialog` if available, else `electron.dialog.showSaveDialog`) defaulting to `event-horizon-error-<ISO timestamp>-<sanitized-title>.txt` and writes the result of `buildErrorReport` to disk. If neither dialog API is reachable (very old Vortex), the modal surfaces an inline error and copy-to-clipboard remains available.
 
-Closing the modal clears `activeError` and the boundaries continue to render their local fallback so the user can decide to retry or stay put.
+Closing the modal clears `current` and the boundaries continue to render their local fallback so the user can decide to retry or stay put.
 
 ### 5. Toast system (sibling, not error)
 

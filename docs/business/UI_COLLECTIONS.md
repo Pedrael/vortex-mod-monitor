@@ -29,7 +29,7 @@ No game / profile preconditions — the list works regardless of the active game
 
 | Source | Used for |
 |---|---|
-| `listReceipts(appDataPath, onParseError)` | Streams every `*.json` under `installs/` and reports per-file parse errors |
+| `listReceipts(appDataPath, onError?)` | Streams every `*.json` under `installs/` and reports per-file parse errors |
 | `<appData>/Vortex/event-horizon/installs/<package.id>.json` | The receipt JSON itself; see `INSTALL_LEDGER.md` |
 | `api.getState().settings.profiles.activeProfileId` | Determines whether a receipt's profile is currently active (drives the "active" pill) |
 | `useApi()` | Calls `switchToProfile`, `uninstallMod`, `deleteReceipt` |
@@ -60,7 +60,7 @@ There is no `error` state for the list itself — a thrown error from `listRecei
 
 1. Sets state to `loading`.
 2. `appData = util.getVortexPath("appData")`.
-3. `listReceipts(appData, onParseError)` — `onParseError` collects `{ filename, message }` into a local array. The function continues past parse errors so one bad file doesn't take the page down.
+3. `listReceipts(appData, onError)` — the `onError(filename, err)` callback collects `{ filename, message }` into a local array. The function continues past parse errors so one bad file doesn't take the page down.
 4. If both `receipts.length === 0` and `errors.length === 0`, transitions to `empty` (renders the EmptyState).
 5. Otherwise transitions to `loaded` with both arrays.
 
