@@ -55,6 +55,7 @@ import {
   type ExternalModConfigEntry,
 } from "../../../core/manifest/collectionConfig";
 import { getVortexUserDataPath } from "../../../core/paths";
+import { beginOp } from "../../../core/logging/ehLog";
 import type {
   SupportedGameId,
   VerificationLevel,
@@ -248,6 +249,7 @@ export async function loadBuildContext(
     signal?: AbortSignal;
   },
 ): Promise<BuildContext> {
+  const op = beginOp("build.load-context");
   const onProgress = opts?.onProgress;
   const signal = opts?.signal;
   const state = api.getState();
@@ -322,6 +324,16 @@ export async function loadBuildContext(
     });
   }
 
+  op.ok({
+    gameId,
+    profileId,
+    mods: mods.length,
+    externalMods: externalMods.length,
+    // hashed < mods is the first number to look at when a build does not
+    // reproduce: an unhashed external archive has no stable identity.
+    hashed: mods.filter((m) => m.archiveSha256 !== undefined).length,
+  });
+
   return {
     gameId: gameId as SupportedGameId,
     profileId,
@@ -356,6 +368,12 @@ export async function runBuildPipeline(
   overrides: BuildOverrides,
   opts?: { onProgress?: (p: BuildProgress) => void; signal?: AbortSignal },
 ): Promise<BuildPipelineResult> {
+  const op = beginOp("build.pipeline", {
+    gameId: context.gameId,
+    name: curator.name,
+    version: curator.version,
+    mods: context.mods.length,
+  });
   const onProgress = opts?.onProgress;
   const signal = opts?.signal;
   const checkAbort = (): void => {
@@ -571,6 +589,21 @@ export async function runBuildPipeline(
   for (const m of manifest.mods) {
     stagingFileCount += m.state.stagingFiles?.length ?? 0;
   }
+
+  op.ok({
+    outputPath,
+    outputBytes: result.outputBytes,
+    bundled: result.bundledCount,
+    mods: manifest.mods.length,
+    rules: manifest.rules.length,
+    fileOverrides: manifest.fileOverrides.length,
+    plugins: manifest.plugins.order.length,
+    loadOrder: manifest.loadOrder.length,
+    userlistPlugins: manifest.userlist.plugins.length,
+    userlistGroups: manifest.userlist.groups.length,
+    stagingFiles: stagingFileCount,
+    warnings: [...manifestWarnings, ...result.warnings],
+  });
 
   return {
     outputPath,

@@ -1,7 +1,7 @@
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **vortex-mod-monitor** (4894 symbols, 10674 relationships, 320 execution flows).
+This project is indexed by GitNexus as **vortex-mod-monitor** (4887 symbols, 10676 relationships, 313 execution flows).
 
 > Index stale? Run `node .gitnexus/run.cjs analyze --index-only` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? Bootstrap with `npx`, `bunx`, or `pnpm dlx` — e.g. `bunx gitnexus@latest analyze` (npm 11 npx crash; #1939).
 

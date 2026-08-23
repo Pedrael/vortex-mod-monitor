@@ -5,7 +5,7 @@ description: "Skill for the Logging area of vortex-mod-monitor. 12 symbols acros
 
 # Logging
 
-12 symbols | 3 files | Cohesion: 74%
+12 symbols | 3 files | Cohesion: 69%
 
 ## When to Use
 
@@ -54,14 +54,14 @@ Start here when exploring this area:
 |------|------|-------|
 | `Init → GetVortexUserDataPath` | cross_community | 9 |
 | `CreateBuildPackageAction → GetVortexUserDataPath` | cross_community | 8 |
+| `LoadBuildContext → GetVortexUserDataPath` | cross_community | 8 |
+| `RunBuildPipeline → GetVortexUserDataPath` | cross_community | 8 |
 | `Fail → GetVortexUserDataPath` | cross_community | 7 |
 | `Ok → GetVortexUserDataPath` | cross_community | 7 |
 | `Step → GetVortexUserDataPath` | cross_community | 7 |
 | `Init → Truncate` | cross_community | 5 |
 | `CreateBuildPackageAction → Truncate` | cross_community | 4 |
-| `Init → Fail` | cross_community | 3 |
-| `Init → Ok` | cross_community | 3 |
-| `Init → GetActiveGameId` | cross_community | 3 |
+| `LoadBuildContext → Truncate` | cross_community | 4 |
 
 ## How to Explore
 

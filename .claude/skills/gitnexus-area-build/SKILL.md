@@ -5,7 +5,7 @@ description: "Skill for the Build area of vortex-mod-monitor. 97 symbols across 
 
 # Build
 
-97 symbols | 10 files | Cohesion: 70%
+97 symbols | 10 files | Cohesion: 69%
 
 ## When to Use
 
@@ -42,7 +42,7 @@ Start here when exploring this area:
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `BundleResolutionError` | Class | `src/ui/pages/build/engine.ts` | 210 |
+| `BundleResolutionError` | Class | `src/ui/pages/build/engine.ts` | 211 |
 | `deleteDraft` | Function | `src/core/draftStorage.ts` | 431 |
 | `getAppDataPath` | Function | `src/core/draftStorage.ts` | 457 |
 | `handleDiscardDraft` | Function | `src/ui/pages/build/BuildDashboard.tsx` | 195 |
@@ -52,7 +52,7 @@ Start here when exploring this area:
 | `collectDistinctModTypes` | Function | `src/core/deploymentManifest.ts` | 53 |
 | `reconcileExternalModsConfig` | Function | `src/core/manifest/collectionConfig.ts` | 240 |
 | `toBuildManifestExternalMods` | Function | `src/core/manifest/collectionConfig.ts` | 281 |
-| `runBuildPipeline` | Function | `src/ui/pages/build/engine.ts` | 351 |
+| `runBuildPipeline` | Function | `src/ui/pages/build/engine.ts` | 363 |
 | `getDraftsRoot` | Function | `src/core/draftStorage.ts` | 121 |
 | `listDrafts` | Function | `src/core/draftStorage.ts` | 162 |
 | `BuildDashboard` | Function | `src/ui/pages/build/BuildDashboard.tsx` | 88 |
@@ -60,13 +60,14 @@ Start here when exploring this area:
 | `registry` | Function | `src/ui/pages/build/BuildDashboard.tsx` | 91 |
 | `getBuildSessionRegistry` | Function | `src/ui/pages/build/buildSessionRegistry.ts` | 292 |
 | `Pill` | Function | `src/ui/components/Pill.tsx` | 19 |
-| `validateCuratorInput` | Function | `src/ui/pages/build/engine.ts` | 594 |
-| `onProgress` | Function | `src/ui/pages/build/engine.ts` | 284 |
+| `validateCuratorInput` | Function | `src/ui/pages/build/engine.ts` | 627 |
+| `onProgress` | Function | `src/ui/pages/build/engine.ts` | 286 |
 
 ## Execution Flows
 
 | Flow | Type | Steps |
 |------|------|-------|
+| `RunBuildPipeline → GetVortexUserDataPath` | cross_community | 8 |
 | `BuildPage → IsPlainObject` | cross_community | 5 |
 | `BuildPage → MigrateV1Payload` | cross_community | 5 |
 | `BuildPage → SanitizeKey` | cross_community | 5 |
@@ -76,7 +77,6 @@ Start here when exploring this area:
 | `HandleDiscardDraft → SanitizeKey` | cross_community | 5 |
 | `ReleaseBuild → EHRuntime` | cross_community | 5 |
 | `ReleaseBuild → Notify` | cross_community | 5 |
-| `EventHorizonMainPage → Pill` | cross_community | 4 |
 
 ## How to Explore
 

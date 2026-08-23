@@ -5,7 +5,7 @@ description: "Skill for the Actions area of vortex-mod-monitor. 78 symbols acros
 
 # Actions
 
-78 symbols | 15 files | Cohesion: 74%
+78 symbols | 15 files | Cohesion: 75%
 
 ## When to Use
 
@@ -52,7 +52,7 @@ Start here when exploring this area:
 | `getActiveProfileIdFromState` | Function | `src/core/getModsListForProfile.ts` | 223 |
 | `beginOp` | Function | `src/core/logging/ehLog.ts` | 153 |
 | `getVortexUserDataPath` | Function | `src/core/paths.ts` | 38 |
-| `loadBuildContext` | Function | `src/ui/pages/build/engine.ts` | 237 |
+| `loadBuildContext` | Function | `src/ui/pages/build/engine.ts` | 238 |
 | `readSystemStatus` | Function | `src/ui/pages/dashboard/data.ts` | 133 |
 | `exportDiffReport` | Function | `src/utils/utils.ts` | 449 |
 | `pickJsonFile` | Function | `src/utils/utils.ts` | 47 |
@@ -69,14 +69,14 @@ Start here when exploring this area:
 |------|------|-------|
 | `Init → GetVortexUserDataPath` | cross_community | 9 |
 | `CreateBuildPackageAction → GetVortexUserDataPath` | cross_community | 8 |
+| `LoadBuildContext → GetVortexUserDataPath` | cross_community | 8 |
+| `RunBuildPipeline → GetVortexUserDataPath` | cross_community | 8 |
 | `Fail → GetVortexUserDataPath` | cross_community | 7 |
 | `Ok → GetVortexUserDataPath` | cross_community | 7 |
 | `Step → GetVortexUserDataPath` | cross_community | 7 |
 | `RouteOutlet → GetActiveGameId` | cross_community | 6 |
 | `RouteOutlet → GetActiveProfileIdFromState` | cross_community | 6 |
 | `RouteOutlet → ResolveProfileName` | cross_community | 6 |
-| `RouteOutlet → ResolveVortexVersion` | cross_community | 6 |
-| `Init → Truncate` | cross_community | 5 |
 
 ## How to Explore
 

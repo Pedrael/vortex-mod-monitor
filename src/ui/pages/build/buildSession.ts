@@ -81,6 +81,7 @@ import {
 } from "../../../core/draftStorage";
 import type { ExternalModConfigEntry } from "../../../core/manifest/collectionConfig";
 import type { VerificationLevel } from "../../../types/ehcoll";
+import { ehLog } from "../../../core/logging/ehLog";
 import {
   loadBuildContext,
   runBuildPipeline,
@@ -522,9 +523,13 @@ class BuildSession {
         if (this.controller !== controller) return;
         this.controller = undefined;
         if (isAbortError(err)) {
+          ehLog("info", "build.load-context.aborted");
           this.setState({ kind: "idle" });
           return;
         }
+        // engine.loadBuildContext logs its own .ok; a throw unwinds past that,
+        // so the failure has to be recorded here or the log just stops.
+        ehLog("error", "build.load-context.fail", { err });
         this.setState({
           kind: "error",
           record: {
@@ -669,11 +674,13 @@ class BuildSession {
         this.controller = undefined;
         this.pendingBuildInput = undefined;
         if (isAbortError(err)) {
+          ehLog("info", "build.pipeline.aborted", { reason: "user-cancelled" });
           // Cancellation rewinds to the form so the curator can
           // tweak and try again — the autosaved draft is untouched.
           this.setState(formSnapshot);
           return;
         }
+        ehLog("error", "build.pipeline.fail", { err });
         this.setState({
           kind: "error",
           record: {
