@@ -12,9 +12,10 @@ The user clicks the **Event Horizon** entry in Vortex's main left-side navigatio
 
 ## Preconditions
 
-- Vortex 1.x with extension API ≥ vortex-api 2.0.0-beta.1 (provides `MainPage`, `FlexLayout`, `Icon`, etc.).
-- React 16 runtime (provided by Vortex itself).
-- Our extension's `src/index.ts#init` has called `context.registerMainPage("compare", "Event Horizon", EventHorizonMainPage, { id: "event-horizon", group: "global", priority: 50 })`.
+- Vortex 2.x with `@nexusmods/vortex-api` (provides `MainPage`, `FlexLayout`, `Icon`, etc.).
+- React 18 runtime (provided by Vortex itself). Was React 16 until the Vortex 2.x
+  migration; the extension declares no React dependency of its own beyond types.
+- Our extension's `src/index.ts#init` has called `context.registerMainPage(EH_SIDEBAR_ICON, "Event Horizon", EventHorizonMainPage, { id: "event-horizon", group: "global", priority: 50, props: () => ({ api: context.api }) })`, where `EH_SIDEBAR_ICON` is `"event-horizon-logo"` — the symbol id in the SVG sprite installed by `installEventHorizonIconSet()`.
 - No other prerequisite — the foundation has zero dependency on the install / build pipelines and works on a fresh Vortex install with no profile selected.
 
 ## Inputs

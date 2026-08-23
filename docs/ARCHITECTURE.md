@@ -1,12 +1,17 @@
 # Architecture
 
-A small TypeScript extension organized as **entry → actions → core → utils**. No global state of its own; reads everything from Vortex's Redux state via `vortex-api`'s `selectors`.
+A small TypeScript extension organized as **entry → actions → core → utils**. No global state of its own; reads everything from Vortex's Redux state via the API's `selectors`.
+
+> Throughout this document "the Vortex API" / `vortex-api` refers to the package imported as
+> **`@nexusmods/vortex-api`**. The unscoped `vortex-api` name still resolves at runtime — Vortex's
+> loader accepts both ids — but the scoped name is what this codebase imports, and the old
+> `github:Nexus-Mods/vortex-api` dependency points at an archived repo.
 
 ## File layout
 
 ```
 src/
-├── index.ts                              # Vortex entry — registers 5 toolbar actions
+├── index.ts                              # Vortex entry — main page + 5 toolbar actions
 ├── actions/
 │   ├── exportModsAction.ts               # Action handler: snapshot mods → JSON
 │   ├── compareModsAction.ts              # Action handler: diff current vs reference JSON

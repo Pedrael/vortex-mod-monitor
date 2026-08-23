@@ -74,10 +74,9 @@ The driver, when given a plan and a `UserConfirmedDecisions` bundle, will:
      `*-diverged` + `replace-existing` choice.
 5. **Enable** each newly-installed mod in the active profile (current
    or fresh).
-6. **Write** `plugins.txt` (with backup) when the manifest declares a
-   plugin order — for the active game's local-AppData folder.
-7. **Deploy** by emitting `deploy-mods` and waiting for `did-deploy`.
-8. **Write** the install ledger receipt for cross-release lineage.
+6. **Deploy** by emitting `deploy-mods` and waiting for `did-deploy`.
+   `plugins.txt` is produced *here*, by Vortex, not by us — see below.
+7. **Write** the install ledger receipt for cross-release lineage.
 
 **Refused** in `preflight` (returns `{kind: "failed", phase: "preflight"}`):
 - `plan.summary.canProceed === false`,
@@ -127,9 +126,6 @@ installing-mods   ── per mod, sequentially:
   │                  ├── external-already-installed     │     installedSoFar }
   │                  ├── *-diverged + replace-existing  │
   │                  └── external-prompt-user + use-local-file
-  ▼
-writing-plugins-txt ── (when pluginOrder.kind ===
-  │                     "replace" and entries > 0)
   ▼
 deploying ── (emit deploy-mods, await did-deploy)
   │
@@ -301,29 +297,30 @@ Removed mods are tracked in `result.removedMods` (a
 
 ---
 
-## `plugins.txt` write
+## `plugins.txt` — written by Vortex, not by the driver
 
-When `plan.pluginOrder.kind === "replace"` and the manifest declares any
-plugin entries, the driver writes `%LOCALAPPDATA%/<game>/plugins.txt` to
-match `manifest.plugins.order` exactly.
+**The driver does not write `plugins.txt`, and there is no
+`writing-plugins-txt` phase.** An earlier design had one, backed by a
+`src/core/installer/pluginsTxt.ts` writer that emitted the manifest's
+order directly (asterisk format for Skyrim/Fallout 4/Starfield, legacy
+format for Fallout 3/NV, with a timestamped backup of the existing
+file). That module and that phase were **deleted** when the rules-only
+strategy locked.
 
-**Two formats** depending on game:
+The current contract: the driver applies **mod rules**, **load order**
+and **userlist**, and Vortex's own `gamebryo-plugin-management` plus
+LOOT auto-sort derive `plugins.txt` from those during deploy. Writing
+the file ourselves would fight the host — the two would disagree the
+moment LOOT re-sorted.
 
-- **Asterisk format** (Skyrim LE/SE, Fallout 4, Starfield):
-  - `*Plugin.esm` for enabled.
-  - `Plugin.esm` for present-but-disabled.
-  - **Encoding: UTF-16 LE with BOM**, `CRLF` line endings.
-- **Legacy format** (Fallout 3, Fallout NV):
-  - Enabled-only list, no prefix.
-  - Disabled entries are omitted from the file.
-  - Encoding: UTF-8.
+The authority for this is `DriverPhase` in
+`src/types/installDriver.ts`, which carries the same note above its
+definition, and the comment at the top of `runInstall.ts`.
 
-**Backup**: before overwriting, the existing file (if any) is copied to
-`plugins.txt.eh-backup-<unix-ms>`. Per-run unique suffix avoids
-trampling earlier backups. The user can restore manually.
-
-The parent directory is created if missing — possible when the user has
-never launched the game on this machine.
+Consequence worth knowing: the captured `manifest.plugins.order` is an
+*input* to rule/userlist derivation, not a literal file the installer
+stamps on disk. A reproduced profile matches by construction, not by
+byte-copy.
 
 The write is atomic: temp file + `rename`. If the process dies
 mid-write, the original (or its absence) is preserved.
@@ -533,20 +530,6 @@ installs of large mods (textures, ENB packages) routinely take 30–60s
 on slow disks. The user is far more annoyed by a false-positive
 timeout than by waiting a minute longer.
 
-### `src/core/installer/pluginsTxt.ts`
-
-Two exported functions:
-
-- `resolvePluginsTxtPath(gameId)` — returns
-  `%LOCALAPPDATA%/<game-folder>/plugins.txt`. Throws on unsupported
-  game.
-- `writePluginsTxtWithBackup({gameId, entries})` — backs up the
-  existing file (if any) to a unique suffix, then atomically writes
-  the manifest's order in the right format/encoding for the game.
-
-`serializePluginsTxt(gameId, entries)` is exposed for tests / future
-in-process diff previews.
-
 ### `src/core/installer/runInstall.ts`
 
 The orchestrator. Public surface is one function, `runInstall(ctx)`.
@@ -591,7 +574,6 @@ Internally:
 | `installing-mods`      | bundled archive cherry-pick fails (corrupt `.ehcoll`)          | `failed`    | "7z failed to extract..." |
 | `installing-mods`      | `did-install-mod` timeout (10 min)                             | `failed`    | "Mod install did not complete within 600s." |
 | `installing-mods`      | user-supplied local file missing / unreadable                  | `failed`    | "Failed installing X from <path>: ENOENT." |
-| `writing-plugins-txt`  | OS-level write failure (rare; permissions, disk full)          | `failed`    | "Failed writing plugins.txt: <errno>." |
 | `deploying`            | deployment timeout (5 min); `deploy-mods` callback error       | `failed`    | "Deployment failed: <reason>." |
 | `writing-receipt`      | `InstallLedgerError` (atomic write race); disk full            | `failed`    | "Failed writing install receipt: <reason>." |
 
