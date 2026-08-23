@@ -1,7 +1,63 @@
-# Re-include the curator-side wizard directory which gitnexus's
-# default heuristics filter (the `build` basename matches output
-# folders like dist/build/, but our UI source has a legitimate
-# src/ui/pages/build/ directory).
+# GitNexus-only ignores (gitignore syntax). Complements .gitignore for index speed.
+# See: gitnexus analyze --help (reads .gitignore + .gitnexusignore)
+#
+# Add large generated/data directories here so the graph stays code-focused, e.g.:
+#   data/
+#   reports/
+#   fixtures/large/
+#   **/__snapshots__/
+
+# ── The agent layer is not code ───────────────────────────────────────────────
+# The graph exists to answer questions about THIS PROJECT'S SOURCE. Instructions
+# written for an agent are not source: indexing them adds File nodes and symbols
+# that describe the tooling rather than the product, and they turn up in query
+# results competing with real code.
+#
+# It got literal — AGENTS.md was indexed as a File node with its full text stored,
+# so the graph contained a description of the graph.
+#
+# `.claude/skills/gitnexus-area-*` matters most: those are generated FROM this
+# index and are committed so teammates get them, which would feed the index its
+# own output on the next run.
+.claude/
+.bearing/
+.cursor/
+.zed/
+.agents/
+.githooks/
+AGENTS.md
+CLAUDE.md
+docs/GITNEXUS-*
+docs/TEAM-BUNDLE.md
+docs/ARCHITECTURE.gitnexus.md
+
+# Build / dependency output (usually already in .gitignore — listed for clarity)
+dist/
+# Root-level build output only. A bare `build/` matches at ANY depth in gitignore
+# syntax, and this repo has no root build/ dir, so the anchor costs nothing.
+/build/
+coverage/
+
+# ── Re-include the curator-side wizard (restored after a bearing install) ─────
+# gitnexus's DEFAULT heuristics filter any directory whose basename is `build`,
+# on the assumption it is output. Here src/ui/pages/build/ is real UI source —
+# 5 files: BuildDashboard.tsx, BuildPage.tsx, buildSession.ts,
+# buildSessionRegistry.ts, engine.ts. Without these negations they never enter
+# the graph, and every "how does the build wizard work?" query comes back empty
+# in a way that reads as "this code does not exist".
 !build/
 !src/ui/pages/build/
 !src/ui/pages/build/**
+
+# Bundled build output. Minified single-line bundles are not code anyone reads, and indexing them
+# is actively harmful: on one real repo 446 of 1123 indexed files (40%) were Capacitor-copied
+# Next.js chunks, which produced 21 `Route` nodes describing a STALE MINIFIED COPY of the app —
+# so a route lookup pointed the reader at a webpack chunk instead of the handler. They also drive
+# the analyzer's `callable-value-flow: candidate set exceeded the cap` warnings.
+# `**/_next/` rather than a Capacitor-specific path, so a copy under android/ or ios/ is caught
+# without naming a layout that only one framework uses.
+.next/
+out/
+**/_next/
+*.min.js
+*.bundle.js

@@ -1,29 +1,31 @@
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **vortex-mod-monitor** (3450 symbols, 6956 relationships, 291 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **vortex-mod-monitor** (5106 symbols, 11000 relationships, 336 execution flows).
 
-> If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
+> Index stale? Run `node .gitnexus/run.cjs analyze --index-only` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? Bootstrap with `npx`, `bunx`, or `pnpm dlx` — e.g. `bunx gitnexus@latest analyze` (npm 11 npx crash; #1939).
 
 ## Always Do
 
-- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `gitnexus_impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
-- **MUST run `gitnexus_detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows.
+- **MUST run impact analysis before editing.** Use `impact({target: "symbolName", direction: "upstream"})` (MCP) or `node .gitnexus/run.cjs impact "symbolName" --direction upstream --repo .` (CLI fallback); report callers, processes, and risk. Never substitute grep for graph analysis.
+- **MUST analyze graph changes before committing.** Use `detect_changes({scope: "all"})` (MCP) or `node .gitnexus/run.cjs detect-changes --scope all --repo .` (CLI fallback). `partial: true` or `truncated: true` is not a clean check — a zero means unseen, not unaffected; re-run it. For regression review: `detect_changes({scope: "compare", base_ref: "master"})` or `node .gitnexus/run.cjs detect-changes --scope compare --base-ref "master" --repo .`.
 - **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
-- When exploring unfamiliar code, use `gitnexus_query({query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
-- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `gitnexus_context({name: "symbolName"})`.
+- **MUST treat `risk: UNKNOWN` as unresolved, not as low.** An empty caller set is not evidence the symbol is unused — it can also mean the callers are not resolvable by the index (plain-object property access, dynamic dispatch, cross-language calls). `impact` pairs `UNKNOWN` with a `riskNote` saying so. Confirm with a text search before treating the symbol as safe to change or delete; do not proceed on the strength of a zero.
+- When exploring unfamiliar code, use `query({search_query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
+- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `context({name: "symbolName"})`.
+- For security review, `explain({target: "fileOrSymbol"})` lists taint findings (source→sink flows; needs `analyze --pdg`).
 
 ## Never Do
 
-- NEVER edit a function, class, or method without first running `gitnexus_impact` on it.
-- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
-- NEVER rename symbols with find-and-replace — use `gitnexus_rename` which understands the call graph.
-- NEVER commit changes without running `gitnexus_detect_changes()` to check affected scope.
+- NEVER edit a function, class, or method before MCP/CLI impact analysis.
+- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis, and never read `UNKNOWN` as an all-clear — it means the walk could not answer, which is the one verdict that requires confirming by other means.
+- NEVER rename symbols with find-and-replace — use `rename` which understands the call graph.
+- NEVER commit before MCP/CLI graph change analysis.
 
 ## Resources
 
 | Resource | Use for |
-|----------|---------|
+| --- | --- |
 | `gitnexus://repo/vortex-mod-monitor/context` | Codebase overview, check index freshness |
 | `gitnexus://repo/vortex-mod-monitor/clusters` | All functional areas |
 | `gitnexus://repo/vortex-mod-monitor/processes` | All execution flows |
@@ -32,13 +34,30 @@ This project is indexed by GitNexus as **vortex-mod-monitor** (3450 symbols, 695
 ## CLI
 
 | Task | Read this skill file |
-|------|---------------------|
-| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
-| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
-| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
-| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
-| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
-| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
+| --- | --- |
+| Understand architecture / "How does X work?" | `.claude/skills/gitnexus-exploring/SKILL.md` |
+| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus-impact-analysis/SKILL.md` |
+| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus-debugging/SKILL.md` |
+| Rename / extract / split / refactor | `.claude/skills/gitnexus-refactoring/SKILL.md` |
+| Tools, resources, schema reference | `.claude/skills/gitnexus-guide/SKILL.md` |
+| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus-cli/SKILL.md` |
+| Work in the Build area (185 symbols) | `.claude/skills/gitnexus-area-build/SKILL.md` |
+| Work in the Manifest area (132 symbols) | `.claude/skills/gitnexus-area-manifest/SKILL.md` |
+| Work in the Installer area (105 symbols) | `.claude/skills/gitnexus-area-installer/SKILL.md` |
+| Work in the Actions area (94 symbols) | `.claude/skills/gitnexus-area-actions/SKILL.md` |
+| Work in the Resolver area (82 symbols) | `.claude/skills/gitnexus-area-resolver/SKILL.md` |
+| Work in the Scripts area (50 symbols) | `.claude/skills/gitnexus-area-scripts/SKILL.md` |
+| Work in the Install area (42 symbols) | `.claude/skills/gitnexus-area-install/SKILL.md` |
+| Work in the Mo2 area (38 symbols) | `.claude/skills/gitnexus-area-mo2/SKILL.md` |
+| Work in the Pages area (37 symbols) | `.claude/skills/gitnexus-area-pages/SKILL.md` |
+| Work in the Errors area (25 symbols) | `.claude/skills/gitnexus-area-errors/SKILL.md` |
+| Work in the Components area (14 symbols) | `.claude/skills/gitnexus-area-components/SKILL.md` |
+| Work in the Bearing-teaching area (9 symbols) | `.claude/skills/gitnexus-area-bearing-teaching/SKILL.md` |
+| Work in the Runtime area (8 symbols) | `.claude/skills/gitnexus-area-runtime/SKILL.md` |
+| Work in the Cluster_56 area (7 symbols) | `.claude/skills/gitnexus-area-cluster-56/SKILL.md` |
+| Work in the Dashboard area (6 symbols) | `.claude/skills/gitnexus-area-dashboard/SKILL.md` |
+| Work in the Cluster_37 area (5 symbols) | `.claude/skills/gitnexus-area-cluster-37/SKILL.md` |
+| Work in the Cluster_82 area (4 symbols) | `.claude/skills/gitnexus-area-cluster-82/SKILL.md` |
 
 <!-- gitnexus:end -->
 
@@ -98,3 +117,503 @@ This repo is GitNexus-indexed: 2316 nodes, 4801 edges, 199 execution flows, 69 c
 **Index freshness:** every tool reports staleness. On a stale-warning, run `npx gitnexus analyze` (preserves embeddings) and retry the failed tool.
 
 For the full reference (Cypher recipes, disambiguation discipline, per-task workflows), see `.cursor/rules/gitnexus.mdc`.
+
+<!-- bearing:BEGIN -->
+<!-- GENERATED by bearing — edits to this block are replaced on the next update. -->
+
+# bearing — always-on instructions
+
+## Who you are on this project
+
+You are working as **senior software engineer experienced in this project's stack**.
+
+Hold that expertise for *every* task here, not only when reviewing. It is what catches **semantic**
+wrongness — a fee computed on gross that should be net, a win-rate quoted as a profitability claim,
+a retry that silently double-charges — none of which is a language error, and none of which a
+generic reviewer sees. Apply it when you judge whether a change is *right*, not merely whether it
+runs; when you weigh whether something should exist at all; and when you decide what "correct"
+means for this domain.
+
+This is pinned in `.bearing/domain.json`. If it is the wrong expertise for this project, edit that
+file — it is yours, and bearing will not overwrite it.
+
+> **No domain is pinned for this project, so the persona above is a generic fallback.** bearing could not tell what this project *is* from its `package.json` description, README or `CLAUDE.md` — those say nothing domain-specific, which is common and not a fault.
+>
+> **You are reading the code, so you can probably tell.** Early in this session, say what domain you think this is and what expertise it calls for, and offer to write it to `.bearing/domain.json`. Ask once, accept a no, and do not raise it again in the same session.
+>
+> Until it is pinned, judge changes as a careful generalist and say so when a call clearly needs domain knowledge you have not been given.
+
+## North star
+
+> **GitNexus is the default reasoning layer for every task — not a fallback when code is unfamiliar.** Prefer graph + embeddings when the index is fresh. Use `query` to orient (BM25 + vectors). Use `cypher` for precise structural graph questions. Refresh autonomously when stale or embeddings are missing. Classical tools only **after refresh fails** or GN is wrong — say why.
+
+**Model tiers:** the graph + gates improve **every** agent — budget/local models gain the most *relative* lift; flagship models waste fewer tokens and follow the same enforced loop. Local LLM / zero API cost: rebuild context freely; do not skip gates for speed.
+
+## A graph ZERO is not evidence of absence
+
+The graph is authoritative about what it **finds**, never about what it **fails to find**. `impact`, `context`, `query` and `cypher ACCESSES` return **empty for things that demonstrably exist** — production callers reported as test-only, `ACCESSES` with 0 rows for a field read on every request, an exported const showing no references on a *fresh* index.
+
+- A **positive** result is evidence *in proportion to its confidence*. A resolved edge (`CALLS`, `ACCESSES` at 0.85–1.0) is solid — use it. A near-0.5 edge is the indexer's best guess at something it could not resolve, and ~92% of `USES` edges are exactly that. **The graph is derived, not ground truth: it can be confidently wrong, not only silently empty.**
+- A **zero is not a finding.** Never conclude "dead code", "no callers", "unused field", "nothing reads this" or "safe to delete" from an empty graph result alone.
+- Before any such conclusion, **confirm classically** — a `Grep` scoped to the owning file or directory, a route/registration/DI search, a string search for the name — and **say which check you ran**. A scoped grep is explicitly allowed for this; it is not a gate violation.
+- When the graph and a classical check disagree, the **classical check wins on existence**, and the disagreement is a defect worth reporting: `npm run bearing:fallback -- "context returned 0 callers for X but grep finds N at <file:line>"`.
+
+A confident zero is worse than no answer, because it *looks* like knowledge. Treat it as "unknown", not "none".
+
+**And the tool now tells you when it is guessing low — READ THOSE FIELDS.** `impact` returns
+`epistemic`, `boundaries` and `causes` alongside the count. When `epistemic` is `"lower-bound"`, the
+number is a floor, not a total, and `boundaries` says in words why — e.g. *"IDraft is an interface
+with 14 interface-level consumers; callers that bind via the interface are not traced to the
+concrete symbol — actual impact may be higher."* `causes` breaks it down: `dispatchBoundary`,
+`receiverTyping`, `externalBoundary`.
+
+Reporting `impactedCount` as the answer while the same response says *may be higher* is the confident
+zero wearing a number. **Quote the boundary.** "20 affected, and a lower bound — 14 consumers bind
+through the interface and are not traced" is the honest sentence; "20 affected" is not.
+
+## Every task (not “unfamiliar code only”)
+
+Use the graph for **all** agent work — explore, debug, fix, refactor, review, rename, commit — not only architecture questions.
+
+| Task type | Graph role |
+| --- | --- |
+| Answer / explain / debug | `query` → `context` → `cypher` if structural → Read offset/limit |
+| Field / property data flow | READ schema → `cypher` (`HAS_PROPERTY` owner→field, `ACCESSES` read/write) |
+| Change a type / interface | `impact` (it follows the type layer) → `cypher` `USES` for the exact consumers |
+| N-hop call chains, overrides, process steps | READ schema → `cypher` |
+| Statement-level data/control flow, taint | `pdg_query` / `explain` / `trace` (see deep precision) |
+| Edit runtime source (any size) | `impact` upstream before Write/StrReplace |
+| Refactor / rename / shared code | `impact` + `rename` dry_run OR `context` on hub symbols |
+| Review / “what did I change?” | `detect_changes`; `query` to orient |
+| Session start | `agent-brief` or repo context; confirm kit health |
+
+**Anti-patterns:** reserving GitNexus for big exploratory prompts; grep/read from memory on “familiar” files; grepping field names instead of `cypher`; **StrReplace/find-and-replace for symbol renames** instead of `rename` dry_run; skipping `impact` on “small” edits; jumping to `context`/`impact`/`grep` without `query` first (skips embeddings). `SemanticSearch` is blocked — use `query`.
+
+## Graph + embeddings + cypher (layered)
+
+| Need | Tool | Why |
+| --- | --- | --- |
+| Orient — any fuzzy or grounding step | `query` | Hybrid BM25 + **embedding** vectors (RRF) |
+| One symbol, callers, 360° | `context` | Structural graph (canned API) |
+| **Precise structural graph questions** | **`cypher`** | Raw traversals the canned tools don't express |
+| Pre-edit blast radius | `impact` | Graph traversal |
+| Pre-commit / done | `detect_changes` | Diff → processes |
+
+### When to escalate to `cypher` (after `query` / `context`)
+
+READ `bearing://repo/vortex-mod-monitor/schema` before ad-hoc Cypher.
+
+| Question | Cypher edge / pattern |
+| --- | --- |
+| Who reads/writes field/property X? | `ACCESSES` with `reason: read` / `write` |
+| **Who uses this interface / type?** | **`USES`** → `Interface` / `TypeAlias` |
+| **What does this type contain?** | **`HAS_PROPERTY`** → `Property` |
+| **Full path of a property** | `HAS_PROPERTY` (owner→property) + `ACCESSES` (property→reader, with `reason`) |
+| Custom N-hop call chain | `CALLS` variable-length path |
+| Method override chain | `METHOD_OVERRIDES` |
+| Ordered steps in a process | `STEP_IN_PROCESS` + `r.step` |
+| All methods on a class | `HAS_METHOD` |
+| Diamond / multi-inheritance | `EXTENDS` multi-path MATCH |
+| Circular file imports | `check({ cycles: true })` — a tool, not a query |
+
+**The TYPE layer is indexed, and it is most of a TypeScript codebase.** Nodes: `Interface`,
+`TypeAlias`, `Property`, `Const`, `Variable` alongside `Function`/`Method`/`Class`. Edges: **`USES`**
+(a function, method, class or file uses a type) and `HAS_PROPERTY` (a type owns a field). Measured on
+one real repo: 23,018 `Property` nodes, 2,941 `Interface`, 7,280 `USES` edges, 17,910 `HAS_PROPERTY`,
+35,511 `ACCESSES` — the type and field layer is *larger* than the call graph. "Who uses this
+interface" and "where does this property actually get read" are graph questions, and asking them by
+grep throws that away.
+
+**But EDGES CARRY A `confidence`, and it is not decoration.** Measured on the same repo:
+
+| Edge | Typical confidence | Read it as |
+| --- | --- | --- |
+| `ACCESSES` | 1.0 (26,175) · 0.85 (6,162) | resolved — trust it |
+| `CALLS` | 0.85 (20,031) · 0.7 (5,573) | resolved — trust it |
+| `USES` | **0.53 (3,561) · 0.51 (2,426)** · 0.85 (599) | **a lead, not proof** — ~92% sit near 0.5 |
+
+So a `USES` answer is a strong place to look and a weak thing to conclude from. Ninety-two percent of
+those edges are the indexer's best guess at a type reference it could not fully resolve. Filter when
+you need certainty — `impact` takes `minConfidence`, and `cypher` can compare `r.confidence` directly
+— and when you report a type's consumers without filtering, say the list is inclusive rather than
+exact. `CALLS` and a resolved `ACCESSES` are a different class of evidence and can be stated plainly.
+
+### Line numbers: raw Cypher is 0-BASED, the tools are 1-BASED
+
+`startLine` / `endLine` are tree-sitter rows. **Raw `cypher` returns them 0-based; `context`, `query`,
+`impact`, `explain` and `pdg_query` present them 1-based** — so the same symbol comes back with
+different numbers depending on how you asked, and nothing warns you.
+
+Verified: `cypher` reports a function at `startLine: 149`; line 149 of that file is ` */`, the close
+of its docblock. The function is on 150.
+
+- From **raw cypher** → read `(startLine+1)..(endLine+1)`, e.g. `sed -n '150,228p' file`.
+- From **context / query / impact** → use the numbers as given.
+- `content` holds the exact symbol span if you would rather not do arithmetic at all.
+
+Off by one, silently, on every jump from a cypher result into a file. BasicBlock and PDG statement
+lines are separately 1-based.
+
+### `impact` on a hub symbol — the parameters that stop it truncating
+
+A hub symbol returns hundreds of affected symbols, and a truncated impact result is a blast radius
+that looks smaller than it is — the dangerous direction. The tool has escapes; use them rather than
+letting the answer get cut:
+
+| Parameter | Use |
+| --- | --- |
+| `summaryOnly: true` | counts, risk, affected processes and modules — no per-symbol list. The right first call on anything central. |
+| `limit` / `offset` | page through `byDepth` when you do need the names |
+| `kind: "Interface"` | disambiguate a common name instead of guessing which match it took |
+| `relationTypes: [...]` | narrow the traversal — `ACCESSES` is excluded by default, so ask for it explicitly to trace field usage |
+| `minConfidence` | drop the near-0.5 guesses when you need certainty rather than leads |
+| `includeTests: true` | tests are excluded by default; include them before deleting anything |
+
+`epistemic` comes back `"exact"` too, not only `"lower-bound"` — when it says exact, state the number
+plainly. That is the point of reading the field rather than assuming either way.
+
+### `context` carries the same envelope — and `causes` COUNTS WHAT IT LOST
+
+`context` returns `epistemic` / `boundaries` / `causes` exactly like `impact`, and the `causes` fields
+are counts of **missing things**, not descriptions:
+
+- `causes.receiverTyping: 14` — the analyzer **dropped 14 call sites** on this name because it could
+  not type the receiver. They exist; this view does not list them.
+- `causes.externalBoundary: n` — that many calls left the indexed program (`fetch`, stdlib, a
+  framework). Not a gap in the code, a gap in what is indexed.
+- `causes.dispatchBoundary: n` — bound through an interface or dynamic dispatch, not traced to the
+  concrete symbol.
+
+So "no callers" from `context` with `receiverTyping > 0` is not "no callers" — it is "we lost this
+many". That is the most concrete form of the graph being wrong rather than empty, and it is sitting
+in the response.
+
+**Ambiguous `context`: read `totalCandidates`, not `candidates.length`.** When several symbols share
+a name the reply carries ranked candidates, and the array is a WINDOW — `candidatesTruncated: true`
+and a "(showing M)" suffix. `totalCandidates` is the real number. Disambiguate with `kind` and
+`file_path`, or pass the `uid` from any earlier result for a zero-ambiguity lookup; every result
+carries one, so re-resolving by name is a step you rarely need.
+
+### Defaults that quietly narrow the answer
+
+| Tool | Default | Consequence |
+| --- | --- | --- |
+| `query` | `limit: 5` processes, `max_symbols: 10` | one call is a SLICE, not a survey — raise them before concluding "that is all there is" |
+| `impact` | tests excluded, `ACCESSES` excluded | "no callers" means "no non-test callers, ignoring field access" |
+| `context` / `query` | `include_content: false` | names and locations only; ask for content instead of a second Read round trip |
+| all three | `maxTokens` | cap the response deliberately rather than discovering the cap by truncation |
+
+`detect_changes` also takes **`worktree`** — an absolute path to a linked git worktree. The server
+detects the common case itself, but when it was started somewhere other than the worktree you are
+editing, an unstaged diff comes back empty and nothing says why.
+
+### `rename` mixes two kinds of evidence — read the tag on every edit
+
+`rename` is the right tool and it is **not** all graph. Every edit is tagged:
+
+- `confidence: "graph"` — resolved through the knowledge graph. Safe to accept.
+- `confidence: "text_search"` — a REGEX match. This is find-and-replace, labelled.
+
+Measured on a real rename: 7 edits, **4 graph and 3 text_search** — 43% regex. Those three landed on
+an object-literal key in a spec file that happened to share the name. Correct there; in another
+codebase the same pattern hits an unrelated key with the same spelling.
+
+So `dry_run: true` (the default) is not a formality. Read `graph_edits` vs `text_search_edits`,
+review every `text_search` line individually, and never accept a preview wholesale because the tool
+is "safer than find-and-replace" — part of it *is* find-and-replace. Run `detect_changes` after.
+
+### `trace` tells you where the chain broke
+
+When no path exists, `trace` reports the **furthest reachable node** — so a failed trace is a
+diagnosis, not a dead end: that is where the chain stops. Check `truncated: true` before believing
+it, though; that means a traversal cap was hit, so "no path" is really "gave up". `maxDepth`
+defaults to 10 (max 30) and `includeTests` is false.
+
+Each hop carries its own edge type and confidence in `edges[]`, so a path that is technically
+connected through one weak hop is visible as such rather than reading as solid.
+
+### `explain`: an absent flow is not proof of safety
+
+Taint findings need `--pdg`; without it you get a clear "no taint layer" note rather than an error —
+and an empty result then means *nothing was checked*. Cross-function matching is by callee **name**
+and context-insensitive, so a flow into one of two same-named callees over-attributes to both.
+`totalFindings` is the true count; the page you got may be `truncated`.
+
+### One query for a file's contents
+
+`DEFINES` (File → symbol) is the largest edge type after the obvious ones and answers "what is in this
+file" without reading it — 277 symbols in one result on a real repo. Cheaper than a Read for
+orientation, and it gives you names to feed `context`.
+
+### Symbol properties worth querying
+
+Nodes carry more than a name, and these turn "read every file and look" into one query:
+
+| Property | On | Use |
+| --- | --- | --- |
+| `returnType`, `parameterTypes`, `parameterCount` | `Function`, `Method` | signature-shaped searches — every handler returning `Promise<void>`, everything taking more than five arguments |
+| `isAsync`, `isStatic`, `visibility`, `isAbstract` | `Function`, `Method` | "which of these are async", "what is actually public" |
+| `annotations` | `Function`, `Method` | decorator/attribute sweeps |
+| `declaredType` | `Property` | the field's declared type — what resolves field-access chains |
+| `cohesion`, `symbolCount` | `Community` | how tight an area is; a low-cohesion cluster is a naming, not a module. Measured spread on one repo: **0.04 to 0.98**, so read it before trusting an area name |
+| `processType`, `stepCount` | `Process` | `intra_community` vs `cross_community` — the second crosses a seam and is where contracts break |
+
+**Three `Community` fields are always empty — do not query them.** `keywords`, `description`, and
+`label` are filled by an LLM enrichment pass that the analyzer ships but **never calls**
+(`cluster-enricher.js` is exported and imported by nothing), so `enrichedBy` is written from its
+`|| 'heuristic'` fallback on every node. Measured across three unrelated indexes — 270, 543 and 1126
+communities: `enrichedBy` is `heuristic` 100% of the time, `keywords` and `description` are empty
+100% of the time, and `label` is identical to `heuristicLabel` on every single node. An empty
+`keywords` says nothing about the code; it says the pass did not run. Use `heuristicLabel`,
+`cohesion`, `symbolCount` and `MEMBER_OF`.
+
+**Order:** `query` (orient) → `context` (symbol) → **`cypher`** (structural precision) → `impact` (before edits). Do not start with `cypher` for fuzzy questions — that's what `query` + embeddings are for.
+
+Refresh always includes `--embeddings` (`bearing:refresh` / `agent-refresh`). Missing embeddings = stale (same as commit behind).
+
+## Deep precision — PDG, taint, trace
+
+When `cypher` isn't enough, escalate to statement-level tools.
+
+**These need a PDG index, and it is NOT built by default.** PDG roughly triples node count and four
+tools read it, so bearing stopped building it on every commit — it is opt-in, by `bearing:pdg`, when
+someone decides they want it. Without one, every tool in this table returns **zero rows, which is not
+an answer** (see the section above — a zero is not a finding). If you need statement-level dataflow
+or taint, build it first or say plainly that you could not check. Whether to keep it fresh is the
+user's call, not something to trigger mid-task.
+
+| Need | Tool |
+| --- | --- |
+| Statement-level blast radius (control + data) | `impact` with `mode: "pdg"` — add **`line`** to anchor it |
+| What predicate controls a line / why does it run? | `pdg_query` (`mode: "controls"`) |
+| Where does a variable's value flow / reach? | `pdg_query` (`mode: "flows"`) |
+| Source → sink path between two symbols | `trace` |
+| Taint review — injection, path traversal, XSS | `explain` |
+
+**`impact` with `mode: "pdg"` takes a statement anchor.** Pass `line` — 1-based, inside the target
+symbol — and the slice is seeded on THAT statement. Measured on a real function: `line` pointing at
+`const project = (job.rawJson ?? {})` returned **52 downstream-dependent statements**, each as line +
+text, correctly including a `project.clientQuestions` read eleven lines below. Without `line` you get
+whole-symbol reach, which is the blunter answer.
+
+**The trap: a `line` that is not a statement DEGRADES SILENTLY.** Point it at a blank line, a comment,
+a brace, or anything outside the body and you get `affectedStatements: []` — *alongside a populated
+`byDepth` and a non-zero `impactedCount`*. It reads like "this statement affects nothing", which is
+the most dangerous wrong answer this tool can give. The ONLY thing that distinguishes the two is
+`epistemic`:
+
+| `epistemic` | Means |
+| --- | --- |
+| `pdg-intra-procedural` | real slice — `affectedStatements` is the answer |
+| `pdg-no-block-at-line` | **no statement starts at your line** — the empty slice says nothing about the code |
+
+Check it before reading the result, every time. Three more fields carry their own weight:
+`scope` is `"intra"` or `"inter"` per statement, so you can see where the slice crossed a call.
+`pdgEvidence.interprocedural: "callgraph-bridge"` means the symbols in `byDepth` arrived by the
+ordinary call graph, NOT by statement-level dependence — do not present them as the latter. And
+`pdgEvidence.ascent.returnFlowFound: false` means a caller depending on a callee's RETURN value is
+missing from the slice; out-parameter ascent, callee-written shared variables and exception ascent
+are not modelled at all. `risk: "UNKNOWN"` is the contract for this mode, not a low-risk finding.
+
+**Zero taint findings is not a clean bill of health.** `explain` on a PDG-built index returns
+`findings: []` with the layer perfectly healthy — closure/callback, property/field and implicit flows
+are not modelled, and the tool says so in its own `note`. Read the note to tell "no flows found" from
+"no layer to look in"; report the difference.
+
+## Full tool surface — reach for the right one
+
+Know every tool and *when* it wins (single-repo; cross-repo `group_*` is out of scope for this kit). Don't stop at `query`/`context` — the advanced tools answer in one call what takes many manual hops.
+
+| Tool | Reach for it when |
+| --- | --- |
+| `query` | Orient — "how does X work?", find the execution flow for a concept (BM25 + vectors). Always first for fuzzy work. |
+| `context` | 360° on ONE symbol — callers, callees, categorized refs, the processes it's in. After `query`, or when the symbol is known. |
+| `cypher` | Precise structural questions the canned tools don't express — field `ACCESSES`, type `USES`, `HAS_PROPERTY`, N-hop `CALLS`, `METHOD_OVERRIDES`, `STEP_IN_PROCESS`. READ schema first. |
+| `check` | Structural health of the import graph — circular file imports, with deterministic cycle paths. Read-only and CI-shaped; reach for it when untangling module boundaries rather than tracing one symbol. |
+| `tool_map` | This repo DEFINES MCP/RPC tools and you need their definitions, handlers and descriptions — impact analysis for a tool change, or finding where a tool is implemented. |
+| `impact` | BEFORE editing a symbol — upstream blast radius + risk + affected processes. `mode: "pdg"` for statement-level (control+data) precision. |
+| `trace` | "How does A reach B?" — shortest call/member path between two symbols in ONE call (replaces 3–8 manual `context` hops). |
+| `pdg_query` | "What condition gates this line?" (`mode: "controls"`) / "where does this variable flow?" (`mode: "flows"`). Intra-function; needs PDG. |
+| `explain` | Security review — taint source→sink (command/code/sql injection, path-traversal, XSS), intra- AND inter-procedural. Needs PDG. |
+| `detect_changes` | BEFORE commit / "what did my edits affect?" — diff → affected symbols/processes/risk. `scope`: unstaged \| staged \| all \| compare. |
+| `rename` | Coordinated multi-file symbol rename — `dry_run: true` first. Never find-and-replace identifiers. |
+| `api_impact` | BEFORE changing an HTTP route handler (framework router) — consumers, response-shape mismatches, middleware chain, risk. |
+| `route_map` | Map routes → consumers + handler + middleware; find orphaned routes. (Custom router → `context` on the dispatcher instead.) |
+| `shape_check` | Detect API response-shape drift — keys a route returns vs keys consumers access (flags MISMATCH). |
+| `tool_map` | Map MCP/RPC tool definitions → handler files + descriptions (tool-API work, impact of a tool-contract change). |
+| `check` | Structural integrity — detect circular File `IMPORTS` cycles (health / CI gate). |
+| `list_repos` | Only when multiple repos are indexed — discover/disambiguate before passing `repo:` to other tools. |
+
+Cheap resource reads (prefer before heavy tools): `READ bearing://repo/vortex-mod-monitor/{context|schema|clusters|processes|process/<name>}`.
+
+### The three route tools are only as good as `Route` node coverage — CHECK IT FIRST
+
+`api_impact`, `route_map` and `shape_check` all read `Route` nodes, and route detection is
+FRAMEWORK-DEPENDENT. Where the indexer does not recognise a framework's routing, they do not degrade
+politely — they answer as if the API does not exist.
+
+Measured on a NestJS backend with **33 `@Controller` classes and 210 route decorators**:
+
+| | |
+| --- | --- |
+| `Route` nodes in the index | **3** — and all three are URL strings from utility code (`/watch`, `/_next/image`), not endpoints |
+| `route_map({route: "/venues"})` | `"No routes matching \"/venues\""` |
+| `api_impact({route: "/venues"})` | `error: "No routes found matching \"/venues\"."` |
+| `shape_check` | `"No routes with both response shapes and consumers found."` |
+
+`/venues` is a real, live endpoint. An agent that asks *"what depends on /venues before I change
+it?"* is told the route does not exist — and a not-found reads like a safe change. **This is the
+most dangerous shape a wrong answer can take, and it is one query away from being caught:**
+
+```
+MATCH (r:Route) RETURN count(*)
+```
+
+Compare that against the number of handlers you can see in source (`@Controller`, `@app.route`,
+`router.get`, a `pages/api` tree). Near-zero on a repo that plainly has an API means these three
+tools are blind here — say so, and fall back to `query`/`context`/`cypher` on the controller
+symbols, which do work. A second NestJS repo in the same set indexed **0** route nodes.
+
+`shape_check` has its own precondition: it needs `responseKeys`, extracted from `.json({...})`
+calls. A framework that returns objects directly (NestJS, FastAPI) produces none, so an empty
+result means *nothing was extracted*, never *the shapes agree*.
+
+`tool_map` is the one in this family that behaved: on a repo defining MCP tools it returned all 17
+with handler file and description. Its `flows` array was empty for every one of them.
+
+### `check` — cycles, and which ones actually matter
+
+`check({cycles: true})` returns directed `IMPORTS` cycles between files, with
+`enumeration: "complete"` when the list is exhaustive — read that field before treating a count as
+the whole picture. On one real backend: 34 cycles across 5 components.
+
+Read the result before reporting it. Cycles among ORM entity files are usually TYPE-position
+imports and benign in TypeScript; cycles between DI module files (`x.module.ts` ↔ `y.module.ts`) are
+the ones that force `forwardRef` and break initialisation order. Same count, very different
+findings — the tool does not distinguish them, and neither does a raw number in a report.
+
+## MCP defaults (generous — local LLM)
+
+Run hook copy-paste calls verbatim; expand freely when needed:
+
+| Tool | Default | Notes |
+| --- | --- | --- |
+| `context` | `include_content: false` | Need body → Read offset/limit |
+| `query` | `limit: 5`, `max_symbols: 12` | Phrase `search_query` as a natural-language **concept** ("where tokens are validated"), not a keyword — that feeds the embedding ranker; always pass `task_context` + `goal`. Known symbol name → use `context` instead. |
+| `cypher` | READ schema first | Use `$params` for symbol/field names |
+| `impact` | `summaryOnly: false`, `limit: 100` | Full blast radius before edits; `mode: "pdg"` for statement-level |
+| `pdg_query` | `mode: "controls"` / `"flows"` | Statement-level control/data dependence |
+| `trace` / `explain` | source → sink | Path between symbols; taint analysis |
+| `rename` | `dry_run: true` first | Coordinated multi-file symbol rename |
+| `detect_changes` | `scope: unstaged` | Pre-commit → `staged`; PR → `compare` |
+
+## Session (autonomous Shell)
+
+New chat: run session health ritual if injected — `npm run bearing:agent-status`, one-sentence confirm to user.
+
+`npm run bearing:agent-brief` or READ `bearing://repo/vortex-mod-monitor/context`. Stale or missing embeddings → **`npm run bearing:agent-refresh` first** (`required_permissions: ["all"]`). Hooks **block** Grep/Read/MCP/shell until refresh succeeds; classical tools only if refresh **fails** (say why). Never ask user to analyze.
+
+## Stale loop (mandatory)
+
+```
+stale → agent-refresh (Shell, pre-approved)
+  → fresh → query / context / cypher / impact
+  → still stale after refresh → agent-refresh retry once if plausible
+  → refresh failed → classical fallback OK (one sentence why)
+```
+
+Session start runs auto-refresh when stale. Do **not** grep/read “while refreshing” — refresh is the next tool, not a background hint.
+
+**Mid-session drift (your own edits):** commit-equality can't see uncommitted edits, so after you change a few source files the graph silently falls behind your working tree. Don't wait for the block — once you've edited code and are about to `query`/`context`/`impact`/`cypher`/`pdg_query` again, run **`npm run bearing:refresh`** (**incremental** — reindexes only your changed files; quick for a few edits, longer on large batches / first run) so graph answers reflect your changes. Graph query tools hard-block past a small drift threshold until you do.
+
+## Gates (do not skip — every task)
+
+```
+1. brief OR context — session start
+2. query — orient / ground (graph + embeddings) before reasoning or edits
+3. context → process — drill into symbols
+4. cypher — structural precision (field ACCESSES, N-hop CALLS, overrides, process steps)
+5. impact upstream — before runtime source edits
+6. rename dry_run — before coordinated symbol renames (not StrReplace across files)
+7. detect_changes — before commit / done
+```
+
+HIGH/CRITICAL impact → warn before proceeding.
+
+## When fresh — hooks block (enforced, not advisory)
+
+Symbol grep → `context`. **Field/property grep → READ schema → `cypher` (`ACCESSES`).** SemanticSearch/broad Glob → `query`. Large source Read → `query` → `context` → Read offset/limit; **data-flow / model reads → `cypher` first.** Symbol **StrReplace rename** → `rename` dry_run.
+
+**Hard gates (deny until satisfied, once per session):**
+- **Edit runtime source** → blocked until one `impact` (or `rename`) call this session. Run blast radius first; warn on HIGH/CRITICAL.
+- **`git commit`** → blocked until one `detect_changes` call this session. Confirm affected processes match intent.
+
+Enforcement is **polyglot** — JS/TS, Python, Rust, Go, Java, and more count as source (configure `sourceExts` in `.bearing/hooks.json`).
+
+## Deep review (intel layer)
+
+At a **milestone** — feature done / big-task checkpoint / shared-code refactor / pre-ship, or "audit / find real bugs / is this solid?" — **and** only when the work is *substantial* (multi-file or high `impact` blast-radius): run a **microscope-waves** pass → load the `bearing-microscope` skill. Multi-lens, opinionated (not just defects), adversarially verified, iterated in waves. Skip it for small localized changes.
+
+## Ask, or decide? (intel layer)
+
+You are working with a senior engineer. Interrupting them for something the repository could answer costs their attention for nothing; deciding a **business rule** on your own costs them the product. Both are failures.
+
+**Ask when you are about to INVENT a requirement rather than implement one.** The test that does most of the work: **is the answer discoverable here?** Code, tests, config, git history, north-stars, an existing convention — then go and find it. If it exists only in their head — which of two readings they meant, which tradeoff they prefer, what a user should see — no amount of reading produces it, and that is the question. Load the `bearing-consult` skill.
+
+**Do NOT ask** for what the repo answers, for anything cheaply reversible (decide, state the assumption in one line), or to offload risk — *"shall I proceed?"* on an obvious path is not a question. When you do ask: closed options, the tradeoff, a recommendation, and what you will do without an answer.
+
+**One-way doors are a different act — CONFIRM, do not consult.** Before deleting data, force-pushing, publishing, migrating anything shared, or sending something outward, say what cannot be undone and wait — even when the right answer is obvious. Reversible work needs no permission.
+
+## Wide mechanical work — fan it out (intel layer)
+
+Before grinding through a long list of files or symbols **serially** — every call site of X, every file still on the old API, every route to audit against one rule, every migration site — stop and check the four: is each unit **bounded**, **verifiable**, **independent**, and are there **3 or more**? If so, fan out → load the `bearing-minions` skill. One anchored subagent per unit, each carrying the north-stars and persona.
+
+**Minions gather; you conclude — they do minimal or zero reasoning.** Spawn them on a MIDDLE tier (`sonnet` by default; `minionModel` in `.bearing/hooks.json` to change it) — cheap is correct *because* they do not reason. Wanting a smarter minion means you delegated judgment and should take it back. They return `FOUND file:line` (verbatim), `CHECKED` (the exact query) and `MISSED` — never a verdict. A subagent that concludes puts a lossy summary between the evidence and your decision. Do not fan out when the judgment IS the work, when the answer only survives verbatim, or when the unit needs context the subagent was never in.
+
+## Project north-stars — the semantic anchor (highest authority)
+
+*(Distinct from the graph-first "North star" above: those are the kit's reasoning rules; these are **this project's** fixed points.)*
+
+If **`.bearing/northstars.md`** exists, it is the project's **authoritative** statement of what this project IS: numbered, falsifiable propositions (`NS-1`, `NS-2`, …) covering **INVARIANTS** (must always hold), **SEMANTICS** (exact meaning of load-bearing terms), **EVIDENCE** (what counts as proof here), **SETTLED** decisions, and a **GRAVEYARD** of tried-and-rejected / validated ideas.
+
+- **READ IT FIRST** — before forming any premise, at session start and on every recovery. A PostToolUse hook re-anchors you on it periodically and right after you write a doc; that is a *reminder*, not a substitute for reading it.
+- **It outranks everything**: every other doc, README, code comment, and your own inference. Repos accumulate stale and mutually contradictory docs — when any source conflicts with a north-star, **the north-star wins and the other source is stale**. Say so instead of silently averaging them.
+- **CITE the `NS-#`** when you make a consequential claim, choose a direction, or reject an idea. If you cannot cite one for a load-bearing conclusion, **you may be drifting — say so explicitly** rather than proceeding confidently.
+- **Never silently edit a north-star, and never quietly work around one.** If one looks wrong, missing, or outdated, state that plainly and **propose the change to the user** — the anchor only works if drift can't rewrite it.
+- **The GRAVEYARD is settled**: do not re-propose a rejected idea without new evidence that addresses *why* it was rejected, and do not discard a VALIDATED one without evidence that overturns it.
+- Format + maintenance routine: the **`bearing-northstars`** skill.
+
+**`.bearing/gold-practices.md` is the other half**: `GP-#` rules for how the work is done *anywhere*, shipped with bearing, where the north-stars say what *this project* is. Cite them the same way. **On conflict the `NS-#` wins** — a project's own invariant is more specific than a general rule — and you say which one and why. Every rule there has a scar — they are the mistakes that got made anyway, by a careful agent, on this codebase. The ones that bite most often: a claim from reading rather than running is unverified (`GP-1`); a test that has never failed has never been tested (`GP-2`); a fixture chosen for convenience tests the case that cannot fail (`GP-4`); a failing check is a claim too, so verify the probe before believing it (`GP-7`); every line you print is a claim (`GP-8`); establish a contract from the thing that defines it, never from something that calls it (`GP-14`); never ask a person what the source can answer (`GP-15`).
+
+## Durable memory (survives compaction + sessions)
+
+Maintain your **Claude Code project memory** — `~/.claude/projects/<this-project>/memory/MEMORY.md` (Claude Code's native memory; **all agents share this one file** — Claude refers to its own, other agents mirror it). Record task, key decisions, findings, open items, important `file:line`. Update it at milestones and whenever you conclude something that must outlive the current transcript. Context compaction and new sessions drop the conversation; this file does not. On recovery (post-compaction/resume) READ it first and reconcile it with reality — **nothing important may be lost.**
+
+## Task-core (survive compaction without drift)
+
+Long tasks get **compacted** — the transcript is summarized and dropped, and detail drifts. Keep a **task-core**: a dense, **AI-facing** save-state of the CURRENT TASK at **`.bearing/task-cores/<this chat's id>.md`** — the SessionStart brief names the exact path, and it is one file per CHAT so parallel sessions in this repo cannot overwrite each other's save-state. When a PostToolUse nudge says edits have piled up since your core was last written, or at a milestone / before a risky pivot, **write or refresh it**. Nothing warns you that compaction is near — the context window is not knowable at runtime — so treat it as able to land at any time. It's distinct from `MEMORY.md` (durable, cross-session, human-shared): the task-core is the *hot working-set for THIS task*, overwritten when the task changes. Full routine: the **`bearing-taskcore`** skill.
+
+## Fallback
+
+**Stale index** → run `agent-refresh` first; classical Grep/Read stay denied until it succeeds. **If refresh fails** (or MCP down): classical Grep/Read OK — one-sentence why.
+
+**GitNexus fresh but wrong / suspicious / incomplete?** Don't silently fight the gate — take the escape hatch: `npm run bearing:fallback -- "<why>"`, which opens ~15 min where classical Grep/Read/shell are allowed (auto-resumes; end early with `npm run bearing:fallback:off`). **Make `<why>` specific and actionable** — which GN tool, expected vs actual (e.g. `impact returned 0 callers for OrderService but grep finds 3`) — because it's appended as a **GitNexus failure report** (`npm run bearing:fallback-log`), captured with the graph state, for the GitNexus developers. Re-confirm findings with the graph once GN is reliable; repeated reports pinpoint where GN needs fixing.
+
+Optional: `GITNEXUS_MODE=guide` (nudge-only). Paths: `.bearing/hooks.json`. Playbooks: `bearing-enforcement` skill.
+
+## Claude Code
+
+- Skills live in `.claude/skills/` — load the one that matches the task.
+- Hooks in `.claude/settings.json` run on every tool call: they re-anchor you on what matters and can block a wrong call outright.
+
+## Claude Code — GitNexus
+
+- The `gitnexus` MCP server is configured in `.mcp.json` — approve it on first run.
+- Hooks enforce the loop: symbol Grep → `gitnexus_context`, large source Read → `gitnexus_query`, edits gated on `gitnexus_impact`, `git commit` gated on `gitnexus_detect_changes`, and stale shell commands blocked until refresh.
+- Invoke `/bearing-enforcement` or `/bearing-workspace` on hard tasks.
+- Stale index or missing embeddings → run `npm run bearing:agent-refresh` (Bash, pre-approved); never ask the user to analyze.
+
+## npm gates
+
+Run gated scripts from `package.json` when hooks remind you: `bearing.__gate.*` — they document the enforced playbook for this repo.
+<!-- bearing:END -->

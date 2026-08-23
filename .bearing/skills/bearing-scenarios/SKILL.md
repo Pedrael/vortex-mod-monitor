@@ -1,0 +1,102 @@
+---
+name: bearing-scenarios
+description: "Scenario playbooks for GitNexus — pre-edit, pre-commit, PR review, bugs, refactors, cross-module changes, presets. Read when starting a structured task."
+---
+
+# GitNexus Scenario Playbooks
+
+## The graph can be wrong
+
+It is derived from parsing, not ground truth, and it fails in three different ways:
+
+- **A zero is not absence.** Never conclude "unused", "no callers" or "safe to delete" from an empty result.
+- **A low-confidence edge is a lead, not proof.** Check `r.confidence` — `CALLS` and resolved `ACCESSES` come back at 0.85–1.0, while ~92% of `USES` edges sit near 0.5.
+- **A count can be a floor.** `impact` returns `epistemic: "lower-bound"` with a `boundaries` note when it knows it is guessing low; it returns `"exact"` when it is not.
+
+When the conclusion matters — deleting, renaming, "nothing reads this", a security claim — confirm with a scoped `Grep` or by reading the file, and **say which check you ran**. A scoped grep for this is explicitly allowed; it is not a gate violation. When the graph and a classical check disagree, the classical check wins on existence, and the disagreement is a defect worth reporting via `bearing:fallback`.
+
+
+Match your task to a playbook. Always start with READ `bearing://repo/vortex-mod-monitor/context`.
+
+Cross-module flows / architecture questions → also read **`bearing-imaging`** skill.
+
+## 1. Pre-edit (any symbol change)
+
+```
+- [ ] READ context resource — index fresh?
+- [ ] gitnexus_impact({target, direction: "upstream", repo: "vortex-mod-monitor"})
+- [ ] Report d=1 (WILL BREAK), affected processes, risk level to user
+- [ ] If HIGH/CRITICAL → warn before editing; suggest narrower change or tests
+- [ ] Optional: widen with relationTypes: ["CALLS","IMPORTS","ACCESSES"] for field/member edits
+- [ ] Make edit
+- [ ] Run tests for affected processes
+```
+
+## 2. Pre-commit
+
+```
+- [ ] gitnexus_detect_changes({ scope: "staged", repo: "vortex-mod-monitor" })
+- [ ] Review changed_symbols + affected_processes
+- [ ] Unexpected cross-module hits? → split commit or narrow scope
+- [ ] Risk CRITICAL/HIGH → run broader test suite before commit
+- [ ] Commit (pre-commit hook refreshes index with PDG via `bearing:full-pdg` (full --force rebuild); agents use `bearing:agent-refresh` when stale mid-session)
+```
+
+## 3. PR / branch review
+
+```
+- [ ] gitnexus_detect_changes({ scope: "compare", base_ref: "main", repo: "vortex-mod-monitor" })
+- [ ] List affected processes — do they match PR intent?
+- [ ] For each changed entry-point symbol: gitnexus_impact upstream
+- [ ] Flag cross-community process breaks
+- [ ] Verify tests cover affected processes
+```
+
+## 4. Bug trace / failure
+
+```
+- [ ] gitnexus_query({search_query: "<error or symptom>", task_context: "debugging", goal: "find throw site"})
+- [ ] gitnexus_context on top suspect from returned processes
+- [ ] READ bearing://repo/vortex-mod-monitor/processes — pick matching flow
+- [ ] Optional cypher for call chains (see bearing-debugging skill)
+- [ ] Read source at flagged lines — confirm root cause
+- [ ] If regression: detect_changes on recent commits
+```
+
+## 5. Refactor / rename
+
+```
+- [ ] gitnexus_impact upstream on target
+- [ ] gitnexus_context on target — understand callees/callers
+- [ ] gitnexus_rename({ symbol_name, new_name, dry_run: true })
+- [ ] Review graph vs text_search edits carefully
+- [ ] Apply rename (dry_run: false) OR manual edit following impact map
+- [ ] gitnexus_detect_changes({ scope: "all" })
+- [ ] Run tests for every affected process listed
+```
+
+## 6. Cross-module / shared contract change
+
+```
+- [ ] gitnexus_detect_changes — confirm blast radius
+- [ ] gitnexus_impact on shared symbols at module boundaries
+- [ ] Edit contract source first, then consumers
+- [ ] Run tests on both sides of the boundary
+```
+
+## 7. Config / data files (JSON / YAML only)
+
+```
+- [ ] Grep / Read config & fixture files is appropriate (not graph symbols)
+- [ ] Validate config keys/IDs against the code that consumes them (context or Read)
+- [ ] Run the relevant config/fixture tests
+```
+
+## 8. Explore unfamiliar code
+
+See `bearing-exploring` skill — query → context → process trace → Read source.
+
+## 9. HTTP route change
+
+See `bearing-api-routes` skill — `api_impact`/`route_map`/`shape_check` for framework routers,
+`context` on dispatcher symbols for custom routers (profile-driven).

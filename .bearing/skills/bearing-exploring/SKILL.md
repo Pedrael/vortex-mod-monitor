@@ -1,0 +1,113 @@
+---
+name: bearing-exploring
+description: "Use when the user asks how code works, wants to understand architecture, trace execution flows, or explore unfamiliar parts of the codebase. Examples: \"How does X work?\", \"What calls this function?\", \"Show me the auth flow\""
+---
+
+# Exploring Codebases with GitNexus
+
+## The graph can be wrong
+
+It is derived from parsing, not ground truth, and it fails in three different ways:
+
+- **A zero is not absence.** Never conclude "unused", "no callers" or "safe to delete" from an empty result.
+- **A low-confidence edge is a lead, not proof.** Check `r.confidence` — `CALLS` and resolved `ACCESSES` come back at 0.85–1.0, while ~92% of `USES` edges sit near 0.5.
+- **A count can be a floor.** `impact` returns `epistemic: "lower-bound"` with a `boundaries` note when it knows it is guessing low; it returns `"exact"` when it is not.
+
+When the conclusion matters — deleting, renaming, "nothing reads this", a security claim — confirm with a scoped `Grep` or by reading the file, and **say which check you ran**. A scoped grep for this is explicitly allowed; it is not a gate violation. When the graph and a classical check disagree, the classical check wins on existence, and the disagreement is a defect worth reporting via `bearing:fallback`.
+
+
+## The type layer is indexed too
+
+On a typed codebase most of the graph is not the call graph:
+
+| Question | Query |
+| --- | --- |
+| Who uses this interface / type? | `USES` → `Interface` / `TypeAlias` |
+| What fields does this type own? | `HAS_PROPERTY` → `Property` |
+| Where is this property actually read or written? | `HAS_PROPERTY` then `ACCESSES` (carries `reason: read`/`write`) |
+| Circular imports between files | `check({ cycles: true })` |
+
+Measured on one real repo: 23,018 `Property` nodes and 7,280 `USES` edges against 27,611 `CALLS`.
+
+**Raw cypher line numbers are 0-BASED; every other tool hands them to you 1-BASED.** A function
+reported at `startLine: 149` begins on line 150 — 149 is the last line of its docblock. Jumping
+straight from a cypher result into `Read`/`sed` lands one line early, every time, silently. Add 1 to
+values that came from cypher; use `context`/`query`/`impact` numbers as given.
+
+**Check `r.confidence` before you conclude.** `CALLS` and resolved `ACCESSES` come back at 0.85–1.0;
+**~92% of `USES` edges sit at 0.51–0.55** — the indexer's best guess at a type reference it could not
+fully resolve. Treat a `USES` result as where to look, not as the finding, and say so when you report
+it. `cypher` can filter on `r.confidence`; `impact` takes `minConfidence`.
+
+## When to Use
+
+- "How does authentication work?"
+- "What's the project structure?"
+- "Show me the main components"
+- "Where is the database logic?"
+- Understanding code you haven't seen before
+
+## Workflow
+
+```
+1. READ bearing://repo/{name}/context             → Codebase overview, check staleness
+2. query({search_query: "<what you want to understand>"})  → Find related execution flows
+3. context({name: "<symbol>"})            → Deep dive on specific symbol
+4. cypher({statement, params})                → Field ACCESSES, N-hop chains, overrides (READ schema first)
+5. READ bearing://repo/{name}/process/{name}      → Trace full execution flow
+```
+
+> If step 2 says "Index is stale" → run `node .gitnexus/run.cjs analyze` in terminal.
+
+## Checklist
+
+```
+- [ ] READ bearing://repo/{name}/context
+- [ ] query for the concept you want to understand
+- [ ] Review returned processes (execution flows)
+- [ ] context on key symbols for callers/callees
+- [ ] cypher for field data flow or custom call chains if context is not enough (READ schema first)
+- [ ] READ process resource for full execution traces
+- [ ] Read source files for implementation details
+```
+
+## Resources
+
+| Resource                                | What you get                                            |
+| --------------------------------------- | ------------------------------------------------------- |
+| `bearing://repo/{name}/context`        | Stats, staleness warning (~150 tokens)                  |
+| `bearing://repo/{name}/clusters`       | All functional areas with cohesion scores (~300 tokens) |
+| `bearing://repo/{name}/cluster/{name}` | Area members with file paths (~500 tokens)              |
+| `bearing://repo/{name}/process/{name}` | Step-by-step execution trace (~200 tokens)              |
+
+## Tools
+
+**query** — find execution flows related to a concept:
+
+```
+query({search_query: "payment processing"})
+→ Processes: CheckoutFlow, RefundFlow, WebhookHandler
+→ Symbols grouped by flow with file locations
+```
+
+**context** — 360-degree view of a symbol:
+
+```
+context({name: "validateUser"})
+→ Incoming calls: loginHandler, apiMiddleware
+→ Outgoing calls: checkToken, getUserById
+→ Processes: LoginFlow (step 2/5), TokenRefresh (step 1/3)
+```
+
+## Example: "How does payment processing work?"
+
+```
+1. READ bearing://repo/my-app/context       → 918 symbols, 45 processes
+2. query({search_query: "payment processing"})
+   → CheckoutFlow: processPayment → validateCard → chargeStripe
+   → RefundFlow: initiateRefund → calculateRefund → processRefund
+3. context({name: "processPayment"})
+   → Incoming: checkoutHandler, webhookHandler
+   → Outgoing: validateCard, chargeStripe, saveTransaction
+4. Read src/payments/processor.ts for implementation details
+```
