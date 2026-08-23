@@ -7,6 +7,8 @@ import { createComparePluginsAction } from "./actions/comparePluginsAction";
 import createBuildPackageAction from "./actions/buildPackageAction";
 import createInstallCollectionAction from "./actions/installCollectionAction";
 import { EventHorizonMainPage } from "./ui";
+import { ehLog, getLogFilePath } from "./core/logging/ehLog";
+import { EXTENSION_VERSION } from "./ui/version";
 
 /**
  * Symbol id of the Event Horizon glyph inside our SVG sprite.
@@ -69,6 +71,13 @@ function init(context: types.IExtensionContext): boolean {
   // page; we use it to inject the live `IExtensionApi` so our React
   // tree can call into Vortex (file pickers, dispatch, getState,
   // showDialog fallbacks, ...) without us hand-threading it everywhere.
+  // First line of every session. Establishes that the extension loaded at all,
+  // which build it is, and where the rest of the log is going.
+  ehLog("info", "extension.init", {
+    version: EXTENSION_VERSION,
+    logFile: getLogFilePath(),
+  });
+
   context.registerMainPage(
     EH_SIDEBAR_ICON,
     "Event Horizon",

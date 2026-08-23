@@ -1,16 +1,16 @@
 ---
 name: gitnexus-area-actions
-description: "Skill for the Actions area of vortex-mod-monitor. 67 symbols across 11 files."
+description: "Skill for the Actions area of vortex-mod-monitor. 78 symbols across 15 files."
 ---
 
 # Actions
 
-67 symbols | 11 files | Cohesion: 80%
+78 symbols | 15 files | Cohesion: 74%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how createBuildPackageAction, captureLoadOrder, getModArchivePath work
+- Understanding how createCompareModsAction, createComparePluginsAction, createExportModsAction work
 - Modifying actions-related functionality
 
 ## Key Files
@@ -19,68 +19,68 @@ description: "Skill for the Actions area of vortex-mod-monitor. 67 symbols acros
 |------|---------|
 | `src/actions/installCollectionAction.ts` | formatExternalDeps, formatInstallTarget, formatModBuckets, formatOrphans, formatPlanText (+24) |
 | `src/actions/buildPackageAction.ts` | BundleResolutionError, buildOutputFileName, createBuildPackageAction, formatBytes, formatError (+13) |
-| `src/ui/pages/build/engine.ts` | isNexusMod, resolveBundledArchives, readPluginsTxtIfPresent |
-| `src/actions/comparePluginsAction.ts` | action, action, createComparePluginsAction |
-| `src/utils/utils.ts` | openFile, openFolder, pickTxtFile |
+| `src/utils/utils.ts` | exportDiffReport, pickJsonFile, pickTxtFile, openFile, openFolder |
+| `src/ui/pages/build/engine.ts` | loadBuildContext, isNexusMod, resolveBundledArchives, readPluginsTxtIfPresent |
+| `src/actions/compareModsAction.ts` | createCompareModsAction, action, action |
+| `src/actions/comparePluginsAction.ts` | createComparePluginsAction, action, action |
+| `src/actions/exportModsAction.ts` | createExportModsAction, action, action |
 | `src/core/comparePlugins.ts` | exportPluginsDiffReport, getCurrentPluginsTxtPath, getLocalAppDataPath |
-| `src/actions/compareModsAction.ts` | action, action |
-| `src/actions/exportModsAction.ts` | action, action |
-| `src/index.ts` | init, installEventHorizonIconSet |
-| `src/core/loadOrder.ts` | captureLoadOrder |
+| `src/core/getModsListForProfile.ts` | getActiveGameId, getActiveProfileId, getActiveProfileIdFromState |
+| `src/ui/pages/dashboard/data.ts` | formatGameLabel, readSystemStatus |
 
 ## Entry Points
 
 Start here when exploring this area:
 
-- **`createBuildPackageAction`** (Function) — `src/actions/buildPackageAction.ts:107`
-- **`captureLoadOrder`** (Function) — `src/core/loadOrder.ts:40`
-- **`getModArchivePath`** (Function) — `src/core/archiveHashing.ts:79`
-- **`action`** (Function) — `src/actions/buildPackageAction.ts:305`
-- **`action`** (Function) — `src/actions/buildPackageAction.ts:313`
+- **`createCompareModsAction`** (Function) — `src/actions/compareModsAction.ts:21`
+- **`createComparePluginsAction`** (Function) — `src/actions/comparePluginsAction.ts:15`
+- **`createExportModsAction`** (Function) — `src/actions/exportModsAction.ts:17`
+- **`exportPluginsDiffReport`** (Function) — `src/core/comparePlugins.ts:186`
+- **`exportModsToJsonFile`** (Function) — `src/core/exportMods.ts:7`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `createBuildPackageAction` | Function | `src/actions/buildPackageAction.ts` | 107 |
+| `createCompareModsAction` | Function | `src/actions/compareModsAction.ts` | 21 |
+| `createComparePluginsAction` | Function | `src/actions/comparePluginsAction.ts` | 15 |
+| `createExportModsAction` | Function | `src/actions/exportModsAction.ts` | 17 |
+| `exportPluginsDiffReport` | Function | `src/core/comparePlugins.ts` | 186 |
+| `exportModsToJsonFile` | Function | `src/core/exportMods.ts` | 7 |
+| `getActiveGameId` | Function | `src/core/getModsListForProfile.ts` | 208 |
+| `getActiveProfileId` | Function | `src/core/getModsListForProfile.ts` | 213 |
+| `getActiveProfileIdFromState` | Function | `src/core/getModsListForProfile.ts` | 223 |
+| `beginOp` | Function | `src/core/logging/ehLog.ts` | 153 |
+| `getVortexUserDataPath` | Function | `src/core/paths.ts` | 38 |
+| `loadBuildContext` | Function | `src/ui/pages/build/engine.ts` | 237 |
+| `readSystemStatus` | Function | `src/ui/pages/dashboard/data.ts` | 133 |
+| `exportDiffReport` | Function | `src/utils/utils.ts` | 449 |
+| `pickJsonFile` | Function | `src/utils/utils.ts` | 47 |
+| `pickTxtFile` | Function | `src/utils/utils.ts` | 468 |
+| `createBuildPackageAction` | Function | `src/actions/buildPackageAction.ts` | 109 |
 | `captureLoadOrder` | Function | `src/core/loadOrder.ts` | 40 |
 | `getModArchivePath` | Function | `src/core/archiveHashing.ts` | 79 |
-| `action` | Function | `src/actions/buildPackageAction.ts` | 305 |
-| `action` | Function | `src/actions/buildPackageAction.ts` | 313 |
-| `action` | Function | `src/actions/compareModsAction.ts` | 83 |
-| `action` | Function | `src/actions/comparePluginsAction.ts` | 57 |
-| `action` | Function | `src/actions/exportModsAction.ts` | 97 |
-| `openFile` | Function | `src/utils/utils.ts` | 16 |
-| `action` | Function | `src/actions/buildPackageAction.ts` | 309 |
-| `action` | Function | `src/actions/compareModsAction.ts` | 89 |
-| `action` | Function | `src/actions/comparePluginsAction.ts` | 63 |
-| `action` | Function | `src/actions/exportModsAction.ts` | 101 |
-| `openFolder` | Function | `src/utils/utils.ts` | 13 |
-| `createComparePluginsAction` | Function | `src/actions/comparePluginsAction.ts` | 13 |
-| `exportPluginsDiffReport` | Function | `src/core/comparePlugins.ts` | 186 |
-| `pickTxtFile` | Function | `src/utils/utils.ts` | 468 |
-| `getCurrentPluginsTxtPath` | Function | `src/core/comparePlugins.ts` | 157 |
-| `BundleResolutionError` | Class | `src/actions/buildPackageAction.ts` | 563 |
-| `buildOutputFileName` | Function | `src/actions/buildPackageAction.ts` | 541 |
+| `action` | Function | `src/actions/buildPackageAction.ts` | 323 |
+| `action` | Function | `src/actions/buildPackageAction.ts` | 331 |
 
 ## Execution Flows
 
 | Flow | Type | Steps |
 |------|------|-------|
-| `Init → ToPluginMap` | cross_community | 5 |
-| `Init → NormalizePluginName` | cross_community | 5 |
-| `CreateBuildPackageAction → NormalizeRuleReference` | cross_community | 4 |
-| `CreateBuildPackageAction → RulesSortKey` | cross_community | 4 |
-| `Init → GetLocalAppDataPath` | cross_community | 4 |
-| `CreateBuildPackageAction → ValidateCuratorInput` | intra_community | 3 |
-| `CreateBuildPackageAction → NormalizeCollectionIds` | cross_community | 3 |
-| `CreateBuildPackageAction → NormalizeFomodSelections` | cross_community | 3 |
-| `CreateBuildPackageAction → PickInstallerChoices` | cross_community | 3 |
-| `CreateExportModsAction → GetModArchivePath` | cross_community | 3 |
+| `Init → GetVortexUserDataPath` | cross_community | 9 |
+| `CreateBuildPackageAction → GetVortexUserDataPath` | cross_community | 8 |
+| `Fail → GetVortexUserDataPath` | cross_community | 7 |
+| `Ok → GetVortexUserDataPath` | cross_community | 7 |
+| `Step → GetVortexUserDataPath` | cross_community | 7 |
+| `RouteOutlet → GetActiveGameId` | cross_community | 6 |
+| `RouteOutlet → GetActiveProfileIdFromState` | cross_community | 6 |
+| `RouteOutlet → ResolveProfileName` | cross_community | 6 |
+| `RouteOutlet → ResolveVortexVersion` | cross_community | 6 |
+| `Init → Truncate` | cross_community | 5 |
 
 ## How to Explore
 
-1. `context({name: "createBuildPackageAction"})` — see callers and callees
+1. `context({name: "createCompareModsAction"})` — see callers and callees
 2. `query({search_query: "actions"})` — find related execution flows
 3. Read key files listed above for implementation details
 4. `explain({target: "<file or symbol>"})` — persisted taint findings (source→sink data flows), when indexed with `--pdg`

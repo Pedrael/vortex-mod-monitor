@@ -46,11 +46,11 @@ Start here when exploring this area:
 | `fillDefaultConflictChoices` | Function | `src/ui/pages/install/state.ts` | 383 |
 | `fillDefaultOrphanChoices` | Function | `src/ui/pages/install/state.ts` | 399 |
 | `selectConflictResolutions` | Function | `src/ui/pages/install/state.ts` | 311 |
-| `DecisionsStep` | Function | `src/ui/pages/install/steps.tsx` | 989 |
+| `DecisionsStep` | Function | `src/ui/pages/install/steps.tsx` | 990 |
 | `pickModArchiveFile` | Function | `src/utils/utils.ts` | 91 |
 | `deleteReceipt` | Function | `src/core/installLedger.ts` | 382 |
 | `getReceiptPath` | Function | `src/core/installLedger.ts` | 124 |
-| `handleDelete` | Function | `src/ui/pages/install/steps.tsx` | 452 |
+| `handleDelete` | Function | `src/ui/pages/install/steps.tsx` | 453 |
 | `isAbortError` | Function | `src/ui/pages/install/installSession.ts` | 460 |
 | `getInstallSession` | Function | `src/ui/pages/install/installSession.ts` | 447 |
 | `InstallSession` | Class | `src/ui/pages/install/installSession.ts` | 79 |

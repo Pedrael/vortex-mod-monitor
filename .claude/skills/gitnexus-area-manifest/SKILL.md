@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-manifest
-description: "Skill for the Manifest area of vortex-mod-monitor. 132 symbols across 14 files."
+description: "Skill for the Manifest area of vortex-mod-monitor. 137 symbols across 17 files."
 ---
 
 # Manifest
 
-132 symbols | 14 files | Cohesion: 85%
+137 symbols | 17 files | Cohesion: 83%
 
 ## When to Use
 
@@ -25,8 +25,8 @@ description: "Skill for the Manifest area of vortex-mod-monitor. 132 symbols acr
 | `src/core/comparePlugins.ts` | comparePluginsEntries, comparePluginsTxtFiles, normalizePluginName, parsePluginsTxt, toPluginMap |
 | `src/core/manifest/sevenZip.ts` | extract, list, resolveSevenZip, add |
 | `src/core/manifest/stagingFileWalker.ts` | getDefaultHashConcurrency, hashStagingFiles, toPosix, walkStagingFolder |
+| `src/core/archiveHashing.ts` | enrichModsWithArchiveHashes, hashFileSha256, cleanup |
 | `src/core/resolver/enrichStagingSetHashes.ts` | collectExternalStagingSetHashTargets, enrichInstalledModsWithStagingSetHashes, normalizeName |
-| `src/utils/utils.ts` | compareMods, deepEqualStable, sortDeep |
 
 ## Entry Points
 
@@ -54,14 +54,14 @@ Start here when exploring this area:
 | `packageEhcoll` | Function | `src/core/manifest/packageZip.ts` | 128 |
 | `checkAbort` | Function | `src/core/manifest/packageZip.ts` | 138 |
 | `resolveSevenZip` | Function | `src/core/manifest/sevenZip.ts` | 118 |
-| `computeStagingSetHash` | Function | `src/core/manifest/stagingSetHash.ts` | 51 |
+| `enrichModsWithArchiveHashes` | Function | `src/core/archiveHashing.ts` | 141 |
+| `hashFileSha256` | Function | `src/core/archiveHashing.ts` | 34 |
+| `cleanup` | Function | `src/core/archiveHashing.ts` | 54 |
+| `verifyModInstall` | Function | `src/core/installer/verifyModInstall.ts` | 150 |
 | `captureStagingFiles` | Function | `src/core/manifest/captureStagingFiles.ts` | 87 |
 | `getDefaultHashConcurrency` | Function | `src/core/manifest/stagingFileWalker.ts` | 47 |
 | `hashStagingFiles` | Function | `src/core/manifest/stagingFileWalker.ts` | 165 |
-| `walkStagingFolder` | Function | `src/core/manifest/stagingFileWalker.ts` | 73 |
-| `enrichInstalledModsWithStagingSetHashes` | Function | `src/core/resolver/enrichStagingSetHashes.ts` | 117 |
-| `comparePluginsEntries` | Function | `src/core/comparePlugins.ts` | 80 |
-| `comparePluginsTxtFiles` | Function | `src/core/comparePlugins.ts` | 167 |
+| `pMap` | Function | `src/utils/pMap.ts` | 20 |
 
 ## Execution Flows
 
@@ -69,14 +69,14 @@ Start here when exploring this area:
 |------|------|-------|
 | `ExecuteDivergedChoice → SafeRmTempDir` | cross_community | 5 |
 | `ExecuteDivergedChoice → Extract` | cross_community | 5 |
-| `Init → ToPluginMap` | cross_community | 5 |
-| `Init → NormalizePluginName` | cross_community | 5 |
-| `CreateInstallCollectionAction → ReadEhcollError` | cross_community | 4 |
-| `CreateInstallCollectionAction → List` | cross_community | 4 |
 | `ExecuteDivergedChoice → ResolveSevenZip` | cross_community | 4 |
 | `BuildManifest → BuildModInstallSpec` | cross_community | 4 |
 | `BuildManifest → BuildModInstallState` | cross_community | 4 |
 | `BuildManifest → DeriveArchiveName` | cross_community | 4 |
+| `BuildManifest → ComputeStagingSetHash` | cross_community | 4 |
+| `BuildManifest → BuildUiAttributes` | cross_community | 4 |
+| `BuildManifest → SynthesizeRuleReference` | intra_community | 4 |
+| `CaptureStagingFiles → Cleanup` | intra_community | 4 |
 
 ## How to Explore
 

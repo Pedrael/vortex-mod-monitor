@@ -27,6 +27,7 @@ import type {
 import { DiffSectionBlock, Page } from "../components";
 import { ErrorBoundary, useErrorReporter, useErrorReporterFormatted } from "../errors";
 import type { EventHorizonRoute } from "../routes";
+import { getVortexUserDataPath } from "../../core/paths";
 
 // ---------------------------------------------------------------------------
 // Page types
@@ -83,7 +84,7 @@ function PluginDiffsView(): JSX.Element {
     let alive = true;
     void (async (): Promise<void> => {
       try {
-        const appData = util.getVortexPath("appData") as string;
+        const appData = getVortexUserDataPath() as string;
         const files = await listPluginDiffFiles(appData);
         if (!alive) return;
         if (files.length === 0) {

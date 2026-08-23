@@ -16,11 +16,14 @@ import {
 } from "../core/getModsListForProfile";
 
 import { openFolder, openFile } from "../utils/utils";
+import { getVortexUserDataPath } from "../core/paths";
+import { beginOp } from "../core/logging/ehLog";
 
 export default function createCompareModsAction(
   context: types.IExtensionContext,
 ): () => Promise<void> {
   return async () => {
+    const op = beginOp("compare-mods");
     try {
       const state = context.api.getState();
 
@@ -37,6 +40,9 @@ export default function createCompareModsAction(
       const referenceFilePath = await pickJsonFile(context.api);
 
       if (!referenceFilePath) {
+        // User cancelled the picker. Log it so a "nothing happened" report can
+        // be told apart from a silent failure.
+        op.ok({ cancelled: true });
         return;
       }
 
@@ -46,6 +52,13 @@ export default function createCompareModsAction(
       ) as ExportedModsSnapshot;
 
       const currentMods = getModsForProfile(state, gameId, profileId);
+      op.step("loaded", {
+        gameId,
+        profileId,
+        referenceFilePath,
+        referenceMods: referenceSnapshot?.mods?.length,
+        currentMods: currentMods.length,
+      });
 
       const enabledMods = currentMods.filter((m) => m.enabled);
       const disabledMods = currentMods.filter((m) => !m.enabled);
@@ -62,13 +75,21 @@ export default function createCompareModsAction(
 
       const diff = compareSnapshots(referenceSnapshot, currentSnapshot);
 
-      const appDataPath = util.getVortexPath("appData");
+      const appDataPath = getVortexUserDataPath();
       const outputDir = path.join(appDataPath, "event-horizon", "diffs");
 
       const diffPath = await exportDiffReport({
         diff,
         outputDir,
         gameId,
+      });
+
+      op.ok({
+        gameId,
+        onlyInReference: diff.summary.onlyInReference,
+        onlyInCurrent: diff.summary.onlyInCurrent,
+        changed: diff.summary.changed,
+        diffPath,
       });
 
       console.log(
@@ -101,6 +122,7 @@ export default function createCompareModsAction(
         message: `Compare failed: ${message}`,
       });
 
+      op.fail(error);
       console.error("[Vortex Event Horizon] Compare failed:", error);
     }
   };

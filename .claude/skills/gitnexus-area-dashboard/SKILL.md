@@ -26,7 +26,7 @@ Start here when exploring this area:
 
 - **`getInstallLedgerDir`** (Function) — `src/core/installLedger.ts:140`
 - **`listReceipts`** (Function) — `src/core/installLedger.ts:408`
-- **`loadDashboardData`** (Function) — `src/ui/pages/dashboard/data.ts:107`
+- **`loadDashboardData`** (Function) — `src/ui/pages/dashboard/data.ts:108`
 
 ## Key Symbols
 
@@ -34,10 +34,10 @@ Start here when exploring this area:
 |--------|------|------|------|
 | `getInstallLedgerDir` | Function | `src/core/installLedger.ts` | 140 |
 | `listReceipts` | Function | `src/core/installLedger.ts` | 408 |
-| `loadDashboardData` | Function | `src/ui/pages/dashboard/data.ts` | 107 |
-| `loadBuiltPackages` | Function | `src/ui/pages/dashboard/data.ts` | 253 |
-| `loadCuratorConfigs` | Function | `src/ui/pages/dashboard/data.ts` | 183 |
-| `loadReceipts` | Function | `src/ui/pages/dashboard/data.ts` | 155 |
+| `loadDashboardData` | Function | `src/ui/pages/dashboard/data.ts` | 108 |
+| `loadBuiltPackages` | Function | `src/ui/pages/dashboard/data.ts` | 254 |
+| `loadCuratorConfigs` | Function | `src/ui/pages/dashboard/data.ts` | 184 |
+| `loadReceipts` | Function | `src/ui/pages/dashboard/data.ts` | 156 |
 
 ## Execution Flows
 

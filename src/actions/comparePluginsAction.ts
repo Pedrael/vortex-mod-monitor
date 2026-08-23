@@ -10,11 +10,14 @@ import {
 } from "../core/comparePlugins";
 import { openFile, openFolder } from "../utils/utils";
 import { pickTxtFile } from "../utils/utils";
+import { getVortexUserDataPath } from "../core/paths";
+import { beginOp } from "../core/logging/ehLog";
 
 export function createComparePluginsAction(
   context: types.IExtensionContext,
 ): () => Promise<void> {
   return async () => {
+    const op = beginOp("compare-plugins");
     try {
       const state = context.api.getState();
 
@@ -36,7 +39,7 @@ export function createComparePluginsAction(
         currentFilePath,
       });
 
-      const appDataPath = util.getVortexPath("appData");
+      const appDataPath = getVortexUserDataPath();
       const outputDir = path.join(appDataPath, "event-horizon", "plugin-diffs");
 
       const diffPath = await exportPluginsDiffReport({
@@ -44,6 +47,8 @@ export function createComparePluginsAction(
         outputDir,
         gameId,
       });
+
+      op.ok({ diffPath });
 
       console.log(
         `[Vortex Event Horizon] Plugins diff | game=${gameId} | referenceOnly=${diff.summary.onlyInReference} | currentOnly=${diff.summary.onlyInCurrent} | enabledMismatch=${diff.summary.enabledMismatch} | positionChanged=${diff.summary.positionChanged}`,
@@ -75,6 +80,7 @@ export function createComparePluginsAction(
         message: `Plugins compare failed: ${message}`,
       });
 
+      op.fail(error);
       console.error("[Vortex Event Horizon] Plugins compare failed:", error);
     }
   };

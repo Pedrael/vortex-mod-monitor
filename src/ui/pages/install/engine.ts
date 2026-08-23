@@ -49,6 +49,7 @@ import {
 import type { SupportedGameId } from "../../../types/ehcoll";
 import type { InstallReceipt } from "../../../types/installLedger";
 import type { InstallPlan } from "../../../types/installPlan";
+import { getVortexUserDataPath } from "../../../core/paths";
 
 const SUPPORTED_GAME_IDS: ReadonlySet<string> = new Set<SupportedGameId>([
   "skyrimse",
@@ -144,7 +145,7 @@ export async function runLoadingPipeline(args: {
   // ── 3. read receipt ──────────────────────────────────────────────
   checkAbort();
   events.onPhase("reading-receipt");
-  const appDataPath = util.getVortexPath("appData");
+  const appDataPath = getVortexUserDataPath();
   const receipt = await readReceipt(appDataPath, manifest.package.id);
 
   // Stale-receipt detection (mirror H2 in installCollectionAction).

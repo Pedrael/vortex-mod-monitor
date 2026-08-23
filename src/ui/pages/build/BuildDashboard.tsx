@@ -57,6 +57,7 @@ import { Button, Card, Pill, ProgressRing, useToast } from "../../components";
 import { useApi } from "../../state";
 import type { BuildDraftPayload } from "./buildSession";
 import { getBuildSessionRegistry } from "./buildSessionRegistry";
+import { getVortexUserDataPath } from "../../../core/paths";
 
 // ───────────────────────────────────────────────────────────────────────
 // Public surface
@@ -131,7 +132,7 @@ export function BuildDashboard(props: BuildDashboardProps): JSX.Element {
       }
 
       const configDir = path.join(
-        util.getVortexPath("appData"),
+        getVortexUserDataPath(),
         "event-horizon",
         "collections",
         ".config",

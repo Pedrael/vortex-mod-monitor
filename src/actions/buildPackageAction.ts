@@ -89,6 +89,8 @@ import type {
   VortexDeploymentMethod,
 } from "../types/ehcoll";
 import { openFile, openFolder } from "../utils/utils";
+import { getVortexUserDataPath } from "../core/paths";
+import { beginOp } from "../core/logging/ehLog";
 
 const SUPPORTED_GAME_IDS: ReadonlySet<string> = new Set<SupportedGameId>([
   "skyrimse",
@@ -111,6 +113,7 @@ export default function createBuildPackageAction(
   return async () => {
     const hashingNotificationId = "vortex-event-horizon:hashing";
     let hashingNotificationShown = false;
+    const op = beginOp("build");
 
     try {
       const state = context.api.getState();
@@ -184,7 +187,7 @@ export default function createBuildPackageAction(
       // First build of a slug = fresh UUID + empty externalMods. Subsequent
       // builds reuse the same id, preserving release lineage.
       const slug = slugify(curator.name);
-      const appDataPath = util.getVortexPath("appData");
+      const appDataPath = getVortexUserDataPath();
       const outputDir = path.join(
         appDataPath,
         "event-horizon",
@@ -274,6 +277,21 @@ export default function createBuildPackageAction(
         outputPath,
       });
 
+      op.ok({
+        name: curator.name,
+        version: curator.version,
+        mods: manifest.mods.length,
+        rules: manifest.rules.length,
+        fileOverrides: manifest.fileOverrides.length,
+        plugins: manifest.plugins.order.length,
+        loadOrder: manifest.loadOrder.length,
+        userlistPlugins: manifest.userlist.plugins.length,
+        userlistGroups: manifest.userlist.groups.length,
+        bundled: result.bundledCount,
+        bytes: result.outputBytes,
+        outputPath,
+      });
+
       console.log(
         `[Vortex Event Horizon] Built collection package | ${curator.name} v${curator.version} | ` +
           `mods=${manifest.mods.length} | rules=${manifest.rules.length} | ` +
@@ -323,6 +341,7 @@ export default function createBuildPackageAction(
         message: `Build failed: ${message}`,
       });
 
+      op.fail(error);
       console.error("[Vortex Event Horizon] Build failed:", error);
     } finally {
       if (hashingNotificationShown) {

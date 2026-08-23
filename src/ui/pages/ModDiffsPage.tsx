@@ -41,6 +41,7 @@ import {
   useErrorReporterFormatted,
 } from "../errors";
 import type { EventHorizonRoute } from "../routes";
+import { getVortexUserDataPath } from "../../core/paths";
 
 // ---------------------------------------------------------------------------
 // Page state types
@@ -96,7 +97,7 @@ function ModDiffsView(): JSX.Element {
     let alive = true;
     void (async (): Promise<void> => {
       try {
-        const appData = util.getVortexPath("appData") as string;
+        const appData = getVortexUserDataPath() as string;
         const files = await listModDiffFiles(appData);
         if (!alive) return;
         if (files.length === 0) {

@@ -54,6 +54,7 @@ import {
   type CollectionConfig,
   type ExternalModConfigEntry,
 } from "../../../core/manifest/collectionConfig";
+import { getVortexUserDataPath } from "../../../core/paths";
 import type {
   SupportedGameId,
   VerificationLevel,
@@ -296,7 +297,7 @@ export async function loadBuildContext(
 
   const defaultName = opts?.nameOverride ?? "My Collection";
   const slug = slugify(defaultName);
-  const appDataPath = util.getVortexPath("appData");
+  const appDataPath = getVortexUserDataPath();
   const configDir = path.join(
     appDataPath,
     "event-horizon",
@@ -370,7 +371,7 @@ export async function runBuildPipeline(
 
   // ── 1. Apply form overrides on top of the loaded config ────────────────
   const slug = slugify(curator.name);
-  const appDataPath = util.getVortexPath("appData");
+  const appDataPath = getVortexUserDataPath();
   const outputDir = path.join(appDataPath, "event-horizon", "collections");
   const configDir = path.join(outputDir, ".config");
 

@@ -34,6 +34,7 @@ import {
 import type { CollectionConfig } from "../../../core/manifest/collectionConfig";
 import type { InstallReceipt } from "../../../types/installLedger";
 import type { SupportedGameId } from "../../../types/ehcoll";
+import { getVortexUserDataPath } from "../../../core/paths";
 
 // ===========================================================================
 // Public types
@@ -145,7 +146,7 @@ export function readSystemStatus(api: types.IExtensionApi): SystemStatus {
     profileId,
     profileName,
     vortexVersion,
-    appDataPath: util.getVortexPath("appData"),
+    appDataPath: getVortexUserDataPath(),
   };
 }
 

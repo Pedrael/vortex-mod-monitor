@@ -1,9 +1,9 @@
 ---
-name: gitnexus-area-cluster-49
-description: "Skill for the Cluster_49 area of vortex-mod-monitor. 7 symbols across 1 files."
+name: gitnexus-area-cluster-51
+description: "Skill for the Cluster_51 area of vortex-mod-monitor. 7 symbols across 1 files."
 ---
 
-# Cluster_49
+# Cluster_51
 
 7 symbols | 1 files | Cohesion: 78%
 
@@ -11,7 +11,7 @@ description: "Skill for the Cluster_49 area of vortex-mod-monitor. 7 symbols acr
 
 - Working with code in `src/`
 - Understanding how getDraftPath, loadDraft, saveDraft work
-- Modifying cluster_49-related functionality
+- Modifying cluster_51-related functionality
 
 ## Key Files
 
@@ -23,7 +23,7 @@ description: "Skill for the Cluster_49 area of vortex-mod-monitor. 7 symbols acr
 
 Start here when exploring this area:
 
-- **`getDraftPath`** (Function) — `src/core/draftStorage.ts:100`
+- **`getDraftPath`** (Function) — `src/core/draftStorage.ts:101`
 - **`loadDraft`** (Function) — `src/core/draftStorage.ts:142`
 - **`saveDraft`** (Function) — `src/core/draftStorage.ts:399`
 
@@ -31,7 +31,7 @@ Start here when exploring this area:
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `getDraftPath` | Function | `src/core/draftStorage.ts` | 100 |
+| `getDraftPath` | Function | `src/core/draftStorage.ts` | 101 |
 | `loadDraft` | Function | `src/core/draftStorage.ts` | 142 |
 | `saveDraft` | Function | `src/core/draftStorage.ts` | 399 |
 | `isPlainObject` | Function | `src/core/draftStorage.ts` | 470 |
@@ -56,6 +56,6 @@ Start here when exploring this area:
 ## How to Explore
 
 1. `context({name: "getDraftPath"})` — see callers and callees
-2. `query({search_query: "cluster_49"})` — find related execution flows
+2. `query({search_query: "cluster_51"})` — find related execution flows
 3. Read key files listed above for implementation details
 4. `explain({target: "<file or symbol>"})` — persisted taint findings (source→sink data flows), when indexed with `--pdg`

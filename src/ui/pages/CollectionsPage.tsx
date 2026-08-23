@@ -38,6 +38,7 @@ import { ErrorBoundary, useErrorReporter, useErrorReporterFormatted } from "../e
 import type { EventHorizonRoute } from "../routes";
 import { useApi } from "../state";
 import { EXTENSION_VERSION } from "../version";
+import { getVortexUserDataPath } from "../../core/paths";
 
 export interface CollectionsPageProps {
   onNavigate: (route: EventHorizonRoute) => void;
@@ -92,7 +93,7 @@ function CollectionsList(props: CollectionsPageProps): JSX.Element {
       setState({ kind: "loading" });
       try {
         const errors: Array<{ filename: string; message: string }> = [];
-        const appData = util.getVortexPath("appData");
+        const appData = getVortexUserDataPath();
         const receipts = await listReceipts(appData, (filename, err) => {
           errors.push({ filename, message: err.message });
         });
@@ -589,7 +590,7 @@ function ReceiptDetailModal(props: {
           );
         }
       }
-      const appData = util.getVortexPath("appData");
+      const appData = getVortexUserDataPath();
       await deleteReceipt(appData, receipt.packageId);
       onUninstalled();
     } catch (err) {

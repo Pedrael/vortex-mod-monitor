@@ -49,6 +49,7 @@ import {
 import { deleteReceipt } from "../../../core/installLedger";
 import { pickModArchiveFile } from "../../../utils/utils";
 import { useErrorReporter } from "../../errors";
+import { getVortexUserDataPath } from "../../../core/paths";
 import {
   LoadingPhase,
   PreviewBundle,
@@ -453,7 +454,7 @@ export function StaleReceiptStep(
   const handleDelete = async (): Promise<void> => {
     setBusy(true);
     try {
-      const appData = util.getVortexPath("appData");
+      const appData = getVortexUserDataPath();
       await deleteReceipt(appData, state.receipt.packageId);
       onResolved("delete");
     } catch (err) {

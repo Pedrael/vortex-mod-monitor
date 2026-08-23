@@ -33,17 +33,52 @@ function copyRecursiveSync(src, dest) {
   }
 }
 
+/**
+ * Delete files under `destRoot` that `srcRoot` no longer produces.
+ *
+ * Without this the deploy is copy-only, so a renamed or deleted module lingers
+ * in the plugin folder forever. That is how a May build left MO2 modules,
+ * pluginsTxt.js and ComingSoonPage.js on disk long after their sources were
+ * removed — inert, because nothing imported them, but indistinguishable from
+ * live code when you are trying to work out what is actually running.
+ *
+ * Only prunes inside the directories this script owns (dist/, assets/), never
+ * the plugin root, so anything Vortex or the user puts beside them survives.
+ */
+function pruneRemovedSync(srcRoot, destRoot) {
+  if (!fs.existsSync(destRoot)) return 0;
+  let pruned = 0;
+  for (const entry of fs.readdirSync(destRoot, { withFileTypes: true })) {
+    const destPath = path.join(destRoot, entry.name);
+    const srcPath = path.join(srcRoot, entry.name);
+    if (entry.isDirectory()) {
+      pruned += pruneRemovedSync(srcPath, destPath);
+      // Drop the directory too once whatever justified it is gone.
+      if (!fs.existsSync(srcPath) && fs.readdirSync(destPath).length === 0) {
+        fs.rmdirSync(destPath);
+      }
+    } else if (!fs.existsSync(srcPath)) {
+      fs.unlinkSync(destPath);
+      pruned += 1;
+    }
+  }
+  return pruned;
+}
+
 console.log(`Deploying to ${targetDir} ...`);
 
 copyRecursiveSync(sourceDistDir, path.join(targetDir, "dist"));
+const prunedDist = pruneRemovedSync(sourceDistDir, path.join(targetDir, "dist"));
 
 // Ship the static asset folder verbatim. Currently it carries the
 // monochrome sidebar icon SVG sprite (loaded via util.installIconSet);
 // future runtime assets (READMEs, fallback images, sample data, ...)
 // can drop in here without touching the deploy script.
+let prunedAssets = 0;
 const sourceAssetsDir = path.join(repoRoot, "assets");
 if (fs.existsSync(sourceAssetsDir)) {
   copyRecursiveSync(sourceAssetsDir, path.join(targetDir, "assets"));
+  prunedAssets = pruneRemovedSync(sourceAssetsDir, path.join(targetDir, "assets"));
 }
 
 for (const file of ["index.js", "info.json"]) {
@@ -56,4 +91,9 @@ for (const file of ["index.js", "info.json"]) {
   }
 }
 
-console.log("Done.");
+const prunedTotal = prunedDist + prunedAssets;
+console.log(
+  prunedTotal > 0
+    ? `Done. Pruned ${prunedTotal} stale file(s) whose source no longer exists.`
+    : "Done.",
+);

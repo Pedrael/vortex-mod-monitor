@@ -38,6 +38,7 @@ import * as fsp from "fs/promises";
 import * as path from "path";
 
 import { util } from "@nexusmods/vortex-api";
+import { getVortexUserDataPath } from "./paths";
 
 /**
  * Wire schema version — bump on breaking shape changes; older drafts
@@ -106,7 +107,6 @@ export function getDraftPath(
   const safeKey = sanitizeKey(key);
   return path.join(
     appDataPath,
-    "Vortex",
     "event-horizon",
     "drafts",
     `${scope}-${safeKey}.json`,
@@ -120,7 +120,7 @@ export function getDraftPath(
  * clean up old files without re-deriving the layout in three places.
  */
 export function getDraftsRoot(appDataPath: string): string {
-  return path.join(appDataPath, "Vortex", "event-horizon", "drafts");
+  return path.join(appDataPath, "event-horizon", "drafts");
 }
 
 /**
@@ -456,7 +456,7 @@ export async function deleteDraft(
  * for the same one-liner.
  */
 export function getAppDataPath(): string {
-  return util.getVortexPath("appData");
+  return getVortexUserDataPath();
 }
 
 // ─── Internals ────────────────────────────────────────────────────────

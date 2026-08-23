@@ -96,6 +96,8 @@ import type {
   PlanSummary,
 } from "../types/installPlan";
 import { pickEhcollFile, pickModArchiveFile } from "../utils/utils";
+import { getVortexUserDataPath } from "../core/paths";
+import { beginOp } from "../core/logging/ehLog";
 
 const SUPPORTED_GAME_IDS: ReadonlySet<string> = new Set<SupportedGameId>([
   "skyrimse",
@@ -111,11 +113,16 @@ export default function createInstallCollectionAction(
   return async () => {
     const hashingNotificationId = "vortex-event-horizon:install-hashing";
     let hashingNotificationShown = false;
+    const op = beginOp("install");
 
     try {
       // ── 1. file pick ─────────────────────────────────────────────────
       const zipPath = await pickEhcollFile();
-      if (zipPath === undefined) return; // user cancelled
+      if (zipPath === undefined) {
+        op.ok({ cancelled: "file-picker" });
+        return; // user cancelled
+      }
+      op.step("package-picked", { zipPath });
 
       // ── 2. read .ehcoll ──────────────────────────────────────────────
       const ehcoll = await readEhcoll(zipPath);
@@ -153,7 +160,7 @@ export default function createInstallCollectionAction(
         resolveProfileName(state, activeProfileId) ?? activeProfileId;
 
       // ── 4. read receipt (single source of truth for lineage) ─────────
-      const appDataPath = util.getVortexPath("appData");
+      const appDataPath = getVortexUserDataPath();
       let receipt = await readReceipt(appDataPath, manifest.package.id);
 
       // H2: a receipt may reference a Vortex profile the user has
@@ -261,8 +268,13 @@ export default function createInstallCollectionAction(
       // aborts the install before the driver runs.
       const decisions = await collectUserDecisions(context.api, plan);
       if (decisions === undefined) {
+        // Cancelled AFTER the plan was resolved but BEFORE anything was
+        // written. Distinct from cancelling at the picker, and worth being
+        // able to tell apart when a run "did nothing".
+        op.ok({ cancelled: "decisions" });
         return; // user cancelled mid-picker
       }
+      op.step("decisions-confirmed");
 
       // ── 11. run install ──────────────────────────────────────────────
       await runInstallFlow({
@@ -273,12 +285,15 @@ export default function createInstallCollectionAction(
         appDataPath,
         decisions,
       });
+
+      op.ok({ zipPath });
     } catch (error) {
       const message = formatError(error);
       context.api.sendNotification?.({
         type: "error",
         message: `Install preview failed: ${message}`,
       });
+      op.fail(error);
       console.error("[Vortex Event Horizon] Install preview failed:", error);
     } finally {
       if (hashingNotificationShown) {
