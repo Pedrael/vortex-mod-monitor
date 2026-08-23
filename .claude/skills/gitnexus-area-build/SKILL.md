@@ -52,7 +52,7 @@ Start here when exploring this area:
 | `collectDistinctModTypes` | Function | `src/core/deploymentManifest.ts` | 53 |
 | `reconcileExternalModsConfig` | Function | `src/core/manifest/collectionConfig.ts` | 240 |
 | `toBuildManifestExternalMods` | Function | `src/core/manifest/collectionConfig.ts` | 281 |
-| `runBuildPipeline` | Function | `src/ui/pages/build/engine.ts` | 363 |
+| `runBuildPipeline` | Function | `src/ui/pages/build/engine.ts` | 384 |
 | `registry` | Function | `src/ui/pages/build/BuildDashboard.tsx` | 91 |
 | `getBuildSessionRegistry` | Function | `src/ui/pages/build/buildSessionRegistry.ts` | 292 |
 | `getDraftsRoot` | Function | `src/core/draftStorage.ts` | 121 |
@@ -60,8 +60,8 @@ Start here when exploring this area:
 | `BuildDashboard` | Function | `src/ui/pages/build/BuildDashboard.tsx` | 88 |
 | `handleOpenDraft` | Function | `src/ui/pages/build/BuildDashboard.tsx` | 179 |
 | `Pill` | Function | `src/ui/components/Pill.tsx` | 19 |
-| `validateCuratorInput` | Function | `src/ui/pages/build/engine.ts` | 627 |
-| `onProgress` | Function | `src/ui/pages/build/engine.ts` | 286 |
+| `validateCuratorInput` | Function | `src/ui/pages/build/engine.ts` | 648 |
+| `onProgress` | Function | `src/ui/pages/build/engine.ts` | 294 |
 
 ## Execution Flows
 

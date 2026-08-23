@@ -281,10 +281,30 @@ export async function loadBuildContext(
     done: 0,
     total: rawMods.length,
   });
+  op.step("hashing-start", { archives: rawMods.length });
+  // Hashing ~900 archives is minutes of disk-bound work, and until this logged
+  // anything the operation looked indistinguishable from a hang: `.start` with
+  // no `.ok` and nothing in between. Throttled so a large profile adds a
+  // bounded number of lines rather than one per mod.
+  const hashLogEvery = Math.max(25, Math.ceil(rawMods.length / 20));
+  let lastLogged = 0;
+  const hashStartedAt = Date.now();
   const mods = await enrichModsWithArchiveHashes(state, gameId, rawMods, {
     concurrency: 4,
     signal,
     onProgress: (done, total, mod) => {
+      if (done - lastLogged >= hashLogEvery || done === total) {
+        lastLogged = done;
+        const elapsed = Date.now() - hashStartedAt;
+        op.step("hashing-progress", {
+          done,
+          total,
+          ms: elapsed,
+          // Rough remaining estimate, so a slow run can be told apart from a
+          // stalled one without waiting for it to finish.
+          etaMs: done > 0 ? Math.round((elapsed / done) * (total - done)) : undefined,
+        });
+      }
       onProgress?.({
         phase: "hashing-mods",
         message: `Hashing mod archives (${done} / ${total})...`,
@@ -294,6 +314,7 @@ export async function loadBuildContext(
       });
     },
   });
+  op.step("hashing-done", { ms: Date.now() - hashStartedAt });
 
   const externalMods = mods.filter((m) => !isNexusMod(m));
 
