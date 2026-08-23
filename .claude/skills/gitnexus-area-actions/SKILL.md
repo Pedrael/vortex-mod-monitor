@@ -10,7 +10,7 @@ description: "Skill for the Actions area of vortex-mod-monitor. 67 symbols acros
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how createBuildPackageAction, toBuildManifestExternalMods, getModArchivePath work
+- Understanding how createBuildPackageAction, captureLoadOrder, getModArchivePath work
 - Modifying actions-related functionality
 
 ## Key Files
@@ -26,14 +26,14 @@ description: "Skill for the Actions area of vortex-mod-monitor. 67 symbols acros
 | `src/actions/compareModsAction.ts` | action, action |
 | `src/actions/exportModsAction.ts` | action, action |
 | `src/index.ts` | init, installEventHorizonIconSet |
-| `src/core/manifest/collectionConfig.ts` | toBuildManifestExternalMods |
+| `src/core/loadOrder.ts` | captureLoadOrder |
 
 ## Entry Points
 
 Start here when exploring this area:
 
 - **`createBuildPackageAction`** (Function) — `src/actions/buildPackageAction.ts:107`
-- **`toBuildManifestExternalMods`** (Function) — `src/core/manifest/collectionConfig.ts:281`
+- **`captureLoadOrder`** (Function) — `src/core/loadOrder.ts:40`
 - **`getModArchivePath`** (Function) — `src/core/archiveHashing.ts:79`
 - **`action`** (Function) — `src/actions/buildPackageAction.ts:305`
 - **`action`** (Function) — `src/actions/buildPackageAction.ts:313`
@@ -43,7 +43,7 @@ Start here when exploring this area:
 | Symbol | Type | File | Line |
 |--------|------|------|------|
 | `createBuildPackageAction` | Function | `src/actions/buildPackageAction.ts` | 107 |
-| `toBuildManifestExternalMods` | Function | `src/core/manifest/collectionConfig.ts` | 281 |
+| `captureLoadOrder` | Function | `src/core/loadOrder.ts` | 40 |
 | `getModArchivePath` | Function | `src/core/archiveHashing.ts` | 79 |
 | `action` | Function | `src/actions/buildPackageAction.ts` | 305 |
 | `action` | Function | `src/actions/buildPackageAction.ts` | 313 |

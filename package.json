@@ -5,11 +5,13 @@
   "type": "commonjs",
   "private": true,
   "scripts": {
+    "prebuild": "node scripts/check-version-sync.mjs",
     "build": "tsc",
     "build:vortex": "npm run build && npm run deploy:vortex",
     "deploy:vortex": "node scripts/deploy-to-vortex.js",
     "watch": "tsc -w",
     "typecheck": "tsc --noEmit",
+    "smoke": "node scripts/smoke-extension.cjs",
     "test": "vitest run",
     "gitnexus:setup": "bash scripts/bearing-setup.sh",
     "gitnexus:refresh": "bash scripts/run-with-project-tmp.sh gitnexus analyze --embeddings 0 --skills",

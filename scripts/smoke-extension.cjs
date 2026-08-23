@@ -1,0 +1,131 @@
+/**
+ * Load the BUILT extension with Vortex stubbed out and run `init()`.
+ *
+ * Why: `@nexusmods/vortex-api` is types-only — it has no runtime `main`, and the
+ * real module is injected by Vortex's own loader (`extensionRequire.ts`). So
+ * nothing outside Vortex ever executes this code, and a module-level throw or a
+ * bad `registerAction` argument is invisible until the extension is loaded in the
+ * app. This stubs the host just enough to answer one question: does it load and
+ * wire itself up?
+ *
+ * WHAT THIS DOES NOT DO: it does not test behaviour. Every Vortex call is a stub,
+ * so a green run means "the extension loads and registers what it claims", NOT
+ * "export/build/install work". Real determinism coverage is still outstanding.
+ *
+ * Run after a build:  npm run smoke
+ */
+const Module = require("module");
+const path = require("path");
+
+const registered = { mainPages: [], actions: [] };
+const iconSets = [];
+
+const vortexApiStub = {
+  util: {
+    installIconSet: (name, p) => {
+      iconSets.push({ name, path: p });
+      return Promise.resolve();
+    },
+    getVortexPath: (k) => path.join(process.env.TEMP || "/tmp", "vortex-stub", k),
+    getManifest: () => ({}),
+    removeMods: () => Promise.resolve(),
+    SevenZip: function SevenZip() {},
+  },
+  selectors: {
+    activeGameId: () => "skyrimse",
+    installPathForGame: () => "/stub/install",
+    downloadPathForGame: () => "/stub/downloads",
+  },
+  actions: {
+    setModEnabled: () => ({ type: "STUB" }),
+    setLoadOrder: () => ({ type: "STUB" }),
+    addModRule: () => ({ type: "STUB" }),
+    removeModRule: () => ({ type: "STUB" }),
+    setNextProfile: () => ({ type: "STUB" }),
+    setProfile: () => ({ type: "STUB" }),
+  },
+  types: {},
+  log: () => {},
+};
+
+const electronStub = {
+  remote: undefined,
+  dialog: { showOpenDialog: () => Promise.resolve({ canceled: true, filePaths: [] }) },
+  clipboard: { writeText: () => {} },
+};
+
+const origResolve = Module._resolveFilename;
+Module._resolveFilename = function (request, ...rest) {
+  if (request === "@nexusmods/vortex-api" || request === "vortex-api" || request === "electron") {
+    return request; // handled by the load hook below
+  }
+  return origResolve.call(this, request, ...rest);
+};
+const origLoad = Module._load;
+Module._load = function (request, ...rest) {
+  if (request === "@nexusmods/vortex-api" || request === "vortex-api") return vortexApiStub;
+  if (request === "electron") return electronStub;
+  return origLoad.call(this, request, ...rest);
+};
+
+let mod;
+try {
+  mod = require(path.resolve("dist/index.js"));
+} catch (err) {
+  console.error("FAIL: module-level crash while loading dist/index.js");
+  console.error("  " + (err && err.stack ? err.stack.split("\n").slice(0, 6).join("\n  ") : err));
+  process.exit(1);
+}
+
+const init = typeof mod === "function" ? mod : mod.default;
+console.log("entry export     :", typeof init === "function" ? "function (ok)" : "NOT A FUNCTION");
+if (typeof init !== "function") process.exit(1);
+
+const context = {
+  api: {
+    getState: () => ({ settings: { profiles: { activeProfileId: "p1" } }, persistent: {}, session: {} }),
+    store: { dispatch: () => {}, getState: () => ({}) },
+    sendNotification: () => {},
+    showDialog: () => Promise.resolve({ action: "Cancel", input: {} }),
+    events: { on: () => {}, emit: () => {} },
+select: () => {},
+  },
+  registerMainPage: (icon, title, comp, opts) => registered.mainPages.push({ icon, title, opts }),
+  registerAction: (group, pos, icon, opts, title) => registered.actions.push({ group, pos, title }),
+  registerReducer: () => {},
+  registerSettings: () => {},
+  once: () => {},
+};
+
+let ret;
+try {
+  ret = init(context);
+} catch (err) {
+  console.error("FAIL: init() threw");
+  console.error("  " + (err && err.stack ? err.stack.split("\n").slice(0, 8).join("\n  ") : err));
+  process.exit(1);
+}
+
+console.log("init() returned  :", ret);
+console.log("icon sets        :", iconSets.map((i) => i.name).join(", ") || "(none)");
+console.log("main pages       :", registered.mainPages.length);
+for (const p of registered.mainPages) {
+  console.log(`   icon=${p.icon} title=${JSON.stringify(p.title)} group=${p.opts && p.opts.group} priority=${p.opts && p.opts.priority} id=${p.opts && p.opts.id}`);
+}
+console.log("actions          :", registered.actions.length);
+for (const a of registered.actions) {
+  console.log(`   ${a.group.padEnd(24)} ${String(a.pos).padEnd(4)} ${a.title}`);
+}
+
+// sanity assertions
+let bad = 0;
+if (ret !== true) { console.error("WARN: init() did not return true"); bad++; }
+if (registered.mainPages.length !== 1) { console.error("WARN: expected exactly 1 main page"); bad++; }
+if (registered.actions.length !== 5) { console.error("WARN: expected 5 actions"); bad++; }
+const dupes = new Map();
+for (const a of registered.actions) {
+  const key = a.group + "#" + a.pos;
+  if (dupes.has(key)) { console.error(`WARN: duplicate toolbar slot ${key}`); bad++; }
+  dupes.set(key, true);
+}
+console.log(bad === 0 ? "\nSMOKE OK" : `\nSMOKE finished with ${bad} warning(s)`);

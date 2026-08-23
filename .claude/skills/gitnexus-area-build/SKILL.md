@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-build
-description: "Skill for the Build area of vortex-mod-monitor. 97 symbols across 11 files."
+description: "Skill for the Build area of vortex-mod-monitor. 97 symbols across 10 files."
 ---
 
 # Build
 
-97 symbols | 11 files | Cohesion: 70%
+97 symbols | 10 files | Cohesion: 70%
 
 ## When to Use
 
@@ -17,16 +17,16 @@ description: "Skill for the Build area of vortex-mod-monitor. 97 symbols across 
 
 | File | Symbols |
 |------|---------|
-| `src/ui/pages/build/BuildPage.tsx` | handle, handleDiscardDraft, handleChange, handleDismissDraftBanner, DraftRestoredBanner (+19) |
+| `src/ui/pages/build/BuildPage.tsx` | handle, handleDiscardDraft, handleChange, handleDismissDraftBanner, session (+19) |
 | `src/ui/pages/build/buildSession.ts` | queuePosition, isAbortError, _runBuild, begin, discardDraft (+15) |
-| `src/ui/pages/build/buildSessionRegistry.ts` | notifyStateChanged, emit, ensure, isAnyBusy, makeHooks (+13) |
-| `src/ui/pages/build/BuildDashboard.tsx` | handleDiscardDraft, handleUpdatePublished, refresh, bumpPatch, BuildDashboard (+9) |
+| `src/ui/pages/build/buildSessionRegistry.ts` | BuildSessionRegistry, getBuildSessionRegistry, ensure, get, makeHooks (+13) |
+| `src/ui/pages/build/BuildDashboard.tsx` | handleDiscardDraft, handleUpdatePublished, refresh, bumpPatch, registry (+9) |
 | `src/ui/pages/build/engine.ts` | BundleResolutionError, buildOutputFileName, resolveDeploymentMethod, resolveGameVersion, resolveVortexVersion (+5) |
 | `src/core/draftStorage.ts` | deleteDraft, getAppDataPath, getDraftsRoot, listDrafts |
 | `src/core/deploymentManifest.ts` | captureDeploymentManifests, collectDistinctModTypes, normalizeManifest |
-| `src/core/loadOrder.ts` | captureLoadOrder |
-| `src/core/manifest/collectionConfig.ts` | reconcileExternalModsConfig |
+| `src/core/manifest/collectionConfig.ts` | reconcileExternalModsConfig, toBuildManifestExternalMods |
 | `src/ui/components/Pill.tsx` | Pill |
+| `src/ui/pages/install/steps.tsx` | SectionHeader |
 
 ## Entry Points
 
@@ -50,15 +50,15 @@ Start here when exploring this area:
 | `refresh` | Function | `src/ui/pages/build/BuildDashboard.tsx` | 101 |
 | `captureDeploymentManifests` | Function | `src/core/deploymentManifest.ts` | 133 |
 | `collectDistinctModTypes` | Function | `src/core/deploymentManifest.ts` | 53 |
-| `captureLoadOrder` | Function | `src/core/loadOrder.ts` | 40 |
 | `reconcileExternalModsConfig` | Function | `src/core/manifest/collectionConfig.ts` | 240 |
+| `toBuildManifestExternalMods` | Function | `src/core/manifest/collectionConfig.ts` | 281 |
 | `runBuildPipeline` | Function | `src/ui/pages/build/engine.ts` | 350 |
+| `registry` | Function | `src/ui/pages/build/BuildDashboard.tsx` | 90 |
+| `getBuildSessionRegistry` | Function | `src/ui/pages/build/buildSessionRegistry.ts` | 292 |
 | `getDraftsRoot` | Function | `src/core/draftStorage.ts` | 121 |
 | `listDrafts` | Function | `src/core/draftStorage.ts` | 162 |
 | `BuildDashboard` | Function | `src/ui/pages/build/BuildDashboard.tsx` | 87 |
 | `handleOpenDraft` | Function | `src/ui/pages/build/BuildDashboard.tsx` | 178 |
-| `registry` | Function | `src/ui/pages/build/BuildDashboard.tsx` | 90 |
-| `getBuildSessionRegistry` | Function | `src/ui/pages/build/buildSessionRegistry.ts` | 292 |
 | `Pill` | Function | `src/ui/components/Pill.tsx` | 19 |
 | `validateCuratorInput` | Function | `src/ui/pages/build/engine.ts` | 593 |
 | `onProgress` | Function | `src/ui/pages/build/engine.ts` | 283 |
