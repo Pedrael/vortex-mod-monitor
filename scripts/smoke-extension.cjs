@@ -48,6 +48,35 @@ const vortexApiStub = {
   log: () => {},
 };
 
+/**
+ * Vortex resolves `react` (and other host packages) for extension code through
+ * `webpackRequireHack` in extensionRequire.ts, pulling them out of its own bundle
+ * — NOT from a node_modules beside the extension. A deployed plugin folder has no
+ * node_modules at all, so stub react here too. Without this the script only works
+ * from the repo, which is the copy that matters least.
+ *
+ * init() registers; it does not render. A shallow stub is enough.
+ */
+const reactStub = new Proxy(
+  {
+    createElement: () => null,
+    Fragment: "Fragment",
+    createContext: () => ({ Provider: null, Consumer: null }),
+    memo: (c) => c,
+    forwardRef: (c) => c,
+    Component: function Component() {},
+    PureComponent: function PureComponent() {},
+    useState: (v) => [typeof v === "function" ? v() : v, () => {}],
+    useEffect: () => {},
+    useRef: (v) => ({ current: v }),
+    useMemo: (f) => f(),
+    useCallback: (f) => f,
+    useContext: () => ({}),
+    useReducer: (_r, i) => [i, () => {}],
+  },
+  { get: (t, k) => (k in t ? t[k] : () => {}) },
+);
+
 const electronStub = {
   remote: undefined,
   dialog: { showOpenDialog: () => Promise.resolve({ canceled: true, filePaths: [] }) },
@@ -56,7 +85,13 @@ const electronStub = {
 
 const origResolve = Module._resolveFilename;
 Module._resolveFilename = function (request, ...rest) {
-  if (request === "@nexusmods/vortex-api" || request === "vortex-api" || request === "electron") {
+  if (
+    request === "@nexusmods/vortex-api" ||
+    request === "vortex-api" ||
+    request === "electron" ||
+    request === "react" ||
+    request === "react-dom"
+  ) {
     return request; // handled by the load hook below
   }
   return origResolve.call(this, request, ...rest);
@@ -65,12 +100,13 @@ const origLoad = Module._load;
 Module._load = function (request, ...rest) {
   if (request === "@nexusmods/vortex-api" || request === "vortex-api") return vortexApiStub;
   if (request === "electron") return electronStub;
+  if (request === "react" || request === "react-dom") return reactStub;
   return origLoad.call(this, request, ...rest);
 };
 
 let mod;
 try {
-  mod = require(path.resolve("dist/index.js"));
+  mod = require(path.resolve(process.argv[2] || ".", "dist/index.js"));
 } catch (err) {
   console.error("FAIL: module-level crash while loading dist/index.js");
   console.error("  " + (err && err.stack ? err.stack.split("\n").slice(0, 6).join("\n  ") : err));
