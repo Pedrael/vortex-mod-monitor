@@ -336,11 +336,30 @@ export type ListPublishedCollectionsOptions = {
 };
 
 /**
- * Enumerate every `<configDir>/*.json` and return their summaries.
+ * Enumerate the collections that have actually been BUILT at least once.
+ *
+ * ─── WHY THE lastBuiltAt FILTER ───────────────────────────────────────
+ * A config file is NOT evidence of a published collection.
+ * `loadOrCreateCollectionConfig` writes one the moment the curator opens the
+ * Build page — it has to, so the form can carry a stable `packageId` and the
+ * external-mod overrides before anything is built.
+ *
+ * This function used to report every `*.json` it found, so merely visiting the
+ * Build page conjured a "1 published" collection the curator had never made.
+ * The dashboard then rendered it as PUBLISHED with a footer reading "never
+ * built" — a card contradicting itself — and offered an Update button for a
+ * package that did not exist.
+ *
+ * `lastBuiltAt` is written only by `runBuildPipeline` after a build succeeds
+ * (ui/pages/build/engine.ts), so its presence is the honest test for "this was
+ * really published". Configs without it are skipped: they are scratch state for
+ * a build that has not happened.
+ * ──────────────────────────────────────────────────────────────────────
  *
  * Returns an empty array when:
  *   - the configDir doesn't exist (curator never built anything),
- *   - the directory is empty / contains no JSON files.
+ *   - the directory is empty / contains no JSON files,
+ *   - every config present belongs to a collection that was never built.
  *
  * Files with malformed JSON or invalid schema are skipped (and
  * surfaced via `onError` if provided). Unlike {@link
@@ -384,6 +403,11 @@ export async function listPublishedCollections(
       config = parseAndValidate(raw, configPath);
     } catch (err) {
       opts?.onError?.(filename, err);
+      continue;
+    }
+    if (config.lastBuiltAt === undefined) {
+      // Never built — scratch config from opening the Build page, not a
+      // published collection. See the note above.
       continue;
     }
     out.push({

@@ -1,7 +1,7 @@
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **vortex-mod-monitor** (4922 symbols, 10736 relationships, 315 execution flows).
+This project is indexed by GitNexus as **vortex-mod-monitor** (4926 symbols, 10753 relationships, 315 execution flows).
 
 > Index stale? Run `node .gitnexus/run.cjs analyze --index-only` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? Bootstrap with `npx`, `bunx`, or `pnpm dlx` — e.g. `bunx gitnexus@latest analyze` (npm 11 npx crash; #1939).
 
@@ -59,7 +59,7 @@ This project is indexed by GitNexus as **vortex-mod-monitor** (4922 symbols, 107
 | Work in the Cluster_57 area (7 symbols) | `.claude/skills/gitnexus-area-cluster-57/SKILL.md` |
 | Work in the Dashboard area (7 symbols) | `.claude/skills/gitnexus-area-dashboard/SKILL.md` |
 | Work in the Cluster_36 area (5 symbols) | `.claude/skills/gitnexus-area-cluster-36/SKILL.md` |
-| Work in the Cluster_79 area (4 symbols) | `.claude/skills/gitnexus-area-cluster-79/SKILL.md` |
+| Work in the Cluster_80 area (4 symbols) | `.claude/skills/gitnexus-area-cluster-80/SKILL.md` |
 
 <!-- gitnexus:end -->
 
