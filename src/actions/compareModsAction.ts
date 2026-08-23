@@ -1,6 +1,6 @@
 import * as fs from "fs/promises";
 import * as path from "path";
-import { util, type types } from "vortex-api";
+import { util, type types } from "@nexusmods/vortex-api";
 
 import {
   compareSnapshots,

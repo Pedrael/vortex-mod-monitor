@@ -37,7 +37,7 @@ import { randomUUID } from "crypto";
 import * as fsp from "fs/promises";
 import * as path from "path";
 
-import { util } from "vortex-api";
+import { util } from "@nexusmods/vortex-api";
 
 /**
  * Wire schema version — bump on breaking shape changes; older drafts

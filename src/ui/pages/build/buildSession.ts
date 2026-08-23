@@ -71,7 +71,7 @@
  *     dashboard repopulating the registry on next open.
  */
 
-import type { types } from "vortex-api";
+import type { types } from "@nexusmods/vortex-api";
 
 import { AbortError } from "../../../core/archiveHashing";
 import {

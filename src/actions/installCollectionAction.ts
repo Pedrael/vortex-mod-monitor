@@ -44,8 +44,8 @@
  * ──────────────────────────────────────────────────────────────────────
  */
 
-import { util } from "vortex-api";
-import type { types } from "vortex-api";
+import { util } from "@nexusmods/vortex-api";
+import type { types } from "@nexusmods/vortex-api";
 
 import { enrichModsWithArchiveHashes } from "../core/archiveHashing";
 import {

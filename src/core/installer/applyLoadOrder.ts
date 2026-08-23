@@ -53,7 +53,7 @@
  * ──────────────────────────────────────────────────────────────────────
  */
 
-import { actions, types } from "vortex-api";
+import { actions, types } from "@nexusmods/vortex-api";
 
 import type { EhcollLoadOrderEntry } from "../../types/ehcoll";
 import { AbortError } from "../../utils/abortError";
@@ -115,7 +115,7 @@ export function applyLoadOrder(
 
   // Vortex's modern `setLoadOrder` action takes an ARRAY in
   // load-order order. The ILoadOrderEntry_2 shape (per
-  // node_modules/vortex-api/lib/api.d.ts) is:
+  // node_modules/@nexusmods/vortex-api/lib/api.d.ts) is:
   //   { id: string, enabled: boolean, name: string,
   //     locked?: LockedState, modId?: string }
   // We populate `id` AND `modId` with the vortex modId — most games

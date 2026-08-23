@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-install
-description: "Skill for the Install area of vortex-mod-monitor. 42 symbols across 5 files."
+description: "Skill for the Install area of vortex-mod-monitor. 48 symbols across 6 files."
 ---
 
 # Install
 
-42 symbols | 5 files | Cohesion: 76%
+48 symbols | 6 files | Cohesion: 74%
 
 ## When to Use
 
@@ -18,9 +18,10 @@ description: "Skill for the Install area of vortex-mod-monitor. 42 symbols acros
 | File | Symbols |
 |------|---------|
 | `src/ui/pages/install/installSession.ts` | onHashProgress, onPhase, onHashProgress, onPhase, onProgress (+16) |
-| `src/ui/pages/install/steps.tsx` | DecisionsStep, SectionHeader, BucketList, IntegritySection, RulesAndUserlistSection (+4) |
+| `src/ui/pages/install/steps.tsx` | DecisionsStep, ConflictRow, handlePickFile, OrphanRow, RadioOption (+9) |
 | `src/ui/pages/install/state.ts` | wizardReducer, canProceedFromDecisions, defaultConflictChoice, defaultOrphanChoice, fillDefaultConflictChoices (+2) |
 | `src/core/installLedger.ts` | InstallLedgerError, deleteReceipt, getReceiptPath, isUuid |
+| `src/utils/utils.ts` | pickModArchiveFile |
 | `src/ui/pages/install/InstallPage.tsx` | session |
 
 ## Entry Points
@@ -46,6 +47,7 @@ Start here when exploring this area:
 | `fillDefaultOrphanChoices` | Function | `src/ui/pages/install/state.ts` | 399 |
 | `selectConflictResolutions` | Function | `src/ui/pages/install/state.ts` | 311 |
 | `DecisionsStep` | Function | `src/ui/pages/install/steps.tsx` | 989 |
+| `pickModArchiveFile` | Function | `src/utils/utils.ts` | 87 |
 | `deleteReceipt` | Function | `src/core/installLedger.ts` | 382 |
 | `getReceiptPath` | Function | `src/core/installLedger.ts` | 124 |
 | `handleDelete` | Function | `src/ui/pages/install/steps.tsx` | 452 |
@@ -56,7 +58,6 @@ Start here when exploring this area:
 | `onPhase` | Function | `src/ui/pages/install/installSession.ts` | 128 |
 | `onHashProgress` | Function | `src/ui/pages/install/installSession.ts` | 228 |
 | `onPhase` | Function | `src/ui/pages/install/installSession.ts` | 224 |
-| `onProgress` | Function | `src/ui/pages/install/installSession.ts` | 347 |
 
 ## Execution Flows
 

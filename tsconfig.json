@@ -3,6 +3,14 @@
     "target": "ES2019",
     "module": "commonjs",
     "moduleResolution": "node",
+    // @nexusmods/vortex-api exposes its types only through package.json "exports",
+    // which Node10 resolution cannot read. Emit must stay CommonJS for Vortex, and
+    // "node16" resolution forces ESM/CJS interop + explicit extensions (64 errors),
+    // so map the package directly — the same approach the official MIGRATION.md
+    // recommends for the `collections` types.
+    "paths": {
+      "@nexusmods/vortex-api": ["./node_modules/@nexusmods/vortex-api/lib/api.d.ts"]
+    },
     "rootDir": "src",
     "outDir": "dist",
     "strict": true,

@@ -22,7 +22,7 @@
  * which keeps the reducer pure and the steps pure-presentational.
  */
 
-import type { types } from "vortex-api";
+import type { types } from "@nexusmods/vortex-api";
 import type { ReadEhcollResult } from "../../../core/manifest/readEhcoll";
 import type { InstallReceipt } from "../../../types/installLedger";
 import type {

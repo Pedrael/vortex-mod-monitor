@@ -1,5 +1,5 @@
-import { util } from "vortex-api";
-import type { types } from "vortex-api";
+import { util } from "@nexusmods/vortex-api";
+import type { types } from "@nexusmods/vortex-api";
 
 /**
  * One entry in our captured deployment manifest. Strips Vortex's local

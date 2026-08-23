@@ -16,7 +16,7 @@
  * collapses to a re-export.
  */
 
-import { util } from "vortex-api";
+import { util } from "@nexusmods/vortex-api";
 
 /**
  * One entry yielded by `list`'s `data` event. The shape mirrors

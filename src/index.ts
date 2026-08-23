@@ -1,5 +1,5 @@
 import * as path from "path";
-import { util, type types } from "vortex-api";
+import { util, type types } from "@nexusmods/vortex-api";
 
 import createExportModsAction from "./actions/exportModsAction";
 import createCompareModsAction from "./actions/compareModsAction";

@@ -14,7 +14,7 @@
  */
 
 import * as React from "react";
-import type { types } from "vortex-api";
+import type { types } from "@nexusmods/vortex-api";
 
 const ApiContext = React.createContext<types.IExtensionApi | null>(null);
 

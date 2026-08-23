@@ -54,7 +54,7 @@
  *   - Pure read. No I/O, no dispatch.
  */
 
-import type { types } from "vortex-api";
+import type { types } from "@nexusmods/vortex-api";
 
 export type CapturedUserlistPlugin = {
   /** Plugin filename. Case preserved as-stored on the curator's machine. */

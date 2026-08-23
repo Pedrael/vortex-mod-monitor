@@ -25,7 +25,7 @@
  */
 
 import { randomBytes, randomUUID } from "crypto";
-import { actions, types } from "vortex-api";
+import { actions, types } from "@nexusmods/vortex-api";
 
 const PROFILE_SWITCH_TIMEOUT_MS = 30_000;
 

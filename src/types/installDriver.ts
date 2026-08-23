@@ -128,7 +128,7 @@ export type OrphanChoice =
  */
 export type DriverContext = {
   /** Vortex API. The driver dispatches actions and emits events through it. */
-  api: import("vortex-api").types.IExtensionApi;
+  api: import("@nexusmods/vortex-api").types.IExtensionApi;
   /** The fully-resolved plan from `resolveInstallPlan`. */
   plan: InstallPlan;
   /** Result of `readEhcoll` — needed for bundled archive metadata. */

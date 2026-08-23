@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-installer
-description: "Skill for the Installer area of vortex-mod-monitor. 105 symbols across 14 files."
+description: "Skill for the Installer area of vortex-mod-monitor. 101 symbols across 16 files."
 ---
 
 # Installer
 
-105 symbols | 14 files | Cohesion: 80%
+101 symbols | 16 files | Cohesion: 78%
 
 ## When to Use
 
@@ -20,13 +20,13 @@ description: "Skill for the Installer area of vortex-mod-monitor. 105 symbols ac
 | `src/core/installer/runInstall.ts` | buildDisplayNameByModId, buildFailReceipt, buildManifestIndex, buildNexusModIdMap, collect (+38) |
 | `src/core/installer/modInstall.ts` | safeRmTempDir, uninstallMod, installFromBundledArchive, installFromExistingDownload, installFromLocalArchive (+9) |
 | `src/core/installer/applyUserlist.ts` | applyGroupDefinition, applyGroupRule, applyPluginEntry, applyPluginGroup, applyPluginRuleWithCollectionWins (+8) |
-| `src/core/installer/profile.ts` | createFreshProfile, enableModInProfile, pickNonCollidingName, makeAbortError, switchToProfile (+3) |
 | `src/core/installer/bundledPrefetch.ts` | BundledPrefetchPool, dispose, prime, pump, runExtraction (+2) |
 | `src/core/installer/verifyModInstall.ts` | summarizeVerifyFail, collectOnDiskFiles, toPosix, verifyModInstall |
-| `src/core/archiveHashing.ts` | hashFileSha256, cleanup, onAbort |
+| `src/core/installer/profile.ts` | createFreshProfile, enableModInProfile, pickNonCollidingName |
+| `src/core/archiveHashing.ts` | onAbort, hashFileSha256, cleanup |
 | `src/core/installer/applyModRules.ts` | applyModRules, refMatchesModId, resolveReferenceToModId |
 | `src/actions/installCollectionAction.ts` | formatProgressMessage, onProgress |
-| `src/ui/pages/CollectionsPage.tsx` | handleUninstall, handleSwitchProfile |
+| `src/ui/pages/install/engine.ts` | checkAbort, checkAbort |
 
 ## Entry Points
 
@@ -60,8 +60,8 @@ Start here when exploring this area:
 | `onCarry` | Function | `src/core/installer/runInstall.ts` | 405 |
 | `onSkip` | Function | `src/core/installer/runInstall.ts` | 404 |
 | `onTempArchive` | Function | `src/core/installer/runInstall.ts` | 403 |
-| `hashFileSha256` | Function | `src/core/archiveHashing.ts` | 34 |
-| `cleanup` | Function | `src/core/archiveHashing.ts` | 54 |
+| `applyUserlist` | Function | `src/core/installer/applyUserlist.ts` | 179 |
+| `onAbort` | Function | `src/core/archiveHashing.ts` | 46 |
 
 ## Execution Flows
 

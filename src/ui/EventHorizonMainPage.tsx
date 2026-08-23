@@ -26,7 +26,7 @@
  */
 
 import * as React from "react";
-import type { types } from "vortex-api";
+import type { types } from "@nexusmods/vortex-api";
 
 import { EventHorizonStyles } from "./theme";
 import { EventHorizonRoute, ROUTES } from "./routes";

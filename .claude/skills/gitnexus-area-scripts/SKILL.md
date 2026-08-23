@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-scripts
-description: "Skill for the Scripts area of vortex-mod-monitor. 50 symbols across 6 files."
+description: "Skill for the Scripts area of vortex-mod-monitor. 48 symbols across 5 files."
 ---
 
 # Scripts
 
-50 symbols | 6 files | Cohesion: 90%
+48 symbols | 5 files | Cohesion: 90%
 
 ## When to Use
 
@@ -22,7 +22,6 @@ description: "Skill for the Scripts area of vortex-mod-monitor. 50 symbols acros
 | `scripts/bearing-agent.mjs` | loadStaleness, markRefreshOutcome, run, runAllowFail, currentBranch (+2) |
 | `scripts/bearing-token-benchmark.mjs` | classicalCost, cypher, gn, graphCost, pickTargets (+1) |
 | `scripts/lib/project-tmp.mjs` | isEnospcError, withProjectTmpEnv |
-| `scripts/verify-mo2-conflict-translation.mjs` | walkStaging, rec |
 
 ## Entry Points
 
@@ -61,6 +60,10 @@ Start here when exploring this area:
 
 | Flow | Type | Steps |
 |------|------|-------|
+| `Run → DfMount` | cross_community | 5 |
+| `Run → GetProjectTmpDir` | cross_community | 5 |
+| `Run → ParseUsePct` | cross_community | 5 |
+| `Run → IsEnospcError` | intra_community | 3 |
 | `Main → Git` | intra_community | 3 |
 | `Main → Num` | intra_community | 3 |
 | `Main → Gn` | intra_community | 3 |

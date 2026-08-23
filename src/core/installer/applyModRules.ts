@@ -43,7 +43,7 @@
  * ──────────────────────────────────────────────────────────────────────
  */
 
-import { actions, types } from "vortex-api";
+import { actions, types } from "@nexusmods/vortex-api";
 
 import type { EhcollRule, ModRuleType } from "../../types/ehcoll";
 import { AbortError } from "../../utils/abortError";

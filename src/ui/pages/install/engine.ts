@@ -18,8 +18,8 @@
  *     action can be deleted or trimmed to a thin shim.
  */
 
-import { util } from "vortex-api";
-import type { types } from "vortex-api";
+import { util } from "@nexusmods/vortex-api";
+import type { types } from "@nexusmods/vortex-api";
 
 import {
   AbortError,

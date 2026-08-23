@@ -70,8 +70,8 @@ Start here when exploring this area:
 | `OnRejection → GuessGenericTitle` | cross_community | 6 |
 | `OnError → ClassifyUnknown` | cross_community | 5 |
 | `OnRejection → ClassifyUnknown` | cross_community | 5 |
-| `EventHorizonMainPage → Button` | cross_community | 4 |
-| `EventHorizonMainPage → Modal` | cross_community | 4 |
+| `ComponentDidCatch → CleanStack` | cross_community | 5 |
+| `ComponentDidCatch → GuessGenericHints` | cross_community | 5 |
 
 ## How to Explore
 

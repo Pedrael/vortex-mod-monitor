@@ -1,6 +1,6 @@
 import * as path from "path";
-import { util } from "vortex-api";
-import type { types } from "vortex-api";
+import { util } from "@nexusmods/vortex-api";
+import type { types } from "@nexusmods/vortex-api";
 
 import { getActiveGameId } from "../core/getModsListForProfile";
 import {

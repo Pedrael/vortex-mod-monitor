@@ -86,7 +86,7 @@
  * ──────────────────────────────────────────────────────────────────────
  */
 
-import type { types } from "vortex-api";
+import type { types } from "@nexusmods/vortex-api";
 
 import type {
   EhcollUserlist,

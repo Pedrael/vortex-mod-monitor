@@ -15,7 +15,7 @@
  */
 
 import * as React from "react";
-import { util } from "vortex-api";
+import { util } from "@nexusmods/vortex-api";
 
 import {
   listModDiffFiles,

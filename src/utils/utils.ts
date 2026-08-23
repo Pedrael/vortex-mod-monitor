@@ -1,7 +1,7 @@
 import { exec } from "child_process";
 import * as fs from "fs/promises";
 import * as path from "path";
-import type { types } from "vortex-api";
+import type { types } from "@nexusmods/vortex-api";
 import type { AuditorMod } from "../core/getModsListForProfile";
 import type { CapturedDeploymentManifest } from "../core/deploymentManifest";
 import type { CapturedLoadOrderEntry } from "../core/loadOrder";
