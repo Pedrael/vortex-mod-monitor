@@ -1,7 +1,7 @@
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **vortex-mod-monitor** (4718 symbols, 10233 relationships, 331 execution flows).
+This project is indexed by GitNexus as **vortex-mod-monitor** (4799 symbols, 10447 relationships, 333 execution flows).
 
 > Index stale? Run `node .gitnexus/run.cjs analyze --index-only` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? Bootstrap with `npx`, `bunx`, or `pnpm dlx` — e.g. `bunx gitnexus@latest analyze` (npm 11 npx crash; #1939).
 
@@ -41,8 +41,8 @@ This project is indexed by GitNexus as **vortex-mod-monitor** (4718 symbols, 102
 | Rename / extract / split / refactor | `.claude/skills/gitnexus-refactoring/SKILL.md` |
 | Tools, resources, schema reference | `.claude/skills/gitnexus-guide/SKILL.md` |
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus-cli/SKILL.md` |
-| Work in the Manifest area (135 symbols) | `.claude/skills/gitnexus-area-manifest/SKILL.md` |
-| Work in the Pages area (120 symbols) | `.claude/skills/gitnexus-area-pages/SKILL.md` |
+| Work in the Manifest area (132 symbols) | `.claude/skills/gitnexus-area-manifest/SKILL.md` |
+| Work in the Pages area (123 symbols) | `.claude/skills/gitnexus-area-pages/SKILL.md` |
 | Work in the Installer area (101 symbols) | `.claude/skills/gitnexus-area-installer/SKILL.md` |
 | Work in the Build area (97 symbols) | `.claude/skills/gitnexus-area-build/SKILL.md` |
 | Work in the Resolver area (75 symbols) | `.claude/skills/gitnexus-area-resolver/SKILL.md` |
@@ -50,14 +50,15 @@ This project is indexed by GitNexus as **vortex-mod-monitor** (4718 symbols, 102
 | Work in the Install area (48 symbols) | `.claude/skills/gitnexus-area-install/SKILL.md` |
 | Work in the Scripts area (48 symbols) | `.claude/skills/gitnexus-area-scripts/SKILL.md` |
 | Work in the Errors area (25 symbols) | `.claude/skills/gitnexus-area-errors/SKILL.md` |
+| Work in the Identity area (19 symbols) | `.claude/skills/gitnexus-area-identity/SKILL.md` |
 | Work in the Components area (14 symbols) | `.claude/skills/gitnexus-area-components/SKILL.md` |
 | Work in the Bearing-teaching area (9 symbols) | `.claude/skills/gitnexus-area-bearing-teaching/SKILL.md` |
 | Work in the Runtime area (8 symbols) | `.claude/skills/gitnexus-area-runtime/SKILL.md` |
 | Work in the Cluster_49 area (7 symbols) | `.claude/skills/gitnexus-area-cluster-49/SKILL.md` |
-| Work in the Cluster_51 area (7 symbols) | `.claude/skills/gitnexus-area-cluster-51/SKILL.md` |
+| Work in the Cluster_55 area (7 symbols) | `.claude/skills/gitnexus-area-cluster-55/SKILL.md` |
 | Work in the Dashboard area (6 symbols) | `.claude/skills/gitnexus-area-dashboard/SKILL.md` |
 | Work in the Cluster_35 area (5 symbols) | `.claude/skills/gitnexus-area-cluster-35/SKILL.md` |
-| Work in the Cluster_72 area (4 symbols) | `.claude/skills/gitnexus-area-cluster-72/SKILL.md` |
+| Work in the Cluster_76 area (4 symbols) | `.claude/skills/gitnexus-area-cluster-76/SKILL.md` |
 
 <!-- gitnexus:end -->
 

@@ -10,6 +10,7 @@
     "deploy:vortex": "node scripts/deploy-to-vortex.js",
     "watch": "tsc -w",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "gitnexus:setup": "bash scripts/bearing-setup.sh",
     "gitnexus:refresh": "bash scripts/run-with-project-tmp.sh gitnexus analyze --embeddings 0 --skills",
     "gitnexus:full": "bash scripts/run-with-project-tmp.sh gitnexus analyze --force --embeddings 0 --skills",
@@ -93,7 +94,8 @@
     "@types/react": "^18.3.0",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.8"
   },
   "engines": {
     "node": ">=22.9.0"

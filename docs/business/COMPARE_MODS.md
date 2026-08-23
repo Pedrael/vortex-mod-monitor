@@ -43,56 +43,43 @@ User clicks the global toolbar button **"Compare Current Mods With JSON"**. Regi
 
 ## The diff algorithm — `compareSnapshots`
 
-### 1. Build two key→mod maps
+`compareSnapshots` delegates matching to the universal, source-agnostic matcher `matchSnapshots` (`src/core/identity/modIdentity.ts`), then classifies each matched pair.
 
-For each side (reference, current), build a `Map<string, AuditorMod>` keyed by `getModCompareKey(mod)`. See [`AUDITOR_MOD.md`](AUDITOR_MOD.md#mod-identity--comparekey) for the three-tier priority (`nexus:` → `archive:` → `id:`).
+### 1. Match the two mod lists — `matchSnapshots`
 
-**QUIRK**: If two mods in the same snapshot collide on `compareKey` (extremely rare; would require duplicate Nexus mod+file pairs in one profile), the second wins by `Map.set` semantics. Not currently detected.
+Instead of one brittle key, mods are matched with a strongest-first tier ladder that works regardless of `source`. Matching is greedy: each mod is consumed at most once, strongest tiers first. Unmatched mods fall into `onlyInReference` / `onlyInCurrent` (input order preserved).
 
-### 2. Walk the reference map
+| Tier | Rule | Confidence |
+|---|---|---|
+| `nexus-file` | same Nexus `modId` + `fileId` | 1.0 |
+| `archive-sha` | identical `archiveSha256` (byte-identical) | 1.0 |
+| `staging-set` | identical `stagingSetHash` (deployed file set) | 1.0 |
+| `nexus-mod` | same Nexus `modId`, different `fileId` (version drift) | 0.95 |
+| `fuzzy-name-version` | normalized name + normalized version | 0.9 |
+| `fuzzy-name` | normalized name, version differs | 0.75 |
+| `fuzzy-similar` | token-set Dice >= threshold, mutual best | score |
 
-For each `(key, referenceMod)`:
-- If `currentMap` has no entry for `key` → push `referenceMod` to `onlyInReference`.
-- Else, run `compareMods(referenceMod, currentMod)` to compute per-field differences.
-  - If any differences exist, push `{ compareKey, reference, current, differences }` to `changed`.
-  - If no differences, do nothing — the mod is on both sides and identical.
+**Auto-merge**: a match is accepted when its confidence is >= `fuzzyThreshold` (default 0.7). Callers can pass `{ fuzzyThreshold }` to tighten to "hash-only" (> 0.95) or `{ enableSimilarity: false }` to drop the last tier.
 
-### 3. Walk the current map for additions
+**SAFETY (1:1 guard)**: the fuzzy keyed tiers (`fuzzy-name-version`, `fuzzy-name`) only match when a normalized key maps to exactly one remaining mod on each side; colliding groups are left unmatched rather than guessed. The `fuzzy-similar` tier only commits MUTUAL-best pairs at or above the threshold. Together these make a spurious merge of two genuinely different mods effectively impossible.
 
-For each `(key, currentMod)`:
-- If `referenceMap` lacks the key, push `currentMod` to `onlyInCurrent`.
+This replaces the old `getModCompareKey` map-join, whose non-Nexus fallbacks (`archive:<archiveId>`, `id:<mod.id>`) were MACHINE-LOCAL and caused the same mod to appear in BOTH `onlyInReference` and `onlyInCurrent` across machines (a "false split"). `getModCompareKey` is retained but deprecated — used only to derive a stable `compareKey` label per report entry.
 
-### 4. Field-level comparison — `compareMods`
+### 2. Classify each matched pair — `compareMods`
 
-For each field in this fixed list, run `deepEqualStable(referenceMod[field], currentMod[field])`. Any inequality becomes a `ModFieldDifference` entry.
+For every matched pair, `compareMods` walks a fixed field list and tags each inequality (`ModFieldDifference`) with a `category`:
 
-```
-name
-version
-enabled
-source
-nexusModId
-nexusFileId
-archiveId
-archiveSha256
-collectionIds
-installerType
-hasInstallerChoices
-hasDetailedInstallerChoices
-fomodSelections
-rules
-modType
-fileOverrides
-enabledINITweaks
-installTime
-installOrder
-```
+- **content** (real drift): `version`, `enabled`, `nexusFileId`, `archiveSha256`, `hasDetailedInstallerChoices`, `fomodSelections`, `rules`, `modType`, `fileOverrides`, `enabledINITweaks`.
+- **cosmetic** (display only): `name`.
+- **metadata** (provenance / UI bookkeeping): `source`, `nexusModId`, `collectionIds`, `installerType`, `hasInstallerChoices`.
 
-**INVARIANT**: This list is the **single source of truth** for "what counts as a meaningful change". Fields outside this list (notably `id` — the Vortex internal id — and the top-level `deploymentManifests` and `loadOrder` snapshot fields) are not compared. Adding a field to `AuditorMod` requires deciding whether to add it here.
+A pair with >= 1 difference (any category) → `changed` (carries `matchTier` + `confidence`). A pair with zero differences → `unchanged` (a compact `MatchedModSummary`, surfaced under the viewer's "Matched (no meaningful change)" section).
+
+**INVARIANT — identity vs drift**: machine-LOCAL fields are NOT compared: `id`, `archiveId`, `installOrder`, `installTime`. They differ on every machine and are not drift; including them previously flagged ~100% of matched mods as "changed" and buried the real signal (byte / version changes). `deploymentManifests` and `loadOrder` are still not field-diffed (see below).
 
 **Not (yet) diffed at the field level**: `deploymentManifests` (see [`FILE_OVERRIDES_CAPTURE.md`](FILE_OVERRIDES_CAPTURE.md)) and `loadOrder` (see [`ORDERING.md`](ORDERING.md)) are captured on the snapshot wrapper but the diff engine does not consume them. Diffing both requires its own machinery (per-modtype grouping for manifests; position/enabled-state classification for load order) and is deferred to a later slice / the future installer.
 
-### 5. Stable deep-equality — `deepEqualStable`
+### 3. Stable deep-equality — `deepEqualStable`
 
 Both sides are passed through `sortDeep` (recursively sorts object keys alphabetically; arrays preserve order), then `JSON.stringify`'d, then string-compared.
 
@@ -107,7 +94,7 @@ Both sides are passed through `sortDeep` (recursively sorts object keys alphabet
 ### File on disk
 
 - **Path**: `<appData>\event-horizon\diffs\event-horizon-mod-diff-<gameId>-<unixMillis>.json`
-- **Contents**: see [`DATA_FORMATS.md`](../DATA_FORMATS.md#2-mods-diff--event-horizon-mod-diff-gameid-tsjson). Top-level fields: `generatedAt`, `reference` (gameId/profileId/exportedAt/count from the loaded JSON), `current` (same from the live build), `summary` (counts), `onlyInReference`, `onlyInCurrent`, `changed`.
+- **Contents**: see [`DATA_FORMATS.md`](../DATA_FORMATS.md#2-mods-diff--event-horizon-mod-diff-gameid-tsjson). Top-level fields: `generatedAt`, `reference` (gameId/profileId/exportedAt/count from the loaded JSON), `current` (same from the live build), `summary` (counts: `onlyInReference`, `onlyInCurrent`, `changed`, `unchanged`, `matched`, plus `matchedByTier`), `onlyInReference`, `onlyInCurrent`, `changed` (each entry carries `matchTier` + `confidence` and per-field `category`), and `unchanged` (compact matched-but-identical summaries).
 
 ### Notifications
 
@@ -145,19 +132,20 @@ Or:
 ## Quirks & invariants
 
 - **QUIRK**: Current-side mods are **not hashed**. So a `archiveSha256` diff entry can only appear when the reference snapshot has a hash and the current side's `archiveSha256` is `undefined` (always, currently). To make hash-drift detection symmetric, the reconciler (Phase 5) will hash both sides; the casual diff stays cheap.
-- **QUIRK**: Cross-machine comparisons are **lossy on Tier-3 compare keys**. Two machines with the same Nexus mod that happens to have lost its `nexusModId/nexusFileId` (e.g., manually installed from disk) will get different `id:` keys and be reported as separate mods. This is documented in [`AUDITOR_MOD.md`](AUDITOR_MOD.md#mod-identity--comparekey).
+- **RESOLVED**: Cross-machine comparisons used to be **lossy** for non-Nexus mods — two machines with the same manually-installed / LoversLab mod got different machine-local `archive:`/`id:` keys and were reported as separate mods (a "false split"). The tiered `matchSnapshots` now recovers these via `archive-sha`, `staging-set`, and the fuzzy name/version tiers. See [`AUDITOR_MOD.md`](AUDITOR_MOD.md#mod-identity--comparekey).
 - **INVARIANT**: The diff is **deterministic** for two given snapshots — same inputs always produce the same `differences` array, same order. Order of items inside `onlyInReference` / `onlyInCurrent` / `changed` follows reference-then-current map iteration order (insertion order of `Map`).
 - **INVARIANT**: The diff JSON is consumable by future tooling without round-tripping through the live extension. Phase 4's installer can ingest it directly to plan reconciliation.
 - **QUIRK**: `compareSnapshots` does not surface profile-id or game-id mismatches between reference and current. If you compare a Skyrim SE snapshot against a Fallout 4 profile, you'll get a diff where every mod is `onlyInReference` and the user's mods are all `onlyInCurrent`. The summary fields make this obvious in practice. Strict validation could be added.
 
 ## Code references
 
-- Action factory: `src/actions/compareModsAction.ts:20-101`
-- File picker: `src/utils/utils.ts:40-66`
-- Snapshot type: `src/utils/utils.ts:68-74`
-- `getModCompareKey`: `src/utils/utils.ts:117-127`
-- `sortDeep` / `deepEqualStable`: `src/utils/utils.ts:129-148`
-- `compareMods` (per-field): `src/utils/utils.ts:150-183`
-- `compareSnapshots` (orchestrator): `src/utils/utils.ts:195-259`
-- `exportDiffReport` (writer): `src/utils/utils.ts:261-278`
+- Action factory: `src/actions/compareModsAction.ts`
+- Universal matcher (tiers, normalization, `matchSnapshots`): `src/core/identity/modIdentity.ts`
+- Matcher unit tests: `src/core/identity/modIdentity.test.ts`
+- File picker / snapshot type: `src/utils/utils.ts` (`pickJsonFile`, `ExportedModsSnapshot`)
+- `getModCompareKey` (deprecated label helper): `src/utils/utils.ts`
+- `sortDeep` / `deepEqualStable`: `src/utils/utils.ts`
+- `compareMods` (per-field, categorized): `src/utils/utils.ts`
+- `compareSnapshots` (orchestrator): `src/utils/utils.ts`
+- `exportDiffReport` (writer): `src/utils/utils.ts`
 - Diff JSON schema: [`DATA_FORMATS.md`](../DATA_FORMATS.md#2-mods-diff--event-horizon-mod-diff-gameid-tsjson)

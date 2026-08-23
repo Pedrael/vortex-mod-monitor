@@ -151,15 +151,19 @@ Sorted by `pos` ascending. Empty array for games that don't use Vortex's LoadOrd
 
 ### Identity for diffing
 
-When two snapshots are compared, mods are matched by `getModCompareKey` (see [`src/utils/utils.ts`](../src/utils/utils.ts)):
+When two snapshots are compared, mods are matched by the universal, source-agnostic matcher `matchSnapshots` (see [`src/core/identity/modIdentity.ts`](../src/core/identity/modIdentity.ts)), a strongest-first tier ladder:
 
-| Priority | Key format | When |
+| Tier | Rule | Confidence |
 |---|---|---|
-| 1 | `nexus:{nexusModId}:{nexusFileId}` | Both Nexus IDs present |
-| 2 | `archive:{archiveId}` | `archiveId` present |
-| 3 | `id:{id}` | Fallback — Vortex's local mod id |
+| `nexus-file` | same Nexus `modId` + `fileId` | 1.0 |
+| `archive-sha` | identical `archiveSha256` | 1.0 |
+| `staging-set` | identical `stagingSetHash` | 1.0 |
+| `nexus-mod` | same Nexus `modId`, different `fileId` (version drift) | 0.95 |
+| `fuzzy-name-version` | normalized name + version | 0.9 |
+| `fuzzy-name` | normalized name, version differs | 0.75 |
+| `fuzzy-similar` | token-set Dice >= threshold, mutual best | score |
 
-This means renaming a mod or upgrading its version won't break matching as long as Nexus IDs stay consistent.
+A match auto-merges when its confidence is >= `fuzzyThreshold` (default 0.7); fuzzy tiers use a 1:1 / mutual-best guard so different mods are never merged. This works regardless of `source` — Nexus, LoversLab, or manual installs all match. The old `getModCompareKey` (`nexus:` -> `archive:` -> `id:`) is deprecated: its non-Nexus fallbacks were machine-local and caused cross-machine "false splits".
 
 ---
 
@@ -185,11 +189,15 @@ Produced by **Compare Current Mods With JSON** (`exportDiffReport`).
   "summary": {
     "onlyInReference": 1,    // missing locally now
     "onlyInCurrent": 3,      // added since the reference
-    "changed": 5             // present in both, with field differences
+    "changed": 5,            // matched, with at least one meaningful difference
+    "unchanged": 130,        // matched, no meaningful difference
+    "matched": 135,          // changed + unchanged
+    "matchedByTier": { "nexus-file": 120, "fuzzy-name-version": 14, "archive-sha": 1 }
   },
   "onlyInReference": [ /* AuditorMod[] */ ],
   "onlyInCurrent":  [ /* AuditorMod[] */ ],
-  "changed":        [ /* ChangedModReport[] */ ]
+  "changed":        [ /* ChangedModReport[] */ ],
+  "unchanged":      [ /* MatchedModSummary[] */ ]
 }
 ```
 
@@ -198,16 +206,20 @@ Produced by **Compare Current Mods With JSON** (`exportDiffReport`).
 ```jsonc
 {
   "compareKey": "nexus:1234:56789",
+  "matchTier": "nexus-file",   // which identity tier matched this pair
+  "confidence": 1.0,            // 0..1 (1.0 for exact identity tiers)
   "reference":  { /* AuditorMod from reference */ },
   "current":    { /* AuditorMod from current */ },
   "differences": [
     {
       "field": "version",
+      "category": "content",    // "content" | "cosmetic" | "metadata"
       "referenceValue": "5.0.0",
       "currentValue":   "5.1.0"
     },
     {
       "field": "fomodSelections",
+      "category": "content",
       "referenceValue": [ /* ... */ ],
       "currentValue":   [ /* ... */ ]
     }
@@ -215,17 +227,34 @@ Produced by **Compare Current Mods With JSON** (`exportDiffReport`).
 }
 ```
 
+### `MatchedModSummary` (the `unchanged` bucket)
+
+Compact entries for matched pairs with no meaningful difference (the viewer's "Matched (no meaningful change)" section):
+
+```jsonc
+{
+  "compareKey": "nexus:1234:56789",
+  "matchTier": "fuzzy-name-version",
+  "confidence": 0.9,
+  "name": "Some Mod",
+  "version": "1.0",
+  "enabled": true
+}
+```
+
 ### Compared fields
 
-`compareMods` walks this fixed list (see `src/utils/utils.ts`):
+`compareMods` walks this fixed list (see `src/utils/utils.ts`), tagging each difference with a `category`:
 
 ```
-name, version, enabled, source, nexusModId, nexusFileId, archiveId,
-archiveSha256, collectionIds, installerType, hasInstallerChoices,
-hasDetailedInstallerChoices, fomodSelections, rules,
-modType, fileOverrides, enabledINITweaks,
-installTime, installOrder
+content : version, enabled, nexusFileId, archiveSha256,
+          hasDetailedInstallerChoices, fomodSelections, rules,
+          modType, fileOverrides, enabledINITweaks
+cosmetic: name
+metadata: source, nexusModId, collectionIds, installerType, hasInstallerChoices
 ```
+
+Machine-LOCAL fields are deliberately NOT compared — `id`, `archiveId`, `installOrder`, `installTime` differ on every machine and are not drift. Including them previously flagged nearly every matched mod as "changed" and buried the real byte/version signal.
 
 `archiveSha256` is the strongest drift signal: when two snapshots share Nexus
 modId+fileId but differ on `archiveSha256`, Nexus served a different file —
@@ -242,11 +271,12 @@ Sorted canonically. Any non-empty diff entry is a real intent change.
 `modType` and `enabledINITweaks` are also diffed for completeness; in practice
 they rarely change once a mod is installed.
 
-`installTime` differences mean a mod was uninstalled and reinstalled.
-`installOrder` is derived deterministically (sorted by `installTime` then `id`)
-so a single `installOrder` change usually means the mod set itself changed —
-the diff highlights both the cause (`only-in-current` / `only-in-reference`
-mod) and the effect (other mods' ordinals shifted) in one report.
+`installTime` and `installOrder` are **no longer diffed**. Both are
+machine-local: `installTime` is the local install clock and `installOrder` is a
+derived ordinal (sorted by `installTime` then `id`). They differed on virtually
+every matched mod across machines, so comparing them drowned the real drift
+signal. The matched/unmatched buckets already surface mod-set changes; ordinal
+churn is not reported as per-mod drift.
 
 Equality is **order-insensitive deep equality** (`deepEqualStable` → `sortDeep` + `JSON.stringify`), so re-ordered arrays of the same elements won't be flagged as changed.
 

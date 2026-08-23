@@ -4,7 +4,7 @@
 
 A [Vortex](https://www.nexusmods.com/about/vortex/) extension that lets you **snapshot, diff, build, and reproduce** the exact mod state of a profile — rules, FOMOD choices, file overrides, install order, load order, archive hashes — so a curated setup actually arrives on a user's machine the way you built it.
 
-> **Status: pre-release (v0.0.1).** Both halves now exist in the code — capture (export + diff), packaging (`.ehcoll`), and the user-side installer — reachable from a dedicated **Event Horizon** page in the Vortex sidebar. It has not been through a tagged release, and there is **no automated test suite yet**, so treat every determinism guarantee below as *intended behaviour that has not been mechanically verified*. Tested mainly with Bethesda games (Skyrim SE, Skyrim, Fallout 4).
+> **Status: pre-release (v0.0.1).** Both halves now exist in the code — capture (export + diff), packaging (`.ehcoll`), and the user-side installer — reachable from a dedicated **Event Horizon** page in the Vortex sidebar. It has not been through a tagged release. Automated tests are **just getting started** (`npm test`, vitest — currently covering mod-identity matching only), so treat the determinism guarantees below as *intended behaviour that is not yet mechanically verified end to end*. Tested mainly with Bethesda games (Skyrim SE, Skyrim, Fallout 4).
 
 **Requires Vortex 2.x.** The extension builds against `@nexusmods/vortex-api` 2.6.0-beta.2 (React 18). It will not run on Vortex 1.16.
 
@@ -143,6 +143,8 @@ Toolbar actions show a Vortex notification with **Open Diff** and **Open Folder*
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — code layout, modules, and execution flow
 - [docs/DATA_FORMATS.md](docs/DATA_FORMATS.md) — exact shape of every JSON file the extension reads/writes
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — build, deploy, debug, and contribute
+
+Run the test suite with `npm test` (vitest). Tests live beside the code as `*.test.ts` and are excluded from the compiled `dist/` output.
 - [docs/business/](docs/business/) — **business-logic specs**: per-operation behaviour in plain English. Read here when onboarding or when you need to know exactly how a feature behaves in any case (failure modes, edge cases, invariants).
 - [docs/PROPOSAL_INSTALLER.md](docs/PROPOSAL_INSTALLER.md) — original design doc for the standalone collection installer
 

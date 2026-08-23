@@ -26,8 +26,14 @@ import type {
   ModsDiffReport,
   ChangedModReport,
   ModFieldDifference,
+  MatchedModSummary,
+  DiffCategory,
 } from "../../utils/utils";
 import type { AuditorMod } from "../../core/getModsListForProfile";
+import {
+  TIER_LABEL,
+  type MatchTier,
+} from "../../core/identity/modIdentity";
 import { DiffSectionBlock, Page } from "../components";
 import {
   ErrorBoundary,
@@ -291,8 +297,48 @@ function ReportView(props: ReportViewProps): JSX.Element {
         >
           <ChangedModList entries={report.changed} />
         </DiffSectionBlock>
+
+        <DiffSectionBlock
+          title="Matched (no meaningful change)"
+          count={(report.unchanged ?? []).length}
+          intent="neutral"
+          defaultExpanded={false}
+        >
+          <MatchedModList entries={report.unchanged ?? []} />
+        </DiffSectionBlock>
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Match tier badge
+// ---------------------------------------------------------------------------
+
+const EXACT_TIERS: ReadonlySet<MatchTier> = new Set<MatchTier>([
+  "nexus-file",
+  "archive-sha",
+  "staging-set",
+]);
+
+function TierBadge(props: {
+  tier: MatchTier;
+  confidence: number;
+}): JSX.Element {
+  const { tier, confidence } = props;
+  const isExact = EXACT_TIERS.has(tier);
+  const cls = isExact
+    ? "eh-mod-diffs__tier-badge"
+    : "eh-mod-diffs__tier-badge eh-mod-diffs__tier-badge--fuzzy";
+  return (
+    <span className={cls} title={`Matched by ${TIER_LABEL[tier]}`}>
+      {TIER_LABEL[tier]}
+      {!isExact && (
+        <span className="eh-mod-diffs__confidence">
+          {Math.round(confidence * 100)}%
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -368,8 +414,8 @@ function ChangedModList(props: ChangedModListProps): JSX.Element {
   const { entries } = props;
   return (
     <ul className="eh-mod-diffs__mod-list">
-      {entries.map((entry) => (
-        <ChangedModRow key={entry.compareKey} entry={entry} />
+      {entries.map((entry, idx) => (
+        <ChangedModRow key={`${entry.compareKey}-${idx}`} entry={entry} />
       ))}
     </ul>
   );
@@ -379,9 +425,39 @@ interface ChangedModRowProps {
   entry: ChangedModReport;
 }
 
+const CATEGORY_LABEL: Record<DiffCategory, string> = {
+  content: "Content",
+  cosmetic: "Display",
+  metadata: "Metadata",
+};
+
+function partitionDiffs(diffs: ModFieldDifference[]): {
+  content: ModFieldDifference[];
+  secondary: ModFieldDifference[];
+} {
+  const content: ModFieldDifference[] = [];
+  const secondary: ModFieldDifference[] = [];
+  for (const d of diffs) {
+    if (d.category === "content") content.push(d);
+    else secondary.push(d);
+  }
+  return { content, secondary };
+}
+
 function ChangedModRow(props: ChangedModRowProps): JSX.Element {
   const { entry } = props;
   const [expanded, setExpanded] = React.useState(false);
+  const [showSecondary, setShowSecondary] = React.useState(false);
+
+  const { content, secondary } = partitionDiffs(entry.differences);
+
+  // Lead with the count that matters: real content drift if any, else the
+  // count of display/metadata-only changes.
+  const primaryCount = content.length > 0 ? content.length : secondary.length;
+  const primaryLabel =
+    content.length > 0
+      ? `${primaryCount} ${primaryCount === 1 ? "change" : "changes"}`
+      : `${primaryCount} minor`;
 
   return (
     <li className="eh-mod-diffs__mod-row eh-mod-diffs__mod-row--changed">
@@ -402,20 +478,87 @@ function ChangedModRow(props: ChangedModRowProps): JSX.Element {
             v{entry.current.version}
           </span>
         )}
-        <span className="eh-mod-diffs__changed-count">
-          {entry.differences.length}{" "}
-          {entry.differences.length === 1 ? "change" : "changes"}
-        </span>
+        <TierBadge tier={entry.matchTier} confidence={entry.confidence} />
+        <span className="eh-mod-diffs__changed-count">{primaryLabel}</span>
       </button>
 
       {expanded && (
         <ul className="eh-mod-diffs__field-list">
-          {entry.differences.map((diff) => (
+          {content.map((diff) => (
             <FieldDiffRow key={diff.field} diff={diff} />
           ))}
+
+          {secondary.length > 0 && (
+            <li>
+              <button
+                type="button"
+                className="eh-mod-diffs__more-toggle"
+                onClick={(): void => setShowSecondary((v) => !v)}
+                aria-expanded={showSecondary}
+              >
+                {showSecondary ? "▾" : "▸"} {showSecondary ? "Hide" : "Show"}{" "}
+                {secondary.length} display/metadata{" "}
+                {secondary.length === 1 ? "change" : "changes"}
+              </button>
+            </li>
+          )}
+
+          {showSecondary &&
+            (["cosmetic", "metadata"] as DiffCategory[]).map((cat) => {
+              const rows = secondary.filter((d) => d.category === cat);
+              if (rows.length === 0) return null;
+              return (
+                <React.Fragment key={cat}>
+                  <li
+                    className="eh-mod-diffs__field-cat"
+                    aria-hidden="true"
+                  >
+                    {CATEGORY_LABEL[cat]}
+                  </li>
+                  {rows.map((diff) => (
+                    <FieldDiffRow key={diff.field} diff={diff} />
+                  ))}
+                </React.Fragment>
+              );
+            })}
         </ul>
       )}
     </li>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Matched (no meaningful change) list
+// ---------------------------------------------------------------------------
+
+interface MatchedModListProps {
+  entries: MatchedModSummary[];
+}
+
+function MatchedModList(props: MatchedModListProps): JSX.Element {
+  const { entries } = props;
+  return (
+    <ul className="eh-mod-diffs__mod-list">
+      {entries.map((entry, idx) => (
+        <li
+          key={`${entry.compareKey}-${idx}`}
+          className="eh-mod-diffs__mod-row"
+        >
+          <span className="eh-mod-diffs__mod-name">{entry.name}</span>
+          {entry.version !== undefined && (
+            <span className="eh-mod-diffs__mod-version">v{entry.version}</span>
+          )}
+          <span
+            className={`eh-mod-diffs__enabled-badge eh-mod-diffs__enabled-badge--${entry.enabled ? "on" : "off"}`}
+          >
+            {entry.enabled ? "enabled" : "disabled"}
+          </span>
+          <span className="eh-mod-diffs__mod-tier">
+            {TIER_LABEL[entry.matchTier]}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 

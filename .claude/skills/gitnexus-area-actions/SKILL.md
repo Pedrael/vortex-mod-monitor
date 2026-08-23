@@ -10,7 +10,7 @@ description: "Skill for the Actions area of vortex-mod-monitor. 67 symbols acros
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how createBuildPackageAction, captureLoadOrder, getModArchivePath work
+- Understanding how createBuildPackageAction, toBuildManifestExternalMods, getModArchivePath work
 - Modifying actions-related functionality
 
 ## Key Files
@@ -26,14 +26,14 @@ description: "Skill for the Actions area of vortex-mod-monitor. 67 symbols acros
 | `src/actions/compareModsAction.ts` | action, action |
 | `src/actions/exportModsAction.ts` | action, action |
 | `src/index.ts` | init, installEventHorizonIconSet |
-| `src/core/loadOrder.ts` | captureLoadOrder |
+| `src/core/manifest/collectionConfig.ts` | toBuildManifestExternalMods |
 
 ## Entry Points
 
 Start here when exploring this area:
 
 - **`createBuildPackageAction`** (Function) — `src/actions/buildPackageAction.ts:107`
-- **`captureLoadOrder`** (Function) — `src/core/loadOrder.ts:40`
+- **`toBuildManifestExternalMods`** (Function) — `src/core/manifest/collectionConfig.ts:281`
 - **`getModArchivePath`** (Function) — `src/core/archiveHashing.ts:79`
 - **`action`** (Function) — `src/actions/buildPackageAction.ts:305`
 - **`action`** (Function) — `src/actions/buildPackageAction.ts:313`
@@ -43,22 +43,22 @@ Start here when exploring this area:
 | Symbol | Type | File | Line |
 |--------|------|------|------|
 | `createBuildPackageAction` | Function | `src/actions/buildPackageAction.ts` | 107 |
-| `captureLoadOrder` | Function | `src/core/loadOrder.ts` | 40 |
+| `toBuildManifestExternalMods` | Function | `src/core/manifest/collectionConfig.ts` | 281 |
 | `getModArchivePath` | Function | `src/core/archiveHashing.ts` | 79 |
 | `action` | Function | `src/actions/buildPackageAction.ts` | 305 |
 | `action` | Function | `src/actions/buildPackageAction.ts` | 313 |
 | `action` | Function | `src/actions/compareModsAction.ts` | 83 |
 | `action` | Function | `src/actions/comparePluginsAction.ts` | 57 |
 | `action` | Function | `src/actions/exportModsAction.ts` | 97 |
-| `openFile` | Function | `src/utils/utils.ts` | 12 |
+| `openFile` | Function | `src/utils/utils.ts` | 16 |
 | `action` | Function | `src/actions/buildPackageAction.ts` | 309 |
 | `action` | Function | `src/actions/compareModsAction.ts` | 89 |
 | `action` | Function | `src/actions/comparePluginsAction.ts` | 63 |
 | `action` | Function | `src/actions/exportModsAction.ts` | 101 |
-| `openFolder` | Function | `src/utils/utils.ts` | 9 |
+| `openFolder` | Function | `src/utils/utils.ts` | 13 |
 | `createComparePluginsAction` | Function | `src/actions/comparePluginsAction.ts` | 13 |
 | `exportPluginsDiffReport` | Function | `src/core/comparePlugins.ts` | 186 |
-| `pickTxtFile` | Function | `src/utils/utils.ts` | 412 |
+| `pickTxtFile` | Function | `src/utils/utils.ts` | 468 |
 | `getCurrentPluginsTxtPath` | Function | `src/core/comparePlugins.ts` | 157 |
 | `BundleResolutionError` | Class | `src/actions/buildPackageAction.ts` | 563 |
 | `buildOutputFileName` | Function | `src/actions/buildPackageAction.ts` | 541 |

@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-manifest
-description: "Skill for the Manifest area of vortex-mod-monitor. 135 symbols across 14 files."
+description: "Skill for the Manifest area of vortex-mod-monitor. 132 symbols across 14 files."
 ---
 
 # Manifest
 
-135 symbols | 14 files | Cohesion: 85%
+132 symbols | 14 files | Cohesion: 85%
 
 ## When to Use
 
@@ -22,11 +22,11 @@ description: "Skill for the Manifest area of vortex-mod-monitor. 135 symbols acr
 | `src/core/manifest/packageZip.ts` | isAbortLikeError, packageEhcoll, checkAbort, prepareStagingDir, safeRmDir (+12) |
 | `src/core/manifest/readEhcoll.ts` | ReadEhcollError, assertReadableFile, crossCheckBundled, extractManifest, listZipEntries (+7) |
 | `src/core/manifest/collectionConfig.ts` | createDefaultConfig, getCollectionConfigPath, loadOrCreateCollectionConfig, saveCollectionConfig, validateSlug (+6) |
-| `src/utils/utils.ts` | buildModsMap, compareMods, compareSnapshots, deepEqualStable, getModCompareKey (+1) |
 | `src/core/comparePlugins.ts` | comparePluginsEntries, comparePluginsTxtFiles, normalizePluginName, parsePluginsTxt, toPluginMap |
 | `src/core/manifest/sevenZip.ts` | extract, list, resolveSevenZip, add |
 | `src/core/manifest/stagingFileWalker.ts` | getDefaultHashConcurrency, hashStagingFiles, toPosix, walkStagingFolder |
 | `src/core/resolver/enrichStagingSetHashes.ts` | collectExternalStagingSetHashTargets, enrichInstalledModsWithStagingSetHashes, normalizeName |
+| `src/utils/utils.ts` | compareMods, deepEqualStable, sortDeep |
 
 ## Entry Points
 
@@ -60,8 +60,8 @@ Start here when exploring this area:
 | `hashStagingFiles` | Function | `src/core/manifest/stagingFileWalker.ts` | 165 |
 | `walkStagingFolder` | Function | `src/core/manifest/stagingFileWalker.ts` | 73 |
 | `enrichInstalledModsWithStagingSetHashes` | Function | `src/core/resolver/enrichStagingSetHashes.ts` | 117 |
-| `compareMods` | Function | `src/utils/utils.ts` | 276 |
-| `compareSnapshots` | Function | `src/utils/utils.ts` | 327 |
+| `comparePluginsEntries` | Function | `src/core/comparePlugins.ts` | 80 |
+| `comparePluginsTxtFiles` | Function | `src/core/comparePlugins.ts` | 167 |
 
 ## Execution Flows
 

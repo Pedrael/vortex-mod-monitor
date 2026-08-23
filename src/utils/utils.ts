@@ -3,6 +3,10 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import type { types } from "@nexusmods/vortex-api";
 import type { AuditorMod } from "../core/getModsListForProfile";
+import {
+  matchSnapshots,
+  type MatchTier,
+} from "../core/identity/modIdentity";
 import type { CapturedDeploymentManifest } from "../core/deploymentManifest";
 import type { CapturedLoadOrderEntry } from "../core/loadOrder";
 import type { CapturedUserlist } from "../core/userlist";
@@ -191,17 +195,46 @@ export type ExportedModsSnapshot = {
   userlist?: CapturedUserlist;
 };
 
+/**
+ * How "interesting" a field difference is to a human reviewing a diff:
+ *  - `content`  — real drift (version, bytes, FOMOD choices, rules, ...).
+ *  - `cosmetic` — display-only (mod display name).
+ *  - `metadata` — provenance/UI bookkeeping (source, installer flags).
+ *
+ * Machine-LOCAL fields (`id`, `archiveId`, `installOrder`, `installTime`)
+ * are not compared at all — they differ on every machine and are not drift.
+ */
+export type DiffCategory = "content" | "cosmetic" | "metadata";
+
 export type ModFieldDifference = {
   field: string;
+  category: DiffCategory;
   referenceValue: unknown;
   currentValue: unknown;
 };
 
 export type ChangedModReport = {
   compareKey: string;
+  /** Which identity tier matched this pair (see modIdentity.ts). */
+  matchTier: MatchTier;
+  /** 0..1 confidence of the match (1.0 for exact identity tiers). */
+  confidence: number;
   reference: AuditorMod;
   current: AuditorMod;
   differences: ModFieldDifference[];
+};
+
+/**
+ * A matched pair with NO meaningful (non-local) differences. Kept compact
+ * — the viewer only needs to show name/version/enabled plus the match tier.
+ */
+export type MatchedModSummary = {
+  compareKey: string;
+  matchTier: MatchTier;
+  confidence: number;
+  name: string;
+  version?: string;
+  enabled: boolean;
 };
 
 export type ModsDiffReport = {
@@ -224,14 +257,30 @@ export type ModsDiffReport = {
   summary: {
     onlyInReference: number;
     onlyInCurrent: number;
+    /** Matched pairs with at least one meaningful difference. */
     changed: number;
+    /** Matched pairs with no meaningful difference. */
+    unchanged: number;
+    /** Total matched pairs (changed + unchanged). */
+    matched: number;
+    /** How many matches landed in each identity tier. */
+    matchedByTier: Partial<Record<MatchTier, number>>;
   };
 
   onlyInReference: AuditorMod[];
   onlyInCurrent: AuditorMod[];
   changed: ChangedModReport[];
+  unchanged: MatchedModSummary[];
 };
 
+/**
+ * @deprecated Superseded by the tiered matcher in
+ * `src/core/identity/modIdentity.ts` (`matchSnapshots`). The non-Nexus
+ * fallbacks here (`archive:<archiveId>`, `id:<mod.id>`) are MACHINE-LOCAL
+ * and cause cross-machine false splits. Retained only to derive a stable
+ * `compareKey` label for report entries and for backward compatibility
+ * with external references; do NOT use it to match two snapshots.
+ */
 export function getModCompareKey(mod: AuditorMod): string {
   if (mod.nexusModId !== undefined && mod.nexusFileId !== undefined) {
     return `nexus:${mod.nexusModId}:${mod.nexusFileId}`;
@@ -274,38 +323,45 @@ export function deepEqualStable(a: unknown, b: unknown): boolean {
   return JSON.stringify(sortDeep(a)) === JSON.stringify(sortDeep(b));
 }
 
+/**
+ * Fields compared between two matched mods, tagged by category.
+ *
+ * Machine-LOCAL fields are deliberately absent: `id`, `archiveId`,
+ * `installOrder`, and `installTime` differ on every machine and are not
+ * drift — including them drowned the real signal (byte/version changes)
+ * under ~100%-noise diffs.
+ */
+const COMPARE_FIELDS: Array<{ field: keyof AuditorMod; category: DiffCategory }> =
+  [
+    { field: "name", category: "cosmetic" },
+    { field: "version", category: "content" },
+    { field: "enabled", category: "content" },
+    { field: "source", category: "metadata" },
+    { field: "nexusModId", category: "metadata" },
+    { field: "nexusFileId", category: "content" },
+    { field: "archiveSha256", category: "content" },
+    { field: "collectionIds", category: "metadata" },
+    { field: "installerType", category: "metadata" },
+    { field: "hasInstallerChoices", category: "metadata" },
+    { field: "hasDetailedInstallerChoices", category: "content" },
+    { field: "fomodSelections", category: "content" },
+    { field: "rules", category: "content" },
+    { field: "modType", category: "content" },
+    { field: "fileOverrides", category: "content" },
+    { field: "enabledINITweaks", category: "content" },
+  ];
+
 export function compareMods(
   referenceMod: AuditorMod,
   currentMod: AuditorMod,
 ): ModFieldDifference[] {
-  const compareFields: Array<keyof AuditorMod> = [
-    "name",
-    "version",
-    "enabled",
-    "source",
-    "nexusModId",
-    "nexusFileId",
-    "archiveId",
-    "archiveSha256",
-    "collectionIds",
-    "installerType",
-    "hasInstallerChoices",
-    "hasDetailedInstallerChoices",
-    "fomodSelections",
-    "rules",
-    "modType",
-    "fileOverrides",
-    "enabledINITweaks",
-    "installTime",
-    "installOrder",
-  ];
-
   const differences: ModFieldDifference[] = [];
 
-  for (const field of compareFields) {
+  for (const { field, category } of COMPARE_FIELDS) {
     if (!deepEqualStable(referenceMod[field], currentMod[field])) {
       differences.push({
         field: String(field),
+        category,
         referenceValue: referenceMod[field],
         currentValue: currentMod[field],
       });
@@ -315,50 +371,46 @@ export function compareMods(
   return differences;
 }
 
-function buildModsMap(mods: AuditorMod[]): Map<string, AuditorMod> {
-  const map = new Map<string, AuditorMod>();
-
-  for (const mod of mods) {
-    map.set(getModCompareKey(mod), mod);
-  }
-
-  return map;
-}
-
 export function compareSnapshots(
   referenceSnapshot: ExportedModsSnapshot,
   currentSnapshot: ExportedModsSnapshot,
 ): ModsDiffReport {
-  const referenceMap = buildModsMap(referenceSnapshot.mods ?? []);
-  const currentMap = buildModsMap(currentSnapshot.mods ?? []);
+  const referenceMods = referenceSnapshot.mods ?? [];
+  const currentMods = currentSnapshot.mods ?? [];
 
-  const onlyInReference: AuditorMod[] = [];
-  const onlyInCurrent: AuditorMod[] = [];
+  const { matches, onlyInReference, onlyInCurrent } = matchSnapshots(
+    referenceMods,
+    currentMods,
+  );
+
   const changed: ChangedModReport[] = [];
+  const unchanged: MatchedModSummary[] = [];
+  const matchedByTier: Partial<Record<MatchTier, number>> = {};
 
-  for (const [compareKey, referenceMod] of referenceMap.entries()) {
-    const currentMod = currentMap.get(compareKey);
+  for (const match of matches) {
+    matchedByTier[match.tier] = (matchedByTier[match.tier] ?? 0) + 1;
 
-    if (!currentMod) {
-      onlyInReference.push(referenceMod);
-      continue;
-    }
-
-    const differences = compareMods(referenceMod, currentMod);
+    const compareKey = getModCompareKey(match.reference);
+    const differences = compareMods(match.reference, match.current);
 
     if (differences.length > 0) {
       changed.push({
         compareKey,
-        reference: referenceMod,
-        current: currentMod,
+        matchTier: match.tier,
+        confidence: match.confidence,
+        reference: match.reference,
+        current: match.current,
         differences,
       });
-    }
-  }
-
-  for (const [compareKey, currentMod] of currentMap.entries()) {
-    if (!referenceMap.has(compareKey)) {
-      onlyInCurrent.push(currentMod);
+    } else {
+      unchanged.push({
+        compareKey,
+        matchTier: match.tier,
+        confidence: match.confidence,
+        name: match.current.name,
+        version: match.current.version,
+        enabled: match.current.enabled,
+      });
     }
   }
 
@@ -369,25 +421,29 @@ export function compareSnapshots(
       gameId: referenceSnapshot.gameId,
       profileId: referenceSnapshot.profileId,
       exportedAt: referenceSnapshot.exportedAt,
-      count: referenceSnapshot.mods?.length ?? 0,
+      count: referenceMods.length,
     },
 
     current: {
       gameId: currentSnapshot.gameId,
       profileId: currentSnapshot.profileId,
       exportedAt: currentSnapshot.exportedAt,
-      count: currentSnapshot.mods?.length ?? 0,
+      count: currentMods.length,
     },
 
     summary: {
       onlyInReference: onlyInReference.length,
       onlyInCurrent: onlyInCurrent.length,
       changed: changed.length,
+      unchanged: unchanged.length,
+      matched: matches.length,
+      matchedByTier,
     },
 
     onlyInReference,
     onlyInCurrent,
     changed,
+    unchanged,
   };
 }
 

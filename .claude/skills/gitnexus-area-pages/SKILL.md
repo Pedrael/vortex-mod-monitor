@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-pages
-description: "Skill for the Pages area of vortex-mod-monitor. 120 symbols across 33 files."
+description: "Skill for the Pages area of vortex-mod-monitor. 123 symbols across 33 files."
 ---
 
 # Pages
 
-120 symbols | 33 files | Cohesion: 76%
+123 symbols | 33 files | Cohesion: 76%
 
 ## When to Use
 
@@ -19,9 +19,9 @@ description: "Skill for the Pages area of vortex-mod-monitor. 120 symbols across
 |------|---------|
 | `src/ui/pages/install/steps.tsx` | ConfirmStep, DoneStep, FailureBody, InstallingStep, LoadingStep (+10) |
 | `src/ui/pages/HomePage.tsx` | Dashboard, DashboardBody, ErrorPanel, FooterRow, Hero (+8) |
+| `src/ui/pages/ModDiffsPage.tsx` | ModDiffsPage, ChangedModList, ChangedModRow, FieldDiffRow, TierBadge (+8) |
 | `src/ui/pages/build/BuildPage.tsx` | BuildWizard, BuildingPanel, ErrorPanel, GameMismatchBanner, Header (+7) |
 | `src/ui/pages/CollectionsPage.tsx` | CollectionsList, refresh, DetailTile, EmptyState, ReceiptCard (+6) |
-| `src/ui/pages/ModDiffsPage.tsx` | ModDiffsPage, FileSelector, ModDiffsView, ModEntryList, ReportView (+5) |
 | `src/ui/pages/PluginDiffsPage.tsx` | PluginDiffsPage, FileSelector, PluginDiffsView, EnabledMismatchList, PluginEntryList (+3) |
 | `src/core/installer/profile.ts` | makeAbortError, switchToProfile, finalize, onChange, timeout |
 | `src/ui/pages/AboutPage.tsx` | AboutPage, LinkRow, Stat, handleClick, openExternal |

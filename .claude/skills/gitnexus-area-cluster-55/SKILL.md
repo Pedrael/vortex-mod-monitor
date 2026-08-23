@@ -1,9 +1,9 @@
 ---
-name: gitnexus-area-cluster-51
-description: "Skill for the Cluster_51 area of vortex-mod-monitor. 7 symbols across 1 files."
+name: gitnexus-area-cluster-55
+description: "Skill for the Cluster_55 area of vortex-mod-monitor. 7 symbols across 1 files."
 ---
 
-# Cluster_51
+# Cluster_55
 
 7 symbols | 1 files | Cohesion: 76%
 
@@ -11,7 +11,7 @@ description: "Skill for the Cluster_51 area of vortex-mod-monitor. 7 symbols acr
 
 - Working with code in `src/`
 - Understanding how parseReceipt work
-- Modifying cluster_51-related functionality
+- Modifying cluster_55-related functionality
 
 ## Key Files
 
@@ -55,6 +55,6 @@ Start here when exploring this area:
 ## How to Explore
 
 1. `context({name: "parseReceipt"})` — see callers and callees
-2. `query({search_query: "cluster_51"})` — find related execution flows
+2. `query({search_query: "cluster_55"})` — find related execution flows
 3. Read key files listed above for implementation details
 4. `explain({target: "<file or symbol>"})` — persisted taint findings (source→sink data flows), when indexed with `--pdg`

@@ -39,14 +39,6 @@ Start here when exploring this area:
 | `parseUsePct` | Function | `scripts/lib/project-tmp.mjs` | 57 |
 | `tmpSpaceReport` | Function | `scripts/lib/project-tmp.mjs` | 65 |
 
-## Execution Flows
-
-| Flow | Type | Steps |
-|------|------|-------|
-| `Run → DfMount` | cross_community | 5 |
-| `Run → GetProjectTmpDir` | cross_community | 5 |
-| `Run → ParseUsePct` | cross_community | 5 |
-
 ## How to Explore
 
 1. `context({name: "dfMount"})` — see callers and callees

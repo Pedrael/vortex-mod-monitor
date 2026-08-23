@@ -60,10 +60,6 @@ Start here when exploring this area:
 
 | Flow | Type | Steps |
 |------|------|-------|
-| `Run → DfMount` | cross_community | 5 |
-| `Run → GetProjectTmpDir` | cross_community | 5 |
-| `Run → ParseUsePct` | cross_community | 5 |
-| `Run → IsEnospcError` | intra_community | 3 |
 | `Main → Git` | intra_community | 3 |
 | `Main → Num` | intra_community | 3 |
 | `Main → Gn` | intra_community | 3 |
