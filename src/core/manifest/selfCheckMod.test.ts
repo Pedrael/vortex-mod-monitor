@@ -195,7 +195,9 @@ describe("no-archive reporting", () => {
     const r = await selfCheckMod({ ...base, hasArchiveRecord: true });
     expect(r.depth).toBe("skipped");
     expect(r.notes[0]).toMatch(/no download record/i);
-    expect(r.notes[0]).toMatch(/may still be on disk/i);
+    // Leads with re-downloading, because that is the common case: 225 of the
+    // 226 skips on the real profile land here and the file is usually gone.
+    expect(r.notes[0]).toMatch(/needs\s+re-downloading/i);
   });
 });
 

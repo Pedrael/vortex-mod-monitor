@@ -135,8 +135,10 @@ export async function selfCheckMod(input: SelfCheckInput): Promise<SelfCheckRepo
           ? "Mod has no source archive recorded in Vortex — it was installed " +
             "from something Vortex no longer tracks. Re-downloading will not " +
             "help; re-install it from an archive so the cache picks it up."
-          : "Vortex has no download record for this mod's archive. The file " +
-            "may still be on disk — check the Downloads tab before re-downloading.",
+          : "Vortex has no download record for this mod's archive, so it " +
+            "cannot be verified. Usually the archive is gone and needs " +
+            "re-downloading; occasionally the file is still there and only the " +
+            "record was lost, which a Downloads-tab rescan fixes.",
       ],
     };
   }

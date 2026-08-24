@@ -6,7 +6,12 @@
 import { describe, expect, it } from "vitest";
 
 import type { AuditorMod } from "../getModsListForProfile";
-import { describeScope, scopeCollectionMods } from "./collectionScope";
+import {
+  describeHashedCollisions,
+  describeScope,
+  findHashedIdentityCollisions,
+  scopeCollectionMods,
+} from "./collectionScope";
 
 const mod = (over: Partial<AuditorMod> & { id: string }): AuditorMod =>
   ({
@@ -129,5 +134,36 @@ describe("scopeCollectionMods", () => {
     const scope = scopeCollectionMods([mod({ id: "a", enabled: false })]);
     expect(scope.included).toEqual([]);
     expect(scope.excludedDisabled).toHaveLength(1);
+  });
+});
+
+describe("findHashedIdentityCollisions", () => {
+  it("catches two EXTERNAL mods installed from byte-identical archives", () => {
+    // Real case: separate downloads, different archiveIds, one sha256. Only a
+    // hash reveals it, so scopeCollectionMods (pre-hash) cannot.
+    const groups = findHashedIdentityCollisions([
+      mod({ id: "s", name: "Ivy'sPantiesSettings", archiveSha256: "fcd9eca2" }),
+      mod({ id: "d", name: "Ivy'sPantiesSettings-SteamDeck", archiveSha256: "fcd9eca2" }),
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(describeHashedCollisions(groups)[0]).toMatch(/same archive/i);
+    expect(describeHashedCollisions(groups)[0]).toMatch(/cannot be packaged/);
+  });
+
+  it("does not collide two external mods with different archives", () => {
+    expect(
+      findHashedIdentityCollisions([
+        mod({ id: "a", archiveSha256: "aaa" }),
+        mod({ id: "b", archiveSha256: "bbb" }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("ignores externals with no hash yet — those are buildManifest's to judge", () => {
+    // Identity comes from stagingSetHash there, which does not exist at this
+    // point in the pipeline.
+    expect(
+      findHashedIdentityCollisions([mod({ id: "a" }), mod({ id: "b" })]),
+    ).toEqual([]);
   });
 });

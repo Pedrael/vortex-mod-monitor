@@ -43,7 +43,9 @@ import { buildManifest } from "../../../core/manifest/buildManifest";
 import { captureStagingFiles } from "../../../core/manifest/captureStagingFiles";
 import { runSelfChecks } from "../../../core/manifest/runSelfChecks";
 import {
+  describeHashedCollisions,
   describeScope,
+  findHashedIdentityCollisions,
   scopeCollectionMods,
 } from "../../../core/manifest/collectionScope";
 import {
@@ -350,6 +352,20 @@ export async function loadBuildContext(
   });
   op.step("hashing-done", { ms: Date.now() - hashStartedAt });
 
+  // Two external mods can be separate downloads of byte-identical archives, so
+  // they only collide once a hash exists. buildManifest catches it, but not
+  // until after the staging pass — 31 minutes later on this profile.
+  const hashedCollisions = findHashedIdentityCollisions(mods);
+  if (hashedCollisions.length > 0) {
+    op.step("identity-collisions", {
+      groups: hashedCollisions.length,
+      detail: hashedCollisions.slice(0, 10).map((g) => ({
+        key: g.key,
+        mods: g.mods.map((m) => m.name),
+      })),
+    });
+  }
+
   const externalMods = mods.filter((m) => !isNexusMod(m));
 
   const defaultName = opts?.nameOverride ?? "My Collection";
@@ -394,7 +410,10 @@ export async function loadBuildContext(
     gameId: gameId as SupportedGameId,
     profileId,
     mods,
-    scopeWarnings: describeScope(scope),
+    scopeWarnings: [
+      ...describeScope(scope),
+      ...describeHashedCollisions(hashedCollisions),
+    ],
     externalMods,
     collectionConfig,
     configPath: loaded.configPath,

@@ -150,6 +150,49 @@ export function scopeCollectionMods(mods: AuditorMod[]): CollectionScope {
   };
 }
 
+/**
+ * Identity collisions that only the archive HASH can reveal.
+ *
+ * `scopeCollectionMods` runs before hashing and can only compare Nexus ids, so
+ * it cannot see two EXTERNAL mods installed from byte-identical archives. That
+ * happens: on the curator's profile "Ivy'sPantiesSettings" and
+ * "Ivy'sPantiesSettings-SteamDeck" are separate downloads — different
+ * `archiveId`s — with the same sha256, so buildManifest gives them one
+ * `external:<sha256>` compareKey and rejects the build.
+ *
+ * buildManifest already catches this, but only after the staging pass, which
+ * cost 31 minutes on this profile. Running it the moment hashing finishes turns
+ * a 45-minute failure into a 15-minute one.
+ *
+ * Externals with no archive get their identity from `stagingSetHash`, which
+ * does not exist yet at this point — those collisions stay buildManifest's to
+ * report.
+ */
+export function findHashedIdentityCollisions(
+  mods: AuditorMod[],
+): DuplicateInstallGroup[] {
+  return groupBy(mods, (m) => {
+    if (m.nexusModId !== undefined && m.nexusFileId !== undefined) {
+      return `nexus:${String(m.nexusModId)}:${String(m.nexusFileId)}`;
+    }
+    return m.archiveSha256 !== undefined ? `external:${m.archiveSha256}` : undefined;
+  });
+}
+
+/** Curator-facing lines for a post-hash collision set. */
+export function describeHashedCollisions(
+  groups: DuplicateInstallGroup[],
+): string[] {
+  return groups.map(
+    (g) =>
+      `${g.mods.length} mods were installed from the SAME archive and share one ` +
+      `identity (${g.key.slice(0, 24)}…): ${g.mods
+        .map((m) => `"${m.name}"`)
+        .join(", ")}. A collection cannot contain the same archive twice — ` +
+      `remove or disable all but one, or the build cannot be packaged.`,
+  );
+}
+
 /** Curator-facing lines for {@link CollectionScope}. Empty when nothing to say. */
 export function describeScope(scope: CollectionScope): string[] {
   const out: string[] = [];
