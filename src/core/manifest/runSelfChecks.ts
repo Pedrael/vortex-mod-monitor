@@ -136,6 +136,25 @@ export async function runSelfChecks(
   }
 
   const summary = summarizeSelfChecks(reports);
+
+  // WHY a mod was not fully checked is the whole diagnostic value when the
+  // numbers come back flat. The first real run reported skipped:993 in 112ms
+  // and the reasons were sitting unread in each report's notes — a summary
+  // that cannot explain itself is not a summary.
+  const reasonCounts: Record<string, number> = {};
+  for (const report of reports) {
+    if (report.depth === "replayed") continue;
+    const reason = report.notes[0] ?? "(no reason recorded)";
+    reasonCounts[reason] = (reasonCounts[reason] ?? 0) + 1;
+  }
+  const topReasons = Object.entries(reasonCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([reason, count]) => `${count}x ${reason}`);
+
+  // One concrete example, so a wrong path or id is visible rather than inferred.
+  const firstSkipped = reports.find((r) => r.depth === "skipped");
+
   const warnings: string[] = [];
   const withMissing = reports.filter((r) => r.missing.length > 0);
 
@@ -160,6 +179,16 @@ export async function runSelfChecks(
     skipped: summary.skipped,
     modsWithMissing: summary.modsWithMissing,
     missingFiles: summary.missingFiles,
+    reasons: topReasons,
+    ...(firstSkipped !== undefined
+      ? {
+          exampleSkipped: {
+            mod: firstSkipped.modName,
+            stagedCount: firstSkipped.stagedCount,
+            notes: firstSkipped.notes,
+          },
+        }
+      : {}),
   });
 
   return { reports, summary, warnings };
