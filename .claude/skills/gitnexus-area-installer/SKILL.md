@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-installer
-description: "Skill for the Installer area of vortex-mod-monitor. 107 symbols across 16 files."
+description: "Skill for the Installer area of vortex-mod-monitor. 97 symbols across 15 files."
 ---
 
 # Installer
 
-107 symbols | 16 files | Cohesion: 78%
+97 symbols | 15 files | Cohesion: 80%
 
 ## When to Use
 
@@ -20,13 +20,13 @@ description: "Skill for the Installer area of vortex-mod-monitor. 107 symbols ac
 | `src/core/installer/runInstall.ts` | buildDisplayNameByModId, buildFailReceipt, buildManifestIndex, buildNexusModIdMap, collect (+38) |
 | `src/core/installer/modInstall.ts` | safeRmTempDir, uninstallMod, installFromBundledArchive, installFromExistingDownload, installFromLocalArchive (+9) |
 | `src/core/installer/applyUserlist.ts` | applyGroupDefinition, applyGroupRule, applyPluginEntry, applyPluginGroup, applyPluginRuleWithCollectionWins (+8) |
-| `src/core/installer/profile.ts` | createFreshProfile, enableModInProfile, pickNonCollidingName, makeAbortError, switchToProfile (+3) |
 | `src/core/installer/bundledPrefetch.ts` | BundledPrefetchPool, dispose, prime, pump, runExtraction (+2) |
-| `src/core/installer/verifyModInstall.ts` | summarizeVerifyFail, collectOnDiskFiles, toPosix, verifyModInstall |
-| `src/core/archiveHashing.ts` | onAbort, hashFileSha256, cleanup |
+| `src/core/installer/profile.ts` | createFreshProfile, enableModInProfile, pickNonCollidingName |
+| `src/core/installer/verifyModInstall.ts` | summarizeVerifyFail, collectOnDiskFiles, toPosix |
 | `src/core/installer/applyModRules.ts` | applyModRules, refMatchesModId, resolveReferenceToModId |
 | `src/actions/installCollectionAction.ts` | formatProgressMessage, onProgress |
-| `src/ui/pages/CollectionsPage.tsx` | handleUninstall, handleSwitchProfile |
+| `src/ui/pages/install/engine.ts` | checkAbort, checkAbort |
+| `src/core/installLedger.ts` | serializeReceipt, writeReceipt |
 
 ## Entry Points
 
