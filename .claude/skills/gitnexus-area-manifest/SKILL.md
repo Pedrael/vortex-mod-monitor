@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-manifest
-description: "Skill for the Manifest area of vortex-mod-monitor. 145 symbols across 18 files."
+description: "Skill for the Manifest area of vortex-mod-monitor. 143 symbols across 16 files."
 ---
 
 # Manifest
 
-145 symbols | 18 files | Cohesion: 84%
+143 symbols | 16 files | Cohesion: 86%
 
 ## When to Use
 
@@ -26,7 +26,7 @@ description: "Skill for the Manifest area of vortex-mod-monitor. 145 symbols acr
 | `src/core/comparePlugins.ts` | comparePluginsEntries, comparePluginsTxtFiles, normalizePluginName, parsePluginsTxt, toPluginMap |
 | `src/core/manifest/sevenZip.ts` | extract, list, resolveSevenZip, add |
 | `src/core/manifest/stagingFileWalker.ts` | getDefaultHashConcurrency, hashStagingFiles, toPosix, walkStagingFolder |
-| `src/core/archiveHashing.ts` | enrichModsWithArchiveHashes, hashFileSha256, cleanup |
+| `src/core/resolver/enrichStagingSetHashes.ts` | collectExternalStagingSetHashTargets, enrichInstalledModsWithStagingSetHashes, normalizeName |
 
 ## Entry Points
 
@@ -54,14 +54,14 @@ Start here when exploring this area:
 | `packageEhcoll` | Function | `src/core/manifest/packageZip.ts` | 128 |
 | `checkAbort` | Function | `src/core/manifest/packageZip.ts` | 138 |
 | `resolveSevenZip` | Function | `src/core/manifest/sevenZip.ts` | 134 |
-| `enrichModsWithArchiveHashes` | Function | `src/core/archiveHashing.ts` | 141 |
-| `hashFileSha256` | Function | `src/core/archiveHashing.ts` | 34 |
-| `cleanup` | Function | `src/core/archiveHashing.ts` | 54 |
-| `verifyModInstall` | Function | `src/core/installer/verifyModInstall.ts` | 150 |
+| `computeStagingSetHash` | Function | `src/core/manifest/stagingSetHash.ts` | 51 |
 | `captureStagingFiles` | Function | `src/core/manifest/captureStagingFiles.ts` | 87 |
 | `getDefaultHashConcurrency` | Function | `src/core/manifest/stagingFileWalker.ts` | 47 |
 | `hashStagingFiles` | Function | `src/core/manifest/stagingFileWalker.ts` | 165 |
-| `pMap` | Function | `src/utils/pMap.ts` | 20 |
+| `walkStagingFolder` | Function | `src/core/manifest/stagingFileWalker.ts` | 73 |
+| `enrichInstalledModsWithStagingSetHashes` | Function | `src/core/resolver/enrichStagingSetHashes.ts` | 117 |
+| `comparePluginsEntries` | Function | `src/core/comparePlugins.ts` | 80 |
+| `comparePluginsTxtFiles` | Function | `src/core/comparePlugins.ts` | 167 |
 
 ## Execution Flows
 
@@ -76,7 +76,7 @@ Start here when exploring this area:
 | `BuildManifest → ComputeStagingSetHash` | cross_community | 4 |
 | `BuildManifest → BuildUiAttributes` | cross_community | 4 |
 | `BuildManifest → SynthesizeRuleReference` | intra_community | 4 |
-| `CaptureStagingFiles → Cleanup` | intra_community | 4 |
+| `CaptureStagingFiles → Cleanup` | cross_community | 4 |
 
 ## How to Explore
 
