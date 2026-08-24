@@ -170,6 +170,35 @@ describe("selfCheckMod", () => {
   });
 });
 
+describe("no-archive reporting", () => {
+  // Three different problems used to share one sentence, and it sent the
+  // curator to re-download files that were not the issue. Measured on a real
+  // profile: 5 mods with no archiveId, 10 whose file is still on disk, 225
+  // genuinely missing.
+  const base = {
+    sevenZip: fakeSevenZip({}),
+    modId: "m", modName: "x",
+    archivePath: undefined,
+    staged: [{ path: "a.esp", size: 1 }],
+    recordedChoices: [],
+    readEntry: async () => undefined,
+  };
+
+  it("says re-downloading will not help when Vortex tracks no archive", async () => {
+    const r = await selfCheckMod({ ...base, hasArchiveRecord: false });
+    expect(r.depth).toBe("skipped");
+    expect(r.notes[0]).toMatch(/no source archive recorded/i);
+    expect(r.notes[0]).toMatch(/Re-downloading will not help/i);
+  });
+
+  it("points at the download record when the archive id does not resolve", async () => {
+    const r = await selfCheckMod({ ...base, hasArchiveRecord: true });
+    expect(r.depth).toBe("skipped");
+    expect(r.notes[0]).toMatch(/no download record/i);
+    expect(r.notes[0]).toMatch(/may still be on disk/i);
+  });
+});
+
 describe("summarizeSelfChecks", () => {
   it("counts depths and missing files across mods", () => {
     const lead = {

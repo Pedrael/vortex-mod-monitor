@@ -73,6 +73,17 @@ export type SelfCheckInput = {
   modName: string;
   /** Absolute path to the mod's source archive, when one is resolvable. */
   archivePath: string | undefined;
+  /**
+   * Whether Vortex has an `archiveId` on the mod at all.
+   *
+   * Distinguishes two different problems that used to report the same
+   * sentence. No archiveId means Vortex never tracked a source for this mod,
+   * and no amount of re-downloading changes that. An archiveId that does not
+   * resolve to a path means the DOWNLOAD RECORD is gone, which is a different
+   * repair. Measured on a real profile: 5 of the former, 10 of the latter, and
+   * 225 genuinely-missing files — three fixes, one message.
+   */
+  hasArchiveRecord?: boolean;
   /** The curator's staging folder contents. */
   staged: StagedFileRef[];
   /** Vortex's recorded FOMOD choices; empty when the install had no branching. */
@@ -116,7 +127,18 @@ export async function selfCheckMod(input: SelfCheckInput): Promise<SelfCheckRepo
   };
 
   if (input.archivePath === undefined) {
-    return { ...base, depth: "skipped", notes: ["No source archive on disk."] };
+    return {
+      ...base,
+      depth: "skipped",
+      notes: [
+        input.hasArchiveRecord === false
+          ? "Mod has no source archive recorded in Vortex — it was installed " +
+            "from something Vortex no longer tracks. Re-downloading will not " +
+            "help; re-install it from an archive so the cache picks it up."
+          : "Vortex has no download record for this mod's archive. The file " +
+            "may still be on disk — check the Downloads tab before re-downloading.",
+      ],
+    };
   }
   if (input.staged.length === 0) {
     return { ...base, depth: "skipped", notes: ["No staging files captured."] };

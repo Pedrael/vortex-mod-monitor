@@ -119,6 +119,7 @@ export async function runSelfChecks(
           modId: mod.id,
           modName: mod.name,
           archivePath,
+          hasArchiveRecord: mod.archiveId !== undefined,
           staged,
           recordedChoices: mod.fomodSelections ?? [],
           readEntry,
