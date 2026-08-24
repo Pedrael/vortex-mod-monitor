@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-dashboard
-description: "Skill for the Dashboard area of vortex-mod-monitor. 7 symbols across 2 files."
+description: "Skill for the Dashboard area of vortex-mod-monitor. 6 symbols across 2 files."
 ---
 
 # Dashboard
 
-7 symbols | 2 files | Cohesion: 67%
+6 symbols | 2 files | Cohesion: 67%
 
 ## When to Use
 
@@ -18,7 +18,7 @@ description: "Skill for the Dashboard area of vortex-mod-monitor. 7 symbols acro
 | File | Symbols |
 |------|---------|
 | `src/ui/pages/dashboard/data.ts` | loadBuiltPackages, loadCuratorConfigs, loadDashboardData, loadReceipts |
-| `src/core/installLedger.ts` | getInstallLedgerDir, isUuid, listReceipts |
+| `src/core/installLedger.ts` | getInstallLedgerDir, listReceipts |
 
 ## Entry Points
 
@@ -35,7 +35,6 @@ Start here when exploring this area:
 | `getInstallLedgerDir` | Function | `src/core/installLedger.ts` | 140 |
 | `listReceipts` | Function | `src/core/installLedger.ts` | 408 |
 | `loadDashboardData` | Function | `src/ui/pages/dashboard/data.ts` | 108 |
-| `isUuid` | Function | `src/core/installLedger.ts` | 535 |
 | `loadBuiltPackages` | Function | `src/ui/pages/dashboard/data.ts` | 254 |
 | `loadCuratorConfigs` | Function | `src/ui/pages/dashboard/data.ts` | 184 |
 | `loadReceipts` | Function | `src/ui/pages/dashboard/data.ts` | 156 |

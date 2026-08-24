@@ -1,16 +1,16 @@
 ---
 name: gitnexus-area-pages
-description: "Skill for the Pages area of vortex-mod-monitor. 122 symbols across 32 files."
+description: "Skill for the Pages area of vortex-mod-monitor. 116 symbols across 31 files."
 ---
 
 # Pages
 
-122 symbols | 32 files | Cohesion: 76%
+116 symbols | 31 files | Cohesion: 76%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how switchToProfile, finalize, onChange work
+- Understanding how Button, Card, EventHorizonLogo work
 - Modifying pages-related functionality
 
 ## Key Files
@@ -21,31 +21,27 @@ description: "Skill for the Pages area of vortex-mod-monitor. 122 symbols across
 | `src/ui/pages/HomePage.tsx` | Dashboard, DashboardBody, ErrorPanel, FooterRow, Hero (+8) |
 | `src/ui/pages/ModDiffsPage.tsx` | ModDiffsPage, ChangedModList, ChangedModRow, FieldDiffRow, TierBadge (+8) |
 | `src/ui/pages/build/BuildPage.tsx` | BuildWizard, BuildingPanel, ErrorPanel, GameMismatchBanner, Header (+7) |
-| `src/ui/pages/CollectionsPage.tsx` | CollectionsList, refresh, DetailTile, EmptyState, ReceiptCard (+6) |
+| `src/ui/pages/CollectionsPage.tsx` | CollectionsList, refresh, DetailTile, EmptyState, ReceiptCard (+5) |
 | `src/ui/pages/PluginDiffsPage.tsx` | PluginDiffsPage, FileSelector, PluginDiffsView, EnabledMismatchList, PluginEntryList (+3) |
-| `src/core/installer/profile.ts` | makeAbortError, switchToProfile, finalize, onChange, timeout |
 | `src/ui/pages/AboutPage.tsx` | AboutPage, LinkRow, Stat, handleClick, openExternal |
 | `src/ui/components/ProgressRing.tsx` | ProgressRing, renderLabel, clamp |
 | `src/ui/errors/ErrorBoundary.tsx` | InlineFallback, PageFallback, render |
+| `src/ui/pages/install/InstallPage.tsx` | ErrorRetry, InstallWizard, InstallPage |
 
 ## Entry Points
 
 Start here when exploring this area:
 
-- **`switchToProfile`** (Function) — `src/core/installer/profile.ts:80`
-- **`finalize`** (Function) — `src/core/installer/profile.ts:102`
-- **`onChange`** (Function) — `src/core/installer/profile.ts:142`
-- **`timeout`** (Function) — `src/core/installer/profile.ts:110`
 - **`Button`** (Function) — `src/ui/components/Button.tsx:31`
+- **`Card`** (Function) — `src/ui/components/Card.tsx:31`
+- **`EventHorizonLogo`** (Function) — `src/ui/components/EventHorizonLogo.tsx:47`
+- **`HashingCard`** (Function) — `src/ui/components/HashingCard.tsx:49`
+- **`Modal`** (Function) — `src/ui/components/Modal.tsx:57`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `switchToProfile` | Function | `src/core/installer/profile.ts` | 80 |
-| `finalize` | Function | `src/core/installer/profile.ts` | 102 |
-| `onChange` | Function | `src/core/installer/profile.ts` | 142 |
-| `timeout` | Function | `src/core/installer/profile.ts` | 110 |
 | `Button` | Function | `src/ui/components/Button.tsx` | 31 |
 | `Card` | Function | `src/ui/components/Card.tsx` | 31 |
 | `EventHorizonLogo` | Function | `src/ui/components/EventHorizonLogo.tsx` | 47 |
@@ -62,6 +58,10 @@ Start here when exploring this area:
 | `InstallingStep` | Function | `src/ui/pages/install/steps.tsx` | 1661 |
 | `LoadingStep` | Function | `src/ui/pages/install/steps.tsx` | 350 |
 | `PickStep` | Function | `src/ui/pages/install/steps.tsx` | 184 |
+| `handlePick` | Function | `src/ui/pages/install/steps.tsx` | 193 |
+| `PreviewStep` | Function | `src/ui/pages/install/steps.tsx` | 604 |
+| `StaleReceiptStep` | Function | `src/ui/pages/install/steps.tsx` | 438 |
+| `ConcurrentOpBanner` | Function | `src/ui/runtime/ConcurrentOpBanner.tsx` | 17 |
 
 ## Execution Flows
 
@@ -80,7 +80,7 @@ Start here when exploring this area:
 
 ## How to Explore
 
-1. `context({name: "switchToProfile"})` — see callers and callees
+1. `context({name: "Button"})` — see callers and callees
 2. `query({search_query: "pages"})` — find related execution flows
 3. Read key files listed above for implementation details
 4. `explain({target: "<file or symbol>"})` — persisted taint findings (source→sink data flows), when indexed with `--pdg`

@@ -24,13 +24,29 @@ import { util } from "@nexusmods/vortex-api";
  * the uncompressed size in bytes (when 7z reports it), `attr` is the DOS
  * attribute flag string (`"D...."` on directories).
  *
- * Other fields exist (`dateTime`, `compressed`, `crc`) but we don't
- * consume them — leaving the type narrow keeps callers honest.
+ * `crc` is the archive's stored CRC32 for the entry. It used to be
+ * deliberately omitted here, but it is the cheapest per-file integrity signal
+ * that exists — 7z reports it from the header, with no decompression. Measured
+ * across .zip/.7z/.rar on a real 939-mod profile: present on 100% of file
+ * entries at ~0.02s per archive. `archiveContents.ts` uses it to verify an
+ * extraction against the ARCHIVE rather than against the curator's staging
+ * folder, which may itself be silently broken.
+ *
+ * Typed loosely (`string | number`) and left optional on purpose: node-7z's
+ * field naming is not guaranteed across versions and some entries legitimately
+ * carry no CRC. Consumers must treat absence as "cannot verify", never as
+ * "mismatch".
+ *
+ * `dateTime` and `compressed` are still unconsumed — the type stays narrow to
+ * keep callers honest about what we actually rely on.
  */
 export type SevenZipListEntry = {
   file: string;
   size?: number;
   attr?: string;
+  crc?: string | number;
+  /** `"+"` on directories in some node-7z versions; see `attr` for the rest. */
+  folder?: string;
 };
 
 /**

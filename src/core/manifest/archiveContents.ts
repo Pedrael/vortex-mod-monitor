@@ -1,0 +1,194 @@
+/**
+ * Archive content listing — what an archive SAYS it contains, without
+ * extracting it.
+ *
+ * ─── WHY THIS EXISTS ──────────────────────────────────────────────────
+ * `captureStagingFiles` records the curator's staging folder *after* Vortex
+ * extracted and the FOMOD resolved. That makes the CURATOR'S DISK the
+ * reference for verification — and Vortex's "lost files" bug, the very thing
+ * verification exists to catch, can corrupt that reference. A curator whose
+ * own install silently dropped files ships those omissions as the etalon, and
+ * the user who installs correctly is then told they are wrong.
+ *
+ * An archive listing is a second, independent reference: it comes from the
+ * archive itself and no one's extraction. 7-Zip reports per-entry size and
+ * CRC32 straight from the archive header, so this costs a header read rather
+ * than a decompress.
+ *
+ * Measured on a real 939-mod Fallout 4 profile (60-archive sample across
+ * .zip/.7z/.rar): 100% of file entries carried a CRC, at ~0.02s per archive —
+ * about 24 seconds for the whole profile, against 19.1 minutes for the
+ * SHA-256 archive pass. Cheap enough to run on every build.
+ *
+ * ─── WHAT CRC32 IS AND IS NOT ─────────────────────────────────────────
+ * CRC32 detects corruption and truncation. It is NOT collision-resistant and
+ * carries no integrity guarantee against a deliberately crafted file. That is
+ * fine here: identity is already established by the archive-level SHA-256
+ * (`archiveSha256`). CRC32's job is only "are these bytes intact", and it is
+ * the strongest per-entry signal obtainable without decompressing.
+ * ──────────────────────────────────────────────────────────────────────
+ */
+
+import * as path from "path";
+
+import type { SevenZipApi, SevenZipListEntry } from "./sevenZip";
+
+/** One file inside an archive, as the archive header describes it. */
+export type ArchiveEntry = {
+  /** POSIX-style path inside the archive, as listed. */
+  path: string;
+  /** Uncompressed size in bytes. `undefined` when 7z did not report one. */
+  size?: number;
+  /**
+   * Lowercase hex CRC32 (8 chars), when the archive stores one.
+   *
+   * Absent for directory entries, and legitimately absent for some entries in
+   * some formats. Callers MUST treat absence as "cannot verify this entry",
+   * never as "mismatch".
+   */
+  crc?: string;
+};
+
+export type ArchiveListing = {
+  /** File entries only — directories are dropped. */
+  entries: ArchiveEntry[];
+  /** Count of entries carrying a usable CRC. */
+  withCrc: number;
+  /**
+   * `withCrc / entries.length`, or 1 for an empty archive.
+   *
+   * Surface this rather than assuming: an archive whose entries have no CRC
+   * can only be verified by size, and the user deserves to know which of those
+   * they got.
+   */
+  crcCoverage: number;
+};
+
+export type ListArchiveContentsOptions = {
+  /** Abort a long listing (huge solid archives on slow disks). */
+  signal?: AbortSignal;
+};
+
+/**
+ * True when a listed entry is a directory rather than a file.
+ *
+ * 7z marks directories two ways depending on format and version: `Folder = +`
+ * (surfaced by node-7z as `attr`/`folder`) or a `D` in the DOS attribute
+ * string. Checking both avoids counting directories as unverifiable files,
+ * which would silently depress crcCoverage.
+ */
+function isDirectoryEntry(entry: SevenZipListEntry): boolean {
+  const attr = entry.attr ?? "";
+  if (attr.startsWith("D") || attr.includes("D_")) return true;
+  // node-7z surfaces the `Folder = +` column on some versions.
+  const folder = (entry as unknown as { folder?: string }).folder;
+  return folder === "+";
+}
+
+/** Normalise an archive-internal path for stable comparison across platforms. */
+export function normalizeArchivePath(p: string): string {
+  return p.replace(/\\/g, "/").replace(/^\.\//, "").trim();
+}
+
+/**
+ * Read a CRC off a listing entry.
+ *
+ * node-7z's field naming is not guaranteed across versions, and the archive
+ * itself may omit one, so every shape is probed and anything unusable becomes
+ * `undefined` rather than a bogus value. A wrong CRC is far worse than a
+ * missing one: missing degrades to a size check, wrong invents a mismatch.
+ */
+function readCrc(entry: SevenZipListEntry): string | undefined {
+  const raw = (entry as unknown as { crc?: unknown; CRC?: unknown }).crc
+    ?? (entry as unknown as { CRC?: unknown }).CRC;
+  if (typeof raw !== "string" && typeof raw !== "number") return undefined;
+  // A NUMBER is the raw CRC value and must be rendered in hex. Stringifying it
+  // decimally would produce a plausible-looking 8-char value that is simply
+  // wrong — and a wrong CRC manufactures a mismatch, which is the worst
+  // outcome this module can produce. A string is already hex as 7z prints it.
+  if (typeof raw === "number") {
+    if (!Number.isInteger(raw) || raw < 0 || raw > 0xffffffff) return undefined;
+    return raw.toString(16).padStart(8, "0");
+  }
+  const hex = raw.trim().toLowerCase();
+  if (!/^[0-9a-f]{1,8}$/.test(hex)) return undefined;
+  // 7z prints CRCs unpadded; pad so string comparison is safe.
+  return hex.padStart(8, "0");
+}
+
+/**
+ * List an archive's file entries.
+ *
+ * Rejects when the archive cannot be read at all — a listing that failed is
+ * NOT an empty archive, and callers must be able to tell those apart. Per-mod
+ * tolerance belongs to the caller, the same way `enrichModsWithArchiveHashes`
+ * treats a failed hash as "no hash" rather than aborting the batch.
+ */
+export async function listArchiveContents(
+  sevenZip: SevenZipApi,
+  archivePath: string,
+  opts?: ListArchiveContentsOptions,
+): Promise<ArchiveListing> {
+  const entries: ArchiveEntry[] = [];
+
+  await new Promise<void>((resolve, reject) => {
+    const stream = sevenZip.list(archivePath);
+    let settled = false;
+    const finish = (err?: Error): void => {
+      if (settled) return;
+      settled = true;
+      if (err) reject(err);
+      else resolve();
+    };
+
+    const onAbort = (): void =>
+      finish(new Error(`Listing aborted: ${path.basename(archivePath)}`));
+    opts?.signal?.addEventListener("abort", onAbort, { once: true });
+
+    stream.on("data", (entry: SevenZipListEntry) => {
+      if (entry?.file === undefined) return;
+      if (isDirectoryEntry(entry)) return;
+      entries.push({
+        path: normalizeArchivePath(entry.file),
+        ...(typeof entry.size === "number" ? { size: entry.size } : {}),
+        ...(readCrc(entry) !== undefined ? { crc: readCrc(entry) } : {}),
+      });
+    });
+    stream.on("error", (err: Error) => finish(err));
+    stream.on("end", () => finish());
+  });
+
+  const withCrc = entries.filter((e) => e.crc !== undefined).length;
+  return {
+    entries,
+    withCrc,
+    crcCoverage: entries.length === 0 ? 1 : withCrc / entries.length,
+  };
+}
+
+/**
+ * Index a listing by `size:crc` so staged files can be matched by CONTENT
+ * rather than by path.
+ *
+ * Path-independence is the whole point: a FOMOD renames and relocates what it
+ * installs (`<file source destination>`), so a staged file's path frequently
+ * has no counterpart in the archive. Its bytes do.
+ *
+ * Entries without a CRC are indexed under size alone, so they can still be
+ * matched weakly instead of being dropped.
+ */
+export function indexByContent(listing: ArchiveListing): Map<string, ArchiveEntry[]> {
+  const index = new Map<string, ArchiveEntry[]>();
+  for (const entry of listing.entries) {
+    const key = contentKey(entry.size, entry.crc);
+    const bucket = index.get(key);
+    if (bucket === undefined) index.set(key, [entry]);
+    else bucket.push(entry);
+  }
+  return index;
+}
+
+/** Key used by {@link indexByContent}. `undefined` parts collapse to `?`. */
+export function contentKey(size: number | undefined, crc: string | undefined): string {
+  return `${size ?? "?"}:${crc ?? "?"}`;
+}

@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-manifest
-description: "Skill for the Manifest area of vortex-mod-monitor. 137 symbols across 17 files."
+description: "Skill for the Manifest area of vortex-mod-monitor. 145 symbols across 18 files."
 ---
 
 # Manifest
 
-137 symbols | 17 files | Cohesion: 83%
+145 symbols | 18 files | Cohesion: 84%
 
 ## When to Use
 
@@ -22,11 +22,11 @@ description: "Skill for the Manifest area of vortex-mod-monitor. 137 symbols acr
 | `src/core/manifest/packageZip.ts` | isAbortLikeError, packageEhcoll, checkAbort, prepareStagingDir, safeRmDir (+12) |
 | `src/core/manifest/readEhcoll.ts` | ReadEhcollError, assertReadableFile, crossCheckBundled, extractManifest, listZipEntries (+7) |
 | `src/core/manifest/collectionConfig.ts` | createDefaultConfig, getCollectionConfigPath, loadOrCreateCollectionConfig, saveCollectionConfig, validateSlug (+6) |
+| `src/core/manifest/archiveContents.ts` | isDirectoryEntry, listArchiveContents, finish, onAbort, normalizeArchivePath (+3) |
 | `src/core/comparePlugins.ts` | comparePluginsEntries, comparePluginsTxtFiles, normalizePluginName, parsePluginsTxt, toPluginMap |
 | `src/core/manifest/sevenZip.ts` | extract, list, resolveSevenZip, add |
 | `src/core/manifest/stagingFileWalker.ts` | getDefaultHashConcurrency, hashStagingFiles, toPosix, walkStagingFolder |
 | `src/core/archiveHashing.ts` | enrichModsWithArchiveHashes, hashFileSha256, cleanup |
-| `src/core/resolver/enrichStagingSetHashes.ts` | collectExternalStagingSetHashTargets, enrichInstalledModsWithStagingSetHashes, normalizeName |
 
 ## Entry Points
 
@@ -53,7 +53,7 @@ Start here when exploring this area:
 | `readEhcoll` | Function | `src/core/manifest/readEhcoll.ts` | 154 |
 | `packageEhcoll` | Function | `src/core/manifest/packageZip.ts` | 128 |
 | `checkAbort` | Function | `src/core/manifest/packageZip.ts` | 138 |
-| `resolveSevenZip` | Function | `src/core/manifest/sevenZip.ts` | 118 |
+| `resolveSevenZip` | Function | `src/core/manifest/sevenZip.ts` | 134 |
 | `enrichModsWithArchiveHashes` | Function | `src/core/archiveHashing.ts` | 141 |
 | `hashFileSha256` | Function | `src/core/archiveHashing.ts` | 34 |
 | `cleanup` | Function | `src/core/archiveHashing.ts` | 54 |

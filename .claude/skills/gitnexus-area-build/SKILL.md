@@ -17,10 +17,10 @@ description: "Skill for the Build area of vortex-mod-monitor. 97 symbols across 
 
 | File | Symbols |
 |------|---------|
-| `src/ui/pages/build/BuildPage.tsx` | handle, handleDiscardDraft, handleChange, handleDismissDraftBanner, session (+19) |
+| `src/ui/pages/build/BuildPage.tsx` | handle, handleDiscardDraft, handleChange, handleDismissDraftBanner, DraftRestoredBanner (+19) |
 | `src/ui/pages/build/buildSession.ts` | queuePosition, isAbortError, _runBuild, begin, discardDraft (+15) |
-| `src/ui/pages/build/buildSessionRegistry.ts` | BuildSessionRegistry, getBuildSessionRegistry, ensure, get, makeHooks (+13) |
-| `src/ui/pages/build/BuildDashboard.tsx` | handleDiscardDraft, handleUpdatePublished, refresh, bumpPatch, registry (+9) |
+| `src/ui/pages/build/buildSessionRegistry.ts` | notifyStateChanged, emit, ensure, isAnyBusy, makeHooks (+13) |
+| `src/ui/pages/build/BuildDashboard.tsx` | handleDiscardDraft, handleUpdatePublished, refresh, bumpPatch, BuildDashboard (+9) |
 | `src/ui/pages/build/engine.ts` | BundleResolutionError, buildOutputFileName, resolveDeploymentMethod, resolveGameVersion, resolveVortexVersion (+5) |
 | `src/core/draftStorage.ts` | deleteDraft, getAppDataPath, getDraftsRoot, listDrafts |
 | `src/core/deploymentManifest.ts` | captureDeploymentManifests, collectDistinctModTypes, normalizeManifest |
@@ -53,12 +53,12 @@ Start here when exploring this area:
 | `reconcileExternalModsConfig` | Function | `src/core/manifest/collectionConfig.ts` | 240 |
 | `toBuildManifestExternalMods` | Function | `src/core/manifest/collectionConfig.ts` | 281 |
 | `runBuildPipeline` | Function | `src/ui/pages/build/engine.ts` | 384 |
-| `registry` | Function | `src/ui/pages/build/BuildDashboard.tsx` | 91 |
-| `getBuildSessionRegistry` | Function | `src/ui/pages/build/buildSessionRegistry.ts` | 292 |
 | `getDraftsRoot` | Function | `src/core/draftStorage.ts` | 121 |
 | `listDrafts` | Function | `src/core/draftStorage.ts` | 162 |
 | `BuildDashboard` | Function | `src/ui/pages/build/BuildDashboard.tsx` | 88 |
 | `handleOpenDraft` | Function | `src/ui/pages/build/BuildDashboard.tsx` | 179 |
+| `registry` | Function | `src/ui/pages/build/BuildDashboard.tsx` | 91 |
+| `getBuildSessionRegistry` | Function | `src/ui/pages/build/buildSessionRegistry.ts` | 292 |
 | `Pill` | Function | `src/ui/components/Pill.tsx` | 19 |
 | `validateCuratorInput` | Function | `src/ui/pages/build/engine.ts` | 648 |
 | `onProgress` | Function | `src/ui/pages/build/engine.ts` | 294 |
