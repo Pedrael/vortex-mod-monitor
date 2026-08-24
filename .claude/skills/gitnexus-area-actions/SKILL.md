@@ -59,7 +59,7 @@ Start here when exploring this area:
 | `pickJsonFile` | Function | `src/utils/utils.ts` | 47 |
 | `pickTxtFile` | Function | `src/utils/utils.ts` | 468 |
 | `createBuildPackageAction` | Function | `src/actions/buildPackageAction.ts` | 109 |
-| `captureLoadOrder` | Function | `src/core/loadOrder.ts` | 40 |
+| `toBuildManifestExternalMods` | Function | `src/core/manifest/collectionConfig.ts` | 281 |
 | `getModArchivePath` | Function | `src/core/archiveHashing.ts` | 79 |
 | `action` | Function | `src/actions/buildPackageAction.ts` | 323 |
 

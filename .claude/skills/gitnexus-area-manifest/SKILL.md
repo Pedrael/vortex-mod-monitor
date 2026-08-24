@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-manifest
-description: "Skill for the Manifest area of vortex-mod-monitor. 166 symbols across 22 files."
+description: "Skill for the Manifest area of vortex-mod-monitor. 171 symbols across 23 files."
 ---
 
 # Manifest
 
-166 symbols | 22 files | Cohesion: 86%
+171 symbols | 23 files | Cohesion: 86%
 
 ## When to Use
 
@@ -25,8 +25,8 @@ description: "Skill for the Manifest area of vortex-mod-monitor. 166 symbols acr
 | `src/core/manifest/collectionConfig.ts` | createDefaultConfig, getCollectionConfigPath, loadOrCreateCollectionConfig, saveCollectionConfig, validateSlug (+6) |
 | `src/core/manifest/archiveContents.ts` | isDirectoryEntry, listArchiveContents, finish, onAbort, normalizeArchivePath (+3) |
 | `src/core/comparePlugins.ts` | comparePluginsEntries, comparePluginsTxtFiles, normalizePluginName, parsePluginsTxt, toPluginMap |
+| `src/core/manifest/expandFomodPlan.ts` | expandFomodPlan, place, join, norm, trim |
 | `src/core/manifest/sevenZip.ts` | extract, list, resolveSevenZip, add |
-| `src/core/manifest/stagingFileWalker.ts` | getDefaultHashConcurrency, hashStagingFiles, toPosix, walkStagingFolder |
 
 ## Entry Points
 
