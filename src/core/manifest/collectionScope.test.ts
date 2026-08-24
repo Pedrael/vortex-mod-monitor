@@ -59,18 +59,52 @@ describe("scopeCollectionMods", () => {
     expect(describeScope(scope)[0]).toMatch(/cannot contain the same mod twice/);
   });
 
-  it("reports several enabled installs at different versions without resolving them", () => {
-    // Usually an upgrade leftover, sometimes a mod deliberately split across
-    // parts. Nothing here can tell those apart, so nothing here decides.
+  it("reports the SAME mod installed twice and left enabled", () => {
     const scope = scopeCollectionMods([
-      mod({ id: "vrp1", name: "VRP Shared", nexusModId: 77615, nexusFileId: 1, version: "1.1" }),
-      mod({ id: "vrp2", name: "VRP Shared", nexusModId: 77615, nexusFileId: 2, version: "1.2" }),
+      mod({
+        id: "vrp1", name: "VRP Shared", nexusModId: 77615, nexusFileId: 1,
+        version: "1.1", installationPath: "VRP Shared-77615-1-1-1746371099",
+      }),
+      mod({
+        id: "vrp2", name: "VRP Shared", nexusModId: 77615, nexusFileId: 2,
+        version: "1.2", installationPath: "VRP Shared-77615-1-2-1756431742",
+      }),
     ]);
-    expect(scope.included).toHaveLength(2);
-    expect(scope.collidingIdentities).toEqual([]);
     expect(scope.multipleInstalls).toHaveLength(1);
-    expect(describeScope(scope)[0]).toMatch(/2 enabled installs at different versions/);
+    expect(describeScope(scope)[0]).toMatch(/is installed 2 times/);
     expect(describeScope(scope)[0]).toMatch(/shipped as-is/);
+  });
+
+  it("does NOT flag different files that share one Nexus mod page", () => {
+    // The bug this replaces: grouping by page id flagged 74 groups on the real
+    // profile and every one was a false positive. A page hosts a base plus its
+    // addons, four different guns, five icon packs — all meant to coexist.
+    const scope = scopeCollectionMods([
+      mod({
+        id: "a", name: "We Are Unique - Base", nexusModId: 100245, nexusFileId: 1,
+        version: "N1.0.5", installationPath: "We Are Unique - Base - RobCo-100245-1-0-1-1768649343",
+      }),
+      mod({
+        id: "b", name: "We Are Unique - Addon", nexusModId: 100245, nexusFileId: 2,
+        version: "U1.1.0", installationPath: "We Are Unique - Addon - RobCo-100245-1-0-1-1768649409",
+      }),
+    ]);
+    expect(scope.multipleInstalls).toEqual([]);
+    expect(describeScope(scope)).toEqual([]);
+  });
+
+  it("sees through Vortex's `.1` re-install suffix", () => {
+    const scope = scopeCollectionMods([
+      mod({
+        id: "r1", name: "RDIS TagSets All in One", nexusModId: 102329, nexusFileId: 1,
+        version: "1.0.2", installationPath: "RDIS TagSets All in One-102329-1-0-2-1772977728",
+      }),
+      mod({
+        id: "r2", name: "RDIS TagSets All in One", nexusModId: 102329, nexusFileId: 2,
+        version: "1.0.2", installationPath: "RDIS TagSets All in One-102329-1-0-2-1772977728.1",
+      }),
+    ]);
+    expect(scope.multipleInstalls).toHaveLength(1);
   });
 
   it("does not flag one mod that simply has several files of the same version", () => {

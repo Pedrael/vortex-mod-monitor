@@ -25,13 +25,25 @@
  * both-enabled and neither-enabled cases do not occur here, but they are
  * reported rather than silently guessed at.
  *
- * ## Several ENABLED installs of one mod are reported, not resolved
+ * ## Several ENABLED installs of the SAME mod are reported, not resolved
  *
- * Beyond exact-identity collisions, one Nexus mod often has several installs
- * at DIFFERENT file versions, both enabled — usually an upgrade whose old
- * folder was never removed, but sometimes deliberate (a mod split across
- * parts). Nothing here can tell those apart, so nothing here decides: the
- * curator gets a list and makes the call.
+ * An upgrade whose old folder was never removed leaves two enabled installs of
+ * one mod at different versions. Worth telling the curator about; not worth
+ * deciding for them, since a second install is occasionally deliberate.
+ *
+ * The trap is that a Nexus MOD PAGE is not a mod. One page routinely hosts many
+ * distinct files that are all meant to be installed together — a base plus its
+ * addons, four different guns, five icon packs. Grouping by page id and
+ * flagging version differences therefore flags all of those: measured on the
+ * curator's profile, **74 groups, and all 74 were different files**. A
+ * detector with a 100% false-positive rate does not just waste the reader's
+ * time, it teaches them to ignore the warnings that matter.
+ *
+ * So membership requires the same page id AND the same underlying mod, by
+ * normalising Vortex's `<name>-<modId>-<version>-<timestamp>` folder
+ * convention back to the name. That convention is not guaranteed, so when
+ * normalisation fails the two look like different mods and nothing is
+ * reported — under-reporting rather than crying wolf.
  * ──────────────────────────────────────────────────────────────────────
  */
 
@@ -49,8 +61,8 @@ export type CollectionScope = {
    */
   collidingIdentities: DuplicateInstallGroup[];
   /**
-   * One Nexus mod with several enabled installs at different file versions.
-   * Advisory: probably an upgrade leftover, possibly deliberate.
+   * The SAME mod installed more than once and left enabled. Advisory: usually
+   * an upgrade whose old folder survived.
    */
   multipleInstalls: DuplicateInstallGroup[];
 };
@@ -60,6 +72,24 @@ export type DuplicateInstallGroup = {
   key: string;
   mods: Array<{ id: string; name: string; version?: string; installationPath?: string }>;
 };
+
+/**
+ * Reduce a staging folder name to the mod behind it.
+ *
+ * Vortex names an install folder `<name>-<modId>-<version>-<timestamp>` and
+ * appends `.1`, `.2` … when the same archive is installed again. Stripping
+ * both leaves the name, which is what distinguishes "the same mod twice" from
+ * "two files off one mod page".
+ */
+function normalizeInstallName(m: AuditorMod): string {
+  const raw = m.installationPath ?? m.name;
+  const reinstall = /^(.*)\.\d+$/.exec(raw);
+  const base = reinstall !== null ? reinstall[1]! : raw;
+  return base
+    .replace(/-\d+(-[0-9A-Za-z]+)*-\d{9,}$/, "")
+    .trim()
+    .toLowerCase();
+}
 
 const describe = (m: AuditorMod): DuplicateInstallGroup["mods"][number] => ({
   id: m.id,
@@ -110,13 +140,13 @@ export function scopeCollectionMods(mods: AuditorMod[]): CollectionScope {
         ? `nexus:${String(m.nexusModId)}:${String(m.nexusFileId)}`
         : undefined,
     ),
-    // Same mod page, different files: legal in a manifest, suspicious on disk.
+    // The same mod, installed twice and both left on. Keyed by page id AND
+    // normalised name, because one page hosts many genuinely distinct files.
     multipleInstalls: groupBy(included, (m) =>
-      m.nexusModId !== undefined ? `nexus:${String(m.nexusModId)}` : undefined,
-    ).filter((g) => {
-      const versions = new Set(g.mods.map((x) => x.version ?? ""));
-      return versions.size > 1;
-    }),
+      m.nexusModId !== undefined
+        ? `nexus:${String(m.nexusModId)}|${normalizeInstallName(m)}`
+        : undefined,
+    ),
   };
 }
 
@@ -136,8 +166,8 @@ export function describeScope(scope: CollectionScope): string[] {
     const shown = scope.multipleInstalls.slice(0, 8);
     for (const group of shown) {
       out.push(
-        `"${group.mods[0]!.name}" has ${group.mods.length} enabled installs at ` +
-          `different versions (${group.mods
+        `"${group.mods[0]!.name}" is installed ${group.mods.length} times and all ` +
+          `copies are enabled (versions: ${group.mods
             .map((m) => m.version ?? "?")
             .join(", ")}). Usually an upgrade whose old folder was never removed — ` +
           `worth checking, but shipped as-is.`,
