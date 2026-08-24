@@ -42,7 +42,7 @@ import * as path from "path";
 import { AbortError } from "../archiveHashing";
 import type { EhcollManifest } from "../../types/ehcoll";
 import { sortDeep } from "../../utils/utils";
-import { resolveSevenZip, type SevenZipApi } from "./sevenZip";
+import { resolveSevenZip, sevenZipAdd, type SevenZipApi } from "./sevenZip";
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -401,65 +401,31 @@ async function runSevenZipAdd(
   // Compression level is left at 7z's default (5); bundled archives are
   // already compressed so tweaking it changes total size by a fraction
   // of a percent.
-  await new Promise<void>((resolve, reject) => {
-    const stream = sevenZip.add(outputPath, "*", {
-      $raw: ["-tzip"],
-      workingDir: stagingDir,
-      recursive: true,
-    });
+  //
+  // Source is an ABSOLUTE wildcard rather than `"*"` plus a working
+  // directory: this node-7z spawns without a `cwd`, so there is no
+  // `workingDir` option to honour one. 7z stores entries relative to the
+  // wildcard's directory, which gives the same relative layout.
+  const cancelled = (): boolean => signal?.aborted === true;
+  if (cancelled()) {
+    throw new AbortError("Packaging cancelled by user");
+  }
 
-    let abortListener: (() => void) | undefined;
+  await sevenZipAdd(
+    sevenZip,
+    outputPath,
+    [path.join(stagingDir, "*")],
+    { raw: ["-tzip"], r: true },
+    signal,
+  );
 
-    const cleanup = (): void => {
-      if (abortListener && signal) {
-        signal.removeEventListener("abort", abortListener);
-      }
-    };
-
-    stream.on("end", () => {
-      cleanup();
-      resolve();
-    });
-    stream.on("error", (err: Error) => {
-      cleanup();
-      reject(err);
-    });
-
-    // Hard cancellation: kill the spawned 7z child so the user doesn't
-    // wait minutes for "cancel" to take effect on a multi-GB collection.
-    //
-    // node-7z exposes the spawned ChildProcess as `_childProcess`. The
-    // field isn't typed (the upstream lib has no .d.ts) so we cast through
-    // unknown. If a future node-7z renames it, we fall back to letting
-    // 7z finish on its own — slow, but not broken.
-    if (signal !== undefined) {
-      const tryKill = (): void => {
-        const internals = stream as unknown as {
-          _childProcess?: { kill?: (sig?: NodeJS.Signals) => void };
-        };
-        try {
-          internals._childProcess?.kill?.("SIGTERM");
-        } catch {
-          // Best effort. If 7z resists SIGTERM the staging dir is still
-          // cleaned up by the catch in packageEhcoll.
-        }
-      };
-
-      if (signal.aborted) {
-        tryKill();
-        cleanup();
-        reject(new AbortError("Packaging cancelled by user"));
-        return;
-      }
-
-      abortListener = (): void => {
-        tryKill();
-        cleanup();
-        reject(new AbortError("Packaging cancelled by user"));
-      };
-      signal.addEventListener("abort", abortListener);
-    }
-  });
+  // Cancellation is cooperative: `sevenZipAdd` kills the spawned 7z child
+  // from the progress callback (the only hook this node-7z exposes — it
+  // never attaches a ChildProcess to the returned promise). A killed run
+  // still resolves, so the abort is turned into an error here.
+  if (cancelled()) {
+    throw new AbortError("Packaging cancelled by user");
+  }
 }
 
 async function safeRmDir(dir: string): Promise<void> {

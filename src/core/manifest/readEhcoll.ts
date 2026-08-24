@@ -49,6 +49,8 @@ import type { EhcollManifest } from "../../types/ehcoll";
 import { parseManifest, ParseManifestError } from "./parseManifest";
 import {
   resolveSevenZip,
+  sevenZipExtractFull,
+  sevenZipList,
   type SevenZipApi,
   type SevenZipListEntry,
 } from "./sevenZip";
@@ -266,27 +268,14 @@ async function listZipEntries(
   zipPath: string,
   sevenZip: SevenZipApi,
 ): Promise<SevenZipListEntry[]> {
-  const entries: SevenZipListEntry[] = [];
-
-  await new Promise<void>((resolve, reject) => {
-    const stream = sevenZip.list(zipPath);
-    stream.on("data", (entry: SevenZipListEntry) => {
-      if (entry !== null && typeof entry === "object" && typeof entry.file === "string") {
-        entries.push(entry);
-      }
-    });
-    stream.on("end", () => resolve());
-    stream.on("error", (err: Error) =>
-      reject(
-        new ReadEhcollError([
-          `7z failed to list "${zipPath}": ${err.message}. ` +
-            `The file may be corrupt, password-protected, or not a ZIP.`,
-        ]),
-      ),
-    );
-  });
-
-  return entries;
+  try {
+    return await sevenZipList(sevenZip, zipPath);
+  } catch (err) {
+    throw new ReadEhcollError([
+      `7z failed to list "${zipPath}": ${(err as Error).message} ` +
+        `The file may be corrupt, password-protected, or not a ZIP.`,
+    ]);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -331,7 +320,7 @@ function classifyEntries(entries: SevenZipListEntry[]): ClassifiedLayout {
   for (const entry of entries) {
     if (isDirectoryEntry(entry)) continue;
 
-    const normalized = normalizePath(entry.file);
+    const normalized = normalizePath(entry.name);
 
     if (normalized === "manifest.json") {
       hasManifest = true;
@@ -377,7 +366,7 @@ function classifyEntries(entries: SevenZipListEntry[]): ClassifiedLayout {
 function isDirectoryEntry(entry: SevenZipListEntry): boolean {
   if (typeof entry.attr === "string" && entry.attr.startsWith("D")) return true;
   // 7z occasionally emits entries with trailing slashes for empty dirs.
-  if (entry.file.endsWith("/") || entry.file.endsWith("\\")) return true;
+  if (entry.name.endsWith("/") || entry.name.endsWith("\\")) return true;
   return false;
 }
 
@@ -503,19 +492,18 @@ async function extractManifest(
   stagingDir: string,
   sevenZip: SevenZipApi,
 ): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    const stream = sevenZip.extract(zipPath, stagingDir, {
-      $cherryPick: ["manifest.json"],
+  try {
+    // `extractFull` (7z `x`), never `extract` (7z `e`) — the latter flattens
+    // the tree. `raw` carries the entry name as a trailing positional filter,
+    // which is how this node-7z cherry-picks.
+    await sevenZipExtractFull(sevenZip, zipPath, stagingDir, {
+      raw: ["manifest.json"],
     });
-    stream.on("end", () => resolve());
-    stream.on("error", (err: Error) =>
-      reject(
-        new ReadEhcollError([
-          `7z failed to extract manifest.json from "${zipPath}": ${err.message}.`,
-        ]),
-      ),
-    );
-  });
+  } catch (err) {
+    throw new ReadEhcollError([
+      `7z failed to extract manifest.json from "${zipPath}": ${(err as Error).message}`,
+    ]);
+  }
 }
 
 // ---------------------------------------------------------------------------

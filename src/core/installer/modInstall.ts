@@ -50,6 +50,7 @@ import type { types } from "@nexusmods/vortex-api";
 import {
   type SevenZipApi,
   resolveSevenZip,
+  sevenZipExtractFull,
 } from "../manifest/sevenZip";
 
 /**
@@ -783,19 +784,19 @@ export async function extractBundledFromEhcoll(
   );
 
   try {
-    await new Promise<void>((resolve, reject) => {
-      const stream = sevenZip.extract(ehcollZipPath, tempDir, {
-        $cherryPick: [bundledZipEntry],
+    try {
+      // MUST be `extractFull` (7z `x`). `extract` maps to 7z `e`, which
+      // flattens the tree — it would drop every bundled archive's directory
+      // structure into one folder and collide same-named files.
+      await sevenZipExtractFull(sevenZip, ehcollZipPath, tempDir, {
+        raw: [bundledZipEntry],
       });
-      stream.on("end", () => resolve());
-      stream.on("error", (err: Error) =>
-        reject(
-          new Error(
-            `7z failed to extract "${bundledZipEntry}" from "${ehcollZipPath}": ${err.message}.`,
-          ),
-        ),
+    } catch (err) {
+      throw new Error(
+        `7z failed to extract "${bundledZipEntry}" from "${ehcollZipPath}": ` +
+          `${(err as Error).message}`,
       );
-    });
+    }
 
     // The cherry-pick preserves the entry's path inside `tempDir`.
     const extractedPath = path.join(tempDir, ...bundledZipEntry.split("/"));

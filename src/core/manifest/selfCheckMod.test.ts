@@ -1,21 +1,14 @@
-import { EventEmitter } from "events";
 import { describe, expect, it } from "vitest";
 
 import type { SevenZipApi, SevenZipListEntry } from "./sevenZip";
+import { fakeSevenZip } from "./testing/fakeSevenZip";
 import { selfCheckMod, summarizeSelfChecks } from "./selfCheckMod";
 
 function sevenZip(entries: SevenZipListEntry[], err?: Error): SevenZipApi {
-  return {
-    list: () => {
-      const em = new EventEmitter();
-      setImmediate(() => {
-        if (err) { em.emit("error", err); return; }
-        for (const e of entries) em.emit("data", e);
-        em.emit("end");
-      });
-      return em as unknown as ReturnType<SevenZipApi["list"]>;
-    },
-  } as unknown as SevenZipApi;
+  return fakeSevenZip({
+    entries,
+    ...(err !== undefined ? { listError: err } : {}),
+  });
 }
 
 const SCRIPT = `<config>
@@ -39,9 +32,9 @@ const CHOICES = [
 ];
 
 const ARCHIVE_ENTRIES: SevenZipListEntry[] = [
-  { file: "fomod/ModuleConfig.xml", size: 10, crc: "0000000a" },
-  { file: "20 Bodies/00 AM/AAF/AM-actionData.xml", size: 430, crc: "11111111" },
-  { file: "20 Bodies/00 AM/AAF/AM-otherData.xml", size: 431, crc: "22222222" },
+  { name: "fomod/ModuleConfig.xml", size: 10, crc: "0000000a" },
+  { name: "20 Bodies/00 AM/AAF/AM-actionData.xml", size: 430, crc: "11111111" },
+  { name: "20 Bodies/00 AM/AAF/AM-otherData.xml", size: 431, crc: "22222222" },
 ];
 
 const readScript = async (): Promise<Buffer> => Buffer.from(SCRIPT, "utf8");
@@ -125,7 +118,7 @@ describe("selfCheckMod", () => {
 
   it("degrades to containment when the archive has no FOMOD script", async () => {
     const r = await selfCheckMod({
-      sevenZip: sevenZip([{ file: "a.esp", size: 1, crc: "aaaaaaaa" }]),
+      sevenZip: sevenZip([{ name: "a.esp", size: 1, crc: "aaaaaaaa" }]),
       modId: "m1", modName: "plain",
       archivePath: "a.7z",
       staged: [{ path: "a.esp", size: 1, crc: "aaaaaaaa" }],

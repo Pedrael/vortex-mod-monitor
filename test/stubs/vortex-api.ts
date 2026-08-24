@@ -29,7 +29,32 @@ export const selectors = {
   downloadPathForGame: (): string => "/stub/downloads",
 };
 
+/**
+ * node-7z 0.8.1's export shape, reproduced exactly: a CONSTRUCTOR whose
+ * methods live on the PROTOTYPE.
+ *
+ * This detail is the whole point of the stub. `SevenZip.list` is `undefined`
+ * — only `new SevenZip().list` exists — and code that forgets the `new`
+ * throws a synchronous TypeError that a surrounding try/catch turns into a
+ * silent "skipped". A stub that exposed `list` directly would let exactly
+ * that bug pass its tests, which is what happened for real.
+ */
+function SevenZipStub(this: unknown): void {
+  /* node-7z's constructor is empty too */
+}
+SevenZipStub.prototype.list = async (archive: string): Promise<unknown> => ({
+  path: archive,
+  type: "zip",
+  physicalSize: "0",
+});
+SevenZipStub.prototype.add = async (): Promise<unknown> => ({ code: 0, errors: [] });
+SevenZipStub.prototype.extractFull = async (): Promise<unknown> => ({
+  code: 0,
+  errors: [],
+});
+
 export const util = {
+  SevenZip: SevenZipStub,
   getVortexPath: (id: string): string => `/stub/${id}`,
   installIconSet: (): Promise<void> => Promise.resolve(),
   getManifest: (): unknown => ({}),

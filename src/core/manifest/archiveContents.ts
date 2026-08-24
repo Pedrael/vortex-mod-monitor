@@ -31,6 +31,7 @@
 
 import * as path from "path";
 
+import { sevenZipList } from "./sevenZip";
 import type { SevenZipApi, SevenZipListEntry } from "./sevenZip";
 
 /** One file inside an archive, as the archive header describes it. */
@@ -129,34 +130,29 @@ export async function listArchiveContents(
   archivePath: string,
   opts?: ListArchiveContentsOptions,
 ): Promise<ArchiveListing> {
+  const abortIfCancelled = (): void => {
+    if (opts?.signal?.aborted === true) {
+      throw new Error(`Listing aborted: ${path.basename(archivePath)}`);
+    }
+  };
+
+  // A listing is a single fast 7z header read (~24ms on a real mod archive),
+  // so it is checkpointed either side rather than interrupted mid-flight —
+  // node-7z's `list` forwards no cancellation hook to its parser.
+  abortIfCancelled();
+  const listed = await sevenZipList(sevenZip, archivePath);
+  abortIfCancelled();
+
   const entries: ArchiveEntry[] = [];
-
-  await new Promise<void>((resolve, reject) => {
-    const stream = sevenZip.list(archivePath);
-    let settled = false;
-    const finish = (err?: Error): void => {
-      if (settled) return;
-      settled = true;
-      if (err) reject(err);
-      else resolve();
-    };
-
-    const onAbort = (): void =>
-      finish(new Error(`Listing aborted: ${path.basename(archivePath)}`));
-    opts?.signal?.addEventListener("abort", onAbort, { once: true });
-
-    stream.on("data", (entry: SevenZipListEntry) => {
-      if (entry?.file === undefined) return;
-      if (isDirectoryEntry(entry)) return;
-      entries.push({
-        path: normalizeArchivePath(entry.file),
-        ...(typeof entry.size === "number" ? { size: entry.size } : {}),
-        ...(readCrc(entry) !== undefined ? { crc: readCrc(entry) } : {}),
-      });
+  for (const entry of listed) {
+    if (isDirectoryEntry(entry)) continue;
+    const crc = readCrc(entry);
+    entries.push({
+      path: normalizeArchivePath(entry.name),
+      ...(typeof entry.size === "number" ? { size: entry.size } : {}),
+      ...(crc !== undefined ? { crc } : {}),
     });
-    stream.on("error", (err: Error) => finish(err));
-    stream.on("end", () => finish());
-  });
+  }
 
   const withCrc = entries.filter((e) => e.crc !== undefined).length;
   return {

@@ -7,7 +7,6 @@
  * behaviour is a WRONG crc (invents a mismatch); the safe degradation is a
  * MISSING one (falls back to size).
  */
-import { EventEmitter } from "events";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -17,30 +16,21 @@ import {
   normalizeArchivePath,
 } from "./archiveContents";
 import type { SevenZipApi, SevenZipListEntry } from "./sevenZip";
+import { fakeSevenZip } from "./testing/fakeSevenZip";
 
-/** A SevenZipApi whose `list` replays the given entries, then ends. */
-function fakeSevenZip(entries: SevenZipListEntry[], err?: Error): SevenZipApi {
-  return {
-    list: () => {
-      const em = new EventEmitter();
-      setImmediate(() => {
-        if (err) {
-          em.emit("error", err);
-          return;
-        }
-        for (const e of entries) em.emit("data", e);
-        em.emit("end");
-      });
-      return em as unknown as ReturnType<SevenZipApi["list"]>;
-    },
-  } as unknown as SevenZipApi;
+/** Replays the given entries through node-7z's real progress-callback shape. */
+function fake7z(entries: SevenZipListEntry[], err?: Error): SevenZipApi {
+  return fakeSevenZip({
+    entries,
+    ...(err !== undefined ? { listError: err } : {}),
+  });
 }
 
 describe("listArchiveContents", () => {
   it("returns file entries with size and normalised lowercase crc", async () => {
-    const sz = fakeSevenZip([
-      { file: "Data\\Textures\\a.dds", size: 100, crc: "612E4497" },
-      { file: "Data/Meshes/b.nif", size: 200, crc: "0A1B2C3D" },
+    const sz = fake7z([
+      { name: "Data\\Textures\\a.dds", size: 100, crc: "612E4497" },
+      { name: "Data/Meshes/b.nif", size: 200, crc: "0A1B2C3D" },
     ]);
     const out = await listArchiveContents(sz, "x.zip");
     expect(out.entries).toEqual([
@@ -51,10 +41,10 @@ describe("listArchiveContents", () => {
   });
 
   it("drops directory entries so they do not depress crc coverage", async () => {
-    const sz = fakeSevenZip([
-      { file: "Data", attr: "D...." },
-      { file: "Data/sub", folder: "+" },
-      { file: "Data/a.esp", size: 10, crc: "aabbccdd" },
+    const sz = fake7z([
+      { name: "Data", attr: "D...." },
+      { name: "Data/sub", folder: "+" },
+      { name: "Data/a.esp", size: 10, crc: "aabbccdd" },
     ]);
     const out = await listArchiveContents(sz, "x.7z");
     expect(out.entries.map((e) => e.path)).toEqual(["Data/a.esp"]);
@@ -63,13 +53,13 @@ describe("listArchiveContents", () => {
 
   it("pads short crcs so string comparison is safe", async () => {
     // 7z prints CRCs unpadded; "ABCD" and "0000abcd" are the same value.
-    const sz = fakeSevenZip([{ file: "a.txt", size: 1, crc: "ABCD" }]);
+    const sz = fake7z([{ name: "a.txt", size: 1, crc: "ABCD" }]);
     const out = await listArchiveContents(sz, "x.zip");
     expect(out.entries[0].crc).toBe("0000abcd");
   });
 
   it("accepts a numeric crc from node-7z", async () => {
-    const sz = fakeSevenZip([{ file: "a.txt", size: 1, crc: 43981 }]);
+    const sz = fake7z([{ name: "a.txt", size: 1, crc: 43981 }]);
     const out = await listArchiveContents(sz, "x.zip");
     // 43981 === 0xabcd
     expect(out.entries[0].crc).toBe("0000abcd");
@@ -77,10 +67,10 @@ describe("listArchiveContents", () => {
 
   it("treats an unusable crc as ABSENT rather than inventing a value", async () => {
     // A wrong crc manufactures a mismatch; a missing one degrades to size.
-    const sz = fakeSevenZip([
-      { file: "a.txt", size: 1, crc: "not-hex" },
-      { file: "b.txt", size: 2, crc: "" },
-      { file: "c.txt", size: 3 },
+    const sz = fake7z([
+      { name: "a.txt", size: 1, crc: "not-hex" },
+      { name: "b.txt", size: 2, crc: "" },
+      { name: "c.txt", size: 3 },
     ]);
     const out = await listArchiveContents(sz, "x.zip");
     expect(out.entries.every((e) => e.crc === undefined)).toBe(true);
@@ -89,11 +79,11 @@ describe("listArchiveContents", () => {
   });
 
   it("reports partial coverage honestly", async () => {
-    const sz = fakeSevenZip([
-      { file: "a", size: 1, crc: "aabbccdd" },
-      { file: "b", size: 2 },
-      { file: "c", size: 3, crc: "11223344" },
-      { file: "d", size: 4 },
+    const sz = fake7z([
+      { name: "a", size: 1, crc: "aabbccdd" },
+      { name: "b", size: 2 },
+      { name: "c", size: 3, crc: "11223344" },
+      { name: "d", size: 4 },
     ]);
     const out = await listArchiveContents(sz, "x.zip");
     expect(out.withCrc).toBe(2);
@@ -103,12 +93,12 @@ describe("listArchiveContents", () => {
   it("REJECTS when the archive cannot be read, never resolving empty", async () => {
     // "Failed to list" and "archive is empty" must not look the same: the
     // first means we cannot verify, the second means there is nothing to.
-    const sz = fakeSevenZip([], new Error("corrupt archive"));
+    const sz = fake7z([], new Error("corrupt archive"));
     await expect(listArchiveContents(sz, "bad.zip")).rejects.toThrow("corrupt archive");
   });
 
   it("treats a genuinely empty archive as full coverage, not zero", async () => {
-    const out = await listArchiveContents(fakeSevenZip([]), "empty.zip");
+    const out = await listArchiveContents(fake7z([]), "empty.zip");
     expect(out.entries).toEqual([]);
     expect(out.crcCoverage).toBe(1);
   });
@@ -119,7 +109,7 @@ describe("indexByContent", () => {
     // A FOMOD installs `source` to a different `destination`; the path differs,
     // the bytes do not.
     const listing = await listArchiveContents(
-      fakeSevenZip([{ file: "optional/hi-res/a.dds", size: 500, crc: "deadbeef" }]),
+      fake7z([{ name: "optional/hi-res/a.dds", size: 500, crc: "deadbeef" }]),
       "x.zip",
     );
     const idx = indexByContent(listing);
@@ -128,9 +118,9 @@ describe("indexByContent", () => {
 
   it("buckets duplicate content under one key", async () => {
     const listing = await listArchiveContents(
-      fakeSevenZip([
-        { file: "a/x.dds", size: 10, crc: "aaaaaaaa" },
-        { file: "b/x.dds", size: 10, crc: "aaaaaaaa" },
+      fake7z([
+        { name: "a/x.dds", size: 10, crc: "aaaaaaaa" },
+        { name: "b/x.dds", size: 10, crc: "aaaaaaaa" },
       ]),
       "x.zip",
     );
@@ -139,7 +129,7 @@ describe("indexByContent", () => {
 
   it("still indexes entries with no crc, under size alone", async () => {
     const listing = await listArchiveContents(
-      fakeSevenZip([{ file: "a", size: 7 }]),
+      fake7z([{ name: "a", size: 7 }]),
       "x.zip",
     );
     expect(indexByContent(listing).get(contentKey(7, undefined))).toHaveLength(1);

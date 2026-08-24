@@ -1,144 +1,269 @@
 /**
- * Thin typed wrapper around `vortex-api`'s re-exported `SevenZip` (which
- * is the `node-7z` default export under the hood).
+ * Typed wrapper around `vortex-api`'s re-exported `SevenZip`.
  *
- * Why this file exists:
- *  - `node-7z` ships no usable type definitions, and `@types/node-7z` is
- *    not in our deps. `tsconfig.skipLibCheck` keeps vortex-api's import
- *    of it from breaking our build, but our own callsites would need
- *    `as any` everywhere.
- *  - Defining a narrow `SevenZipApi` interface here lets the rest of the
- *    code use a typed surface; the `as unknown as` cast lives in exactly
- *    one place, and tests can inject a fake implementation by satisfying
- *    the interface.
+ * ## What this actually is
  *
- * If `vortex-api` ever exposes proper types for SevenZip, this module
- * collapses to a re-export.
+ * Vortex bundles **node-7z 0.8.1**, pinned to Nexus's own fork
+ * (`github:Nexus-Mods/node-7z`). That is the OLD, class-based, promise-based
+ * API — not the modern `node-7z` v2+ stream API that most documentation
+ * describes. The difference is not cosmetic, and getting it wrong fails
+ * silently, so the real contract is written down here:
+ *
+ * ```js
+ * var Zip = function () {};
+ * Zip.prototype.list = require('./list');   // methods live on the PROTOTYPE
+ * module.exports = Zip;                     // the export is a CONSTRUCTOR
+ * ```
+ *
+ * Consequences, every one of them verified by running Vortex's own bundled
+ * copy against a real mod archive:
+ *
+ *  1. `util.SevenZip` is a **constructor**. `util.SevenZip.list` is
+ *     `undefined`; you must `new` it first. Calling the export directly
+ *     throws `TypeError: Zip.list is not a function` *synchronously*.
+ *  2. Every method returns a **Promise**, never an event-emitter stream.
+ *     There is no `.on("data")`, no `.on("end")`, no `.on("error")`.
+ *  3. `list` reports entries through a **progress callback** that receives an
+ *     ARRAY of entries, and resolves with the archive's tech spec.
+ *  4. An entry's path field is **`name`**, not `file`, and it is
+ *     backslash-separated on Windows.
+ *  5. `extract` runs 7z's `e` command, which **FLATTENS** the directory tree.
+ *     `extractFull` runs `x` and preserves it. A mod installer must never use
+ *     `extract` — this module deliberately does not expose it.
+ *  6. Options are 0.8.1-style: `raw` (not `$raw`), `r` (not `recursive`).
+ *     Unknown keys are rendered literally into garbage switches such as
+ *     `-$cherryPickmanifest.json`, which 7z rejects.
+ *  7. **A failed 7z run RESOLVES.** `run.js` resolves on child `close`
+ *     regardless of exit status, handing back `{ code, errors }`. Nothing
+ *     rejects. An unchecked `await` therefore treats a total failure as
+ *     success — for a tool whose promise is deterministic reproduction, that
+ *     is the worst possible failure mode. The `runSevenZip*` helpers below
+ *     exist to make that impossible to forget.
+ *  8. There is no `workingDir` option; `run.js` spawns without a `cwd`. To
+ *     store relative paths, pass an absolute wildcard (`<dir>/*`) as the
+ *     source — 7z stores entries relative to the wildcard's directory.
+ *
+ * Callers should use the guarded `sevenZipList` / `sevenZipExtractFull` /
+ * `sevenZipAdd` helpers rather than touching {@link SevenZipApi} directly.
  */
 
 import { util } from "@nexusmods/vortex-api";
 
 /**
- * One entry yielded by `list`'s `data` event. The shape mirrors
- * `node-7z`'s output: `file` is the path inside the archive, `size` is
- * the uncompressed size in bytes (when 7z reports it), `attr` is the DOS
- * attribute flag string (`"D...."` on directories).
+ * One entry reported by `list`'s progress callback.
  *
- * `crc` is the archive's stored CRC32 for the entry. It used to be
- * deliberately omitted here, but it is the cheapest per-file integrity signal
- * that exists — 7z reports it from the header, with no decompression. Measured
- * across .zip/.7z/.rar on a real 939-mod profile: present on 100% of file
- * entries at ~0.02s per archive. `archiveContents.ts` uses it to verify an
- * extraction against the ARCHIVE rather than against the curator's staging
- * folder, which may itself be silently broken.
+ * Field names mirror node-7z 0.8.1's parser exactly (`lib/list.js`
+ * `insertField`): `Path` → `name`, `Size` → `size`, `Attributes` → `attr`,
+ * `CRC` → `crc`, `Modified` → `date`.
  *
- * Typed loosely (`string | number`) and left optional on purpose: node-7z's
- * field naming is not guaranteed across versions and some entries legitimately
- * carry no CRC. Consumers must treat absence as "cannot verify", never as
- * "mismatch".
- *
- * `dateTime` and `compressed` are still unconsumed — the type stays narrow to
- * keep callers honest about what we actually rely on.
+ * `crc` is the archive's stored CRC32, read straight from the header with no
+ * decompression — the cheapest per-file integrity signal that exists.
+ * Measured across .zip/.7z/.rar on a real 939-mod profile: present on 100% of
+ * file entries at ~0.02s per archive. It is typed `string | number` and left
+ * optional on purpose; consumers must treat absence as "cannot verify", never
+ * as "mismatch".
  */
 export type SevenZipListEntry = {
-  file: string;
+  /** Path inside the archive. Backslash-separated on Windows. */
+  name: string;
   size?: number;
+  /** DOS attribute string. Directories start with `"D"`; files are e.g. `"A"`. */
   attr?: string;
   crc?: string | number;
-  /** `"+"` on directories in some node-7z versions; see `attr` for the rest. */
-  folder?: string;
+  date?: Date;
 };
 
 /**
- * Stream returned by every `node-7z` operation. Emits at minimum:
- *  - `end`     — the operation completed successfully.
- *  - `error`   — the operation failed; argument is an Error.
- *  - `data`    — per-file events. For `list`, payload is a
- *                {@link SevenZipListEntry}. For `add`/`extract`, it's a
- *                progress entry we ignore.
- *  - `progress`— overall percent updates (we don't consume these).
+ * What `run.js` resolves with. `code` is 7-Zip's exit status — **0 means
+ * success and anything else means failure**, including the case where 7z
+ * rejected a malformed switch and did nothing at all.
  */
-export type SevenZipStream = {
-  on(event: "end", listener: () => void): SevenZipStream;
-  on(event: "error", listener: (err: Error) => void): SevenZipStream;
-  on(
-    event: "data",
-    listener: (entry: SevenZipListEntry) => void,
-  ): SevenZipStream;
-  on(event: string, listener: (...args: unknown[]) => void): SevenZipStream;
-};
-
-export type SevenZipAddOptions = {
-  /**
-   * Working directory passed to the spawned `7z.exe`. File paths in the
-   * `source` argument are resolved relative to this directory, and the
-   * resulting archive entries preserve those relative paths.
-   */
-  workingDir?: string;
-  /** Pass `-r` to recurse into subdirectories. */
-  recursive?: boolean;
-  /**
-   * Raw extra CLI flags appended to the 7z command line. Used for
-   * options node-7z doesn't expose as named fields (e.g. `-tzip`).
-   */
-  $raw?: string[];
-  /**
-   * Compression-method overrides, e.g. `["mx=5"]`. Each entry is prefixed
-   * with `-m` by node-7z. We don't currently use this, but keep the field
-   * so the typed surface matches what node-7z accepts.
-   */
-  method?: string[];
+export type SevenZipResult = {
+  code: number;
+  errors: string[];
 };
 
 /**
- * Shared options for `list` and `extract`. We only use the few fields
- * relevant to the Phase 3 slice 2 reader (`$cherryPick` to extract
- * specific files, `$raw` for niche flags).
+ * What `list` resolves with: the archive's own header info, parsed by
+ * node-7z's `lib/list.js` state machine.
+ *
+ * `type` is the load-bearing field. Measured against Vortex's bundled copy:
+ * a MISSING file and a CORRUPT file both resolve with `{}`, while a valid but
+ * genuinely EMPTY zip resolves with `{path, type, physicalSize}` and zero
+ * entries. Since `list` throws away 7z's exit code, the presence of `type` is
+ * the only way to tell "could not read it" from "there is nothing in it" —
+ * and those two must never look the same.
  */
-export type SevenZipReadOptions = {
-  /**
-   * Only operate on these archive entries. For `extract`, only listed
-   * files are extracted; for `list`, only listed entries are yielded.
-   * Path syntax follows 7z's CLI patterns (forward slashes, glob ok).
-   */
-  $cherryPick?: string[];
-  /** Raw extra CLI flags appended to the 7z command line. */
-  $raw?: string[];
+export type SevenZipArchiveSpec = {
+  path?: string;
+  type?: string;
+  physicalSize?: string;
 };
 
 /**
- * The narrow surface of `node-7z` we consume. Add methods here only as
- * we need them — keeps the cast site honest about what we depend on.
+ * Progress callback for `add` / `extractFull`, as forwarded by
+ * `util/outputParse.js`. The fourth argument is the fork's cancellation
+ * hook: calling it kills the spawned 7z child. It is the ONLY way to cancel
+ * — this node-7z does not expose the ChildProcess.
+ */
+export type SevenZipProgress = (
+  files: string[],
+  percentage: number | undefined,
+  stdin: unknown,
+  cancel: () => void,
+) => void;
+
+/**
+ * 0.8.1-style switches. Keys are rendered as `-<key><value>`, so only real
+ * 7z switch letters belong here. `raw` is the escape hatch for anything that
+ * needs a literal argument (including positional file filters).
+ */
+export type SevenZipOptions = {
+  /** Literal arguments appended verbatim, e.g. `["-tzip"]` or `["manifest.json"]`. */
+  raw?: string[];
+  /** `-r`, recurse into subdirectories. */
+  r?: boolean;
+};
+
+/**
+ * The narrow surface of node-7z 0.8.1 we consume. `extract` is intentionally
+ * absent — see note 5 above.
  */
 export type SevenZipApi = {
   add(
     archive: string,
-    source: string | string[],
-    options?: SevenZipAddOptions,
-  ): SevenZipStream;
-  list(archive: string, options?: SevenZipReadOptions): SevenZipStream;
-  extract(
+    sources: string[],
+    options?: SevenZipOptions,
+    progress?: SevenZipProgress,
+  ): Promise<SevenZipResult>;
+  list(
     archive: string,
-    output: string,
-    options?: SevenZipReadOptions,
-  ): SevenZipStream;
+    options?: SevenZipOptions,
+    progress?: (entries: SevenZipListEntry[]) => void,
+  ): Promise<SevenZipArchiveSpec>;
+  extractFull(
+    archive: string,
+    dest: string,
+    options?: SevenZipOptions,
+    progress?: SevenZipProgress,
+  ): Promise<SevenZipResult>;
 };
 
 /**
- * Resolve the runtime SevenZip implementation from `vortex-api`.
+ * Resolve the runtime SevenZip implementation from `vortex-api` and
+ * **instantiate it**.
  *
- * The symbol lives at `util.SevenZip` — vortex-api re-exports the
- * `node-7z` default through a `declare namespace util { ... }` block.
- * `node-7z` ships no usable types, so we cast to our local
- * {@link SevenZipApi} surface for the rest of the codebase.
+ * `util.SevenZip` is node-7z's exported constructor; its methods live on the
+ * prototype. Returning the constructor itself (which this module used to do)
+ * yields an object whose `list`/`add`/`extractFull` are all `undefined`, so
+ * every call throws a synchronous TypeError that a surrounding try/catch
+ * quietly converts into "skipped".
  */
 export function resolveSevenZip(): SevenZipApi {
-  const exposed = (util as unknown as { SevenZip: unknown }).SevenZip;
-  if (!exposed) {
+  const exposed = (util as unknown as { SevenZip?: unknown }).SevenZip;
+  if (typeof exposed !== "function") {
     throw new Error(
       "vortex-api.util.SevenZip is not available at runtime. " +
         "Are we running outside of Vortex?",
     );
   }
-  return exposed as SevenZipApi;
+  const Ctor = exposed as new () => SevenZipApi;
+  return new Ctor();
+}
+
+/**
+ * Turn node-7z's resolve-on-failure into a thrown error.
+ *
+ * @see {@link SevenZipResult} — note 7 in the module docblock.
+ */
+function assertOk(result: SevenZipResult | undefined, what: string): void {
+  const code = result?.code;
+  if (code === 0 || code === undefined) {
+    return;
+  }
+  const detail = (result?.errors ?? [])
+    .map((e) => e.replace(/\s+/g, " ").trim())
+    .filter((e) => e.length > 0)
+    .join("; ");
+  throw new Error(
+    `7z exited with code ${code} while ${what}` +
+      (detail.length > 0 ? `: ${detail}` : "."),
+  );
+}
+
+/** Wire an AbortSignal to the fork's progress-callback `cancel` hook. */
+function cancelOnAbort(signal: AbortSignal | undefined): SevenZipProgress {
+  return (_files, _pct, _stdin, cancel) => {
+    if (signal?.aborted === true) {
+      cancel();
+    }
+  };
+}
+
+/**
+ * List an archive's entries.
+ *
+ * `list` resolves with the archive spec and **discards** `{code, errors}`, so
+ * the exit status is not available here. An unreadable archive is detected by
+ * its empty spec instead (see {@link SevenZipArchiveSpec}) and throws, because
+ * silently returning zero entries would report every staged file as
+ * unexplained. A valid archive that really is empty returns `[]`.
+ */
+export async function sevenZipList(
+  api: SevenZipApi,
+  archive: string,
+  options?: SevenZipOptions,
+): Promise<SevenZipListEntry[]> {
+  const entries: SevenZipListEntry[] = [];
+  const spec = await api.list(archive, options ?? {}, (batch) => {
+    for (const entry of batch) {
+      if (entry?.name !== undefined) {
+        entries.push(entry);
+      }
+    }
+  });
+  if (typeof spec?.type !== "string") {
+    throw new Error(
+      `7z could not read "${archive}" — it is missing, corrupt, ` +
+        `password-protected, or not an archive.`,
+    );
+  }
+  return entries;
+}
+
+/**
+ * Extract with full paths (`x`). Pass `options.raw` to cherry-pick specific
+ * entries — 7z takes those as trailing positional filters.
+ */
+export async function sevenZipExtractFull(
+  api: SevenZipApi,
+  archive: string,
+  dest: string,
+  options?: SevenZipOptions,
+  signal?: AbortSignal,
+): Promise<void> {
+  const result = await api.extractFull(
+    archive,
+    dest,
+    options ?? {},
+    cancelOnAbort(signal),
+  );
+  assertOk(result, `extracting "${archive}"`);
+}
+
+/** Add files to an archive. `sources` must be an array — node-7z calls `.map` on it. */
+export async function sevenZipAdd(
+  api: SevenZipApi,
+  archive: string,
+  sources: string[],
+  options?: SevenZipOptions,
+  signal?: AbortSignal,
+): Promise<void> {
+  const result = await api.add(
+    archive,
+    sources,
+    options ?? {},
+    cancelOnAbort(signal),
+  );
+  assertOk(result, `creating "${archive}"`);
 }

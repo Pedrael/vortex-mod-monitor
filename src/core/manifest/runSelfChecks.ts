@@ -34,7 +34,7 @@ import type { AuditorMod } from "../getModsListForProfile";
 import { ehLog } from "../logging/ehLog";
 import type { SelfCheckReport } from "./selfCheckMod";
 import { selfCheckMod, summarizeSelfChecks } from "./selfCheckMod";
-import { resolveSevenZip } from "./sevenZip";
+import { resolveSevenZip, sevenZipExtractFull } from "./sevenZip";
 import type { SevenZipApi } from "./sevenZip";
 
 export type RunSelfChecksOptions = {
@@ -52,25 +52,22 @@ export type SelfCheckRunResult = {
 /**
  * Extract one entry to a temp dir and read it.
  *
- * `sevenZip.extract` writes to disk — there is no in-memory entry read in the
- * node-7z surface Vortex exposes — so the temp dir is created and removed per
- * call. The files involved are FOMOD scripts, a few KB.
+ * 7z writes to disk — there is no in-memory entry read in the node-7z surface
+ * Vortex exposes — so the temp dir is created and removed per call. The files
+ * involved are FOMOD scripts, a few KB.
  */
 function makeReadEntry(sevenZip: SevenZipApi) {
   return async (archivePath: string, entryPath: string): Promise<Buffer | undefined> => {
     const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "eh-selfcheck-"));
     try {
-      await new Promise<void>((resolve, reject) => {
-        // $cherryPick selects the single entry; -y suppresses the overwrite
-        // prompt, which would otherwise hang a headless extraction forever.
-        const stream = sevenZip.extract(archivePath, dir, {
-          $cherryPick: [entryPath],
-          $raw: ["-y"],
-        });
-        stream.on("error", reject);
-        stream.on("end", () => resolve());
+      // `raw` carries the entry name as a trailing positional filter, which
+      // is how this node-7z cherry-picks. `-y` (suppress the overwrite prompt
+      // that would hang a headless extraction) is already on by default.
+      await sevenZipExtractFull(sevenZip, archivePath, dir, {
+        raw: [entryPath],
       });
-      // 7z flattens with `e`, but `extract` preserves paths; try both.
+      // extractFull preserves paths, so the nested location is the real one;
+      // the basename is kept as a fallback for odd archives.
       const candidates = [
         path.join(dir, entryPath.split("/").join(path.sep)),
         path.join(dir, path.basename(entryPath)),
