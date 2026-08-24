@@ -5,7 +5,7 @@ description: "Skill for the Logging area of vortex-mod-monitor. 12 symbols acros
 
 # Logging
 
-12 symbols | 3 files | Cohesion: 69%
+12 symbols | 3 files | Cohesion: 68%
 
 ## When to Use
 
@@ -59,9 +59,9 @@ Start here when exploring this area:
 | `Fail → GetVortexUserDataPath` | cross_community | 7 |
 | `Ok → GetVortexUserDataPath` | cross_community | 7 |
 | `Step → GetVortexUserDataPath` | cross_community | 7 |
+| `RunSelfChecks → GetVortexUserDataPath` | cross_community | 7 |
 | `Init → Truncate` | cross_community | 5 |
 | `CreateBuildPackageAction → Truncate` | cross_community | 4 |
-| `LoadBuildContext → Truncate` | cross_community | 4 |
 
 ## How to Explore
 

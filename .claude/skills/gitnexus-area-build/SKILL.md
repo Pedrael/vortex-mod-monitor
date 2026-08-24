@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-build
-description: "Skill for the Build area of vortex-mod-monitor. 97 symbols across 10 files."
+description: "Skill for the Build area of vortex-mod-monitor. 98 symbols across 10 files."
 ---
 
 # Build
 
-97 symbols | 10 files | Cohesion: 69%
+98 symbols | 10 files | Cohesion: 69%
 
 ## When to Use
 
@@ -21,7 +21,7 @@ description: "Skill for the Build area of vortex-mod-monitor. 97 symbols across 
 | `src/ui/pages/build/buildSession.ts` | queuePosition, isAbortError, _runBuild, begin, discardDraft (+15) |
 | `src/ui/pages/build/buildSessionRegistry.ts` | notifyStateChanged, emit, ensure, isAnyBusy, makeHooks (+13) |
 | `src/ui/pages/build/BuildDashboard.tsx` | handleDiscardDraft, handleUpdatePublished, refresh, bumpPatch, BuildDashboard (+9) |
-| `src/ui/pages/build/engine.ts` | BundleResolutionError, buildOutputFileName, resolveDeploymentMethod, resolveGameVersion, resolveVortexVersion (+5) |
+| `src/ui/pages/build/engine.ts` | BundleResolutionError, buildOutputFileName, resolveDeploymentMethod, resolveGameVersion, resolveVortexVersion (+6) |
 | `src/core/draftStorage.ts` | deleteDraft, getAppDataPath, getDraftsRoot, listDrafts |
 | `src/core/deploymentManifest.ts` | captureDeploymentManifests, collectDistinctModTypes, normalizeManifest |
 | `src/core/manifest/collectionConfig.ts` | reconcileExternalModsConfig, toBuildManifestExternalMods |
@@ -42,7 +42,7 @@ Start here when exploring this area:
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `BundleResolutionError` | Class | `src/ui/pages/build/engine.ts` | 211 |
+| `BundleResolutionError` | Class | `src/ui/pages/build/engine.ts` | 212 |
 | `deleteDraft` | Function | `src/core/draftStorage.ts` | 431 |
 | `getAppDataPath` | Function | `src/core/draftStorage.ts` | 457 |
 | `handleDiscardDraft` | Function | `src/ui/pages/build/BuildDashboard.tsx` | 195 |
@@ -52,7 +52,7 @@ Start here when exploring this area:
 | `collectDistinctModTypes` | Function | `src/core/deploymentManifest.ts` | 53 |
 | `reconcileExternalModsConfig` | Function | `src/core/manifest/collectionConfig.ts` | 240 |
 | `toBuildManifestExternalMods` | Function | `src/core/manifest/collectionConfig.ts` | 281 |
-| `runBuildPipeline` | Function | `src/ui/pages/build/engine.ts` | 384 |
+| `runBuildPipeline` | Function | `src/ui/pages/build/engine.ts` | 385 |
 | `getDraftsRoot` | Function | `src/core/draftStorage.ts` | 121 |
 | `listDrafts` | Function | `src/core/draftStorage.ts` | 162 |
 | `BuildDashboard` | Function | `src/ui/pages/build/BuildDashboard.tsx` | 88 |
@@ -60,8 +60,8 @@ Start here when exploring this area:
 | `registry` | Function | `src/ui/pages/build/BuildDashboard.tsx` | 91 |
 | `getBuildSessionRegistry` | Function | `src/ui/pages/build/buildSessionRegistry.ts` | 292 |
 | `Pill` | Function | `src/ui/components/Pill.tsx` | 19 |
-| `validateCuratorInput` | Function | `src/ui/pages/build/engine.ts` | 648 |
-| `onProgress` | Function | `src/ui/pages/build/engine.ts` | 294 |
+| `validateCuratorInput` | Function | `src/ui/pages/build/engine.ts` | 690 |
+| `onProgress` | Function | `src/ui/pages/build/engine.ts` | 295 |
 
 ## Execution Flows
 

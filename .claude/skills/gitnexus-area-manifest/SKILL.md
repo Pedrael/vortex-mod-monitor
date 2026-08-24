@@ -1,16 +1,16 @@
 ---
 name: gitnexus-area-manifest
-description: "Skill for the Manifest area of vortex-mod-monitor. 169 symbols across 22 files."
+description: "Skill for the Manifest area of vortex-mod-monitor. 180 symbols across 28 files."
 ---
 
 # Manifest
 
-169 symbols | 22 files | Cohesion: 86%
+180 symbols | 28 files | Cohesion: 84%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how parseManifest, buildManifest, extractBundledFromEhcoll work
+- Understanding how parseManifest, attrNamed, childNamed work
 - Modifying manifest-related functionality
 
 ## Key Files
@@ -21,22 +21,22 @@ description: "Skill for the Manifest area of vortex-mod-monitor. 169 symbols acr
 | `src/core/manifest/buildManifest.ts` | BuildManifestError, buildFileOverrides, buildLoadOrder, buildManifest, buildPackageMetadata (+15) |
 | `src/core/manifest/packageZip.ts` | isAbortLikeError, packageEhcoll, checkAbort, prepareStagingDir, safeRmDir (+12) |
 | `src/core/manifest/readEhcoll.ts` | ReadEhcollError, assertReadableFile, crossCheckBundled, extractManifest, listZipEntries (+7) |
-| `src/core/manifest/parseModuleConfig.ts` | attr, children, decodeModuleConfig, first, parseConditionals (+6) |
 | `src/core/manifest/collectionConfig.ts` | createDefaultConfig, getCollectionConfigPath, loadOrCreateCollectionConfig, saveCollectionConfig, validateSlug (+6) |
+| `src/core/manifest/parseModuleConfig.ts` | decodeModuleConfig, parseConditionals, parseFiles, parseGroup, parseModuleConfig (+3) |
 | `src/core/manifest/archiveContents.ts` | isDirectoryEntry, listArchiveContents, finish, onAbort, normalizeArchivePath (+3) |
+| `src/core/manifest/miniXml.ts` | attrNamed, childNamed, childrenNamed, decodeEntities, parseXml (+1) |
 | `src/core/comparePlugins.ts` | comparePluginsEntries, comparePluginsTxtFiles, normalizePluginName, parsePluginsTxt, toPluginMap |
 | `src/core/manifest/expandFomodPlan.ts` | expandFomodPlan, place, join, norm, trim |
-| `src/core/manifest/sevenZip.ts` | extract, list, resolveSevenZip, add |
 
 ## Entry Points
 
 Start here when exploring this area:
 
 - **`parseManifest`** (Function) — `src/core/manifest/parseManifest.ts:142`
-- **`buildManifest`** (Function) — `src/core/manifest/buildManifest.ts:200`
-- **`extractBundledFromEhcoll`** (Function) — `src/core/installer/modInstall.ts:775`
-- **`readEhcoll`** (Function) — `src/core/manifest/readEhcoll.ts:154`
-- **`decodeModuleConfig`** (Function) — `src/core/manifest/parseModuleConfig.ts:27`
+- **`attrNamed`** (Function) — `src/core/manifest/miniXml.ts:200`
+- **`childNamed`** (Function) — `src/core/manifest/miniXml.ts:195`
+- **`childrenNamed`** (Function) — `src/core/manifest/miniXml.ts:188`
+- **`decodeEntities`** (Function) — `src/core/manifest/miniXml.ts:52`
 
 ## Key Symbols
 
@@ -48,27 +48,26 @@ Start here when exploring this area:
 | `CollectionConfigError` | Class | `src/core/manifest/collectionConfig.ts` | 164 |
 | `PackageEhcollError` | Class | `src/core/manifest/packageZip.ts` | 106 |
 | `parseManifest` | Function | `src/core/manifest/parseManifest.ts` | 142 |
+| `attrNamed` | Function | `src/core/manifest/miniXml.ts` | 200 |
+| `childNamed` | Function | `src/core/manifest/miniXml.ts` | 195 |
+| `childrenNamed` | Function | `src/core/manifest/miniXml.ts` | 188 |
+| `decodeEntities` | Function | `src/core/manifest/miniXml.ts` | 52 |
+| `parseXml` | Function | `src/core/manifest/miniXml.ts` | 75 |
+| `isNameChar` | Function | `src/core/manifest/miniXml.ts` | 81 |
+| `decodeModuleConfig` | Function | `src/core/manifest/parseModuleConfig.ts` | 33 |
+| `parseModuleConfig` | Function | `src/core/manifest/parseModuleConfig.ts` | 171 |
 | `buildManifest` | Function | `src/core/manifest/buildManifest.ts` | 200 |
-| `extractBundledFromEhcoll` | Function | `src/core/installer/modInstall.ts` | 775 |
 | `readEhcoll` | Function | `src/core/manifest/readEhcoll.ts` | 154 |
-| `decodeModuleConfig` | Function | `src/core/manifest/parseModuleConfig.ts` | 27 |
-| `parseModuleConfig` | Function | `src/core/manifest/parseModuleConfig.ts` | 186 |
-| `packageEhcoll` | Function | `src/core/manifest/packageZip.ts` | 128 |
-| `checkAbort` | Function | `src/core/manifest/packageZip.ts` | 138 |
-| `resolveSevenZip` | Function | `src/core/manifest/sevenZip.ts` | 134 |
-| `computeStagingSetHash` | Function | `src/core/manifest/stagingSetHash.ts` | 51 |
-| `captureStagingFiles` | Function | `src/core/manifest/captureStagingFiles.ts` | 87 |
-| `getDefaultHashConcurrency` | Function | `src/core/manifest/stagingFileWalker.ts` | 47 |
-| `hashStagingFiles` | Function | `src/core/manifest/stagingFileWalker.ts` | 165 |
-| `walkStagingFolder` | Function | `src/core/manifest/stagingFileWalker.ts` | 73 |
-| `enrichInstalledModsWithStagingSetHashes` | Function | `src/core/resolver/enrichStagingSetHashes.ts` | 117 |
+| `enrichModsWithArchiveHashes` | Function | `src/core/archiveHashing.ts` | 141 |
+| `hashFileSha256` | Function | `src/core/archiveHashing.ts` | 34 |
+| `cleanup` | Function | `src/core/archiveHashing.ts` | 54 |
+| `verifyModInstall` | Function | `src/core/installer/verifyModInstall.ts` | 150 |
 
 ## Execution Flows
 
 | Flow | Type | Steps |
 |------|------|-------|
-| `ExecuteDivergedChoice → SafeRmTempDir` | cross_community | 5 |
-| `ExecuteDivergedChoice → Extract` | cross_community | 5 |
+| `RunSelfChecks → GetVortexUserDataPath` | cross_community | 7 |
 | `ExecuteDivergedChoice → ResolveSevenZip` | cross_community | 4 |
 | `BuildManifest → BuildModInstallSpec` | cross_community | 4 |
 | `BuildManifest → BuildModInstallState` | cross_community | 4 |
@@ -76,7 +75,8 @@ Start here when exploring this area:
 | `BuildManifest → ComputeStagingSetHash` | cross_community | 4 |
 | `BuildManifest → BuildUiAttributes` | cross_community | 4 |
 | `BuildManifest → SynthesizeRuleReference` | intra_community | 4 |
-| `CaptureStagingFiles → Cleanup` | cross_community | 4 |
+| `CaptureStagingFiles → Cleanup` | intra_community | 4 |
+| `SelfCheckMod → DecodeEntities` | cross_community | 4 |
 
 ## How to Explore
 

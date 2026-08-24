@@ -13,7 +13,13 @@
  * quietly wrong, which is the one outcome worse than not checking at all.
  */
 
-import { parseStringPromise } from "xml2js";
+import {
+  attrNamed,
+  childNamed,
+  childrenNamed,
+  parseXml,
+  type XmlElement,
+} from "./miniXml";
 
 import type {
   FomodConditionalPattern,
@@ -40,23 +46,9 @@ export function decodeModuleConfig(buf: Buffer): string {
   return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
 }
 
-/** xml2js gives `{ $: attrs }` and arrays for repeated children. */
-type XmlNode = Record<string, unknown> & { $?: Record<string, string> };
-
-function children(node: XmlNode | undefined, name: string): XmlNode[] {
-  if (node === undefined) return [];
-  const value = node[name];
-  if (value === undefined) return [];
-  return (Array.isArray(value) ? value : [value]) as XmlNode[];
-}
-
-function first(node: XmlNode | undefined, name: string): XmlNode | undefined {
-  return children(node, name)[0];
-}
-
-function attr(node: XmlNode | undefined, name: string): string | undefined {
-  return node?.$?.[name];
-}
+const children = childrenNamed;
+const first = childNamed;
+const attr = attrNamed;
 
 function toPriority(raw: string | undefined): number {
   if (raw === undefined) return 0;
@@ -65,7 +57,7 @@ function toPriority(raw: string | undefined): number {
 }
 
 /** Read a `<files>` block: any mix of `<file>` and `<folder>`. */
-function parseFiles(filesNode: XmlNode | undefined): FomodFileSpec[] {
+function parseFiles(filesNode: XmlElement | undefined): FomodFileSpec[] {
   const out: FomodFileSpec[] = [];
   for (const [tag, isFolder] of [
     ["file", false],
@@ -86,19 +78,12 @@ function parseFiles(filesNode: XmlNode | undefined): FomodFileSpec[] {
   return out;
 }
 
-function parsePlugin(node: XmlNode, idx: number): FomodPlugin {
+function parsePlugin(node: XmlElement, idx: number): FomodPlugin {
   const flags: Record<string, string> = {};
   for (const flagNode of children(first(node, "conditionFlags"), "flag")) {
     const name = attr(flagNode, "name");
     if (name === undefined) continue;
-    // xml2js puts element text in `_` when the element also has attributes.
-    const value =
-      typeof flagNode._ === "string"
-        ? flagNode._
-        : typeof flagNode === "string"
-          ? (flagNode as unknown as string)
-          : "";
-    flags[name] = String(value).trim();
+    flags[name] = flagNode.text.trim();
   }
   return {
     name: attr(node, "name") ?? `plugin-${idx}`,
@@ -108,7 +93,7 @@ function parsePlugin(node: XmlNode, idx: number): FomodPlugin {
   };
 }
 
-function parseGroup(node: XmlNode): FomodGroup {
+function parseGroup(node: XmlElement): FomodGroup {
   const pluginNodes = children(first(node, "plugins"), "plugin");
   return {
     name: attr(node, "name") ?? "",
@@ -117,7 +102,7 @@ function parseGroup(node: XmlNode): FomodGroup {
   };
 }
 
-function parseStep(node: XmlNode): FomodStep {
+function parseStep(node: XmlElement): FomodStep {
   const groupNodes = children(first(node, "optionalFileGroups"), "group");
   return {
     name: attr(node, "name") ?? "",
@@ -135,7 +120,7 @@ function parseStep(node: XmlNode): FomodStep {
  * make a correct install look short.
  */
 function parseConditionals(
-  configNode: XmlNode,
+  configNode: XmlElement,
   warnings: string[],
 ): FomodConditionalPattern[] {
   const patternsNode = first(
@@ -188,27 +173,26 @@ export async function parseModuleConfig(
   input: Buffer | string,
 ): Promise<ParsedModuleConfig> {
   const text = typeof input === "string" ? input : decodeModuleConfig(input);
-  const doc = (await parseStringPromise(text, {
-    explicitArray: true,
-    trim: true,
-  })) as Record<string, XmlNode>;
+  const root = parseXml(text);
 
-  const config = doc.config;
-  if (config === undefined) {
-    throw new Error("ModuleConfig.xml has no <config> root element.");
+  if (root.name.toLowerCase() !== "config") {
+    throw new Error(
+      `ModuleConfig.xml has no <config> root element (found <${root.name}>).`,
+    );
   }
 
   const warnings: string[] = [];
-  const stepNodes = children(first(config, "installSteps"), "installStep");
+  const stepNodes = children(first(root, "installSteps"), "installStep");
+  const moduleNameNode = first(root, "moduleName");
 
   return {
     script: {
-      ...(children(config, "moduleName")[0] !== undefined
-        ? { moduleName: String(children(config, "moduleName")[0]) }
+      ...(moduleNameNode !== undefined && moduleNameNode.text !== ""
+        ? { moduleName: moduleNameNode.text }
         : {}),
-      requiredInstallFiles: parseFiles(first(config, "requiredInstallFiles")),
+      requiredInstallFiles: parseFiles(first(root, "requiredInstallFiles")),
       steps: stepNodes.map(parseStep),
-      conditionalPatterns: parseConditionals(config, warnings),
+      conditionalPatterns: parseConditionals(root, warnings),
     },
     warnings,
   };

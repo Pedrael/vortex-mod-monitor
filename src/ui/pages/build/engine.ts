@@ -41,6 +41,7 @@ import { captureUserlist } from "../../../core/userlist";
 import { getCurrentPluginsTxtPath } from "../../../core/comparePlugins";
 import { buildManifest } from "../../../core/manifest/buildManifest";
 import { captureStagingFiles } from "../../../core/manifest/captureStagingFiles";
+import { runSelfChecks } from "../../../core/manifest/runSelfChecks";
 import {
   packageEhcoll,
   type BundledArchiveSpec,
@@ -491,6 +492,47 @@ export async function runBuildPipeline(
   }
 
   checkAbort();
+
+  // ── Self-check: is the CURATOR'S OWN staging what it should be? ──────
+  // Everything downstream treats this capture as the etalon, so if Vortex lost
+  // files during the curator's install the omission is baked into the
+  // collection and every user reproduces it. Checked here, against references
+  // the curator's disk cannot contaminate: the archive header and the FOMOD
+  // script. Advisory only — it never fails a build.
+  onProgress?.({
+    phase: "inspecting-mods",
+    message: "Checking mods against their archives...",
+    done: 0,
+    total: mods.length,
+  });
+  const selfCheckOp = beginOp("build.self-check", { mods: mods.length });
+  let selfCheckWarnings: string[] = [];
+  try {
+    const selfCheck = await runSelfChecks(state, gameId, mods, {
+      ...(signal !== undefined ? { signal } : {}),
+      onProgress: (done, total, modName) => {
+        onProgress?.({
+          phase: "inspecting-mods",
+          message: `Checking mods against their archives (${done} / ${total})...`,
+          done,
+          total,
+          currentItem: modName,
+        });
+      },
+    });
+    selfCheckWarnings = selfCheck.warnings;
+    selfCheckOp.ok({
+      replayed: selfCheck.summary.replayed,
+      containment: selfCheck.summary.containment,
+      skipped: selfCheck.summary.skipped,
+      modsWithMissing: selfCheck.summary.modsWithMissing,
+      missingFiles: selfCheck.summary.missingFiles,
+    });
+  } catch (err) {
+    // A self-check problem is never a build problem.
+    selfCheckOp.fail(err);
+  }
+
   onProgress?.({ phase: "capturing-deployment" });
   const deploymentManifests = await captureDeploymentManifests(
     api,
@@ -623,7 +665,7 @@ export async function runBuildPipeline(
     userlistPlugins: manifest.userlist.plugins.length,
     userlistGroups: manifest.userlist.groups.length,
     stagingFiles: stagingFileCount,
-    warnings: [...manifestWarnings, ...result.warnings],
+    warnings: [...manifestWarnings, ...result.warnings, ...selfCheckWarnings],
   });
 
   return {
@@ -631,7 +673,7 @@ export async function runBuildPipeline(
     outputBytes: result.outputBytes,
     bundledCount: result.bundledCount,
     modCount: manifest.mods.length,
-    warnings: [...manifestWarnings, ...result.warnings],
+    warnings: [...manifestWarnings, ...result.warnings, ...selfCheckWarnings],
     ruleCount: manifest.rules.length,
     loadOrderCount: manifest.loadOrder.length,
     pluginOrderCount: manifest.plugins.order.length,

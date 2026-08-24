@@ -1,16 +1,16 @@
 ---
 name: gitnexus-area-resolver
-description: "Skill for the Resolver area of vortex-mod-monitor. 64 symbols across 8 files."
+description: "Skill for the Resolver area of vortex-mod-monitor. 63 symbols across 7 files."
 ---
 
 # Resolver
 
-64 symbols | 8 files | Cohesion: 79%
+63 symbols | 7 files | Cohesion: 80%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how createInstallCollectionAction, enrichModsWithArchiveHashes, getModsForProfile work
+- Understanding how createInstallCollectionAction, getModsForProfile, readReceipt work
 - Modifying resolver-related functionality
 
 ## Key Files
@@ -22,7 +22,6 @@ description: "Skill for the Resolver area of vortex-mod-monitor. 64 symbols acro
 | `src/core/getModsListForProfile.ts` | assignInstallOrder, getModsForProfile, hasAnySelectedFomodChoices, normalizeCollectionIds, normalizeFomodSelections (+6) |
 | `src/actions/installCollectionAction.ts` | createInstallCollectionAction, formatError, isPlanInstallable, logPlanSummary, profileExistsInState (+1) |
 | `src/ui/pages/install/engine.ts` | profileExistsInState, runLoadingPipeline, runLoadingPipelineWithReceipt |
-| `src/core/archiveHashing.ts` | enrichModsWithArchiveHashes |
 | `src/core/installLedger.ts` | readReceipt |
 | `src/utils/utils.ts` | pickEhcollFile |
 
@@ -31,17 +30,16 @@ description: "Skill for the Resolver area of vortex-mod-monitor. 64 symbols acro
 Start here when exploring this area:
 
 - **`createInstallCollectionAction`** (Function) — `src/actions/installCollectionAction.ts:109`
-- **`enrichModsWithArchiveHashes`** (Function) — `src/core/archiveHashing.ts:141`
 - **`getModsForProfile`** (Function) — `src/core/getModsListForProfile.ts:500`
 - **`readReceipt`** (Function) — `src/core/installLedger.ts:336`
 - **`buildUserSideState`** (Function) — `src/core/resolver/userState.ts:120`
+- **`pickInstallTarget`** (Function) — `src/core/resolver/userState.ts:150`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
 | `createInstallCollectionAction` | Function | `src/actions/installCollectionAction.ts` | 109 |
-| `enrichModsWithArchiveHashes` | Function | `src/core/archiveHashing.ts` | 141 |
 | `getModsForProfile` | Function | `src/core/getModsListForProfile.ts` | 500 |
 | `readReceipt` | Function | `src/core/installLedger.ts` | 336 |
 | `buildUserSideState` | Function | `src/core/resolver/userState.ts` | 120 |
@@ -60,6 +58,7 @@ Start here when exploring this area:
 | `isPlanInstallable` | Function | `src/actions/installCollectionAction.ts` | 629 |
 | `logPlanSummary` | Function | `src/actions/installCollectionAction.ts` | 309 |
 | `profileExistsInState` | Function | `src/actions/installCollectionAction.ts` | 996 |
+| `resolveStaleReceipt` | Function | `src/actions/installCollectionAction.ts` | 1019 |
 
 ## Execution Flows
 

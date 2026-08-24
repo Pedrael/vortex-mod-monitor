@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-installer
-description: "Skill for the Installer area of vortex-mod-monitor. 101 symbols across 16 files."
+description: "Skill for the Installer area of vortex-mod-monitor. 97 symbols across 16 files."
 ---
 
 # Installer
 
-101 symbols | 16 files | Cohesion: 78%
+97 symbols | 16 files | Cohesion: 79%
 
 ## When to Use
 
@@ -17,16 +17,16 @@ description: "Skill for the Installer area of vortex-mod-monitor. 101 symbols ac
 
 | File | Symbols |
 |------|---------|
-| `src/core/installer/runInstall.ts` | buildDisplayNameByModId, buildFailReceipt, buildManifestIndex, buildNexusModIdMap, collect (+38) |
-| `src/core/installer/modInstall.ts` | safeRmTempDir, uninstallMod, installFromBundledArchive, installFromExistingDownload, installFromLocalArchive (+9) |
+| `src/core/installer/runInstall.ts` | buildDisplayNameByModId, buildFailReceipt, buildManifestIndex, buildNexusModIdMap, collect (+37) |
+| `src/core/installer/modInstall.ts` | safeRmTempDir, uninstallMod, installFromBundledArchive, installFromExistingDownload, installFromLocalArchive (+10) |
 | `src/core/installer/applyUserlist.ts` | applyGroupDefinition, applyGroupRule, applyPluginEntry, applyPluginGroup, applyPluginRuleWithCollectionWins (+8) |
 | `src/core/installer/bundledPrefetch.ts` | BundledPrefetchPool, dispose, prime, pump, runExtraction (+2) |
-| `src/core/installer/verifyModInstall.ts` | summarizeVerifyFail, collectOnDiskFiles, toPosix, verifyModInstall |
 | `src/core/installer/profile.ts` | createFreshProfile, enableModInProfile, pickNonCollidingName |
-| `src/core/archiveHashing.ts` | onAbort, hashFileSha256, cleanup |
+| `src/core/installer/verifyModInstall.ts` | summarizeVerifyFail, collectOnDiskFiles, toPosix |
 | `src/core/installer/applyModRules.ts` | applyModRules, refMatchesModId, resolveReferenceToModId |
-| `src/actions/installCollectionAction.ts` | formatProgressMessage, onProgress |
 | `src/ui/pages/install/engine.ts` | checkAbort, checkAbort |
+| `src/core/installLedger.ts` | serializeReceipt, writeReceipt |
+| `src/ui/pages/CollectionsPage.tsx` | handleUninstall |
 
 ## Entry Points
 
@@ -51,7 +51,6 @@ Start here when exploring this area:
 | `pickNonCollidingName` | Function | `src/core/installer/profile.ts` | 206 |
 | `runInstall` | Function | `src/core/installer/runInstall.ts` | 178 |
 | `checkAbort` | Function | `src/core/installer/runInstall.ts` | 221 |
-| `reportProgress` | Function | `src/core/installer/runInstall.ts` | 212 |
 | `summarizeVerifyFail` | Function | `src/core/installer/verifyModInstall.ts` | 374 |
 | `installFromBundledArchive` | Function | `src/core/installer/modInstall.ts` | 302 |
 | `installFromExistingDownload` | Function | `src/core/installer/modInstall.ts` | 151 |
@@ -62,6 +61,7 @@ Start here when exploring this area:
 | `onTempArchive` | Function | `src/core/installer/runInstall.ts` | 403 |
 | `applyUserlist` | Function | `src/core/installer/applyUserlist.ts` | 179 |
 | `onAbort` | Function | `src/core/archiveHashing.ts` | 46 |
+| `applyLoadOrder` | Function | `src/core/installer/applyLoadOrder.ts` | 99 |
 
 ## Execution Flows
 

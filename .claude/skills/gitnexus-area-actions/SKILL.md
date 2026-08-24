@@ -5,7 +5,7 @@ description: "Skill for the Actions area of vortex-mod-monitor. 79 symbols acros
 
 # Actions
 
-79 symbols | 15 files | Cohesion: 75%
+79 symbols | 15 files | Cohesion: 74%
 
 ## When to Use
 
@@ -53,7 +53,7 @@ Start here when exploring this area:
 | `belongsToGame` | Function | `src/core/getModsListForProfile.ts` | 250 |
 | `beginOp` | Function | `src/core/logging/ehLog.ts` | 153 |
 | `getVortexUserDataPath` | Function | `src/core/paths.ts` | 38 |
-| `loadBuildContext` | Function | `src/ui/pages/build/engine.ts` | 238 |
+| `loadBuildContext` | Function | `src/ui/pages/build/engine.ts` | 239 |
 | `readSystemStatus` | Function | `src/ui/pages/dashboard/data.ts` | 133 |
 | `exportDiffReport` | Function | `src/utils/utils.ts` | 449 |
 | `pickJsonFile` | Function | `src/utils/utils.ts` | 47 |
@@ -75,8 +75,8 @@ Start here when exploring this area:
 | `Fail → GetVortexUserDataPath` | cross_community | 7 |
 | `Ok → GetVortexUserDataPath` | cross_community | 7 |
 | `Step → GetVortexUserDataPath` | cross_community | 7 |
+| `RunSelfChecks → GetVortexUserDataPath` | cross_community | 7 |
 | `RouteOutlet → GetActiveGameId` | cross_community | 6 |
-| `RouteOutlet → ResolveProfileName` | cross_community | 6 |
 
 ## How to Explore
 
