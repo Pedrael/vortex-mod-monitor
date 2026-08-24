@@ -80,10 +80,19 @@ export type ListArchiveContentsOptions = {
  */
 function isDirectoryEntry(entry: SevenZipListEntry): boolean {
   const attr = entry.attr ?? "";
-  if (attr.startsWith("D") || attr.includes("D_")) return true;
+  // `D` is the DOS directory flag and it is NOT necessarily first. Measured on
+  // a real .7z: directories come back as `"RD"` (read-only + directory), which
+  // a `startsWith("D")` test misses — so all 15 directory entries in that
+  // archive were listed as files. Downstream they became "expected files" that
+  // can never exist in staging, and the self-check reported them as MISSING.
+  // A false "missing" is the worst output this area can produce, so match the
+  // flag wherever it sits. No regular file carries `D` in its attributes.
+  if (attr.includes("D")) return true;
   // node-7z surfaces the `Folder = +` column on some versions.
   const folder = (entry as unknown as { folder?: string }).folder;
-  return folder === "+";
+  if (folder === "+") return true;
+  // Belt and braces: 7z emits trailing separators for some directory entries.
+  return entry.name.endsWith("/") || entry.name.endsWith("\\");
 }
 
 /** Normalise an archive-internal path for stable comparison across platforms. */

@@ -364,7 +364,9 @@ function classifyEntries(entries: SevenZipListEntry[]): ClassifiedLayout {
 }
 
 function isDirectoryEntry(entry: SevenZipListEntry): boolean {
-  if (typeof entry.attr === "string" && entry.attr.startsWith("D")) return true;
+  // `D` is not necessarily the first attribute — real archives report `"RD"`.
+  // See the same fix in archiveContents.ts.
+  if (typeof entry.attr === "string" && entry.attr.includes("D")) return true;
   // 7z occasionally emits entries with trailing slashes for empty dirs.
   if (entry.name.endsWith("/") || entry.name.endsWith("\\")) return true;
   return false;

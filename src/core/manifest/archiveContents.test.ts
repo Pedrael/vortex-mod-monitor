@@ -40,6 +40,21 @@ describe("listArchiveContents", () => {
     expect(out.crcCoverage).toBe(1);
   });
 
+  it("drops directories whose D flag is not the FIRST attribute", async () => {
+    // Real .7z from the profile: directories come back as "RD" (read-only +
+    // directory). A startsWith("D") test let all 15 of them through as files,
+    // and the self-check then reported them as MISSING, because a directory can
+    // never appear in a staged FILE list.
+    const sz = fake7z([
+      { name: "extendedfogs", attr: "RD", size: 0, crc: "" },
+      { name: "extendedfogs/Textures", attr: "RD", size: 0, crc: "" },
+      { name: "extendedfogs/Textures/a.dds", attr: "A", size: 90, crc: "deadbeef" },
+    ]);
+    const out = await listArchiveContents(sz, "x.7z");
+    expect(out.entries.map((e) => e.path)).toEqual(["extendedfogs/Textures/a.dds"]);
+    expect(out.crcCoverage).toBe(1);
+  });
+
   it("drops directory entries so they do not depress crc coverage", async () => {
     const sz = fake7z([
       { name: "Data", attr: "D...." },

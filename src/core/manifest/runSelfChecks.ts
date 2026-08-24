@@ -195,6 +195,33 @@ export async function runSelfChecks(
     );
   }
 
+  // NAME the findings in the log, at the moment they are produced.
+  //
+  // They used to live only in the returned `warnings`, which the build pipeline
+  // hands back at the very end — so when a LATER phase threw (a manifest error,
+  // say), 48 minutes of checking was discarded along with it and the run
+  // reported "3 mods are missing 13 files" without saying which. A finding that
+  // does not survive an unrelated failure is not a finding.
+  if (withMissing.length > 0 || withLeads.length > 0) {
+    ehLog("info", "selfcheck.findings", {
+      replayMissing: withMissing.slice(0, 25).map((r) => ({
+        mod: r.modName,
+        missing: r.missing.length,
+        staged: r.stagedCount,
+        expected: r.expectedCount,
+        files: r.missing.slice(0, 12),
+      })),
+      omissionLeads: withLeads.slice(0, 25).map((r) => {
+        const high = r.omissionLeads.filter((l) => l.confidence === "high");
+        return {
+          mod: r.modName,
+          high: high.length,
+          files: high.slice(0, 8).map((l) => l.path),
+        };
+      }),
+    });
+  }
+
   ehLog("info", "selfcheck.done", {
     mods: reports.length,
     replayed: summary.replayed,
