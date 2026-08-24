@@ -70,13 +70,13 @@ Start here when exploring this area:
 | `Init → GetVortexUserDataPath` | cross_community | 9 |
 | `CreateBuildPackageAction → GetVortexUserDataPath` | cross_community | 8 |
 | `LoadBuildContext → GetVortexUserDataPath` | cross_community | 8 |
-| `RunBuildPipeline → GetVortexUserDataPath` | cross_community | 8 |
 | `RouteOutlet → BelongsToGame` | cross_community | 7 |
 | `Fail → GetVortexUserDataPath` | cross_community | 7 |
 | `Ok → GetVortexUserDataPath` | cross_community | 7 |
 | `Step → GetVortexUserDataPath` | cross_community | 7 |
 | `RunSelfChecks → GetVortexUserDataPath` | cross_community | 7 |
 | `RouteOutlet → GetActiveGameId` | cross_community | 6 |
+| `RouteOutlet → ResolveProfileName` | cross_community | 6 |
 
 ## How to Explore
 

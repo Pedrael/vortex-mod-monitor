@@ -60,14 +60,13 @@ Start here when exploring this area:
 | `registry` | Function | `src/ui/pages/build/BuildDashboard.tsx` | 91 |
 | `getBuildSessionRegistry` | Function | `src/ui/pages/build/buildSessionRegistry.ts` | 292 |
 | `Pill` | Function | `src/ui/components/Pill.tsx` | 19 |
-| `validateCuratorInput` | Function | `src/ui/pages/build/engine.ts` | 690 |
+| `validateCuratorInput` | Function | `src/ui/pages/build/engine.ts` | 720 |
 | `onProgress` | Function | `src/ui/pages/build/engine.ts` | 295 |
 
 ## Execution Flows
 
 | Flow | Type | Steps |
 |------|------|-------|
-| `RunBuildPipeline → GetVortexUserDataPath` | cross_community | 8 |
 | `BuildPage → IsPlainObject` | cross_community | 5 |
 | `BuildPage → MigrateV1Payload` | cross_community | 5 |
 | `BuildPage → SanitizeKey` | cross_community | 5 |
@@ -77,6 +76,7 @@ Start here when exploring this area:
 | `HandleDiscardDraft → SanitizeKey` | cross_community | 5 |
 | `ReleaseBuild → EHRuntime` | cross_community | 5 |
 | `ReleaseBuild → Notify` | cross_community | 5 |
+| `EventHorizonMainPage → Pill` | cross_community | 4 |
 
 ## How to Explore
 

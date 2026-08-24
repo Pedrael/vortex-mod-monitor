@@ -55,13 +55,13 @@ Start here when exploring this area:
 | `Init → GetVortexUserDataPath` | cross_community | 9 |
 | `CreateBuildPackageAction → GetVortexUserDataPath` | cross_community | 8 |
 | `LoadBuildContext → GetVortexUserDataPath` | cross_community | 8 |
-| `RunBuildPipeline → GetVortexUserDataPath` | cross_community | 8 |
 | `Fail → GetVortexUserDataPath` | cross_community | 7 |
 | `Ok → GetVortexUserDataPath` | cross_community | 7 |
 | `Step → GetVortexUserDataPath` | cross_community | 7 |
 | `RunSelfChecks → GetVortexUserDataPath` | cross_community | 7 |
 | `Init → Truncate` | cross_community | 5 |
 | `CreateBuildPackageAction → Truncate` | cross_community | 4 |
+| `LoadBuildContext → Truncate` | cross_community | 4 |
 
 ## How to Explore
 

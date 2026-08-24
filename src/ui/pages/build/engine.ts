@@ -470,10 +470,31 @@ export async function runBuildPipeline(
       done: 0,
       total: mods.length,
     });
+    // 205GB of staging across 993 folders at `thorough` took 34 minutes with
+    // NOT ONE log line — the same "cannot tell slow from hung" hole that was
+    // fixed for archive hashing and left open on the larger pass. Throttled to
+    // ~20 lines regardless of profile size, with an ETA from the observed rate.
+    const stagingOp = beginOp("build.staging-capture", {
+      mods: mods.length,
+      level: verificationLevel,
+    });
+    const stagingLogEvery = Math.max(25, Math.ceil(mods.length / 20));
+    let stagingLogged = 0;
+    const stagingStartedAt = Date.now();
     mods = await captureStagingFiles(state, gameId, mods, {
       level: verificationLevel,
       signal,
       onProgress: (done, total, mod) => {
+        if (done - stagingLogged >= stagingLogEvery || done === total) {
+          stagingLogged = done;
+          const elapsed = Date.now() - stagingStartedAt;
+          stagingOp.step("progress", {
+            done,
+            total,
+            ms: elapsed,
+            etaMs: done > 0 ? Math.round((elapsed / done) * (total - done)) : undefined,
+          });
+        }
         onProgress?.({
           phase: "inspecting-mods",
           message:
@@ -488,6 +509,15 @@ export async function runBuildPipeline(
       onWarn: (mod, message) => {
         console.warn(`[event-horizon] inspect ${mod.name}: ${message}`);
       },
+    });
+    // `stagingFiles` populated here is what buildManifest turns into
+    // stagingSetHash and what the self-check compares against, so an empty
+    // count is the thing to notice — it silently disables both.
+    const withStaging = mods.filter((m) => (m.stagingFiles?.length ?? 0) > 0).length;
+    stagingOp.ok({
+      mods: mods.length,
+      withStagingFiles: withStaging,
+      withoutStagingFiles: mods.length - withStaging,
     });
   }
 
