@@ -182,6 +182,19 @@ export type BuildManifestResult = {
  * Fatal validation errors. Every problem the packager could detect is
  * collected before throwing — curators get one report, not whack-a-mole.
  */
+/**
+ * `Mod "<id>" (<name>)` prints the same string twice whenever Vortex derived
+ * the mod id from its install folder, which is the common case — every problem
+ * line was twice as long as it needed to be for no information. Show the name
+ * only when it differs.
+ */
+function label(mod: { id: string; name?: string }): string {
+  const name = mod.name;
+  return name !== undefined && name !== mod.id
+    ? `"${mod.id}" (${name})`
+    : `"${mod.id}"`;
+}
+
 export class BuildManifestError extends Error {
   readonly errors: string[];
 
@@ -335,9 +348,10 @@ function buildModEntry(
   if (isNexusMod(mod)) {
     if (!mod.archiveSha256) {
       errors.push(
-        `Mod "${mod.id}" (${mod.name}) has no archiveSha256. ` +
-          `Cannot pack a Nexus manifest mod without archive identity. ` +
-          `Verify the source archive is present in Vortex's download cache and re-export.`,
+        `Mod ${label(mod)} has no archiveSha256. ` +
+          `A Nexus mod is identified by (modId, fileId, sha256), and the sha256 ` +
+          `can only be computed from the source archive — which Vortex no longer ` +
+          `has. Re-download it, or rescan Downloads if the file is still on disk.`,
       );
       return undefined;
     }
@@ -398,7 +412,7 @@ function buildExternalMod(
   // a manifest that no user-side resolver could reason about.
   if (archiveSha === undefined && stagingSetHash === undefined) {
     errors.push(
-      `Mod "${mod.id}" (${mod.name}) is an external mod but has neither ` +
+      `Mod ${label(mod)} is an external mod but has neither ` +
         `an archive sha256 nor a thorough-level staging-file snapshot. ` +
         `Vortex's download cache does not retain this mod's archive, and ` +
         `no per-file hashes were captured at build time. The collection ` +
@@ -414,7 +428,7 @@ function buildExternalMod(
   // archive path inside `.ehcoll` is keyed by archive sha256.
   if (wantsBundled && archiveSha === undefined) {
     errors.push(
-      `Mod "${mod.id}" (${mod.name}) is marked bundled=true but has no ` +
+      `Mod ${label(mod)} is marked bundled=true but has no ` +
         `archive sha256. Bundled archives are keyed by archive sha; ` +
         `re-import the archive or set bundled=false.`,
     );

@@ -230,11 +230,8 @@ function classify(err: unknown): FormattedError {
   if (err instanceof BuildManifestError) {
     return classifyMultiError(err, {
       title: "Manifest build failed",
-      message: "Couldn't assemble a manifest from your current Vortex state.",
-      hints: [
-        "The mod list snapshot or load order may be in an unexpected shape.",
-        "Make sure a profile is active and try again after Vortex finishes loading.",
-      ],
+      message: summarizeManifestProblems(err.errors),
+      hints: manifestHints(err.errors),
     });
   }
   if (err instanceof PackageEhcollError) {
@@ -274,6 +271,91 @@ interface CommonClassifierMeta {
  * exposes an `errors: string[]` field. Each entry becomes a detail
  * bullet. The custom class' own message is preserved as `rawMessage`.
  */
+/**
+ * The problem classes buildManifest can report. Matching is on our OWN message
+ * text, not third-party output, so a substring is a stable key.
+ */
+const MANIFEST_PROBLEMS: Array<{ probe: string; describe: (n: number) => string }> = [
+  {
+    probe: "has no archiveSha256",
+    describe: (n) =>
+      `${n} Nexus mod${n === 1 ? "" : "s"} whose source archive Vortex no longer has`,
+  },
+  {
+    probe: "is an external mod but has neither",
+    describe: (n) => `${n} external mod${n === 1 ? "" : "s"} with no usable identity`,
+  },
+  {
+    probe: "Duplicate compareKey",
+    describe: (n) => `${n} pair${n === 1 ? "" : "s"} of mods sharing one identity`,
+  },
+  {
+    probe: "is marked bundled=true but has no",
+    describe: (n) => `${n} bundled mod${n === 1 ? "" : "s"} with no archive to bundle`,
+  },
+  { probe: "Unsupported gameId", describe: () => "an unsupported game" },
+];
+
+function countProblems(errors: string[]): Array<{ text: string; count: number }> {
+  return MANIFEST_PROBLEMS.map((p) => ({
+    probe: p.probe,
+    count: errors.filter((e) => e.includes(p.probe)).length,
+    describe: p.describe,
+  }))
+    .filter((p) => p.count > 0)
+    .map((p) => ({ text: p.describe(p.count), count: p.count }));
+}
+
+/**
+ * Lead with the shape of the failure.
+ *
+ * `BuildManifestError` puts "(221 problems)" in its own message, but the
+ * classifier replaces that with a friendly sentence and the count is lost —
+ * leaving a scrollable wall of near-identical lines and no idea whether it is
+ * six entries or two hundred.
+ */
+function summarizeManifestProblems(errors: string[]): string {
+  if (errors.length <= 1) {
+    return "Couldn't assemble a manifest from your current Vortex state.";
+  }
+  const parts = countProblems(errors);
+  const known = parts.reduce((sum, p) => sum + p.count, 0);
+  const tail = known < errors.length ? [`${errors.length - known} other`] : [];
+  const listed = [...parts.map((p) => p.text), ...tail];
+  return (
+    `${errors.length} problems stop this collection being packaged: ` +
+    `${listed.join(", ")}.`
+  );
+}
+
+/** Advice that matches the problems actually present. */
+function manifestHints(errors: string[]): string[] {
+  const hints: string[] = [];
+  if (errors.some((e) => e.includes("has no archiveSha256"))) {
+    hints.push(
+      "A mod's identity is the hash of its source archive, so the archive has to " +
+        "be back in Vortex's download cache before it can be packaged. Re-download " +
+        "from Nexus — or rescan the Downloads tab, if the file is still on disk and " +
+        "only Vortex's record of it was lost.",
+    );
+  }
+  if (errors.some((e) => e.includes("Duplicate compareKey"))) {
+    hints.push(
+      "Two enabled mods resolve to the same identity — usually the same archive " +
+        "installed twice. Disable or remove one of each pair.",
+    );
+  }
+  if (errors.some((e) => e.includes("is an external mod but has neither"))) {
+    hints.push(
+      "External mods with no archive can still be identified from their deployed " +
+        'files — rebuild at verification level "thorough" to capture those hashes.',
+    );
+  }
+  return hints.length > 0
+    ? hints
+    : ["Every problem is listed below; each names the mod it applies to."];
+}
+
 function classifyMultiError(
   err: Error & { errors: string[] },
   meta: CommonClassifierMeta,
