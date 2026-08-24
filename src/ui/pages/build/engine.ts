@@ -43,6 +43,10 @@ import { buildManifest } from "../../../core/manifest/buildManifest";
 import { captureStagingFiles } from "../../../core/manifest/captureStagingFiles";
 import { runSelfChecks } from "../../../core/manifest/runSelfChecks";
 import {
+  describeScope,
+  scopeCollectionMods,
+} from "../../../core/manifest/collectionScope";
+import {
   packageEhcoll,
   type BundledArchiveSpec,
   type PackageEhcollResult,
@@ -97,6 +101,12 @@ export interface BuildContext {
    * actual build doesn't have to redo it (we keep the same array).
    */
   mods: AuditorMod[];
+  /**
+   * Notes about what was left out or looks wrong in the profile itself —
+   * duplicate identities, several enabled installs of one mod. Produced by
+   * {@link scopeCollectionMods}; empty on a tidy profile.
+   */
+  scopeWarnings: string[];
   /**
    * Subset of `mods` that are external (not on Nexus). These are the
    * only mods the curator can flag as bundled.
@@ -275,7 +285,30 @@ export async function loadBuildContext(
     throw new Error(`No active profile for game "${gameId}".`);
   }
 
-  const rawMods = getModsForProfile(state, gameId, profileId);
+  // Vortex's staging folder is not the profile, and the profile is not the
+  // collection: a profile IS its enabled mods, so anything switched off is not
+  // being shipped. Scoping here rather than later means the disabled ones are
+  // never hashed, walked or verified — and it removes duplicate-identity
+  // collisions for free, because the superseded copy is the disabled one.
+  const profileMods = getModsForProfile(state, gameId, profileId);
+  const scope = scopeCollectionMods(profileMods);
+  const rawMods = scope.included;
+  op.step("mods-scoped", {
+    inProfile: profileMods.length,
+    enabled: rawMods.length,
+    excludedDisabled: scope.excludedDisabled.length,
+    collidingIdentities: scope.collidingIdentities.length,
+    multipleEnabledInstalls: scope.multipleInstalls.length,
+    ...(scope.multipleInstalls.length > 0
+      ? {
+          multipleInstallDetail: scope.multipleInstalls.slice(0, 25).map((g) => ({
+            key: g.key,
+            mods: g.mods.map((m) => `${m.name} (${m.version ?? "?"})`),
+          })),
+        }
+      : {}),
+  });
+
   onProgress?.({
     phase: "hashing-mods",
     message: `Hashing ${rawMods.length} mod archives...`,
@@ -350,6 +383,7 @@ export async function loadBuildContext(
     gameId,
     profileId,
     mods: mods.length,
+    excludedDisabled: scope.excludedDisabled.length,
     externalMods: externalMods.length,
     // hashed < mods is the first number to look at when a build does not
     // reproduce: an unhashed external archive has no stable identity.
@@ -360,6 +394,7 @@ export async function loadBuildContext(
     gameId: gameId as SupportedGameId,
     profileId,
     mods,
+    scopeWarnings: describeScope(scope),
     externalMods,
     collectionConfig,
     configPath: loaded.configPath,
@@ -695,7 +730,12 @@ export async function runBuildPipeline(
     userlistPlugins: manifest.userlist.plugins.length,
     userlistGroups: manifest.userlist.groups.length,
     stagingFiles: stagingFileCount,
-    warnings: [...manifestWarnings, ...result.warnings, ...selfCheckWarnings],
+    warnings: [
+      ...context.scopeWarnings,
+      ...manifestWarnings,
+      ...result.warnings,
+      ...selfCheckWarnings,
+    ],
   });
 
   return {
@@ -703,7 +743,12 @@ export async function runBuildPipeline(
     outputBytes: result.outputBytes,
     bundledCount: result.bundledCount,
     modCount: manifest.mods.length,
-    warnings: [...manifestWarnings, ...result.warnings, ...selfCheckWarnings],
+    warnings: [
+      ...context.scopeWarnings,
+      ...manifestWarnings,
+      ...result.warnings,
+      ...selfCheckWarnings,
+    ],
     ruleCount: manifest.rules.length,
     loadOrderCount: manifest.loadOrder.length,
     pluginOrderCount: manifest.plugins.order.length,
