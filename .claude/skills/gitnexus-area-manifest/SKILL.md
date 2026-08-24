@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-manifest
-description: "Skill for the Manifest area of vortex-mod-monitor. 151 symbols across 20 files."
+description: "Skill for the Manifest area of vortex-mod-monitor. 166 symbols across 22 files."
 ---
 
 # Manifest
 
-151 symbols | 20 files | Cohesion: 84%
+166 symbols | 22 files | Cohesion: 86%
 
 ## When to Use
 
@@ -21,12 +21,12 @@ description: "Skill for the Manifest area of vortex-mod-monitor. 151 symbols acr
 | `src/core/manifest/buildManifest.ts` | BuildManifestError, buildFileOverrides, buildLoadOrder, buildManifest, buildPackageMetadata (+15) |
 | `src/core/manifest/packageZip.ts` | isAbortLikeError, packageEhcoll, checkAbort, prepareStagingDir, safeRmDir (+12) |
 | `src/core/manifest/readEhcoll.ts` | ReadEhcollError, assertReadableFile, crossCheckBundled, extractManifest, listZipEntries (+7) |
+| `src/core/manifest/parseModuleConfig.ts` | attr, children, decodeModuleConfig, first, parseConditionals (+6) |
 | `src/core/manifest/collectionConfig.ts` | createDefaultConfig, getCollectionConfigPath, loadOrCreateCollectionConfig, saveCollectionConfig, validateSlug (+6) |
 | `src/core/manifest/archiveContents.ts` | isDirectoryEntry, listArchiveContents, finish, onAbort, normalizeArchivePath (+3) |
 | `src/core/comparePlugins.ts` | comparePluginsEntries, comparePluginsTxtFiles, normalizePluginName, parsePluginsTxt, toPluginMap |
 | `src/core/manifest/sevenZip.ts` | extract, list, resolveSevenZip, add |
 | `src/core/manifest/stagingFileWalker.ts` | getDefaultHashConcurrency, hashStagingFiles, toPosix, walkStagingFolder |
-| `src/core/archiveHashing.ts` | enrichModsWithArchiveHashes, hashFileSha256, cleanup |
 
 ## Entry Points
 
@@ -36,7 +36,7 @@ Start here when exploring this area:
 - **`buildManifest`** (Function) — `src/core/manifest/buildManifest.ts:200`
 - **`extractBundledFromEhcoll`** (Function) — `src/core/installer/modInstall.ts:775`
 - **`readEhcoll`** (Function) — `src/core/manifest/readEhcoll.ts:154`
-- **`packageEhcoll`** (Function) — `src/core/manifest/packageZip.ts:128`
+- **`decodeModuleConfig`** (Function) — `src/core/manifest/parseModuleConfig.ts:27`
 
 ## Key Symbols
 
@@ -51,6 +51,8 @@ Start here when exploring this area:
 | `buildManifest` | Function | `src/core/manifest/buildManifest.ts` | 200 |
 | `extractBundledFromEhcoll` | Function | `src/core/installer/modInstall.ts` | 775 |
 | `readEhcoll` | Function | `src/core/manifest/readEhcoll.ts` | 154 |
+| `decodeModuleConfig` | Function | `src/core/manifest/parseModuleConfig.ts` | 27 |
+| `parseModuleConfig` | Function | `src/core/manifest/parseModuleConfig.ts` | 176 |
 | `packageEhcoll` | Function | `src/core/manifest/packageZip.ts` | 128 |
 | `checkAbort` | Function | `src/core/manifest/packageZip.ts` | 138 |
 | `resolveSevenZip` | Function | `src/core/manifest/sevenZip.ts` | 134 |
@@ -60,8 +62,6 @@ Start here when exploring this area:
 | `verifyModInstall` | Function | `src/core/installer/verifyModInstall.ts` | 150 |
 | `captureStagingFiles` | Function | `src/core/manifest/captureStagingFiles.ts` | 87 |
 | `getDefaultHashConcurrency` | Function | `src/core/manifest/stagingFileWalker.ts` | 47 |
-| `hashStagingFiles` | Function | `src/core/manifest/stagingFileWalker.ts` | 165 |
-| `pMap` | Function | `src/utils/pMap.ts` | 20 |
 
 ## Execution Flows
 
