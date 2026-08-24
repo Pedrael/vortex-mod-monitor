@@ -28,6 +28,8 @@
 import type { SevenZipApi } from "./sevenZip";
 import type { ArchiveListing } from "./archiveContents";
 import { listArchiveContents } from "./archiveContents";
+import { findOmissionLeads } from "./omissionLeads";
+import type { OmissionLead } from "./omissionLeads";
 import { expandFomodPlan } from "./expandFomodPlan";
 import type { RecordedStep } from "./fomodReplay";
 import { replayFomod } from "./fomodReplay";
@@ -54,6 +56,13 @@ export type SelfCheckReport = {
   missing: string[];
   /** Staged files whose bytes are not in the archive (post-install tooling). */
   unexplained: number;
+  /**
+   * Archive files with no staged counterpart that the archive's own shape does
+   * not explain — the omission signal for mods with no FOMOD script to replay.
+   * Leads for a human to check, never a verdict. Empty when the archive
+   * declares alternatives, because absence proves nothing there.
+   */
+  omissionLeads: OmissionLead[];
   stagedCount: number;
   expectedCount: number;
 };
@@ -101,6 +110,7 @@ export async function selfCheckMod(input: SelfCheckInput): Promise<SelfCheckRepo
     modName: input.modName,
     missing: [] as string[],
     unexplained: 0,
+    omissionLeads: [] as OmissionLead[],
     stagedCount: input.staged.length,
     expectedCount: 0,
   };
@@ -129,17 +139,24 @@ export async function selfCheckMod(input: SelfCheckInput): Promise<SelfCheckRepo
   // archive, so a failure further down still leaves a usable answer.
   const containment = verifyStagingAgainstArchive(input.staged, listing);
 
+  // Containment answers "did these bytes come from the archive?"; this answers
+  // the opposite question, "is anything from the archive missing?", and needs a
+  // different matcher — see omissionLeads.ts. Returns nothing for archives with
+  // a FOMOD script, which the replay below handles authoritatively instead.
+  const omission = findOmissionLeads(listing, input.staged.map((f) => f.path));
+  const withLeads = { ...base, omissionLeads: omission.leads };
+
   const configEntry = findModuleConfigEntry(listing);
   if (configEntry === undefined) {
     notes.push("No FOMOD script in archive; expected file set unknown.");
-    return { ...base, depth: "containment", notes, unexplained: containment.unexplained };
+    return { ...withLeads, depth: "containment", notes, unexplained: containment.unexplained };
   }
   if (input.recordedChoices.length === 0) {
     // Vortex records nothing when an install had no branching. The script's
     // unconditional files could still be derived, but a wrong "missing" claim
     // is worse than no claim, so this stays containment-only for now.
     notes.push("No recorded FOMOD choices; cannot derive the expected file set.");
-    return { ...base, depth: "containment", notes, unexplained: containment.unexplained };
+    return { ...withLeads, depth: "containment", notes, unexplained: containment.unexplained };
   }
 
   let raw: Buffer | undefined;
@@ -149,7 +166,7 @@ export async function selfCheckMod(input: SelfCheckInput): Promise<SelfCheckRepo
     notes.push(`Could not read ${configEntry}: ${err instanceof Error ? err.message : String(err)}`);
   }
   if (raw === undefined) {
-    return { ...base, depth: "containment", notes, unexplained: containment.unexplained };
+    return { ...withLeads, depth: "containment", notes, unexplained: containment.unexplained };
   }
 
   let expected;
@@ -162,7 +179,7 @@ export async function selfCheckMod(input: SelfCheckInput): Promise<SelfCheckRepo
       // A replay we do not fully understand must never accuse a folder of
       // missing files.
       notes.push("Replay confidence low; not reporting missing files.");
-      return { ...base, depth: "containment", notes, unexplained: containment.unexplained };
+      return { ...withLeads, depth: "containment", notes, unexplained: containment.unexplained };
     }
     expected = expandFomodPlan(replay.sources, listing);
     if (expected.unmatchedSpecs.length > 0) {
@@ -170,11 +187,11 @@ export async function selfCheckMod(input: SelfCheckInput): Promise<SelfCheckRepo
         `${expected.unmatchedSpecs.length} FOMOD spec(s) matched nothing in the archive; ` +
           `not reporting missing files.`,
       );
-      return { ...base, depth: "containment", notes, unexplained: containment.unexplained };
+      return { ...withLeads, depth: "containment", notes, unexplained: containment.unexplained };
     }
   } catch (err) {
     notes.push(`FOMOD replay failed: ${err instanceof Error ? err.message : String(err)}`);
-    return { ...base, depth: "containment", notes, unexplained: containment.unexplained };
+    return { ...withLeads, depth: "containment", notes, unexplained: containment.unexplained };
   }
 
   const stagedPaths = new Set(input.staged.map((f) => f.path.toLowerCase()));
@@ -183,7 +200,7 @@ export async function selfCheckMod(input: SelfCheckInput): Promise<SelfCheckRepo
     .map((f) => f.path);
 
   return {
-    ...base,
+    ...withLeads,
     depth: "replayed",
     notes,
     missing,
@@ -199,12 +216,16 @@ export function summarizeSelfChecks(reports: SelfCheckReport[]): {
   skipped: number;
   modsWithMissing: number;
   missingFiles: number;
+  modsWithOmissionLeads: number;
+  highConfidenceLeads: number;
 } {
   let replayed = 0;
   let containment = 0;
   let skipped = 0;
   let modsWithMissing = 0;
   let missingFiles = 0;
+  let modsWithOmissionLeads = 0;
+  let highConfidenceLeads = 0;
   for (const r of reports) {
     if (r.depth === "replayed") replayed += 1;
     else if (r.depth === "containment") containment += 1;
@@ -213,6 +234,19 @@ export function summarizeSelfChecks(reports: SelfCheckReport[]): {
       modsWithMissing += 1;
       missingFiles += r.missing.length;
     }
+    const high = r.omissionLeads.filter((l) => l.confidence === "high").length;
+    if (high > 0) {
+      modsWithOmissionLeads += 1;
+      highConfidenceLeads += high;
+    }
   }
-  return { replayed, containment, skipped, modsWithMissing, missingFiles };
+  return {
+    replayed,
+    containment,
+    skipped,
+    modsWithMissing,
+    missingFiles,
+    modsWithOmissionLeads,
+    highConfidenceLeads,
+  };
 }

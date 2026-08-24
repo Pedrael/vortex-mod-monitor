@@ -162,6 +162,32 @@ export async function runSelfChecks(
         `advisable — a collection built from it reproduces the gap.`,
     );
   }
+  // Leads, phrased as leads. The measured rate is ~2.6% of mods on a real
+  // 623-mod profile, so this is a short list to eyeball rather than an alarm —
+  // and some entries are always legitimate (debug symbols, tool resources,
+  // runtime-generated config).
+  const withLeads = reports
+    .filter((r) => r.omissionLeads.some((l) => l.confidence === "high"))
+    .sort(
+      (a, b) =>
+        b.omissionLeads.filter((l) => l.confidence === "high").length -
+        a.omissionLeads.filter((l) => l.confidence === "high").length,
+    );
+  for (const report of withLeads.slice(0, 10)) {
+    const high = report.omissionLeads.filter((l) => l.confidence === "high");
+    warnings.push(
+      `"${report.modName}" is missing ${high.length} file(s) that its archive ` +
+        `contains and its own folders suggest should be there ` +
+        `(e.g. ${high[0]!.path}). ${high[0]!.reason} Worth opening before shipping.`,
+    );
+  }
+  if (withLeads.length > 10) {
+    warnings.push(
+      `${withLeads.length - 10} further mod(s) have similar gaps; see the ` +
+        `event-horizon log for the full list.`,
+    );
+  }
+
   if (summary.skipped > 0) {
     warnings.push(
       `${summary.skipped} mod(s) could not be checked against their archive ` +
@@ -176,6 +202,8 @@ export async function runSelfChecks(
     skipped: summary.skipped,
     modsWithMissing: summary.modsWithMissing,
     missingFiles: summary.missingFiles,
+    modsWithOmissionLeads: summary.modsWithOmissionLeads,
+    highConfidenceLeads: summary.highConfidenceLeads,
     reasons: topReasons,
     ...(firstSkipped !== undefined
       ? {
