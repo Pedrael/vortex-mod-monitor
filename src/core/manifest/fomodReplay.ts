@@ -67,6 +67,19 @@ export type FomodConditionalPattern = {
   /** flag name → required value. All must match for the pattern to apply. */
   flagDependencies: Record<string, string>;
   files: FomodFileSpec[];
+  /**
+   * Dependency kinds on this pattern that the parser does not model
+   * (`fileDependency`, `gameDependency`, nested `dependencies`, non-And
+   * operators).
+   *
+   * A pattern carrying any of these CANNOT be evaluated, and must not be
+   * treated as satisfied. `Object.entries({}).every(...)` is `true`, so an
+   * unmodelled pattern whose flag map came out empty would otherwise apply
+   * ALWAYS — which is exactly how this replay once predicted files that a real
+   * install correctly did not produce, and reported a healthy mod as missing
+   * three files.
+   */
+  unsupportedDependencies: string[];
 };
 
 export type FomodScript = {
@@ -182,6 +195,16 @@ export function replayFomod(
   // Conditional installs are evaluated AFTER every selection, because a pattern
   // may depend on flags set by any step.
   for (const pattern of script.conditionalPatterns) {
+    if (pattern.unsupportedDependencies.length > 0) {
+      // Cannot evaluate ⇒ MUST NOT include. Over-predicting invents "missing"
+      // files and accuses a correct install; under-predicting only means we
+      // notice less. The asymmetry decides it.
+      warnings.push(
+        `Conditional pattern depends on ${pattern.unsupportedDependencies.join(", ")}, ` +
+          `which this replay cannot evaluate; its files are excluded.`,
+      );
+      continue;
+    }
     const satisfied = Object.entries(pattern.flagDependencies).every(
       ([name, value]) => norm(flags[name] ?? "") === norm(value),
     );

@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-build
-description: "Skill for the Build area of vortex-mod-monitor. 97 symbols across 11 files."
+description: "Skill for the Build area of vortex-mod-monitor. 97 symbols across 10 files."
 ---
 
 # Build
 
-97 symbols | 11 files | Cohesion: 69%
+97 symbols | 10 files | Cohesion: 69%
 
 ## When to Use
 
@@ -24,9 +24,9 @@ description: "Skill for the Build area of vortex-mod-monitor. 97 symbols across 
 | `src/ui/pages/build/engine.ts` | BundleResolutionError, buildOutputFileName, resolveDeploymentMethod, resolveGameVersion, resolveVortexVersion (+5) |
 | `src/core/draftStorage.ts` | deleteDraft, getAppDataPath, getDraftsRoot, listDrafts |
 | `src/core/deploymentManifest.ts` | captureDeploymentManifests, collectDistinctModTypes, normalizeManifest |
-| `src/core/loadOrder.ts` | captureLoadOrder |
-| `src/core/manifest/collectionConfig.ts` | reconcileExternalModsConfig |
+| `src/core/manifest/collectionConfig.ts` | reconcileExternalModsConfig, toBuildManifestExternalMods |
 | `src/ui/components/Pill.tsx` | Pill |
+| `src/ui/pages/install/steps.tsx` | SectionHeader |
 
 ## Entry Points
 
@@ -50,8 +50,8 @@ Start here when exploring this area:
 | `refresh` | Function | `src/ui/pages/build/BuildDashboard.tsx` | 102 |
 | `captureDeploymentManifests` | Function | `src/core/deploymentManifest.ts` | 133 |
 | `collectDistinctModTypes` | Function | `src/core/deploymentManifest.ts` | 53 |
-| `captureLoadOrder` | Function | `src/core/loadOrder.ts` | 40 |
 | `reconcileExternalModsConfig` | Function | `src/core/manifest/collectionConfig.ts` | 240 |
+| `toBuildManifestExternalMods` | Function | `src/core/manifest/collectionConfig.ts` | 281 |
 | `runBuildPipeline` | Function | `src/ui/pages/build/engine.ts` | 384 |
 | `getDraftsRoot` | Function | `src/core/draftStorage.ts` | 121 |
 | `listDrafts` | Function | `src/core/draftStorage.ts` | 162 |

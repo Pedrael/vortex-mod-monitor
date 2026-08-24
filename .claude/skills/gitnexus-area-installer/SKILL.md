@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-installer
-description: "Skill for the Installer area of vortex-mod-monitor. 97 symbols across 15 files."
+description: "Skill for the Installer area of vortex-mod-monitor. 101 symbols across 16 files."
 ---
 
 # Installer
 
-97 symbols | 15 files | Cohesion: 80%
+101 symbols | 16 files | Cohesion: 78%
 
 ## When to Use
 
@@ -21,12 +21,12 @@ description: "Skill for the Installer area of vortex-mod-monitor. 97 symbols acr
 | `src/core/installer/modInstall.ts` | safeRmTempDir, uninstallMod, installFromBundledArchive, installFromExistingDownload, installFromLocalArchive (+9) |
 | `src/core/installer/applyUserlist.ts` | applyGroupDefinition, applyGroupRule, applyPluginEntry, applyPluginGroup, applyPluginRuleWithCollectionWins (+8) |
 | `src/core/installer/bundledPrefetch.ts` | BundledPrefetchPool, dispose, prime, pump, runExtraction (+2) |
+| `src/core/installer/verifyModInstall.ts` | summarizeVerifyFail, collectOnDiskFiles, toPosix, verifyModInstall |
 | `src/core/installer/profile.ts` | createFreshProfile, enableModInProfile, pickNonCollidingName |
-| `src/core/installer/verifyModInstall.ts` | summarizeVerifyFail, collectOnDiskFiles, toPosix |
+| `src/core/archiveHashing.ts` | onAbort, hashFileSha256, cleanup |
 | `src/core/installer/applyModRules.ts` | applyModRules, refMatchesModId, resolveReferenceToModId |
 | `src/actions/installCollectionAction.ts` | formatProgressMessage, onProgress |
 | `src/ui/pages/install/engine.ts` | checkAbort, checkAbort |
-| `src/core/installLedger.ts` | serializeReceipt, writeReceipt |
 
 ## Entry Points
 

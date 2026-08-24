@@ -151,8 +151,13 @@ function parseConditionals(
       if (name === undefined) continue;
       flagDependencies[name] = attr(dep, "value") ?? "";
     }
+    // Recorded PER PATTERN, not just globally: the replay has to know which
+    // specific pattern it cannot evaluate, so it can exclude that one instead
+    // of trusting an empty flag map that means "unknown", not "unconditional".
+    const unsupportedDependencies: string[] = [];
     for (const unsupported of ["fileDependency", "gameDependency", "dependencies"]) {
       if (children(deps, unsupported).length > 0) {
+        unsupportedDependencies.push(unsupported);
         warnings.push(
           `conditionalFileInstalls uses <${unsupported}>, which this replay does not model.`,
         );
@@ -160,9 +165,14 @@ function parseConditionals(
     }
     const operator = attr(deps, "operator");
     if (operator !== undefined && operator.toLowerCase() !== "and") {
+      unsupportedDependencies.push(`operator=${operator}`);
       warnings.push(`Dependency operator "${operator}" is not modelled (assuming And).`);
     }
-    out.push({ flagDependencies, files: parseFiles(first(pattern, "files")) });
+    out.push({
+      flagDependencies,
+      files: parseFiles(first(pattern, "files")),
+      unsupportedDependencies,
+    });
   }
   return out;
 }

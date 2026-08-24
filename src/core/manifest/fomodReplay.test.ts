@@ -72,8 +72,8 @@ describe("replayFomod", () => {
         }],
       }],
       conditionalPatterns: [
-        { flagDependencies: { AM: "true" }, files: [spec("patches/am")] },
-        { flagDependencies: { AM: "false" }, files: [spec("patches/vanilla")] },
+        { flagDependencies: { AM: "true" }, files: [spec("patches/am")], unsupportedDependencies: [] },
+        { flagDependencies: { AM: "false" }, files: [spec("patches/vanilla")], unsupportedDependencies: [] },
       ],
     });
     const r = replayFomod(s, [
@@ -216,5 +216,34 @@ describe("parseModuleConfig", () => {
 
   it("throws on a document with no <config> root", async () => {
     await expect(parseModuleConfig("<nope/>")).rejects.toThrow(/config/);
+  });
+});
+
+describe("replayFomod — unevaluable conditionals", () => {
+  it("EXCLUDES a pattern whose dependency it cannot evaluate", () => {
+    // The bug this guards: a pattern gated solely by <fileDependency> parses to
+    // an EMPTY flag map, and `[].every()` is true, so it applied ALWAYS. On a
+    // real profile that predicted files a correct install never produced and
+    // reported a healthy mod as missing three of them.
+    const s = script({
+      conditionalPatterns: [
+        { flagDependencies: {}, files: [spec("gated/by/file-dependency")], unsupportedDependencies: ["fileDependency"] },
+      ],
+    });
+    const r = replayFomod(s, []);
+    expect(r.sources).toEqual([]);
+    expect(r.confidence).toBe("low");
+    expect(r.warnings.join(" ")).toMatch(/cannot evaluate/i);
+  });
+
+  it("still applies a genuinely unconditional pattern", () => {
+    const s = script({
+      conditionalPatterns: [
+        { flagDependencies: {}, files: [spec("always")], unsupportedDependencies: [] },
+      ],
+    });
+    const r = replayFomod(s, []);
+    expect(r.sources.map((x) => x.source)).toEqual(["always"]);
+    expect(r.confidence).toBe("high");
   });
 });

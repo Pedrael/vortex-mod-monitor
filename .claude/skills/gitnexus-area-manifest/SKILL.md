@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-manifest
-description: "Skill for the Manifest area of vortex-mod-monitor. 171 symbols across 23 files."
+description: "Skill for the Manifest area of vortex-mod-monitor. 169 symbols across 22 files."
 ---
 
 # Manifest
 
-171 symbols | 23 files | Cohesion: 86%
+169 symbols | 22 files | Cohesion: 86%
 
 ## When to Use
 
@@ -52,16 +52,16 @@ Start here when exploring this area:
 | `extractBundledFromEhcoll` | Function | `src/core/installer/modInstall.ts` | 775 |
 | `readEhcoll` | Function | `src/core/manifest/readEhcoll.ts` | 154 |
 | `decodeModuleConfig` | Function | `src/core/manifest/parseModuleConfig.ts` | 27 |
-| `parseModuleConfig` | Function | `src/core/manifest/parseModuleConfig.ts` | 176 |
+| `parseModuleConfig` | Function | `src/core/manifest/parseModuleConfig.ts` | 186 |
 | `packageEhcoll` | Function | `src/core/manifest/packageZip.ts` | 128 |
 | `checkAbort` | Function | `src/core/manifest/packageZip.ts` | 138 |
 | `resolveSevenZip` | Function | `src/core/manifest/sevenZip.ts` | 134 |
-| `enrichModsWithArchiveHashes` | Function | `src/core/archiveHashing.ts` | 141 |
-| `hashFileSha256` | Function | `src/core/archiveHashing.ts` | 34 |
-| `cleanup` | Function | `src/core/archiveHashing.ts` | 54 |
-| `verifyModInstall` | Function | `src/core/installer/verifyModInstall.ts` | 150 |
+| `computeStagingSetHash` | Function | `src/core/manifest/stagingSetHash.ts` | 51 |
 | `captureStagingFiles` | Function | `src/core/manifest/captureStagingFiles.ts` | 87 |
 | `getDefaultHashConcurrency` | Function | `src/core/manifest/stagingFileWalker.ts` | 47 |
+| `hashStagingFiles` | Function | `src/core/manifest/stagingFileWalker.ts` | 165 |
+| `walkStagingFolder` | Function | `src/core/manifest/stagingFileWalker.ts` | 73 |
+| `enrichInstalledModsWithStagingSetHashes` | Function | `src/core/resolver/enrichStagingSetHashes.ts` | 117 |
 
 ## Execution Flows
 
@@ -76,7 +76,7 @@ Start here when exploring this area:
 | `BuildManifest → ComputeStagingSetHash` | cross_community | 4 |
 | `BuildManifest → BuildUiAttributes` | cross_community | 4 |
 | `BuildManifest → SynthesizeRuleReference` | intra_community | 4 |
-| `CaptureStagingFiles → Cleanup` | intra_community | 4 |
+| `CaptureStagingFiles → Cleanup` | cross_community | 4 |
 
 ## How to Explore
 
