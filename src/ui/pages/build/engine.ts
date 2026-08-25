@@ -81,12 +81,14 @@ import {
   type PackageEhcollResult,
 } from "../../../core/manifest/packageZip";
 import {
+  listPublishedCollections,
   loadOrCreateCollectionConfig,
   reconcileExternalModsConfig,
   saveCollectionConfig,
   toBuildManifestExternalMods,
   type CollectionConfig,
   type ExternalModConfigEntry,
+  type PublishedCollectionSummary,
 } from "../../../core/manifest/collectionConfig";
 import { getVortexUserDataPath } from "../../../core/paths";
 import { beginOp } from "../../../core/logging/ehLog";
@@ -490,8 +492,6 @@ export async function loadBuildContext(
 
   const externalMods = mods.filter((m) => !isNexusMod(m));
 
-  const defaultName = opts?.nameOverride ?? "My Collection";
-  const slug = slugify(defaultName);
   const appDataPath = getVortexUserDataPath();
   const configDir = path.join(
     appDataPath,
@@ -499,6 +499,28 @@ export async function loadBuildContext(
     "collections",
     ".config",
   );
+
+  // Default to the collection this curator most recently built FOR THIS GAME,
+  // not a hard-coded "My Collection".
+  //
+  // The constant was a silent rollback: build "ivy", open a fresh draft, and
+  // the form says "My Collection" again — and, worse than the label, it loads
+  // that collection's config, so the bundle ticks, README and prerequisites
+  // just set on "ivy" are not the ones on screen. The name is the identity
+  // here (it picks the slug, which picks the config, which carries the
+  // packageId), so getting it wrong is not cosmetic.
+  let defaultName = opts?.nameOverride;
+  if (defaultName === undefined) {
+    try {
+      defaultName = pickDefaultCollectionName(
+        await listPublishedCollections(configDir),
+        gameId,
+      );
+    } catch {
+      defaultName = FALLBACK_COLLECTION_NAME;
+    }
+  }
+  const slug = slugify(defaultName);
   const loaded = await loadOrCreateCollectionConfig({ configDir, slug });
   let collectionConfig = loaded.config;
 
@@ -694,8 +716,10 @@ export async function runBuildPipeline(
   // collection stays with the original name.
   let collectionConfig = context.collectionConfig;
   let configPath = context.configPath;
+  const renameWarnings: string[] = [];
   if (slug !== slugify(context.defaultName)) {
     const reloaded = await loadOrCreateCollectionConfig({ configDir, slug });
+    const forked = reloaded.config.packageId !== context.collectionConfig.packageId;
     collectionConfig = reloaded.config;
     configPath = reloaded.configPath;
 
@@ -708,6 +732,38 @@ export async function runBuildPipeline(
     });
     if (reconciled.changed) {
       collectionConfig = reconciled.config;
+    }
+
+    // The prerequisites the curator ticked live on the config, not the form,
+    // and a rename swaps the config out from under them. They were being
+    // silently reset to "none required" — the one part of a collection that
+    // stops a user's game from launching at all.
+    if (
+      collectionConfig.externalDependencies === undefined &&
+      context.collectionConfig.externalDependencies !== undefined
+    ) {
+      collectionConfig = {
+        ...collectionConfig,
+        externalDependencies: context.collectionConfig.externalDependencies,
+      };
+    }
+
+    if (forked) {
+      // Renaming does not rename anything — the name picks the slug, the slug
+      // picks the config, and the config carries the packageId that ties
+      // releases together. So this is a NEW collection, the old one is still
+      // listed under its old name, and nobody who installed it will be
+      // offered this as an update. That is a defensible design and a terrible
+      // surprise, so it is said out loud.
+      renameWarnings.push(
+        `This built a NEW collection called "${curator.name}", not a new ` +
+          `version of "${context.defaultName}". A collection's name is its ` +
+          `identity here, so renaming forks it: "${context.defaultName}" is ` +
+          `still on your dashboard with its own release history, and anyone ` +
+          `who installed it will not see this as an update. If you meant to ` +
+          `rename, delete the old one; if you meant to update it, build again ` +
+          `under its original name.`,
+      );
     }
   }
 
@@ -843,6 +899,7 @@ export async function runBuildPipeline(
   const driftOp = beginOp("build.external-drift", {});
   let repackedBundles: RepackedBundle[] = [];
   const bundleWarnings: string[] = [];
+  bundleWarnings.push(...renameWarnings);
   bundleWarnings.push(...membership.warnings);
 
   // Shipping without a game version is allowed — enforcing one nobody can
@@ -1412,6 +1469,35 @@ export function describeMembershipChange(
       `was when you opened the form. Reopen the form if you want the mod list ` +
       `on screen to match.`,
   ];
+}
+
+export const FALLBACK_COLLECTION_NAME = "My Collection";
+
+/**
+ * Which collection a fresh draft should start from.
+ *
+ * The most recently built one for this game. It was a constant, and the
+ * constant was a silent rollback: build "ivy", open a new draft, and the form
+ * says "My Collection" — and then loads THAT collection's config, so the
+ * bundle ticks, README and prerequisites on screen belong to a different
+ * collection than the one just built. The name is the identity here (it picks
+ * the slug, which picks the config, which carries the packageId), so a wrong
+ * default is not a cosmetic default.
+ *
+ * Collections built for another game are skipped; one never built has no name
+ * worth restoring.
+ */
+export function pickDefaultCollectionName(
+  published: readonly PublishedCollectionSummary[],
+  gameId: string,
+): string {
+  const candidates = published
+    .filter((c) => c.gameId === undefined || c.gameId === gameId)
+    .filter((c) => c.lastBuiltAt !== undefined)
+    .sort((a, b) => (a.lastBuiltAt! < b.lastBuiltAt! ? 1 : -1));
+  const best = candidates[0];
+  const name = best?.lastBuiltName ?? best?.slug;
+  return name !== undefined && name.length > 0 ? name : FALLBACK_COLLECTION_NAME;
 }
 
 /**
