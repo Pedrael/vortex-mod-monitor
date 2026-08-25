@@ -67,6 +67,10 @@ import { useApi } from "../../state";
 import type { BuildDraftPayload } from "./buildSession";
 import { getBuildSessionRegistry } from "./buildSessionRegistry";
 import { getVortexUserDataPath } from "../../../core/paths";
+import {
+  loadPublishedDetails,
+  type PublishedDetails,
+} from "./publishedDetails";
 import { ehLog } from "../../../core/logging/ehLog";
 
 // ───────────────────────────────────────────────────────────────────────
@@ -263,6 +267,11 @@ export function BuildDashboard(props: BuildDashboardProps): JSX.Element {
       });
     }
   }, [state.published, currentFingerprint]);
+
+  const publishedSlugs = React.useMemo(
+    () => state.published.map((p) => p.slug),
+    [state.published],
+  );
 
   // ── Actions ────────────────────────────────────────────────────────
 
@@ -665,6 +674,7 @@ export function BuildDashboard(props: BuildDashboardProps): JSX.Element {
                   currentFingerprint !== undefined &&
                   item.summary.lastBuiltProfileFingerprint === currentFingerprint
                 }
+                knownSlugs={publishedSlugs}
                 onUpdate={(): void => handleUpdatePublished(item.summary)}
                 onDelete={(): void => {
                   void handleDeletePublished(item.summary);
@@ -938,6 +948,146 @@ function DraftCard(props: {
   );
 }
 
+function DetailRow(props: { label: string; children: React.ReactNode }): JSX.Element {
+  return (
+    <div style={{ display: "flex", gap: "var(--eh-sp-2)", flexWrap: "wrap" }}>
+      <span style={{ color: "var(--eh-text-muted)", minWidth: 132 }}>{props.label}</span>
+      <span>{props.children}</span>
+    </div>
+  );
+}
+
+const formatBytes = (n: number): string =>
+  n >= 1024 ** 3
+    ? `${(n / 1024 ** 3).toFixed(2)} GB`
+    : `${(n / 1024 ** 2).toFixed(1)} MB`;
+
+/**
+ * Read-only view of a published collection. Loads on first open, not on
+ * render — reading a package means unzipping its manifest, which is not
+ * something every card on the dashboard should do unasked.
+ */
+function PublishedDetailsPanel(props: {
+  summary: PublishedCollectionSummary;
+  /** Every published slug, so a shared prefix cannot mis-claim a build. */
+  knownSlugs: readonly string[];
+}): JSX.Element {
+  const [details, setDetails] = React.useState<PublishedDetails | undefined>();
+  const [error, setError] = React.useState<string | undefined>();
+
+  React.useEffect(() => {
+    let alive = true;
+    void (async (): Promise<void> => {
+      try {
+        const { loadOrCreateCollectionConfig } = await import(
+          "../../../core/manifest/collectionConfig"
+        );
+        const outputDir = path.join(
+          getVortexUserDataPath(),
+          "event-horizon",
+          "collections",
+        );
+        const { config } = await loadOrCreateCollectionConfig({
+          configDir: path.join(outputDir, ".config"),
+          slug: props.summary.slug,
+        });
+        const loaded = await loadPublishedDetails({
+          summary: props.summary,
+          config,
+          outputDir,
+          knownSlugs: props.knownSlugs,
+        });
+        if (alive) setDetails(loaded);
+      } catch (err) {
+        if (alive) setError(err instanceof Error ? err.message : String(err));
+      }
+    })();
+    return (): void => {
+      alive = false;
+    };
+  }, [props.summary, props.knownSlugs]);
+
+  if (error !== undefined) {
+    return <div style={{ color: "var(--eh-warning)" }}>Couldn't read details: {error}</div>;
+  }
+  if (details === undefined) {
+    return <div style={{ color: "var(--eh-text-muted)" }}>Reading...</div>;
+  }
+
+  const s = details.shipped;
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "var(--eh-sp-2)",
+        marginTop: "var(--eh-sp-3)",
+        paddingTop: "var(--eh-sp-3)",
+        borderTop: "1px solid var(--eh-border-subtle)",
+        fontSize: "var(--eh-text-sm)",
+      }}
+    >
+      {/* What the last package actually contains. */}
+      {s !== undefined ? (
+        <>
+          <DetailRow label="Shipped">
+            v{s.version} — {s.mods} mods, {s.plugins} plugins
+            {s.bundledArchives > 0 ? `, ${s.bundledArchives} bundled archives` : ""}
+          </DetailRow>
+          <DetailRow label="Requires">
+            {s.gameId} {s.gameVersion === "unknown" ? "(no version recorded)" : s.gameVersion}
+            {s.gameVersion !== "unknown" &&
+              ` (${s.gameVersionPolicy === "exact" ? "exactly" : "or newer"})`}
+          </DetailRow>
+          <DetailRow label="Verification">{s.verificationLevel}</DetailRow>
+          <DetailRow label="Author">{s.author.length > 0 ? s.author : "not set"}</DetailRow>
+        </>
+      ) : (
+        <div style={{ color: "var(--eh-text-muted)" }}>{details.shippedNote}</div>
+      )}
+
+      {/* What the config will do on the NEXT build — not always the same thing. */}
+      <DetailRow label="External mods">
+        {details.externalModCount} known
+        {details.bundledMods.length > 0
+          ? `, ${details.bundledMods.length} set to bundle (${details.bundledMods
+              .slice(0, 3)
+              .join(", ")}${details.bundledMods.length > 3 ? ", ..." : ""})`
+          : ", none set to bundle"}
+      </DetailRow>
+      {details.modsWithInstructions.length > 0 && (
+        <DetailRow label="Instructions on">
+          {details.modsWithInstructions.slice(0, 3).join(", ")}
+          {details.modsWithInstructions.length > 3 ? ", ..." : ""}
+        </DetailRow>
+      )}
+      <DetailRow label="Prerequisites">
+        {details.prerequisites.length > 0 ? details.prerequisites.join(", ") : "none declared"}
+      </DetailRow>
+      <DetailRow label="Docs">
+        {[details.hasReadme ? "README" : undefined, details.hasChangelog ? "CHANGELOG" : undefined]
+          .filter(Boolean)
+          .join(" + ") || "none"}
+      </DetailRow>
+
+      <DetailRow label="Identity">
+        <code style={{ fontFamily: "var(--eh-font-mono)", fontSize: "var(--eh-text-xs)" }}>
+          {props.summary.packageId}
+        </code>
+      </DetailRow>
+      <DetailRow label="Builds on disk">
+        {details.packages.length === 0
+          ? "none"
+          : details.packages
+              .slice(0, 4)
+              .map((pkg) => `${pkg.fileName} (${formatBytes(pkg.bytes)})`)
+              .join(", ")}
+        {details.packages.length > 4 ? `, +${details.packages.length - 4} more` : ""}
+      </DetailRow>
+    </div>
+  );
+}
+
 function PublishedCard(props: {
   summary: PublishedCollectionSummary;
   /**
@@ -946,11 +1096,14 @@ function PublishedCard(props: {
    * unknown offers Update — never suppress an action on a guess.
    */
   upToDate: boolean;
+  /** Every published slug, so a shared prefix cannot mis-claim a build. */
+  knownSlugs: readonly string[];
   onUpdate: () => void;
   onDelete: () => void;
 }): JSX.Element {
   const { summary, upToDate } = props;
   const title = summary.lastBuiltName ?? summary.slug;
+  const [showDetails, setShowDetails] = React.useState(false);
   return (
     <Card
       title={title}
@@ -1003,10 +1156,16 @@ function PublishedCard(props: {
               Update
             </Button>
           )}
+          <Button intent="ghost" onClick={(): void => setShowDetails((v) => !v)}>
+            {showDetails ? "Hide details" : "Details"}
+          </Button>
           <Button intent="ghost" onClick={props.onDelete}>
             Delete
           </Button>
         </div>
+        {showDetails && (
+          <PublishedDetailsPanel summary={summary} knownSlugs={props.knownSlugs} />
+        )}
       </div>
     </Card>
   );
