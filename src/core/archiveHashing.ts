@@ -182,7 +182,23 @@ export async function enrichModsWithArchiveHashes(
           const stat = await fs.promises.stat(archivePath);
 
           if (stat.isFile()) {
-            archiveSha256 = await hashFileSha256(archivePath, signal);
+            // Re-reading every archive on every build is ~17 minutes and tens
+            // of gigabytes for a large profile, and the bytes have not moved.
+            // The fingerprint is what makes skipping it safe: a cached hash is
+            // reused only when path, size AND mtime all still match.
+            const key =
+              hashCache !== undefined
+                ? archiveFileCacheKey(archivePath, stat.size, stat.mtimeMs)
+                : undefined;
+            const cached = key === undefined ? undefined : hashCache!.get(key);
+            if (cached !== undefined) {
+              archiveSha256 = cached;
+            } else {
+              archiveSha256 = await hashFileSha256(archivePath, signal);
+              if (key !== undefined) {
+                hashCache!.set(key, archiveSha256);
+              }
+            }
           }
         } catch (err) {
           // Re-throw cancellation so pMap unwinds cleanly. Otherwise

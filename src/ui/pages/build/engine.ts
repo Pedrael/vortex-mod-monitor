@@ -351,7 +351,8 @@ export async function loadBuildContext(
   const hashStartedAt = Date.now();
   const ehDir = path.join(getVortexUserDataPath(), "event-horizon");
   const hashCache = await loadArchiveHashCache(ehDir);
-  const { lookup, added } = makeHashLookup(hashCache);
+  const hashReuse = makeHashLookup(hashCache);
+  const { lookup, added } = hashReuse;
 
   let mods = await enrichModsWithArchiveHashes(state, gameId, rawMods, {
     hashCache: lookup,
@@ -381,10 +382,14 @@ export async function loadBuildContext(
   });
   op.step("hashing-done", {
     ms: Date.now() - hashStartedAt,
-    // A large profile is ~15 minutes of re-reading archives that have not
-    // changed. Reused vs freshly hashed says whether that is still happening.
-    reusedFromCache: rawMods.length - added.size,
+    // COUNTED, not inferred. This was first written as
+    // `rawMods.length - added.size`, which reports "955 reused, 0 hashed" when
+    // the cache is not consulted at all — the exact opposite of the truth, next
+    // to an `ms` of seventeen minutes. A metric that cannot distinguish "it
+    // worked" from "it never ran" is worse than no metric.
+    reusedFromCache: hashReuse.hits,
     freshlyHashed: added.size,
+    hashedArchives: rawMods.length,
   });
 
   // Persist what was computed, so the next build reuses it. Failure here costs
