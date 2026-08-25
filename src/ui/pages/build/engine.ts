@@ -657,6 +657,31 @@ export async function runBuildPipeline(
   const { gameId } = context;
   let mods = context.mods;
 
+  // ── 0. The profile may have moved since the form opened ────────────────
+  // `loadBuildContext` runs once, in `begin()`. Every build after that reused
+  // its snapshot, so enabling or disabling a mod in Vortex and pressing Build
+  // again shipped the OLD membership — and said nothing. Measured: a rebuild
+  // produced a mod set identical to the previous one down to every
+  // compareKey, with no load-context pass in the log at all.
+  //
+  // Re-read it here. Cheap: pure Redux state, and mods already known keep
+  // their hashes, so only genuinely new ones are hashed (usually a cache hit).
+  const membership = await refreshProfileMembership({
+    state,
+    gameId,
+    profileId: context.profileId,
+    known: mods,
+    signal,
+  });
+  mods = membership.mods;
+  if (membership.warnings.length > 0) {
+    op.step("membership-refreshed", {
+      added: membership.addedNames.length,
+      removed: membership.removedNames.length,
+      mods: mods.length,
+    });
+  }
+
   // ── 1. Apply form overrides on top of the loaded config ────────────────
   const slug = slugify(curator.name);
   const appDataPath = getVortexUserDataPath();
@@ -817,6 +842,7 @@ export async function runBuildPipeline(
   const driftOp = beginOp("build.external-drift", {});
   let repackedBundles: RepackedBundle[] = [];
   const bundleWarnings: string[] = [];
+  bundleWarnings.push(...membership.warnings);
 
   // Shipping without a game version is allowed — enforcing one nobody can
   // meet is not. Say which of the two is happening rather than letting the
@@ -1238,6 +1264,150 @@ async function readPluginsTxtIfPresent(
 function resolveVortexVersion(state: types.IState): string {
   const app = (state as unknown as { app?: { appVersion?: string; version?: string } }).app;
   return app?.appVersion ?? app?.version ?? "unknown";
+}
+
+/**
+ * Which mods the profile has enabled RIGHT NOW, reconciled against the set the
+ * build context was opened with.
+ *
+ * The context is a snapshot taken once, when the form opens. Everything else in
+ * the build re-reads the disk each run — staging folders are re-walked and
+ * re-hashed — but membership was frozen, so a mod toggled in Vortex between
+ * opening the form and pressing Build was invisible. That is the one kind of
+ * staleness a fingerprinted cache cannot catch, because nothing about the files
+ * changed; what changed was which files count.
+ *
+ * Mods already known keep their enriched entry, hashes and all. Only mods that
+ * appeared are hashed, and the hash cache usually answers that instantly.
+ */
+export async function refreshProfileMembership(args: {
+  state: types.IState;
+  gameId: string;
+  profileId: string;
+  known: AuditorMod[];
+  signal?: AbortSignal;
+  /** Substitutable so the refresh can be tested without a Vortex state. */
+  readProfileMods?: (
+    state: types.IState,
+    gameId: string,
+    profileId: string,
+  ) => AuditorMod[];
+}): Promise<{
+  mods: AuditorMod[];
+  warnings: string[];
+  addedNames: string[];
+  removedNames: string[];
+}> {
+  const { state, gameId, profileId, known, signal } = args;
+  const quiet = { mods: known, warnings: [], addedNames: [], removedNames: [] };
+
+  let fresh: AuditorMod[];
+  try {
+    const read = args.readProfileMods ?? getModsForProfile;
+    fresh = scopeCollectionMods(read(state, gameId, profileId)).included;
+  } catch {
+    // Re-reading is an improvement, not a precondition. If Vortex's state
+    // cannot be read here, build what the form was opened with rather than
+    // failing a build that would otherwise have succeeded.
+    return quiet;
+  }
+
+  const diff = diffProfileMembership(known, fresh);
+  const { appeared } = diff;
+  if (!diff.changed) return quiet;
+  let merged = diff.merged;
+
+  if (appeared.length > 0) {
+    const ehDir = path.join(getVortexUserDataPath(), "event-horizon");
+    try {
+      const hashCache = await loadArchiveHashCache(ehDir);
+      const { lookup, added } = makeHashLookup(hashCache);
+      const hashed = await enrichModsWithArchiveHashes(state, gameId, appeared, {
+        hashCache: lookup,
+        concurrency: 4,
+        ...(signal !== undefined ? { signal } : {}),
+      });
+      const byId = new Map(hashed.map((m) => [m.id, m]));
+      merged = merged.map((m) => byId.get(m.id) ?? m);
+      merged = applyCachedHashes(merged, hashCache).mods;
+      if (added.size > 0) {
+        await saveArchiveHashCache(
+          ehDir,
+          mergeHashes(hashCache, added, new Date().toISOString()),
+        );
+      }
+    } catch {
+      // An unhashable newcomer still ships, on its staged-file identity.
+      // Losing the build over it would be the worse trade.
+    }
+  }
+
+  return {
+    mods: merged,
+    addedNames: diff.addedNames,
+    removedNames: diff.removedNames,
+    warnings: describeMembershipChange(diff, merged.length),
+  };
+}
+
+export type MembershipDiff = {
+  changed: boolean;
+  /** Fresh membership, keeping the enriched (hashed) copy where one existed. */
+  merged: AuditorMod[];
+  /** In the profile now, absent from the snapshot — these need hashing. */
+  appeared: AuditorMod[];
+  addedNames: string[];
+  removedNames: string[];
+};
+
+/**
+ * Compare the membership the form was opened with against the profile now.
+ *
+ * Pure, and the whole point of the refresh: an enriched mod carries an archive
+ * hash that cost real time, so a mod still enabled must keep its existing entry
+ * rather than being replaced by a bare one from the fresh read.
+ */
+export function diffProfileMembership(
+  known: AuditorMod[],
+  fresh: AuditorMod[],
+): MembershipDiff {
+  const knownById = new Map(known.map((m) => [m.id, m]));
+  const freshIds = new Set(fresh.map((m) => m.id));
+  const appeared = fresh.filter((m) => !knownById.has(m.id));
+  const vanished = known.filter((m) => !freshIds.has(m.id));
+  return {
+    changed: appeared.length > 0 || vanished.length > 0,
+    merged: fresh.map((m) => knownById.get(m.id) ?? m),
+    appeared,
+    addedNames: appeared.map((m) => m.name),
+    removedNames: vanished.map((m) => m.name),
+  };
+}
+
+/** One warning, or none. Says what moved and which membership was used. */
+export function describeMembershipChange(
+  diff: MembershipDiff,
+  finalCount: number,
+): string[] {
+  if (!diff.changed) return [];
+  const list = (names: string[]): string =>
+    names.slice(0, 5).map((n) => `"${n}"`).join(", ") +
+    (names.length > 5 ? `, and ${names.length - 5} more` : "");
+  const parts: string[] = [];
+  if (diff.addedNames.length > 0) {
+    parts.push(`${diff.addedNames.length} added (${list(diff.addedNames)})`);
+  }
+  if (diff.removedNames.length > 0) {
+    parts.push(
+      `${diff.removedNames.length} no longer enabled (${list(diff.removedNames)})`,
+    );
+  }
+  return [
+    `Your profile changed after this form was opened — ${parts.join(", ")}. ` +
+      `The build used the profile as it is NOW (${finalCount} mods), not as it ` +
+      `was when you opened the form. Reopen the form if you want the mod list ` +
+      `on screen to match.`,
+  ];
 }
 
 /**
