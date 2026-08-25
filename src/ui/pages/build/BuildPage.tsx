@@ -44,7 +44,10 @@ import {
 } from "./engine";
 import type { ExternalModConfigEntry } from "../../../core/manifest/collectionConfig";
 import { findRecoverableMods } from "../../../core/archiveRecovery";
-import type { EhcollExternalDependency } from "../../../types/ehcoll";
+import type {
+  EhcollExternalDependency,
+  GameVersionPolicy,
+} from "../../../types/ehcoll";
 import type { ExternalDependencyConfigEntry } from "../../../core/manifest/collectionConfig";
 import type { VerificationLevel } from "../../../types/ehcoll";
 import { getAppDataPath, saveDraft } from "../../../core/draftStorage";
@@ -1145,6 +1148,53 @@ function FormPanel(props: FormPanelProps): JSX.Element {
               placeholder="Your Nexus username"
               onChange={(e) => updateCurator({ author: e.target.value })}
             />
+          </Field>
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(220px, 2fr) minmax(160px, 1fr)",
+            gap: "var(--eh-sp-3)",
+            marginTop: "var(--eh-sp-3)",
+          }}
+        >
+          <Field
+            label="Required game version"
+            hint={
+              ctx.gameVersion === "unknown"
+                ? "Vortex could not read your game's version — type it in, or leave blank to ship no requirement."
+                : `Detected on this machine: ${ctx.gameVersion}. Users on a different version are told to use a downgrader.`
+            }
+          >
+            <input
+              type="text"
+              className="eh-input"
+              value={curator.gameVersion}
+              placeholder="e.g. 1.10.163.0 — blank means no check"
+              onChange={(e) => updateCurator({ gameVersion: e.target.value })}
+            />
+          </Field>
+          <Field
+            label="Enforcement"
+            hint={
+              curator.gameVersionPolicy === "exact"
+                ? "Blocks any other version."
+                : "Blocks only older versions."
+            }
+          >
+            <select
+              className="eh-input"
+              value={curator.gameVersionPolicy}
+              disabled={curator.gameVersion.trim().length === 0}
+              onChange={(e) =>
+                updateCurator({
+                  gameVersionPolicy: e.target.value as GameVersionPolicy,
+                })
+              }
+            >
+              <option value="exact">Exactly this version</option>
+              <option value="minimum">This version or newer</option>
+            </select>
           </Field>
         </div>
         <div style={{ marginTop: "var(--eh-sp-3)" }}>

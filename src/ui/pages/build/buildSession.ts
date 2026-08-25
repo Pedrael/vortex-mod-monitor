@@ -451,6 +451,8 @@ class BuildSession {
         version: ctx.defaultVersion,
         author: ctx.defaultAuthor,
         description: "",
+        gameVersion: ctx.gameVersion === "unknown" ? "" : ctx.gameVersion,
+        gameVersionPolicy: "exact",
       },
       overrides: { ...ctx.collectionConfig.externalMods },
       readme: ctx.collectionConfig.readme ?? "",
@@ -514,6 +516,8 @@ class BuildSession {
             version: ctx.defaultVersion,
             author: ctx.defaultAuthor,
             description: "",
+            gameVersion: ctx.gameVersion === "unknown" ? "" : ctx.gameVersion,
+            gameVersionPolicy: "exact",
           },
           overrides: { ...ctx.collectionConfig.externalMods },
           readme: ctx.collectionConfig.readme ?? "",
@@ -539,7 +543,18 @@ class BuildSession {
         if (envelope !== undefined) {
           this.setState({
             ...baseForm,
-            curator: { ...baseForm.curator, ...envelope.payload.curator },
+            curator: {
+              ...baseForm.curator,
+              ...envelope.payload.curator,
+              // A draft seeded by "Update from published" has no game version
+              // in it — the dashboard cannot detect one. Letting its empty
+              // string win would throw away what we just detected and ship a
+              // requirement of "".
+              gameVersion:
+                (envelope.payload.curator?.gameVersion ?? "").length > 0
+                  ? envelope.payload.curator.gameVersion
+                  : baseForm.curator.gameVersion,
+            },
             overrides: {
               ...baseForm.overrides,
               ...envelope.payload.overrides,

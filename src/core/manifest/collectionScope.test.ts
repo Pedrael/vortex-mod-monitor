@@ -167,3 +167,36 @@ describe("findHashedIdentityCollisions", () => {
     ).toEqual([]);
   });
 });
+
+describe("Vortex collections in the profile", () => {
+  it("leaves a collection mod out, enabled or not", () => {
+    // It is a mod only by Vortex's bookkeeping. Its staging folder is other
+    // mods' payloads plus its own metadata.
+    const scope = scopeCollectionMods([
+      mod({ id: "real-mod" }),
+      mod({ id: "the-collection", modType: "collection" }),
+    ]);
+    expect(scope.included.map((m) => m.id)).toEqual(["real-mod"]);
+    expect(scope.excludedCollections.map((m) => m.id)).toEqual(["the-collection"]);
+    // Not miscounted as "disabled" — the curator did not disable it.
+    expect(scope.excludedDisabled).toEqual([]);
+  });
+
+  it("does not let a disabled collection land in the disabled bucket either", () => {
+    const scope = scopeCollectionMods([
+      mod({ id: "the-collection", modType: "collection", enabled: false }),
+    ]);
+    expect(scope.excludedCollections).toHaveLength(1);
+    expect(scope.excludedDisabled).toEqual([]);
+  });
+
+  it("tells the curator what was left out and that the mods still ship", () => {
+    const scope = scopeCollectionMods([
+      mod({ id: "c", name: "Liberty Wasteland Redux", modType: "collection" }),
+    ]);
+    const lines = describeScope(scope).join(" ");
+    expect(lines).toMatch(/Liberty Wasteland Redux/);
+    expect(lines).toMatch(/shipped them twice/);
+    expect(lines).toMatch(/in their own right/);
+  });
+});

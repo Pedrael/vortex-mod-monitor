@@ -167,7 +167,13 @@ function enforceInstallTargetInvariant(
 // Compatibility checks
 // ===========================================================================
 
-function resolveCompatibility(
+/**
+ * Exported for tests: this is where a collection is declared installable or
+ * not, and the difference between "warn" and "error" here is the difference
+ * between a user proceeding and a user blocked. It deserves direct coverage
+ * rather than being reached through a full install-plan fixture.
+ */
+export function resolveCompatibility(
   manifest: EhcollManifest,
   userState: UserSideState,
 ): CompatibilityReport {
@@ -206,6 +212,21 @@ function checkGameVersion(
   const required = manifest.game.version;
   const installed = userState.gameVersion;
   const policy = manifest.game.versionPolicy;
+
+  // A requirement the CURATOR could not determine cannot be enforced against
+  // anybody. Shipped manifests carry `version: "unknown"` with policy
+  // "exact" — taken literally that reads "your game must be version
+  // 'unknown'", which every real install fails, blocking the collection for
+  // everyone over a detection gap on one machine. Say it, do not enforce it.
+  if (required.length === 0 || required === "unknown") {
+    warnings.push(
+      `This collection does not record which game version it was built on, ` +
+        `so nothing could be checked${
+          installed ? ` — you have "${installed}"` : ""
+        }. If it misbehaves, a game-version mismatch is worth ruling out first.`,
+    );
+    return { status: "unknown", required };
+  }
 
   if (!installed) {
     warnings.push(

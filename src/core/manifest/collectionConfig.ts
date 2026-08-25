@@ -129,6 +129,15 @@ export type CollectionConfig = {
    */
   lastBuiltName?: string;
   /**
+   * Author recorded by the last successful build.
+   *
+   * Kept because it is the only place it survives: the curator types it into
+   * the build form, it goes into the manifest, and then the form is gone. An
+   * update seeded without it silently blanks the author of every release
+   * after the first, which reads as "the field does not save".
+   */
+  lastBuiltAuthor?: string;
+  /**
    * Vortex `gameId` this collection was built for (e.g. "skyrimse").
    * Recorded on every successful build so the curator dashboard can:
    *   • filter the "Published" list to the active game,
@@ -338,6 +347,8 @@ export type PublishedCollectionSummary = {
   lastBuiltAt?: string;
   /** Last-built display name, if recorded. Falls back to `slug` in UI. */
   lastBuiltName?: string;
+  /** Author of the last successful build, so an update can carry it forward. */
+  lastBuiltAuthor?: string;
   /**
    * Vortex `gameId` this collection was last built for, if recorded.
    * Drives the dashboard's per-game filter and the wizard's
@@ -438,6 +449,7 @@ export async function listPublishedCollections(
       lastBuiltVersion: config.lastBuiltVersion,
       lastBuiltAt: config.lastBuiltAt,
       lastBuiltName: config.lastBuiltName,
+      lastBuiltAuthor: config.lastBuiltAuthor,
       gameId: config.gameId,
       configPath,
     });
@@ -578,6 +590,9 @@ function parseAndValidate(raw: string, configPath: string): CollectionConfig {
   if (obj.lastBuiltAt !== undefined && typeof obj.lastBuiltAt !== "string") {
     errors.push("lastBuiltAt, when present, must be a string.");
   }
+  if (obj.lastBuiltAuthor !== undefined && typeof obj.lastBuiltAuthor !== "string") {
+    errors.push("lastBuiltAuthor, when present, must be a string.");
+  }
   if (obj.lastBuiltName !== undefined && typeof obj.lastBuiltName !== "string") {
     errors.push("lastBuiltName, when present, must be a string.");
   }
@@ -602,6 +617,9 @@ function parseAndValidate(raw: string, configPath: string): CollectionConfig {
   }
   if (typeof obj.lastBuiltAt === "string") {
     config.lastBuiltAt = obj.lastBuiltAt;
+  }
+  if (typeof obj.lastBuiltAuthor === "string") {
+    config.lastBuiltAuthor = obj.lastBuiltAuthor;
   }
   if (typeof obj.lastBuiltName === "string") {
     config.lastBuiltName = obj.lastBuiltName;

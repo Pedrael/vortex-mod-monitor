@@ -55,6 +55,11 @@ export type CollectionScope = {
   /** Excluded because the profile has them switched off. */
   excludedDisabled: AuditorMod[];
   /**
+   * Vortex collections installed in this profile. Excluded outright — see
+   * {@link scopeCollectionMods} for what they actually contain.
+   */
+  excludedCollections: AuditorMod[];
+  /**
    * Identities that would still collide after scoping — i.e. more than one
    * ENABLED install of the same Nexus file. Empty on a healthy profile;
    * non-empty means the manifest will reject the build, so say so early.
@@ -126,14 +131,25 @@ function groupBy(
 export function scopeCollectionMods(mods: AuditorMod[]): CollectionScope {
   const included: AuditorMod[] = [];
   const excludedDisabled: AuditorMod[] = [];
+  const excludedCollections: AuditorMod[] = [];
   for (const mod of mods) {
-    if (mod.enabled) included.push(mod);
+    // A Vortex collection installed in the profile is a mod by Vortex's
+    // bookkeeping and nothing like one in substance. Measured on a real
+    // profile: 1185 staged files, 1119 of them under `bundled/` — the
+    // payloads of eight OTHER mods it ships. Including it duplicated every
+    // one of those mods (once as itself, once inside here), shipped the files
+    // of a mod the curator had DISABLED, and gave the entry an identity no
+    // user can reproduce: a collection is installed by Vortex from Nexus, so
+    // there is no source archive to hash, ever.
+    if (mod.modType === "collection") excludedCollections.push(mod);
+    else if (mod.enabled) included.push(mod);
     else excludedDisabled.push(mod);
   }
 
   return {
     included,
     excludedDisabled,
+    excludedCollections,
     // Exact identity — what buildManifest's compareKey rejects.
     collidingIdentities: groupBy(included, (m) =>
       m.nexusModId !== undefined && m.nexusFileId !== undefined
@@ -196,6 +212,16 @@ export function describeHashedCollisions(
 /** Curator-facing lines for {@link CollectionScope}. Empty when nothing to say. */
 export function describeScope(scope: CollectionScope): string[] {
   const out: string[] = [];
+
+  for (const col of scope.excludedCollections) {
+    out.push(
+      `"${col.name}" is a Vortex collection installed in this profile, not a ` +
+        `mod, so it was left out. Its staging folder holds copies of other ` +
+        `mods' files, which would have shipped them twice — and any INI tweaks ` +
+        `it carries are not included either. The mods it installed are still ` +
+        `in this collection in their own right.`,
+    );
+  }
 
   for (const group of scope.collidingIdentities) {
     out.push(

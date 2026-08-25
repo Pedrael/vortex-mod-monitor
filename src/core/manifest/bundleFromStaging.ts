@@ -41,6 +41,7 @@ import * as path from "path";
 import { selectors, types } from "@nexusmods/vortex-api";
 
 import { hashFileSha256 } from "../archiveHashing";
+import { declaresAlternatives } from "./omissionLeads";
 import { sevenZipAdd, type SevenZipApi } from "./sevenZip";
 import type { AuditorMod } from "../getModsListForProfile";
 import type { CollectionConfig } from "./collectionConfig";
@@ -244,12 +245,23 @@ function sanitize(id: string): string {
 export type ExternalDrift = {
   modId: string;
   modName: string;
-  /** In the archive, absent from staging — the curator removed them. */
+  /**
+   * In the archive, absent from staging — the curator removed them.
+   *
+   * Always empty when `declaredAlternatives` is true: an unselected FOMOD
+   * option is absent for a reason that has nothing to do with the curator.
+   */
   removed: string[];
   /** In staging, absent from the archive — the curator added them. */
   added: string[];
   /** Already flagged for bundling, so the drift is about to be shipped correctly. */
   bundled: boolean;
+  /**
+   * The archive carries a FOMOD script, so its file set is a menu rather than
+   * a promise and `removed` was suppressed. Reported so the caller can say why
+   * a mod is listed on one direction only.
+   */
+  declaredAlternatives: boolean;
 };
 
 /**
@@ -304,7 +316,14 @@ export async function detectExternalDrift(args: {
       return false;
     };
 
-    const removed = archived.filter((a) => !tailMatch(a, stagedSet));
+    // A FOMOD archive holds every option, and the curator installed one of
+    // them. Measured on a real profile: 5 of 9 "drifted" mods were exactly
+    // this — 391 unselected files in the Unofficial AAF Patch alone — and the
+    // advice that followed (tick bundle) would have shipped one curator's
+    // selections as a flat archive and skipped the installer for everybody
+    // else. Absence proves nothing here, so only additions are read.
+    const menu = declaresAlternatives({ entries: entries.map((e) => ({ path: e.path })) });
+    const removed = menu ? [] : archived.filter((a) => !tailMatch(a, stagedSet));
     const added = staged.filter((sPath) => !tailMatch(sPath, archivedSet));
     if (removed.length === 0 && added.length === 0) continue;
 
@@ -314,6 +333,7 @@ export async function detectExternalDrift(args: {
       removed,
       added,
       bundled: args.config.externalMods[mod.id]?.bundled === true,
+      declaredAlternatives: menu,
     });
   }
   return out;
@@ -326,21 +346,32 @@ export function describeExternalDrift(drift: ExternalDrift[]): string[] {
   const worst = [...unbundled].sort(
     (a, b) => b.removed.length + b.added.length - (a.removed.length + a.added.length),
   );
+  const one = unbundled.length === 1;
   const lines = [
-    `${unbundled.length} external mod${unbundled.length === 1 ? "" : "s"} ` +
-      `no longer match the archive ${unbundled.length === 1 ? "it" : "they"} came ` +
-      `from — files have been added or removed in the staging folder since. ` +
-      `Right now the collection ships the ARCHIVE, so whoever installs it gets ` +
-      `the original, not your version. Tick "bundle" on ${unbundled.length === 1 ? "it" : "them"} ` +
-      `to pack your actual files into the .ehcoll instead.`,
+    `${unbundled.length} external mod${one ? "" : "s"} no longer match ` +
+      `the archive ${one ? "it" : "they"} came from — files have been added or ` +
+      `removed in the staging folder since. Right now the collection ships the ` +
+      `ARCHIVE, so whoever installs it gets the original, not your version. ` +
+      `Tick "bundle" on ${one ? "it" : "them"} to pack your actual files into ` +
+      `the .ehcoll instead.`,
   ];
   for (const d of worst.slice(0, 5)) {
-    lines.push(
-      `  • "${d.modName}": ${d.removed.length} file(s) in the archive are not ` +
-        `staged, ${d.added.length} staged file(s) are not in the archive` +
-        (d.added.length > 0 ? ` (e.g. ${d.added[0]})` : "") +
-        `.`,
-    );
+    const parts: string[] = [];
+    if (d.added.length > 0) {
+      parts.push(
+        `${d.added.length} staged file(s) are not in the archive` +
+          ` (e.g. ${d.added[0]})`,
+      );
+    }
+    if (d.removed.length > 0) {
+      parts.push(`${d.removed.length} file(s) in the archive are not staged`);
+    }
+    // Say why only one direction was read, or the curator reads the silence as
+    // "nothing was removed" and trusts a check that never ran.
+    const note = d.declaredAlternatives
+      ? ` (its archive is a FOMOD, so unselected options were not counted)`
+      : "";
+    lines.push(`  • "${d.modName}": ${parts.join(", ")}${note}.`);
   }
   if (worst.length > 5) {
     lines.push(`  • and ${worst.length - 5} more; see the event-horizon log.`);

@@ -99,8 +99,17 @@ export type OmissionAnalysis = {
   declaredAlternatives: boolean;
 };
 
-/** Where a FOMOD script lives; case and nesting vary in the wild. */
-function declaresAlternatives(listing: ArchiveListing): boolean {
+/**
+ * Where a FOMOD script lives; case and nesting vary in the wild.
+ *
+ * Exported because every comparison of an archive against staging needs it:
+ * a script means the archive's file set is a MENU, not a promise, so absence
+ * from staging says nothing. Takes a bare entry list so callers that read a
+ * listing for another purpose can ask without building an `ArchiveListing`.
+ */
+export function declaresAlternatives(listing: {
+  entries: readonly { path: string }[];
+}): boolean {
   return listing.entries.some((e) => {
     const p = e.path.toLowerCase();
     return p === "moduleconfig.xml" || p.endsWith("/moduleconfig.xml");

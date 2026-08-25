@@ -63,7 +63,10 @@ import {
   filesProvidedByDeployment,
   getGameDirectory,
 } from "../../../core/manifest/externalDependencies";
-import type { EhcollExternalDependency } from "../../../types/ehcoll";
+import type {
+  EhcollExternalDependency,
+  GameVersionPolicy,
+} from "../../../types/ehcoll";
 import {
   applyCachedHashes,
   loadArchiveHashCache,
@@ -109,6 +112,14 @@ export interface CuratorInput {
   version: string;
   author: string;
   description: string;
+  /**
+   * Game version this collection requires. Seeded from the detected version,
+   * editable because detection can fail — and a requirement nobody can meet
+   * is worse than no requirement at all.
+   */
+  gameVersion: string;
+  /** `"exact"` blocks a mismatch; `"minimum"` blocks only older. */
+  gameVersionPolicy: GameVersionPolicy;
 }
 
 /**
@@ -549,7 +560,7 @@ export async function loadBuildContext(
     profileId,
     mods,
     detectedDependencies,
-    gameVersion: resolveGameVersion(state, gameId),
+    gameVersion: await resolveGameVersion(state, gameId),
     scopeWarnings: [
       ...describeScope(scope),
       ...describeHashedCollisions(hashedCollisions),
@@ -806,6 +817,22 @@ export async function runBuildPipeline(
   const driftOp = beginOp("build.external-drift", {});
   let repackedBundles: RepackedBundle[] = [];
   const bundleWarnings: string[] = [];
+
+  // Shipping without a game version is allowed — enforcing one nobody can
+  // meet is not. Say which of the two is happening rather than letting the
+  // curator assume the check exists.
+  if (curator.gameVersion.trim().length === 0) {
+    bundleWarnings.push(
+      context.gameVersion === "unknown"
+        ? `No game version is recorded for this collection — Vortex could not ` +
+          `read one from your install and none was typed in, so users will not ` +
+          `be warned if their game version differs from yours. Fill in ` +
+          `"Required game version" on the form if you know it.`
+        : `No game version requirement was set, so users on any version can ` +
+          `install this. Your own game is ${context.gameVersion} if you want ` +
+          `to require it.`,
+    );
+  }
   const repackDir = path.join(getVortexUserDataPath(), "event-horizon", ".repack");
   try {
     const sevenZip = resolveSevenZip();
@@ -964,7 +991,11 @@ export async function runBuildPipeline(
       verificationLevel,
     },
     game: {
-      version: resolveGameVersion(state, gameId),
+      // What the curator asked for. Detected version is only the default the
+      // form was seeded with — they may know better (a downgraded install
+      // Vortex misreports) and they may have loosened the policy.
+      version: curator.gameVersion,
+      versionPolicy: curator.gameVersionPolicy,
     },
     vortex: {
       version: resolveVortexVersion(state),
@@ -1037,6 +1068,7 @@ export async function runBuildPipeline(
       lastBuiltVersion: curator.version,
       lastBuiltAt: new Date().toISOString(),
       lastBuiltName: curator.name,
+      lastBuiltAuthor: curator.author,
       // Pin the gameId at build time so the dashboard's "Update"
       // affordance can refuse cross-game updates (which would
       // silently rewrite the manifest's gameId and ship a malformed
@@ -1208,7 +1240,19 @@ function resolveVortexVersion(state: types.IState): string {
   return app?.appVersion ?? app?.version ?? "unknown";
 }
 
-function resolveGameVersion(state: types.IState, gameId: string): string {
+/**
+ * The curator's installed game version, or `"unknown"`.
+ *
+ * Both state paths below came back empty on a real Fallout 4 install, which
+ * shipped a manifest requiring version `"unknown"` *exactly* — a requirement
+ * no user can ever satisfy. Vortex knows the answer even when its state does
+ * not: each game extension implements `getInstalledVersion`, which reads the
+ * executable. That is the authority, so ask it before giving up.
+ */
+async function resolveGameVersion(
+  state: types.IState,
+  gameId: string,
+): Promise<string> {
   const persistent = (state as unknown as {
     persistent?: { gameSettings?: Record<string, { version?: string }> };
   }).persistent;
@@ -1219,9 +1263,23 @@ function resolveGameVersion(state: types.IState, gameId: string): string {
   const settings = (state as unknown as {
     settings?: { gameMode?: { discovered?: Record<string, { version?: string }> } };
   }).settings;
-  const fromDiscovery = settings?.gameMode?.discovered?.[gameId]?.version;
+  const discovery = settings?.gameMode?.discovered?.[gameId];
+  const fromDiscovery = discovery?.version;
   if (typeof fromDiscovery === "string" && fromDiscovery.length > 0) {
     return fromDiscovery;
+  }
+  try {
+    const game = (util as unknown as {
+      getGame?: (id: string) => {
+        getInstalledVersion?: (d: unknown) => PromiseLike<string>;
+      } | undefined;
+    }).getGame?.(gameId);
+    if (game?.getInstalledVersion !== undefined && discovery !== undefined) {
+      const fromGame = await game.getInstalledVersion(discovery);
+      if (typeof fromGame === "string" && fromGame.length > 0) return fromGame;
+    }
+  } catch {
+    /* a game extension that cannot answer is not a build failure */
   }
   return "unknown";
 }

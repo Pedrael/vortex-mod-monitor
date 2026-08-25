@@ -120,6 +120,74 @@ describe("detectExternalDrift", () => {
     expect(drift).toEqual([]);
   });
 
+  it("does NOT call unselected FOMOD options drift", async () => {
+    // Measured on a real profile: the Unofficial AAF Patch archive holds 391
+    // files the curator did not select. Reporting those as drift told them to
+    // bundle a FOMOD — which would ship one person's choices as a flat archive
+    // and skip the installer for everyone else.
+    const drift = await detectExternalDrift({
+      ...base,
+      mods: [
+        mod({
+          id: "uap",
+          installationPath: "uap",
+          stagingFiles: [{ path: "chosen.esp", size: 1 }] as never,
+        }),
+      ],
+      config: config({}),
+      listArchive: listing([
+        "fomod/ModuleConfig.xml",
+        "chosen.esp",
+        "Optional/not-chosen.esp",
+        "Optional/also-not-chosen.esp",
+      ]),
+    });
+    expect(drift).toEqual([]);
+  });
+
+  it("still reports ADDED files in a FOMOD, and says the removals went unread", async () => {
+    // A script explains a file that never arrived. It cannot explain a file
+    // that is there and was never in the archive.
+    const [drift] = await detectExternalDrift({
+      ...base,
+      mods: [
+        mod({
+          id: "edited",
+          installationPath: "edited",
+          stagingFiles: [
+            { path: "chosen.esp", size: 1 },
+            { path: "my-tweak.ini", size: 1 },
+          ] as never,
+        }),
+      ],
+      config: config({}),
+      listArchive: listing([
+        "fomod/ModuleConfig.xml",
+        "chosen.esp",
+        "Optional/not-chosen.esp",
+      ]),
+    });
+    expect(drift!.added).toEqual(["my-tweak.ini"]);
+    expect(drift!.removed).toEqual([]);
+    expect(drift!.declaredAlternatives).toBe(true);
+  });
+
+  it("finds the script wherever it sits, and is not fooled by case", async () => {
+    const drift = await detectExternalDrift({
+      ...base,
+      mods: [
+        mod({
+          id: "nested",
+          installationPath: "nested",
+          stagingFiles: [{ path: "a.esp", size: 1 }] as never,
+        }),
+      ],
+      config: config({}),
+      listArchive: listing(["Main/FOMOD/moduleconfig.xml", "a.esp", "b.esp"]),
+    });
+    expect(drift).toEqual([]);
+  });
+
   it("records whether the curator already ticked bundle", async () => {
     const [drift] = await detectExternalDrift({
       ...base,
@@ -144,6 +212,7 @@ describe("describeExternalDrift", () => {
     removed: ["a", "b"],
     added: ["PC_README.md"],
     bundled: false,
+    declaredAlternatives: false,
     ...over,
   });
 
@@ -159,6 +228,17 @@ describe("describeExternalDrift", () => {
     // Their drift is about to ship correctly; nagging would train the curator
     // to ignore the message that matters.
     expect(describeExternalDrift([drifted({ bundled: true })])).toEqual([]);
+  });
+
+  it("explains that a FOMOD's unselected options were not counted", () => {
+    // Silence about removals would read as "nothing was removed" — a check
+    // that never ran, presented as a clean result.
+    const line = describeExternalDrift([
+      drifted({ removed: [], declaredAlternatives: true }),
+    ]).join(" ");
+    expect(line).toMatch(/FOMOD/);
+    expect(line).toMatch(/unselected options were not counted/);
+    expect(line).not.toMatch(/file\(s\) in the archive are not staged/);
   });
 
   it("says nothing at all when nothing drifted", () => {

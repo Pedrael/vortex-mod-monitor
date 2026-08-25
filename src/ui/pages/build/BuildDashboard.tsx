@@ -292,8 +292,14 @@ export function BuildDashboard(props: BuildDashboardProps): JSX.Element {
         curator: {
           name: summary.lastBuiltName ?? "",
           version: bumpPatch(summary.lastBuiltVersion),
-          author: "",
+          // Carried from the last build. Blanking it here is what made the
+          // author look like it never saved.
+          author: summary.lastBuiltAuthor ?? "",
           description: "",
+          // Left blank on purpose: the dashboard cannot read the installed
+          // game version. The wizard fills it from detection on open.
+          gameVersion: "",
+          gameVersionPolicy: "exact",
         },
         overrides: {},
         readme: "",
@@ -337,6 +343,14 @@ export function BuildDashboard(props: BuildDashboardProps): JSX.Element {
       // state we surface the title + version too so the placeholder
       // doesn't read "Untitled".
       const sessionState = session.getState();
+      // A finished build deletes its own draft file on purpose — the
+      // collection it produced is the published card. The session lingers in
+      // the registry, though, and synthesising an envelope for it conjured a
+      // card reading "Untitled draft · autosaved just now" seconds after a
+      // successful build: no title (a `done` session exposes no form state),
+      // no file behind it, and a "discard" button for a draft that no longer
+      // exists. It looked exactly like a second collection nobody created.
+      if (sessionState.kind === "done") continue;
       const formish: Partial<BuildDraftPayload> = {};
       if (
         sessionState.kind === "form" ||
@@ -348,6 +362,8 @@ export function BuildDashboard(props: BuildDashboardProps): JSX.Element {
           version: sessionState.curator.version,
           author: sessionState.curator.author,
           description: sessionState.curator.description,
+          gameVersion: sessionState.curator.gameVersion,
+          gameVersionPolicy: sessionState.curator.gameVersionPolicy,
         };
       }
       draftEnvelopes.unshift({
