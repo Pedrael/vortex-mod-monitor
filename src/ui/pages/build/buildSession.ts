@@ -617,20 +617,30 @@ class BuildSession {
               if (this.state.kind !== "recovering") return;
               this.setState({ ...this.state, done, total, currentMod: mod.name });
             },
+            // Written one at a time, not in a batch at the end. A run is
+            // hundreds of downloads over hours; a crash or a cancel that
+            // discarded them would also discard the archives, because the mod
+            // still points at its dead download record and nothing would find
+            // what was just fetched.
+            onRecovered: async (outcome) => {
+              await this.persistRecoveredHash(outcome);
+              if (this.controller !== controller) return;
+              if (this.state.kind !== "recovering") return;
+              this.setState({
+                ...this.state,
+                recovered: this.state.recovered + 1,
+              });
+            },
           },
         );
-        if (this.controller !== controller) return;
-
-        // Persist before touching the UI: an interrupted save must not lose
-        // hashes the curator has already paid gigabytes for.
-        await this.persistRecoveredHashes(report);
         if (this.controller !== controller) return;
 
         const mods = applyRecovery(form.ctx.mods, report);
         const stillMissing = mods.filter((m) => m.archiveSha256 === undefined);
 
-        ehLog("info", "recover-archives.ok", {
+        ehLog("info", report.aborted ? "recover-archives.stopped" : "recover-archives.ok", {
           ms: Date.now() - startedAt,
+          aborted: report.aborted,
           recovered: report.recovered.length,
           failed: report.failed.length,
           stillMissing: stillMissing.length,
@@ -685,26 +695,30 @@ class BuildSession {
     })();
   }
 
-  /** Store recovered hashes against `(modId, fileId)` so this is a one-off. */
-  private async persistRecoveredHashes(
-    report: Awaited<ReturnType<typeof recoverMissingArchives>>,
+  /**
+   * Store ONE recovered hash against `(modId, fileId)`.
+   *
+   * Re-read and re-written per archive rather than held in memory: the file is
+   * a few KB against downloads measured in hundreds of megabytes, and it means
+   * the work survives whatever happens next.
+   */
+  private async persistRecoveredHash(
+    outcome: Awaited<ReturnType<typeof recoverMissingArchives>>["recovered"][number],
   ): Promise<void> {
-    if (report.recovered.length === 0) return;
+    if (outcome.kind !== "recovered") return;
     const dir = `${getVortexUserDataPath()}/event-horizon`;
     try {
-      let cache = await loadArchiveHashCache(dir);
-      const at = new Date().toISOString();
-      for (const outcome of report.recovered) {
-        if (outcome.kind !== "recovered") continue;
-        cache = rememberArchiveHash(cache, {
+      const cache = await loadArchiveHashCache(dir);
+      await saveArchiveHashCache(
+        dir,
+        rememberArchiveHash(cache, {
           nexusModId: outcome.nexusModId,
           nexusFileId: outcome.nexusFileId,
           sha256: outcome.archiveSha256,
           ...(outcome.size !== undefined ? { size: outcome.size } : {}),
-          at,
-        });
-      }
-      await saveArchiveHashCache(dir, cache);
+          at: new Date().toISOString(),
+        }),
+      );
     } catch (err) {
       // A cache is an optimisation. Failing to write it costs a repeat download
       // next time; failing the whole recovery over it would cost this one too.

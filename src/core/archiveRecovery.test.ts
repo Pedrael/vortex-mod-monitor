@@ -193,15 +193,57 @@ describe("recoverMissingArchives", () => {
     expect((report.failed[0] as { reason: string }).reason).toMatch(/Nexus integration/);
   });
 
-  it("stops when cancelled", async () => {
+  it("starts nothing when cancelled before it begins", async () => {
     writeArchive("file-1.7z", "a");
     const ctrl = new AbortController();
     ctrl.abort();
     const api = fakeApi();
-    await expect(
-      recoverMissingArchives(api, "fallout4", [target("a", 1)], { signal: ctrl.signal }),
-    ).rejects.toThrow();
+    const report = await recoverMissingArchives(api, "fallout4", [target("a", 1)], {
+      signal: ctrl.signal,
+    });
     expect(calls).toHaveLength(0);
+    expect(report.aborted).toBe(true);
+    expect(report.recovered).toEqual([]);
+  });
+
+  it("KEEPS what it recovered when cancelled part-way", async () => {
+    // The button says "Stop after this one". Throwing the partial result away
+    // would discard hours of downloading — and worse, discard the archives
+    // themselves, since the mod still points at its dead download record and
+    // nothing would find what was just fetched.
+    writeArchive("file-1.7z", "a");
+    writeArchive("file-2.7z", "b");
+    const ctrl = new AbortController();
+    const api = fakeApi();
+    const report = await recoverMissingArchives(
+      api,
+      "fallout4",
+      [target("a", 1), target("b", 2), target("c", 3)],
+      {
+        signal: ctrl.signal,
+        onRecovered: () => {
+          ctrl.abort(); // cancel as soon as the first one lands
+        },
+      },
+    );
+    expect(report.aborted).toBe(true);
+    expect(report.recovered.map((r) => r.mod.id)).toEqual(["a"]);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("persists each archive before starting the next", async () => {
+    // Batching the writes to the end is what made a crash lose everything.
+    writeArchive("file-1.7z", "a");
+    writeArchive("file-2.7z", "b");
+    const order: string[] = [];
+    const api = fakeApi();
+    await recoverMissingArchives(api, "fallout4", [target("a", 1), target("b", 2)], {
+      onProgress: (_d, _t, m) => order.push(`start:${m.id}`),
+      onRecovered: (o) => {
+        order.push(`saved:${o.mod.id}`);
+      },
+    });
+    expect(order).toEqual(["start:a", "saved:a", "start:b", "saved:b"]);
   });
 });
 
@@ -210,10 +252,14 @@ describe("applyRecovery", () => {
     const mods = [mod({ id: "a" }), mod({ id: "b", archiveSha256: "keep" })];
     const out = applyRecovery(mods, {
       recovered: [
-        { kind: "recovered", mod: mods[0]!, archiveSha256: "new", downloadId: "d" },
+        {
+          kind: "recovered", mod: mods[0]!, archiveSha256: "new", downloadId: "d",
+          nexusModId: 1, nexusFileId: 2,
+        },
       ],
       failed: [],
       unattemptable: [],
+      aborted: false,
     });
     expect(out[0]!.archiveSha256).toBe("new");
     expect(out[1]!.archiveSha256).toBe("keep");
@@ -221,6 +267,10 @@ describe("applyRecovery", () => {
 
   it("returns the same list untouched when nothing was recovered", () => {
     const mods = [mod({ id: "a" })];
-    expect(applyRecovery(mods, { recovered: [], failed: [], unattemptable: [] })).toBe(mods);
+    expect(
+      applyRecovery(mods, {
+        recovered: [], failed: [], unattemptable: [], aborted: false,
+      }),
+    ).toBe(mods);
   });
 });

@@ -80,10 +80,25 @@ export type RecoveryReport = {
    * ask Nexus for. External mods and mods installed from a vanished source.
    */
   unattemptable: AuditorMod[];
+  /** True when the run stopped early. `recovered` is still valid and kept. */
+  aborted: boolean;
 };
 
 export type RecoveryOptions = {
   onProgress?: (done: number, total: number, mod: AuditorMod) => void;
+  /**
+   * Called after EACH archive is fetched and hashed, before the next download
+   * starts, so the result can be persisted incrementally.
+   *
+   * This is not a nicety. A recovery run is hundreds of downloads over hours,
+   * and if the hashes only landed at the end then a cancel — or a crash — would
+   * discard all of it. Worse than discarding the hashes: the mod still points
+   * at its dead download record, so nothing would find the archives that were
+   * just fetched and the whole run would repeat.
+   *
+   * Awaited, so a slow write cannot interleave with the next download.
+   */
+  onRecovered?: (outcome: RecoveryOutcome) => void | Promise<void>;
   signal?: AbortSignal;
   /**
    * How long to wait for a download to reach `finished` after `nexusDownload`
@@ -219,12 +234,18 @@ export async function recoverMissingArchives(
           "enabled and are you logged in?",
       })),
       unattemptable: [],
+      aborted: false,
     };
   }
 
   let done = 0;
   for (const target of targets) {
-    if (options.signal?.aborted === true) throw new AbortError();
+    // Cancelling RETURNS what has been recovered so far rather than throwing it
+    // away. "Stop after this one" has to mean the work is kept, or it is a
+    // button that silently destroys hours of downloading.
+    if (options.signal?.aborted === true) {
+      return { recovered, failed, unattemptable: [], aborted: true };
+    }
     done += 1;
     options.onProgress?.(done, targets.length, target.mod);
 
@@ -253,7 +274,7 @@ export async function recoverMissingArchives(
       }
 
       const archiveSha256 = await hashFileSha256(archivePath, options.signal);
-      recovered.push({
+      const outcome: RecoveryOutcome = {
         kind: "recovered",
         mod: target.mod,
         archiveSha256,
@@ -261,9 +282,14 @@ export async function recoverMissingArchives(
         nexusModId: target.nexusModId,
         nexusFileId: target.nexusFileId,
         size: stat.size,
-      });
+      };
+      recovered.push(outcome);
+      // Persist before the next download begins.
+      await options.onRecovered?.(outcome);
     } catch (err) {
-      if (err instanceof AbortError) throw err;
+      if (err instanceof AbortError) {
+        return { recovered, failed, unattemptable: [], aborted: true };
+      }
       failed.push({
         kind: "failed",
         mod: target.mod,
@@ -272,7 +298,7 @@ export async function recoverMissingArchives(
     }
   }
 
-  return { recovered, failed, unattemptable: [] };
+  return { recovered, failed, unattemptable: [], aborted: false };
 }
 
 /** Fold a report back into the mod list, so the build can proceed. */
