@@ -732,6 +732,46 @@ class BuildSession {
     this.controller?.abort();
   }
 
+  /**
+   * Resume automatically when the curator already has a draft for this build.
+   *
+   * Restarting Vortex dropped you back on the intro card with a Begin button,
+   * even though the page promises "restart Vortex — your form will be there
+   * when you come back". The form values did survive; the CONTEXT did not, and
+   * rebuilding it meant re-hashing every archive — seventeen minutes, which is
+   * why it was ever a button.
+   *
+   * With the hash cache that pass is seconds (measured: 945 of 945 archives
+   * reused on a real profile), so the reason for asking is gone. A saved draft
+   * is explicit prior intent for this collection; a first-time user with no
+   * draft still gets the card and chooses.
+   *
+   * The load remains cancellable and shows progress, so even a cold cache — a
+   * new machine, a moved download folder — is interruptible rather than a
+   * seventeen-minute ambush.
+   */
+  resumeIfDraftExists(api: types.IExtensionApi): void {
+    if (this.state.kind !== "idle") return;
+    void (async (): Promise<void> => {
+      let envelope: Awaited<ReturnType<typeof loadDraft<BuildDraftPayload>>>;
+      try {
+        envelope = await loadDraft<BuildDraftPayload>(
+          getAppDataPath(),
+          "build",
+          this.draftId,
+        );
+      } catch {
+        return; // best-effort: a Begin button is a fine fallback
+      }
+      if (envelope === undefined) return;
+      // Re-check: the curator may have pressed Begin themselves while the
+      // draft was being read.
+      if (this.state.kind !== "idle") return;
+      ehLog("info", "build.auto-resume", { draftId: this.draftId });
+      this.begin(api);
+    })();
+  }
+
   cancelLoading(): void {
     if (this.state.kind !== "loading") return;
     this.controller?.abort();

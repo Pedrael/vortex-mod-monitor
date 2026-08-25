@@ -164,6 +164,16 @@ function BuildWizard(props: BuildWizardProps): JSX.Element {
     return session.subscribe(setLocalState);
   }, [session]);
 
+  // Come back to where the curator was, rather than to a Begin button. Only
+  // when a draft for this build already exists — a first-time user still gets
+  // the intro card. Fires once per mount; the session ignores it unless idle.
+  const resumedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (resumedRef.current) return;
+    resumedRef.current = true;
+    session.resumeIfDraftExists(api);
+  }, [session, api]);
+
   // ── Side-effect dispatch on session transitions ──────────────────
   // Toasts and error modals must fire once per real transition, NOT
   // on remount when the user lands back on the page mid-state. We
