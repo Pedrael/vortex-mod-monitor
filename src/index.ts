@@ -8,6 +8,7 @@ import createBuildPackageAction from "./actions/buildPackageAction";
 import createInstallCollectionAction from "./actions/installCollectionAction";
 import { EventHorizonMainPage } from "./ui";
 import { ehLog, getLogFilePath } from "./core/logging/ehLog";
+import { probeInstallerApi } from "./core/installer/probeInstallerApi";
 import { EXTENSION_VERSION } from "./ui/version";
 
 /**
@@ -147,6 +148,14 @@ function init(context: types.IExtensionContext): boolean {
       void installCollectionAction();
     },
   );
+
+  // Vortex's events are untyped and `start-install` is absent from the
+  // published typings, so the only way to learn what the installer accepts is
+  // to ask the running app. Deferred to `once` so every extension has
+  // registered its handlers before we look.
+  context.once(() => {
+    probeInstallerApi(context.api);
+  });
 
   return true;
 }
