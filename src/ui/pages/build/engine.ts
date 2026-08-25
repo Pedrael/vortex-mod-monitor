@@ -50,6 +50,13 @@ import {
 } from "../../../core/manifest/collectionScope";
 import { findModsWithNoArchivePath } from "../../../core/archiveRecovery";
 import {
+  applyDependencyOverrides,
+  detectExternalDependencies,
+  filesProvidedByMods,
+  getGameDirectory,
+} from "../../../core/manifest/externalDependencies";
+import type { EhcollExternalDependency } from "../../../types/ehcoll";
+import {
   applyCachedHashes,
   loadArchiveHashCache,
   makeHashLookup,
@@ -741,6 +748,39 @@ export async function runBuildPipeline(
 
   checkAbort();
 
+  // ── Prerequisites that are NOT Vortex mods ───────────────────────────
+  // Deliberately AFTER the staging capture: the rule that keeps this from
+  // doing harm is "a file the collection installs is not a prerequisite", and
+  // answering that needs each mod's own file list. Detecting earlier would
+  // declare the curator's F4SE mod as something every user must hand-install.
+  const depsOp = beginOp("build.external-deps", { gameId });
+  let externalDependencies: EhcollExternalDependency[] = [];
+  try {
+    const gameDir = getGameDirectory(state, gameId);
+    if (gameDir === undefined) {
+      // Not "none installed" — we could not look. Say which.
+      depsOp.ok({ detected: 0, reason: "game directory not discovered by Vortex" });
+    } else {
+      const detected = await detectExternalDependencies(gameDir, gameId, {
+        signal,
+        providedByMods: filesProvidedByMods(mods),
+      });
+      externalDependencies = applyDependencyOverrides(
+        detected,
+        collectionConfig.externalDependencies,
+      );
+      depsOp.ok({
+        gameDir,
+        detected: detected.length,
+        included: externalDependencies.length,
+        ids: externalDependencies.map((d) => `${d.id}@${d.version}`),
+      });
+    }
+  } catch (err) {
+    // A prerequisite scan must never fail a build.
+    depsOp.fail(err);
+  }
+
   // ── Self-check: is the CURATOR'S OWN staging what it should be? ──────
   // Everything downstream treats this capture as the etalon, so if Vortex lost
   // files during the curator's install the omission is baked into the
@@ -834,7 +874,7 @@ export async function runBuildPipeline(
     },
     pluginsTxtContent,
     externalMods: toBuildManifestExternalMods(collectionConfig),
-    externalDependencies: [],
+    externalDependencies,
   });
 
   // ── 4. Resolve bundled archives ────────────────────────────────────────

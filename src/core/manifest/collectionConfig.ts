@@ -76,12 +76,34 @@ export type ExternalModConfigEntry = {
   instructions?: string;
 };
 
+/** What the curator decided about one detected prerequisite. */
+export type ExternalDependencyConfigEntry = {
+  /** Default true. False removes it from the manifest entirely. */
+  included?: boolean;
+  /** Replaces the generic default when non-blank. */
+  instructions?: string;
+  instructionsUrl?: string;
+  /** Overrides the version derived from the files on disk. */
+  version?: string;
+};
+
 export type CollectionConfig = {
   schemaVersion: CollectionConfigSchemaVersion;
   /** UUIDv4. Stable across rebuilds of the same slug. */
   packageId: string;
   /** Per-AuditorMod.id overrides for external (non-Nexus) mods. */
   externalMods: Record<string, ExternalModConfigEntry>;
+  /**
+   * Curator decisions about detected prerequisites that are NOT Vortex mods —
+   * a script extender, ENB, a plugin preloader. Keyed by dependency id.
+   *
+   * The dependencies themselves are DETECTED from the game folder on every
+   * build, because their file hashes have to come from disk. Only the
+   * judgement is persisted: whether to ship it, and the instructions the
+   * curator wrote, which know which build to fetch in a way a generic default
+   * cannot. Optional so every config written before this existed still loads.
+   */
+  externalDependencies?: Record<string, ExternalDependencyConfigEntry>;
   /** Optional README markdown body. Written as `README.md` in the package. */
   readme?: string;
   /** Optional CHANGELOG markdown body. Written as `CHANGELOG.md`. */
@@ -523,6 +545,24 @@ function parseAndValidate(raw: string, configPath: string): CollectionConfig {
     );
   }
 
+  let externalDependencies:
+    | Record<string, ExternalDependencyConfigEntry>
+    | undefined;
+  if (obj.externalDependencies === undefined) {
+    // Absent on every config written before prerequisites existed.
+  } else if (
+    obj.externalDependencies === null ||
+    typeof obj.externalDependencies !== "object" ||
+    Array.isArray(obj.externalDependencies)
+  ) {
+    errors.push("externalDependencies, when present, must be a JSON object.");
+  } else {
+    externalDependencies = validateExternalDependencyEntries(
+      obj.externalDependencies as Record<string, unknown>,
+      errors,
+    );
+  }
+
   if (obj.readme !== undefined && typeof obj.readme !== "string") {
     errors.push("readme, when present, must be a string.");
   }
@@ -553,6 +593,7 @@ function parseAndValidate(raw: string, configPath: string): CollectionConfig {
     schemaVersion: COLLECTION_CONFIG_SCHEMA_VERSION,
     packageId: obj.packageId as string,
     externalMods,
+    ...(externalDependencies !== undefined ? { externalDependencies } : {}),
   };
   if (typeof obj.readme === "string") config.readme = obj.readme;
   if (typeof obj.changelog === "string") config.changelog = obj.changelog;
@@ -569,6 +610,48 @@ function parseAndValidate(raw: string, configPath: string): CollectionConfig {
     config.gameId = obj.gameId;
   }
   return config;
+}
+
+/**
+ * Validate the curator's per-prerequisite decisions.
+ *
+ * Tolerant on purpose: this file is hand-editable and a malformed entry should
+ * cost that entry, not the collection. Unknown keys are dropped silently — the
+ * detected data (files, hashes) is never stored here, so there is nothing a
+ * stale key could contradict.
+ */
+function validateExternalDependencyEntries(
+  raw: Record<string, unknown>,
+  errors: string[],
+): Record<string, ExternalDependencyConfigEntry> {
+  const out: Record<string, ExternalDependencyConfigEntry> = {};
+  for (const [id, value] of Object.entries(raw)) {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      errors.push(`externalDependencies["${id}"] must be an object.`);
+      continue;
+    }
+    const entry = value as Record<string, unknown>;
+    const sanitized: ExternalDependencyConfigEntry = {};
+
+    if (entry.included !== undefined) {
+      if (typeof entry.included !== "boolean") {
+        errors.push(`externalDependencies["${id}"].included must be a boolean.`);
+      } else {
+        sanitized.included = entry.included;
+      }
+    }
+    for (const key of ["instructions", "instructionsUrl", "version"] as const) {
+      const v = entry[key];
+      if (v === undefined) continue;
+      if (typeof v !== "string") {
+        errors.push(`externalDependencies["${id}"].${key} must be a string.`);
+      } else {
+        sanitized[key] = v;
+      }
+    }
+    out[id] = sanitized;
+  }
+  return out;
 }
 
 function validateExternalMods(
