@@ -15,6 +15,16 @@
  * never compiles it into `dist/`.
  */
 
+/**
+ * Paths the stub reports. Mutable so a test that needs REAL files on disk (the
+ * archive-recovery tests hash actual bytes) can point Vortex's download folder
+ * at its own temp directory.
+ */
+export const __testPaths = {
+  downloadPath: "/stub/downloads",
+  installPath: "/stub/install",
+};
+
 /** Vortex keeps the active profile in settings, never on the profile object. */
 export const selectors = {
   activeProfileId: (state: any): string | undefined =>
@@ -25,8 +35,8 @@ export const selectors = {
   },
   activeGameId: (state: any): string | undefined =>
     state?.settings?.profiles?.activeGameId,
-  installPathForGame: (): string => "/stub/install",
-  downloadPathForGame: (): string => "/stub/downloads",
+  installPathForGame: (): string => __testPaths.installPath,
+  downloadPathForGame: (): string => __testPaths.downloadPath,
 };
 
 /**
