@@ -126,6 +126,31 @@ export function BuildDashboard(props: BuildDashboardProps): JSX.Element {
     });
   }, [registry]);
 
+  // Re-render when Vortex's own mod state moves, so "no mod changes" cannot
+  // sit on screen after the curator installs or updates something in another
+  // tab. The memo below is keyed on the state slices, but a memo only
+  // re-evaluates during a render — without this, nothing schedules one.
+  //
+  // `onStateChange` returns no unsubscribe handle, so the callback is fenced
+  // with an alive flag rather than removed. It goes inert on unmount; a
+  // remount registers another. Small and bounded, and the alternative is a
+  // dashboard that lies about whether there is anything to build.
+  React.useEffect(() => {
+    let alive = true;
+    const bump = (): void => {
+      if (alive) setRegistryTick((t) => t + 1);
+    };
+    try {
+      api.onStateChange?.(["persistent", "mods"], bump);
+      api.onStateChange?.(["persistent", "profiles"], bump);
+    } catch {
+      /* older Vortex without the hook — Refresh still works */
+    }
+    return (): void => {
+      alive = false;
+    };
+  }, [api]);
+
 
 
   React.useEffect(() => {
@@ -173,15 +198,33 @@ export function BuildDashboard(props: BuildDashboardProps): JSX.Element {
   const activeGameId = getActiveGameId(api.getState());
 
   // What the profile looks like RIGHT NOW, so a published collection can say
-  // whether there is anything to update. Pure Redux state — no disk, cheap
-  // enough to recompute on every refresh.
+  // whether there is anything to update.
+  //
+  // Keyed on the STATE SLICES, not on a refresh counter. Keying it on ticks
+  // read live Redux state inside a memo that only recomputed when something
+  // unrelated changed, so updating three mods left the card still reading
+  // "no mod changes" — the exact staleness this feature exists to report.
+  // Vortex's store is immutable, so these two references change identity on
+  // any install, removal or enable/disable, and nothing else does it.
+  const liveState = api.getState();
+  const activeProfileId =
+    typeof activeGameId === "string" && activeGameId.length > 0
+      ? getActiveProfileIdFromState(liveState, activeGameId)
+      : undefined;
+  const modsSlice = (liveState as unknown as {
+    persistent?: { mods?: Record<string, unknown> };
+  }).persistent?.mods?.[activeGameId ?? ""];
+  const modStateSlice = (liveState as unknown as {
+    persistent?: { profiles?: Record<string, { modState?: unknown }> };
+  }).persistent?.profiles?.[activeProfileId ?? ""]?.modState;
+
   const currentFingerprint = React.useMemo<string | undefined>(() => {
     if (typeof activeGameId !== "string" || activeGameId.length === 0) return undefined;
+    if (!activeProfileId) return undefined;
     try {
-      const state = api.getState();
-      const profileId = getActiveProfileIdFromState(state, activeGameId);
-      if (!profileId) return undefined;
-      const scope = scopeCollectionMods(getModsForProfile(state, activeGameId, profileId));
+      const scope = scopeCollectionMods(
+        getModsForProfile(api.getState(), activeGameId, activeProfileId),
+      );
       return profileFingerprint(scope.included);
     } catch {
       // Unknown beats wrong: without a fingerprint the card offers Update,
@@ -189,7 +232,7 @@ export function BuildDashboard(props: BuildDashboardProps): JSX.Element {
       return undefined;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api, activeGameId, refreshTick, registryTick]);
+  }, [api, activeGameId, activeProfileId, modsSlice, modStateSlice]);
 
   // ── Actions ────────────────────────────────────────────────────────
 
