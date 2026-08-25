@@ -563,39 +563,39 @@ export async function loadBuildContext(
  */
 export function describeMissingArchives(missing: AuditorMod[]): string[] {
   if (missing.length === 0) return [];
-  const fetchable = missing.filter(
-    (m) => m.nexusModId !== undefined && m.nexusFileId !== undefined,
-  ).length;
-  const n = missing.length;
-  const noun = `mod${n === 1 ? "" : "s"}`;
 
-  // When NONE can be fetched, saying it twice — "6 have no archive" then "6
-  // have no Nexus source" — reads like twelve mods. One sentence, one number.
-  if (fetchable === 0) {
-    return [
-      `${n} ${noun} have no source archive in Vortex's download cache and no ` +
-        `Nexus source to fetch one from. Build at verification level ` +
-        `"thorough" to identify them from their deployed files instead, or ` +
-        `re-import their archives by hand. At "fast" they cannot be packaged.`,
-    ];
-  }
+  // The two halves fail COMPLETELY differently and used to share one sentence.
+  //
+  // A Nexus mod is identified by (modId, fileId, sha256) with no fallback, so
+  // losing its archive genuinely blocks the build. An EXTERNAL mod falls back
+  // to the sha256 of its deployed files, so it packages fine — the first real
+  // build shipped all 955 mods with six of these present. Telling the curator
+  // those six "cannot be packaged", and advising a verification level that is
+  // now the only one there is, was wrong on both counts.
+  const nexus = missing.filter(isNexusMod);
+  const external = missing.filter((m) => !isNexusMod(m));
+  const lines: string[] = [];
 
-  const lines = [
-    `${n} ${noun} have no source archive in Vortex's download cache. A mod's ` +
-      `identity is the hash of its archive, so these cannot be packaged until ` +
-      `the archives are back.`,
-  ];
-  lines.push(
-    `${fetchable} can be fetched automatically — Event Horizon downloads the ` +
-      `archive only, and never re-installs the mod.`,
-  );
-  if (fetchable < n) {
+  if (nexus.length > 0) {
     lines.push(
-      `The other ${n - fetchable} have no Nexus source: build at verification ` +
-        `level "thorough" to identify them from their deployed files, or ` +
-        `re-import their archives by hand.`,
+      `${nexus.length} Nexus mod${nexus.length === 1 ? "" : "s"} cannot be ` +
+        `packaged: a Nexus mod is identified by its archive's SHA-256 and the ` +
+        `archive is not in Vortex's download cache. Fetch them with ` +
+        `"Re-download archives" on the build form, or re-import them by hand.`,
     );
   }
+
+  if (external.length > 0) {
+    lines.push(
+      `${external.length} mod${external.length === 1 ? "" : "s"} have no source ` +
+        `archive and no Nexus source to fetch one from. They still ship — they ` +
+        `are identified by the SHA-256 of their deployed files instead — but ` +
+        `that identity is weaker: a user whose copy differs even slightly will ` +
+        `not match it, and will be asked to supply the mod themselves. ` +
+        `Re-importing their archives into Vortex would give them a real identity.`,
+    );
+  }
+
   return lines;
 }
 
