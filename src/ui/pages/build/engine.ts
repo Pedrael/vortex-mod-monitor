@@ -49,6 +49,14 @@ import {
   scopeCollectionMods,
 } from "../../../core/manifest/collectionScope";
 import { findModsWithNoArchivePath } from "../../../core/archiveRecovery";
+import { resolveSevenZip } from "../../../core/manifest/sevenZip";
+import { listArchiveContents } from "../../../core/manifest/archiveContents";
+import {
+  describeExternalDrift,
+  detectExternalDrift,
+  repackBundledExternals,
+  type RepackedBundle,
+} from "../../../core/manifest/bundleFromStaging";
 import {
   applyDependencyOverrides,
   detectExternalDependencies,
@@ -790,6 +798,70 @@ export async function runBuildPipeline(
 
   checkAbort();
 
+  // ── External mods the curator maintains by hand ──────────────────────
+  // A mod edited in place looks perfectly healthy — it installs, deploys and
+  // runs — and the divergence is invisible until somebody ELSE installs the
+  // collection and gets the original archive instead. So it is said out loud,
+  // and bundling packs the staging folder rather than the stale archive.
+  const driftOp = beginOp("build.external-drift", {});
+  let repackedBundles: RepackedBundle[] = [];
+  const bundleWarnings: string[] = [];
+  const repackDir = path.join(getVortexUserDataPath(), "event-horizon", ".repack");
+  try {
+    const sevenZip = resolveSevenZip();
+    const drift = await detectExternalDrift({
+      state,
+      gameId,
+      mods,
+      config: collectionConfig,
+      sevenZip,
+      isExternal: (m) => !isNexusMod(m),
+      archivePathFor: (m) => getModArchivePath(state, m.archiveId, gameId),
+      listArchive: (p) => listArchiveContents(sevenZip, p),
+      ...(signal !== undefined ? { signal } : {}),
+    });
+    bundleWarnings.push(...describeExternalDrift(drift));
+
+    const repacked = await repackBundledExternals({
+      state,
+      gameId,
+      mods,
+      config: collectionConfig,
+      sevenZip,
+      workDir: repackDir,
+      isExternal: (m) => !isNexusMod(m),
+      options: {
+        ...(signal !== undefined ? { signal } : {}),
+        onProgress: (done, total, modName) =>
+          onProgress?.({
+            phase: "resolving-bundled-archives",
+            message: `Packing "${modName}" from its staging folder (${done} / ${total})...`,
+            done,
+            total,
+          }),
+      },
+    });
+    mods = repacked.mods;
+    repackedBundles = repacked.bundles;
+    bundleWarnings.push(...repacked.warnings);
+
+    driftOp.ok({
+      diverged: drift.length,
+      divergedUnbundled: drift.filter((d) => !d.bundled).length,
+      repacked: repacked.bundles.length,
+      repackedBytes: repacked.bundles.reduce((n, b) => n + b.bytes, 0),
+      detail: drift.slice(0, 20).map((d) => ({
+        mod: d.modName,
+        removed: d.removed.length,
+        added: d.added.length,
+        bundled: d.bundled,
+      })),
+    });
+  } catch (err) {
+    // Neither of these is worth failing a build over.
+    driftOp.fail(err);
+  }
+
   // ── Prerequisites that are NOT Vortex mods ───────────────────────────
   // Deliberately AFTER the staging capture: the rule that keeps this from
   // doing harm is "a file the collection installs is not a prerequisite", and
@@ -906,15 +978,31 @@ export async function runBuildPipeline(
   // ── 4. Resolve bundled archives ────────────────────────────────────────
   checkAbort();
   onProgress?.({ phase: "resolving-bundled-archives" });
-  const { bundledArchives, errors: bundleErrors } = resolveBundledArchives(
-    state,
-    gameId,
-    collectionConfig,
-    mods,
-  );
+  // Anything repacked from staging is already resolved, and its identity is
+  // the NEW archive's hash — so the archive-based resolver must not also try
+  // to bundle the stale original for the same mod.
+  const repackedIds = new Set(repackedBundles.map((b) => b.modId));
+  const { bundledArchives: archiveBundles, errors: bundleErrors } =
+    resolveBundledArchives(
+      state,
+      gameId,
+      {
+        ...collectionConfig,
+        externalMods: Object.fromEntries(
+          Object.entries(collectionConfig.externalMods).filter(
+            ([modId]) => !repackedIds.has(modId),
+          ),
+        ),
+      },
+      mods,
+    );
   if (bundleErrors.length > 0) {
     throw new BundleResolutionError(bundleErrors);
   }
+  const bundledArchives = [
+    ...archiveBundles,
+    ...repackedBundles.map((b) => ({ sourcePath: b.sourcePath, sha256: b.sha256 })),
+  ];
 
   // ── 5. Package the .ehcoll ─────────────────────────────────────────────
   checkAbort();
@@ -929,6 +1017,10 @@ export async function runBuildPipeline(
     outputPath,
     signal,
   });
+
+  // The repacked archives are inside the package now; the temp copies are not
+  // wanted. Best-effort: leaving them costs disk, not correctness.
+  await fsp.rm(repackDir, { recursive: true, force: true }).catch(() => undefined);
 
   // ── 6. Stamp the config with last-built metadata ───────────────────────
   // Drives the curator dashboard's "Published" tab — `lastBuiltVersion`
@@ -981,6 +1073,7 @@ export async function runBuildPipeline(
     stagingFiles: stagingFileCount,
     warnings: [
       ...context.scopeWarnings,
+      ...bundleWarnings,
       ...manifestWarnings,
       ...result.warnings,
       ...selfCheckWarnings,
@@ -994,6 +1087,7 @@ export async function runBuildPipeline(
     modCount: manifest.mods.length,
     warnings: [
       ...context.scopeWarnings,
+      ...bundleWarnings,
       ...manifestWarnings,
       ...result.warnings,
       ...selfCheckWarnings,
