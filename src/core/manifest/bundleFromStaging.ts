@@ -66,14 +66,16 @@ export type RepackOptions = {
   signal?: AbortSignal;
   onProgress?: (done: number, total: number, modName: string) => void;
   /**
-   * Refuse to repack anything larger than this, in bytes. A curator can flag a
-   * 37GB mod as bundled by accident, and discovering that by watching a build
-   * consume the disk is the wrong way to find out. Default 2GB.
+   * Size, in bytes, above which a bundled mod is called out as large. It is a
+   * WARNING and nothing more: the curator asked for this mod to ship, and a
+   * 37GB collection is an unusual thing to want rather than an impossible one.
+   * Refusing would be this module deciding what the curator is allowed to
+   * publish. Default 2GB.
    */
-  maxBytes?: number;
+  warnBytes?: number;
 };
 
-const DEFAULT_MAX_BYTES = 2 * 1024 * 1024 * 1024;
+const DEFAULT_WARN_BYTES = 2 * 1024 * 1024 * 1024;
 
 async function directorySize(dir: string): Promise<number> {
   let total = 0;
@@ -121,7 +123,7 @@ export async function repackBundledExternals(args: {
 }): Promise<RepackResult> {
   const { state, gameId, mods, config, sevenZip, workDir, isExternal } = args;
   const options = args.options ?? {};
-  const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
+  const warnBytes = options.warnBytes ?? DEFAULT_WARN_BYTES;
 
   const wanted = mods.filter(
     (m) => isExternal(m) && config.externalMods[m.id]?.bundled === true,
@@ -166,15 +168,15 @@ export async function repackBundledExternals(args: {
 
     try {
       const size = await directorySize(stagingDir);
-      if (size > maxBytes) {
+      if (size > warnBytes) {
+        // Said, not enforced. The curator chose to ship this.
         warnings.push(
-          `"${mod.name}" is flagged for bundling but its staging folder is ` +
-            `${(size / 1024 ** 3).toFixed(1)} GB, over the ` +
-            `${(maxBytes / 1024 ** 3).toFixed(1)} GB limit. It was NOT bundled — ` +
-            `a collection carrying it would be unusable to download. Unflag it, ` +
-            `or host the archive separately and give users instructions.`,
+          `"${mod.name}" is bundled and its staging folder is ` +
+            `${(size / 1024 ** 3).toFixed(1)} GB, so the .ehcoll will be at ` +
+            `least that large and the build will spend a while packing it. ` +
+            `That is fine if you meant it — if you did not, untick bundle and ` +
+            `give users a download link instead.`,
         );
-        continue;
       }
 
       // `<dir>/*` so 7z stores paths relative to the staging root, matching

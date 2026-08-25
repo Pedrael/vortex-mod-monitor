@@ -169,7 +169,10 @@ describe("describeExternalDrift", () => {
 describe("repackBundledExternals", () => {
   const sevenZip = fakeSevenZip({});
 
-  it("refuses to pack something absurdly large, and says why", async () => {
+  it("WARNS about a large bundle without refusing to pack it", async () => {
+    // The curator chose to ship this mod. Refusing would be the tool deciding
+    // what they are allowed to publish; the size is their business, and all
+    // this owes them is a heads-up about the download and the wait.
     const dir = path.join(staging, "huge");
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, "big.bin"), Buffer.alloc(4096));
@@ -182,13 +185,29 @@ describe("repackBundledExternals", () => {
       sevenZip,
       workDir: path.join(staging, ".repack"),
       isExternal: () => true,
-      options: { maxBytes: 1024 },
+      options: { warnBytes: 1024 },
     });
-    expect(out.bundles).toEqual([]);
-    expect(out.warnings[0]).toMatch(/over the/);
-    expect(out.warnings[0]).toMatch(/NOT bundled/);
-    // Identity must be untouched when nothing was packed.
-    expect(out.mods[0]!.archiveSha256).toBeUndefined();
+    expect(out.warnings[0]).toMatch(/will be at least that large/);
+    expect(out.warnings[0]).toMatch(/fine if you meant it/);
+    expect(out.warnings[0]).not.toMatch(/NOT bundled/);
+  });
+
+  it("says nothing about size when the bundle is small", async () => {
+    const dir = path.join(staging, "small");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "a.txt"), "x");
+
+    const out = await repackBundledExternals({
+      state: {} as never,
+      gameId: "fallout4",
+      mods: [mod({ id: "small", name: "Small", installationPath: "small" })],
+      config: config({ small: { bundled: true } }),
+      sevenZip,
+      workDir: path.join(staging, ".repack"),
+      isExternal: () => true,
+      options: { warnBytes: 1024 * 1024 },
+    });
+    expect(out.warnings.filter((w) => w.includes("at least that large"))).toEqual([]);
   });
 
   it("ignores mods the curator did not flag", async () => {
