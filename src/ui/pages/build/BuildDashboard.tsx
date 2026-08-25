@@ -67,6 +67,7 @@ import { useApi } from "../../state";
 import type { BuildDraftPayload } from "./buildSession";
 import { getBuildSessionRegistry } from "./buildSessionRegistry";
 import { getVortexUserDataPath } from "../../../core/paths";
+import { ehLog } from "../../../core/logging/ehLog";
 
 // ───────────────────────────────────────────────────────────────────────
 // Public surface
@@ -222,10 +223,23 @@ export function BuildDashboard(props: BuildDashboardProps): JSX.Element {
     if (typeof activeGameId !== "string" || activeGameId.length === 0) return undefined;
     if (!activeProfileId) return undefined;
     try {
-      const scope = scopeCollectionMods(
-        getModsForProfile(api.getState(), activeGameId, activeProfileId),
-      );
-      return profileFingerprint(scope.included);
+      const all = getModsForProfile(api.getState(), activeGameId, activeProfileId);
+      const scope = scopeCollectionMods(all);
+      const fp = profileFingerprint(scope.included);
+      // Logged because this decides whether the curator is offered an Update,
+      // and a wrong answer here is invisible — the card looks equally
+      // confident either way. Cheap: one line per recompute, and recomputes
+      // only happen when Vortex's mod state actually moves.
+      ehLog("debug", "dashboard.profile-fingerprint", {
+        gameId: activeGameId,
+        profileId: activeProfileId,
+        inProfile: all.length,
+        enabled: scope.included.length,
+        excludedDisabled: scope.excludedDisabled.length,
+        excludedCollections: scope.excludedCollections.length,
+        fingerprint: fp.slice(0, 16),
+      });
+      return fp;
     } catch {
       // Unknown beats wrong: without a fingerprint the card offers Update,
       // which is the safe default.
@@ -233,6 +247,22 @@ export function BuildDashboard(props: BuildDashboardProps): JSX.Element {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, activeGameId, activeProfileId, modsSlice, modStateSlice]);
+
+  // Both halves of the comparison, together. Either one alone is unfalsifiable
+  // — a matching pair and a stale pair look identical from the outside.
+  React.useEffect(() => {
+    for (const pub of state.published) {
+      ehLog("debug", "dashboard.update-check", {
+        slug: pub.slug,
+        builtVersion: pub.lastBuiltVersion,
+        storedFingerprint: (pub.lastBuiltProfileFingerprint ?? "none").slice(0, 16),
+        currentFingerprint: (currentFingerprint ?? "unknown").slice(0, 16),
+        upToDate:
+          currentFingerprint !== undefined &&
+          pub.lastBuiltProfileFingerprint === currentFingerprint,
+      });
+    }
+  }, [state.published, currentFingerprint]);
 
   // ── Actions ────────────────────────────────────────────────────────
 
