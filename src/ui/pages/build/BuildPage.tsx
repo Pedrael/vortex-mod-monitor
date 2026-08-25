@@ -44,6 +44,8 @@ import {
 } from "./engine";
 import type { ExternalModConfigEntry } from "../../../core/manifest/collectionConfig";
 import { findRecoverableMods } from "../../../core/archiveRecovery";
+import type { EhcollExternalDependency } from "../../../types/ehcoll";
+import type { ExternalDependencyConfigEntry } from "../../../core/manifest/collectionConfig";
 import type { VerificationLevel } from "../../../types/ehcoll";
 import { getAppDataPath, saveDraft } from "../../../core/draftStorage";
 import {
@@ -968,6 +970,30 @@ function FormPanel(props: FormPanelProps): JSX.Element {
     reverifyEverything,
   } = state;
 
+  /**
+   * Prerequisite decisions live in the collection config, not the form draft:
+   * they describe the COLLECTION, not this build attempt, and should survive
+   * into the next one without being retyped.
+   */
+  const onDependencyChange = (
+    id: string,
+    patch: ExternalDependencyConfigEntry,
+  ): void => {
+    const existing = ctx.collectionConfig.externalDependencies ?? {};
+    onChange({
+      ctx: {
+        ...ctx,
+        collectionConfig: {
+          ...ctx.collectionConfig,
+          externalDependencies: {
+            ...existing,
+            [id]: { ...existing[id], ...patch },
+          },
+        },
+      },
+    });
+  };
+
   const updateCurator = (patch: Partial<CuratorInput>): void =>
     onChange({ curator: { ...curator, ...patch } });
 
@@ -1187,6 +1213,14 @@ function FormPanel(props: FormPanelProps): JSX.Element {
         />
       </Card>
 
+      <PrerequisitesCard
+        detected={ctx.detectedDependencies}
+        overrides={ctx.collectionConfig.externalDependencies ?? {}}
+        gameVersion={ctx.gameVersion}
+        gameId={ctx.gameId}
+        onChange={onDependencyChange}
+      />
+
       <IntegrityLevelCard
         modCount={ctx.mods.length}
         reverify={reverifyEverything}
@@ -1238,6 +1272,131 @@ interface IntegrityLevelCardProps {
   modCount: number;
   reverify: boolean;
   onReverifyChange: (value: boolean) => void;
+}
+
+interface PrerequisitesCardProps {
+  detected: EhcollExternalDependency[];
+  overrides: Record<string, ExternalDependencyConfigEntry>;
+  gameVersion: string;
+  gameId: string;
+  onChange: (id: string, patch: ExternalDependencyConfigEntry) => void;
+}
+
+/**
+ * Prerequisites the collection cannot install for the user, and the game
+ * version it was built against.
+ *
+ * These share a card because they share a failure: both are things that are
+ * simply TRUE of the curator's machine, invisible until someone else tries to
+ * reproduce it, and both leave the user stuck in a way no amount of mod
+ * installing fixes. A script extender that has to be fetched by hand, and a
+ * game version that has to be matched — usually by moving the game BACKWARDS,
+ * which is the single least obvious thing about modding Bethesda titles.
+ *
+ * Nothing here is typed by the curator: the dependencies were detected in the
+ * game folder with real file hashes, and the version is Vortex's own. The
+ * curator supplies judgement — ship it or not — and the instructions, which are
+ * the part a generic default cannot know.
+ */
+function PrerequisitesCard(props: PrerequisitesCardProps): JSX.Element {
+  const { detected, overrides, gameVersion, gameId, onChange } = props;
+  return (
+    <Card title="Requirements the user must satisfy themselves">
+      <div
+        style={{
+          padding: "var(--eh-sp-3)",
+          border: "1px solid var(--eh-border)",
+          borderRadius: "var(--eh-radius-md)",
+          marginBottom: "var(--eh-sp-3)",
+        }}
+      >
+        <strong>Game version — {gameVersion}</strong>
+        <p
+          style={{
+            margin: "var(--eh-sp-1) 0 0",
+            color: "var(--eh-text-secondary)",
+            fontSize: "var(--eh-text-sm)",
+          }}
+        >
+          Recorded from your install and required exactly. Anyone on a different
+          build is told which version they need and pointed at a downgrader —
+          moving a Bethesda game backwards is routine, and it is the thing people
+          most often do not know they can do.
+          {gameId === "fallout4" && gameVersion.startsWith("1.10.9") ? (
+            <>
+              {" "}
+              <strong>
+                Note: {gameVersion} is a post-&ldquo;next-gen&rdquo; build.
+              </strong>{" "}
+              Much of the F4SE plugin ecosystem still targets 1.10.163, so check
+              your own load order runs before shipping this.
+            </>
+          ) : null}
+        </p>
+      </div>
+
+      {detected.length === 0 ? (
+        <p style={{ margin: 0, color: "var(--eh-text-secondary)" }}>
+          No prerequisites detected in your game folder that the collection does
+          not already install. A script extender or ENB installed as a Vortex mod
+          ships with the collection, so it is deliberately not listed here.
+        </p>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--eh-sp-3)" }}>
+          {detected.map((dep) => {
+            const o = overrides[dep.id] ?? {};
+            const included = o.included !== false;
+            return (
+              <div
+                key={dep.id}
+                style={{
+                  padding: "var(--eh-sp-3)",
+                  border: `1px solid ${included ? "var(--eh-accent)" : "var(--eh-border)"}`,
+                  borderRadius: "var(--eh-radius-md)",
+                  background: included ? "var(--eh-bg-elevated)" : "transparent",
+                }}
+              >
+                <label style={{ display: "flex", gap: "var(--eh-sp-2)", alignItems: "center" }}>
+                  <input
+                    type="checkbox"
+                    checked={included}
+                    onChange={(e): void => onChange(dep.id, { included: e.target.checked })}
+                  />
+                  <strong>{dep.name}</strong>
+                  <Pill intent="neutral">{dep.version}</Pill>
+                  <Pill intent="neutral">{dep.files.length} files</Pill>
+                </label>
+                <p
+                  style={{
+                    margin: "var(--eh-sp-2) 0",
+                    color: "var(--eh-text-secondary)",
+                    fontSize: "var(--eh-text-sm)",
+                  }}
+                >
+                  Found in your game folder, installed by no mod in this
+                  collection. The user's copy is verified against these hashes.
+                </p>
+                <textarea
+                  className="eh-input eh-input--textarea"
+                  rows={3}
+                  value={o.instructions ?? dep.instructions}
+                  placeholder="What should the user do? Which build to download, and from where."
+                  onChange={(e): void => onChange(dep.id, { instructions: e.target.value })}
+                />
+                <input
+                  className="eh-input"
+                  value={o.instructionsUrl ?? dep.instructionsUrl ?? ""}
+                  placeholder="Download link"
+                  onChange={(e): void => onChange(dep.id, { instructionsUrl: e.target.value })}
+                  style={{ marginTop: "var(--eh-sp-2)" }}
+                />
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Card>
+  );
 }
 
 /**

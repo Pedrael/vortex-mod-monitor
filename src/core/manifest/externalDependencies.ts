@@ -226,6 +226,32 @@ export type DetectOptions = {
 };
 
 /**
+ * Every file a MOD deployed into the game folder, by lower-cased basename.
+ *
+ * Vortex's own deployment manifest answers "which mod owns this file" directly
+ * and in one read, which beats walking 955 staging folders and is authoritative
+ * rather than inferred — it also accounts for merged files. Preferred over
+ * {@link filesProvidedByMods} wherever the manifests are available, which is
+ * everywhere the build looks, and early enough that the curator can see the
+ * result before starting a build.
+ */
+export function filesProvidedByDeployment(
+  manifests: ReadonlyArray<{
+    files: ReadonlyArray<{ relPath: string; source?: string }>;
+  }>,
+): Set<string> {
+  const out = new Set<string>();
+  for (const manifest of manifests) {
+    for (const entry of manifest.files) {
+      const norm = entry.relPath.split("\\").join("/");
+      const slash = norm.lastIndexOf("/");
+      out.add((slash === -1 ? norm : norm.slice(slash + 1)).toLowerCase());
+    }
+  }
+  return out;
+}
+
+/**
  * Every file the collection itself installs, by lower-cased basename.
  *
  * Basename rather than full path on purpose: a prerequisite is identified by

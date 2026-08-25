@@ -51,6 +51,7 @@
  * ──────────────────────────────────────────────────────────────────────
  */
 
+import { gameVersionGuidance } from "./gameVersionGuidance";
 import type {
   EhcollExternalDependency,
   EhcollManifest,
@@ -220,7 +221,11 @@ function checkGameVersion(
   // Versions differ. Severity depends on policy.
   if (policy === "exact") {
     errors.push(
-      `Game version mismatch: required "${required}" exactly, installed "${installed}".`,
+      [
+        `Game version mismatch: this collection needs "${required}" exactly, ` +
+          `you have "${installed}".`,
+        ...gameVersionGuidance({ gameId: manifest.game.id, required, installed }),
+      ].join(" "),
     );
     return { status: "mismatch", required, installed, policy };
   }
@@ -239,7 +244,11 @@ function checkGameVersion(
     return { status: "ok" };
   }
   errors.push(
-    `Game version too old: required at least "${required}", installed "${installed}".`,
+    [
+      `Game version too old: this collection needs at least "${required}", ` +
+        `you have "${installed}".`,
+      ...gameVersionGuidance({ gameId: manifest.game.id, required, installed }),
+    ].join(" "),
   );
   return { status: "mismatch", required, installed, policy };
 }

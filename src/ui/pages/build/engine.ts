@@ -52,7 +52,7 @@ import { findModsWithNoArchivePath } from "../../../core/archiveRecovery";
 import {
   applyDependencyOverrides,
   detectExternalDependencies,
-  filesProvidedByMods,
+  filesProvidedByDeployment,
   getGameDirectory,
 } from "../../../core/manifest/externalDependencies";
 import type { EhcollExternalDependency } from "../../../types/ehcoll";
@@ -118,6 +118,18 @@ export interface BuildContext {
    * actual build doesn't have to redo it (we keep the same array).
    */
   mods: AuditorMod[];
+  /**
+   * Prerequisites detected in the game folder that no mod accounts for — a
+   * script extender, ENB, a preloader. Curator decides which to ship and what
+   * to say about them; see `collectionConfig.externalDependencies`.
+   */
+  detectedDependencies: EhcollExternalDependency[];
+  /**
+   * The game version this collection will REQUIRE, read from Vortex. Shown on
+   * the form because it is a hard requirement the curator should see before
+   * shipping, not a detail discovered by whoever installs it.
+   */
+  gameVersion: string;
   /**
    * Notes about what was left out or looks wrong in the profile itself —
    * duplicate identities, several enabled installs of one mod. Produced by
@@ -485,10 +497,38 @@ export async function loadBuildContext(
     });
   }
 
+  // Prerequisites that are NOT Vortex mods. Detected here rather than during
+  // the build so the curator can see and edit them on the form, which is the
+  // only moment they can actually write the instructions.
+  //
+  // "A file the collection installs is not a prerequisite" is answered from
+  // Vortex's own deployment manifest — one read, authoritative, and it already
+  // knows which mod won each file. Walking every staging folder would answer
+  // the same question far more slowly and by inference.
+  let detectedDependencies: EhcollExternalDependency[] = [];
+  try {
+    const gameDir = getGameDirectory(state, gameId);
+    if (gameDir !== undefined) {
+      const deployed = await captureDeploymentManifests(api, state, gameId);
+      detectedDependencies = await detectExternalDependencies(gameDir, gameId, {
+        signal,
+        providedByMods: filesProvidedByDeployment(deployed),
+      });
+    }
+    op.step("external-deps-detected", {
+      gameDirKnown: getGameDirectory(state, gameId) !== undefined,
+      detected: detectedDependencies.map((d) => `${d.id}@${d.version}`),
+    });
+  } catch (err) {
+    // Never fail a build context over a prerequisite scan.
+    op.step("external-deps-failed", { err: String(err) });
+  }
+
   op.ok({
     gameId,
     profileId,
     mods: mods.length,
+    externalDependencies: detectedDependencies.length,
     excludedDisabled: scope.excludedDisabled.length,
     externalMods: externalMods.length,
     // hashed < mods is the first number to look at when a build does not
@@ -500,6 +540,8 @@ export async function loadBuildContext(
     gameId: gameId as SupportedGameId,
     profileId,
     mods,
+    detectedDependencies,
+    gameVersion: resolveGameVersion(state, gameId),
     scopeWarnings: [
       ...describeScope(scope),
       ...describeHashedCollisions(hashedCollisions),
@@ -753,33 +795,17 @@ export async function runBuildPipeline(
   // doing harm is "a file the collection installs is not a prerequisite", and
   // answering that needs each mod's own file list. Detecting earlier would
   // declare the curator's F4SE mod as something every user must hand-install.
-  const depsOp = beginOp("build.external-deps", { gameId });
-  let externalDependencies: EhcollExternalDependency[] = [];
-  try {
-    const gameDir = getGameDirectory(state, gameId);
-    if (gameDir === undefined) {
-      // Not "none installed" — we could not look. Say which.
-      depsOp.ok({ detected: 0, reason: "game directory not discovered by Vortex" });
-    } else {
-      const detected = await detectExternalDependencies(gameDir, gameId, {
-        signal,
-        providedByMods: filesProvidedByMods(mods),
-      });
-      externalDependencies = applyDependencyOverrides(
-        detected,
-        collectionConfig.externalDependencies,
-      );
-      depsOp.ok({
-        gameDir,
-        detected: detected.length,
-        included: externalDependencies.length,
-        ids: externalDependencies.map((d) => `${d.id}@${d.version}`),
-      });
-    }
-  } catch (err) {
-    // A prerequisite scan must never fail a build.
-    depsOp.fail(err);
-  }
+  // Detection already happened in loadBuildContext, so the curator saw and
+  // edited these on the form. Only their decisions are applied here.
+  const externalDependencies = applyDependencyOverrides(
+    context.detectedDependencies,
+    collectionConfig.externalDependencies,
+  );
+  beginOp("build.external-deps", { gameId }).ok({
+    detected: context.detectedDependencies.length,
+    included: externalDependencies.length,
+    ids: externalDependencies.map((d) => `${d.id}@${d.version}`),
+  });
 
   // ── Self-check: is the CURATOR'S OWN staging what it should be? ──────
   // Everything downstream treats this capture as the etalon, so if Vortex lost
