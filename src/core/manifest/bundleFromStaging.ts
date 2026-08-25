@@ -339,6 +339,16 @@ export async function detectExternalDrift(args: {
   return out;
 }
 
+/**
+ * One entry per PROBLEM, not per line.
+ *
+ * The caller counts this array — the build page shows `warnings.length` — so
+ * returning the headline and its per-mod detail as separate entries made one
+ * problem read as five. A build with six things worth saying announced "10
+ * warnings", which is not a rounding error: it is the difference between a
+ * curator scanning the list and a curator deciding the build is a mess.
+ * Detail lines are newline-joined into the entry they belong to.
+ */
 export function describeExternalDrift(drift: ExternalDrift[]): string[] {
   const unbundled = drift.filter((d) => !d.bundled);
   if (unbundled.length === 0) return [];
@@ -376,5 +386,5 @@ export function describeExternalDrift(drift: ExternalDrift[]): string[] {
   if (worst.length > 5) {
     lines.push(`  • and ${worst.length - 5} more; see the event-horizon log.`);
   }
-  return lines;
+  return [lines.join("\n")];
 }

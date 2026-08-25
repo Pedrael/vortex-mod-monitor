@@ -1860,7 +1860,11 @@ function DonePanel(props: {
               }}
             >
               {result.warnings.map((w, i) => (
-                <li key={i}>{w}</li>
+                // A warning carries its own detail lines, newline-separated,
+                // so one problem stays one bullet and one count.
+                <li key={i} style={{ whiteSpace: "pre-line", marginBottom: "var(--eh-sp-2)" }}>
+                  {w}
+                </li>
               ))}
             </ul>
           </details>

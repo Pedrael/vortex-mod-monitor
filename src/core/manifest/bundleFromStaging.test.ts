@@ -241,6 +241,24 @@ describe("describeExternalDrift", () => {
     expect(line).not.toMatch(/file\(s\) in the archive are not staged/);
   });
 
+  it("is ONE warning however many mods drifted — the caller counts these", () => {
+    // The build page shows `warnings.length`. Returning the headline and each
+    // mod's detail as separate entries made one problem read as five, and a
+    // build with six things to say announced "10 warnings".
+    const many = [
+      drifted({ modId: "a", modName: "A" }),
+      drifted({ modId: "b", modName: "B" }),
+      drifted({ modId: "c", modName: "C" }),
+      drifted({ modId: "d", modName: "D" }),
+    ];
+    const out = describeExternalDrift(many);
+    expect(out).toHaveLength(1);
+    // ...and the detail is still there, just inside the one entry.
+    expect(out[0]!.split("\n")).toHaveLength(5);
+    expect(out[0]).toMatch(/"A"/);
+    expect(out[0]).toMatch(/"D"/);
+  });
+
   it("says nothing at all when nothing drifted", () => {
     expect(describeExternalDrift([])).toEqual([]);
   });
