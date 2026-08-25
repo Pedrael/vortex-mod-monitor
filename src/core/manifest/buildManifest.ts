@@ -269,6 +269,30 @@ export function buildManifest(input: BuildManifestInput): BuildManifestResult {
     warnings,
   );
 
+  // Vortex INI tweaks are recorded per mod and applied by nothing on the
+  // install side yet — `manifest.iniTweaks` is a v1 placeholder, and no
+  // installer code reads `state.enabledINITweaks`. A curator who enabled one
+  // is shipping a game setting that will not reach anybody, and would have no
+  // way to know: the file itself ships (it is a staged file like any other),
+  // so the collection looks complete while the setting silently does not
+  // apply. Say it rather than let them find out from a bug report.
+  const withTweaks = mods.filter(
+    (m) => (m.state.enabledINITweaks ?? []).length > 0,
+  );
+  if (withTweaks.length > 0) {
+    const total = withTweaks.reduce(
+      (n, m) => n + (m.state.enabledINITweaks ?? []).length,
+      0,
+    );
+    warnings.push(
+      `${total} INI tweak(s) are enabled across ${withTweaks.length} mod(s) ` +
+        `(e.g. "${withTweaks[0]!.name}"). They are recorded in this ` +
+        `collection, but the installer does not apply INI tweaks yet — the ` +
+        `.ini files ship, the settings do not get switched on. Anyone ` +
+        `installing this will need to enable them by hand in Vortex.`,
+    );
+  }
+
   const manifest: EhcollManifest = {
     schemaVersion: SCHEMA_VERSION,
     package: buildPackageMetadata(input.package),
