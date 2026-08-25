@@ -46,6 +46,7 @@ import {
   describeHashedCollisions,
   describeScope,
   findHashedIdentityCollisions,
+  profileFingerprint,
   scopeCollectionMods,
 } from "../../../core/manifest/collectionScope";
 import { findModsWithNoArchivePath } from "../../../core/archiveRecovery";
@@ -1095,6 +1096,9 @@ export async function runBuildPipeline(
       lastBuiltAt: new Date().toISOString(),
       lastBuiltName: curator.name,
       lastBuiltAuthor: curator.author,
+      // What this build actually shipped, so the dashboard can tell a real
+      // update from a rebuild of the same thing.
+      lastBuiltProfileFingerprint: profileFingerprint(mods),
       // Pin the gameId at build time so the dashboard's "Update"
       // affordance can refuse cross-game updates (which would
       // silently rewrite the manifest's gameId and ship a malformed

@@ -47,6 +47,8 @@
  * ──────────────────────────────────────────────────────────────────────
  */
 
+import { createHash } from "crypto";
+
 import type { AuditorMod } from "../getModsListForProfile";
 
 export type CollectionScope = {
@@ -251,4 +253,23 @@ export function describeScope(scope: CollectionScope): string[] {
   }
 
   return out;
+}
+
+/**
+ * A stable fingerprint of WHICH mods a collection was built from.
+ *
+ * Answers one question cheaply: has the profile's membership moved since the
+ * last build? Pure state, no disk — the dashboard can ask it on every render.
+ *
+ * It covers membership and nothing else. A curator who edits a file inside a
+ * staged mod changes what the collection ships without changing this, so an
+ * unchanged fingerprint means "the same mods", never "the same collection".
+ * Anything shown to a curator on the strength of it has to say so.
+ */
+export function profileFingerprint(mods: readonly AuditorMod[]): string {
+  const ids = mods.map((m) => m.id).sort();
+  // Length-prefixed so two different id lists cannot collide by
+  // concatenating into the same string.
+  const payload = ids.map((id) => `${id.length}:${id}`).join("");
+  return createHash("sha256").update(payload).digest("hex");
 }

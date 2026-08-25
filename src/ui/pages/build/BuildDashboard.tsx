@@ -49,10 +49,19 @@ import {
   type DraftEnvelope,
 } from "../../../core/draftStorage";
 import {
+  deletePublishedCollection,
   listPublishedCollections,
   type PublishedCollectionSummary,
 } from "../../../core/manifest/collectionConfig";
-import { getActiveGameId } from "../../../core/getModsListForProfile";
+import {
+  profileFingerprint,
+  scopeCollectionMods,
+} from "../../../core/manifest/collectionScope";
+import {
+  getActiveGameId,
+  getActiveProfileIdFromState,
+  getModsForProfile,
+} from "../../../core/getModsListForProfile";
 import { Button, Card, Pill, ProgressRing, useToast } from "../../components";
 import { useApi } from "../../state";
 import type { BuildDraftPayload } from "./buildSession";
@@ -104,6 +113,7 @@ export function BuildDashboard(props: BuildDashboardProps): JSX.Element {
     setRefreshTick((t) => t + 1);
   }, []);
 
+
   // Re-render whenever the registry mutates (a session changes state,
   // is added, removed). Keeps "Building..." pills live AND drives the
   // `items` useMemo below to re-merge unsaved sessions, so a brand-new
@@ -115,6 +125,8 @@ export function BuildDashboard(props: BuildDashboardProps): JSX.Element {
       setRegistryTick((t) => t + 1);
     });
   }, [registry]);
+
+
 
   React.useEffect(() => {
     let alive = true;
@@ -159,6 +171,25 @@ export function BuildDashboard(props: BuildDashboardProps): JSX.Element {
   }, [refreshTick]);
 
   const activeGameId = getActiveGameId(api.getState());
+
+  // What the profile looks like RIGHT NOW, so a published collection can say
+  // whether there is anything to update. Pure Redux state — no disk, cheap
+  // enough to recompute on every refresh.
+  const currentFingerprint = React.useMemo<string | undefined>(() => {
+    if (typeof activeGameId !== "string" || activeGameId.length === 0) return undefined;
+    try {
+      const state = api.getState();
+      const profileId = getActiveProfileIdFromState(state, activeGameId);
+      if (!profileId) return undefined;
+      const scope = scopeCollectionMods(getModsForProfile(state, activeGameId, profileId));
+      return profileFingerprint(scope.included);
+    } catch {
+      // Unknown beats wrong: without a fingerprint the card offers Update,
+      // which is the safe default.
+      return undefined;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api, activeGameId, refreshTick, registryTick]);
 
   // ── Actions ────────────────────────────────────────────────────────
 
@@ -229,6 +260,47 @@ export function BuildDashboard(props: BuildDashboardProps): JSX.Element {
       title: "Draft deleted",
       message: label,
     });
+    refresh();
+  };
+
+  const handleDeletePublished = async (
+    summary: PublishedCollectionSummary,
+  ): Promise<void> => {
+    const label = summary.lastBuiltName ?? summary.slug;
+    // Deleting the config ends the release lineage — the packageId goes with
+    // it, and a later build under the same name is a NEW collection as far as
+    // any installer is concerned. That is not recoverable by rebuilding, so it
+    // is worth a sentence and a confirmation rather than a bare "are you sure".
+    const result = await api.showDialog?.(
+      "question",
+      `Delete "${label}"?`,
+      {
+        text:
+          `This removes Event Horizon's record of this collection, including ` +
+          `the package id that ties its releases together. Building "${label}" ` +
+          `again afterwards starts a fresh lineage, and people who installed ` +
+          `the old one will not be offered it as an update.\n\n` +
+          `Any .ehcoll files you already built stay on disk — this does not ` +
+          `delete them.`,
+      },
+      [{ label: "Cancel" }, { label: "Delete" }],
+    );
+    if (result?.action !== "Delete") return;
+
+    try {
+      await deletePublishedCollection(summary.configPath);
+      showToast({
+        intent: "success",
+        title: "Collection deleted",
+        message: `"${label}" is no longer tracked. Built files were left alone.`,
+      });
+    } catch (err) {
+      showToast({
+        intent: "danger",
+        title: "Couldn't delete",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
     refresh();
   };
 
@@ -516,7 +588,14 @@ export function BuildDashboard(props: BuildDashboardProps): JSX.Element {
               <PublishedCard
                 key={`pub:${item.summary.slug}`}
                 summary={item.summary}
+                upToDate={
+                  currentFingerprint !== undefined &&
+                  item.summary.lastBuiltProfileFingerprint === currentFingerprint
+                }
                 onUpdate={(): void => handleUpdatePublished(item.summary)}
+                onDelete={(): void => {
+                  void handleDeletePublished(item.summary);
+                }}
               />
             ),
           )}
@@ -788,9 +867,16 @@ function DraftCard(props: {
 
 function PublishedCard(props: {
   summary: PublishedCollectionSummary;
+  /**
+   * `true` only when we KNOW the enabled-mod set is the same as the one this
+   * collection last shipped. `undefined` fingerprints mean unknown, and
+   * unknown offers Update — never suppress an action on a guess.
+   */
+  upToDate: boolean;
   onUpdate: () => void;
+  onDelete: () => void;
 }): JSX.Element {
-  const { summary } = props;
+  const { summary, upToDate } = props;
   const title = summary.lastBuiltName ?? summary.slug;
   return (
     <Card
@@ -817,13 +903,35 @@ function PublishedCard(props: {
           {summary.lastBuiltVersion !== undefined && (
             <Pill intent="info">v{summary.lastBuiltVersion}</Pill>
           )}
+          {upToDate && <Pill intent="neutral">no mod changes</Pill>}
         </div>
         <div style={{ color: "var(--eh-text-muted)" }}>
           <strong>Slug:</strong> {summary.slug}
         </div>
+        {upToDate && (
+          // Said in full rather than just greying the button out: the check is
+          // membership-only, so a curator who edited a file inside a mod is
+          // looking at "no mod changes" while holding a real change. Telling
+          // them what was compared is the difference between a helpful default
+          // and a wrong one.
+          <div style={{ color: "var(--eh-text-muted)" }}>
+            The same mods are enabled now as when v{summary.lastBuiltVersion} was
+            built, so there is nothing new to ship. Edits to files inside a mod
+            are not detected here — rebuild if you made any.
+          </div>
+        )}
         <div style={{ display: "flex", gap: "var(--eh-sp-2)", marginTop: "var(--eh-sp-2)" }}>
-          <Button intent="primary" onClick={props.onUpdate}>
-            Update
+          {upToDate ? (
+            <Button intent="ghost" onClick={props.onUpdate}>
+              Rebuild anyway
+            </Button>
+          ) : (
+            <Button intent="primary" onClick={props.onUpdate}>
+              Update
+            </Button>
+          )}
+          <Button intent="ghost" onClick={props.onDelete}>
+            Delete
           </Button>
         </div>
       </div>

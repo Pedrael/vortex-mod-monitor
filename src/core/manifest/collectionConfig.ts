@@ -138,6 +138,13 @@ export type CollectionConfig = {
    */
   lastBuiltAuthor?: string;
   /**
+   * Fingerprint of the enabled-mod set the last build shipped.
+   *
+   * Lets the dashboard answer "has anything changed since?" without touching
+   * the disk. Membership only — see `profileFingerprint`.
+   */
+  lastBuiltProfileFingerprint?: string;
+  /**
    * Vortex `gameId` this collection was built for (e.g. "skyrimse").
    * Recorded on every successful build so the curator dashboard can:
    *   • filter the "Published" list to the active game,
@@ -349,6 +356,8 @@ export type PublishedCollectionSummary = {
   lastBuiltName?: string;
   /** Author of the last successful build, so an update can carry it forward. */
   lastBuiltAuthor?: string;
+  /** Enabled-mod fingerprint at the last build; compare to spot a no-op update. */
+  lastBuiltProfileFingerprint?: string;
   /**
    * Vortex `gameId` this collection was last built for, if recorded.
    * Drives the dashboard's per-game filter and the wizard's
@@ -450,6 +459,7 @@ export async function listPublishedCollections(
       lastBuiltAt: config.lastBuiltAt,
       lastBuiltName: config.lastBuiltName,
       lastBuiltAuthor: config.lastBuiltAuthor,
+      lastBuiltProfileFingerprint: config.lastBuiltProfileFingerprint,
       gameId: config.gameId,
       configPath,
     });
@@ -593,6 +603,12 @@ function parseAndValidate(raw: string, configPath: string): CollectionConfig {
   if (obj.lastBuiltAuthor !== undefined && typeof obj.lastBuiltAuthor !== "string") {
     errors.push("lastBuiltAuthor, when present, must be a string.");
   }
+  if (
+    obj.lastBuiltProfileFingerprint !== undefined &&
+    typeof obj.lastBuiltProfileFingerprint !== "string"
+  ) {
+    errors.push("lastBuiltProfileFingerprint, when present, must be a string.");
+  }
   if (obj.lastBuiltName !== undefined && typeof obj.lastBuiltName !== "string") {
     errors.push("lastBuiltName, when present, must be a string.");
   }
@@ -620,6 +636,9 @@ function parseAndValidate(raw: string, configPath: string): CollectionConfig {
   }
   if (typeof obj.lastBuiltAuthor === "string") {
     config.lastBuiltAuthor = obj.lastBuiltAuthor;
+  }
+  if (typeof obj.lastBuiltProfileFingerprint === "string") {
+    config.lastBuiltProfileFingerprint = obj.lastBuiltProfileFingerprint;
   }
   if (typeof obj.lastBuiltName === "string") {
     config.lastBuiltName = obj.lastBuiltName;
@@ -722,4 +741,18 @@ function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
     value,
   );
+}
+
+/**
+ * Remove a published collection's config.
+ *
+ * This is the collection's IDENTITY, not its output: the config carries the
+ * packageId that ties every release together, so deleting it ends the lineage —
+ * a future build under the same name starts a new one, and installers will not
+ * recognise it as an update of what came before. Built `.ehcoll` files are left
+ * alone; they are the curator's artifacts and deleting them is a separate
+ * decision. Callers must confirm before calling this.
+ */
+export async function deletePublishedCollection(configPath: string): Promise<void> {
+  await fsp.rm(configPath, { force: true });
 }

@@ -10,6 +10,7 @@ import {
   describeHashedCollisions,
   describeScope,
   findHashedIdentityCollisions,
+  profileFingerprint,
   scopeCollectionMods,
 } from "./collectionScope";
 
@@ -198,5 +199,38 @@ describe("Vortex collections in the profile", () => {
     expect(lines).toMatch(/Liberty Wasteland Redux/);
     expect(lines).toMatch(/shipped them twice/);
     expect(lines).toMatch(/in their own right/);
+  });
+});
+
+describe("profileFingerprint", () => {
+  it("is stable across ordering — the same mods are the same collection", () => {
+    const a = profileFingerprint([mod({ id: "x" }), mod({ id: "y" })]);
+    const b = profileFingerprint([mod({ id: "y" }), mod({ id: "x" })]);
+    expect(a).toBe(b);
+  });
+
+  it("changes when a mod is enabled", () => {
+    const before = profileFingerprint([mod({ id: "x" })]);
+    const after = profileFingerprint([mod({ id: "x" }), mod({ id: "y" })]);
+    expect(after).not.toBe(before);
+  });
+
+  it("changes when a mod is disabled", () => {
+    const before = profileFingerprint([mod({ id: "x" }), mod({ id: "y" })]);
+    const after = profileFingerprint([mod({ id: "x" })]);
+    expect(after).not.toBe(before);
+  });
+
+  it("cannot be fooled by ids that concatenate to the same string", () => {
+    // "ab" + "c" and "a" + "bc" are the same bytes once joined naively, and
+    // a collision here would show a curator "no mod changes" on a profile
+    // that really did change.
+    expect(profileFingerprint([mod({ id: "ab" }), mod({ id: "c" })])).not.toBe(
+      profileFingerprint([mod({ id: "a" }), mod({ id: "bc" })]),
+    );
+  });
+
+  it("is empty-safe", () => {
+    expect(profileFingerprint([])).toHaveLength(64);
   });
 });
