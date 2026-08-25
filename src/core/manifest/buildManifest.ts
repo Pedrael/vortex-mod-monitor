@@ -524,15 +524,42 @@ function buildRules(
   warnings: string[],
 ): EhcollRule[] {
   const out: EhcollRule[] = [];
+  // Collected rather than reported one by one. A profile that has been curated
+  // for a while accumulates rules pointing at mods it no longer has — versions
+  // upgraded past, mods removed — and on a real 955-mod profile that produced
+  // 108 near-identical warnings, drowning the handful that meant something. The
+  // count is what matters; the individual lines are noise about mods the
+  // curator already got rid of.
+  const unresolved: string[] = [];
 
   for (const mod of mods) {
     const sourceCompareKey = compareKeyById.get(mod.id);
     if (!sourceCompareKey) continue;
 
     for (const rule of mod.rules ?? []) {
-      const built = buildRule(mod, sourceCompareKey, rule, compareKeyById, warnings);
+      const built = buildRule(
+        mod,
+        sourceCompareKey,
+        rule,
+        compareKeyById,
+        warnings,
+        unresolved,
+      );
       if (built) out.push(built);
     }
+  }
+
+  if (unresolved.length > 0) {
+    const targets = [...new Set(unresolved)].sort();
+    warnings.push(
+      `${unresolved.length} mod rule(s) reference ${targets.length} mod(s) that are ` +
+        `not in this collection, so those rules were dropped: ` +
+        `${targets.slice(0, 6).map((t) => `"${t}"`).join(", ")}` +
+        `${targets.length > 6 ? `, and ${targets.length - 6} more` : ""}. ` +
+        `This is normal on a profile that has been curated for a while — a rule ` +
+        `outlives the mod version it was written against. A rule about a mod that ` +
+        `is not here cannot mean anything, so dropping it is correct.`,
+    );
   }
 
   out.sort(canonicalRuleSortKey);
@@ -545,6 +572,8 @@ function buildRule(
   rule: CapturedModRule,
   compareKeyById: Map<string, string>,
   warnings: string[],
+  /** Collects unresolvable rule targets so they can be reported once. */
+  unresolved: string[],
 ): EhcollRule | undefined {
   if (!KNOWN_RULE_TYPES.has(rule.type as ModRuleType)) {
     warnings.push(
@@ -557,7 +586,7 @@ function buildRule(
     ownerMod,
     rule.reference,
     compareKeyById,
-    warnings,
+    unresolved,
   );
   if (!reference) return undefined;
 
@@ -579,10 +608,10 @@ function buildRule(
  * upgrade a partial pin without losing portability.
  */
 function synthesizeRuleReference(
-  ownerMod: AuditorMod,
+  _ownerMod: AuditorMod,
   ref: CapturedRuleReference,
   compareKeyById: Map<string, string>,
-  warnings: string[],
+  unresolved: string[],
 ): string | undefined {
   if (ref.nexusModId && ref.nexusFileId) {
     return `nexus:${ref.nexusModId}:${ref.nexusFileId}`;
@@ -600,10 +629,9 @@ function synthesizeRuleReference(
     return `archive:${ref.archiveId}`;
   }
 
-  warnings.push(
-    `Mod "${ownerMod.id}" has a rule whose reference cannot be resolved to a stable compareKey ` +
-      `(reference: ${JSON.stringify(ref)}). Skipping.`,
-  );
+  // Name the TARGET, not the owner: "which mod is missing" is the actionable
+  // half, and the same absent mod is typically referenced by many owners.
+  unresolved.push(ref.id ?? ref.archiveId ?? JSON.stringify(ref));
   return undefined;
 }
 
