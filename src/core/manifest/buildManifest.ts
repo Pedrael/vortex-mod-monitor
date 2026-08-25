@@ -269,6 +269,41 @@ export function buildManifest(input: BuildManifestInput): BuildManifestResult {
     warnings,
   );
 
+  // The curator's FOMOD choices are recorded and replayed by nobody. On
+  // install, each archive is handed to Vortex's `start-install`, which runs
+  // the FOMOD UI and lets the USER pick — so a mod the curator configured one
+  // way arrives configured another, and the collection ships selections that
+  // reach no one.
+  //
+  // The manifest does assert the curator's staged file hashes, so the
+  // divergence is DETECTED: verification fails for that mod after install.
+  // Detecting a difference it cannot prevent is exactly the shape of failure
+  // this project exists to remove, so the curator hears about it up front,
+  // while they can still write an instruction for it.
+  // The curator's FOMOD choices are recorded and replayed by nobody. On
+  // install, each archive is handed to Vortex's `start-install`, which runs
+  // the FOMOD UI and lets the USER pick — so a mod the curator configured one
+  // way arrives configured another, and the collection ships selections that
+  // reach no one.
+  //
+  // The manifest does assert the curator's staged file hashes, so the
+  // divergence is DETECTED: verification fails for that mod after install.
+  // Detecting a difference it cannot prevent is exactly the shape of failure
+  // this project exists to remove, so the curator hears about it up front,
+  // while they can still write an instruction for it.
+  const withChoices = mods.filter(
+    (m) => (m.install?.fomodSelections ?? []).length > 0,
+  );
+  if (withChoices.length > 0) {
+    warnings.push(
+      `${withChoices.length} mod(s) were installed with FOMOD options you ` +
+        `chose (e.g. "${withChoices[0]!.name}"). Those choices are recorded ` +
+        `here, but the installer cannot replay them yet — whoever installs ` +
+        `this collection gets the FOMOD dialog and picks for themselves. If ` +
+        `a mod only works with specific options, say so in its instructions.`,
+    );
+  }
+
   // Vortex INI tweaks are recorded per mod and applied by nothing on the
   // install side yet — `manifest.iniTweaks` is a v1 placeholder, and no
   // installer code reads `state.enabledINITweaks`. A curator who enabled one

@@ -50,6 +50,9 @@ function build(mods: AuditorMod[]): { warnings: string[]; manifest: unknown } {
 const iniWarnings = (warnings: string[]): string[] =>
   warnings.filter((w) => w.includes("INI tweak"));
 
+const fomodWarnings = (warnings: string[]): string[] =>
+  warnings.filter((w) => w.includes("FOMOD options"));
+
 describe("enabled INI tweaks", () => {
   it("warns that they are recorded but will not be applied", () => {
     const { warnings } = build([
@@ -85,5 +88,42 @@ describe("enabled INI tweaks", () => {
     // INI Tweaks folder without any of it being switched on.
     const { warnings } = build([mod({ id: "a", enabledINITweaks: [] })]);
     expect(iniWarnings(warnings)).toEqual([]);
+  });
+});
+
+describe("recorded FOMOD choices", () => {
+  // Measured on the real collection: 114 of 954 mods carry choices the
+  // curator made ("AFT Plus Ivy Patch", "Kinky Animation Support"). On
+  // install, each archive goes to Vortex's `start-install`, which runs the
+  // FOMOD UI — so the user picks, and the curator's selections reach nobody.
+  const withSelections = (id: string, count: number): AuditorMod =>
+    mod({
+      id,
+      archiveSha256: id.padEnd(64, "0"),
+      fomodSelections: Array.from({ length: count }, (_, i) => ({
+        name: `step${i}`,
+        groups: [],
+      })) as never,
+    });
+
+  it("warns that the curator's options will not be replayed", () => {
+    const { warnings } = build([withSelections("aft", 2)]);
+    const line = fomodWarnings(warnings).join(" ");
+    expect(line).toMatch(/1 mod\(s\) were installed with FOMOD options you chose/);
+    expect(line).toMatch(/cannot replay them yet/);
+    // The actionable part: instructions are the workaround that exists today.
+    expect(line).toMatch(/say so in its instructions/);
+  });
+
+  it("counts mods, not selections — one dialog per mod is what a user faces", () => {
+    const { warnings } = build([withSelections("a", 8), withSelections("b", 1)]);
+    expect(fomodWarnings(warnings).join(" ")).toMatch(/2 mod\(s\)/);
+  });
+
+  it("stays quiet for a collection with no recorded choices", () => {
+    // Most mods report installerType "fomod" without a script or a choice;
+    // warning on those would bury the 114 that matter.
+    const { warnings } = build([mod({ id: "plain", fomodSelections: [] })]);
+    expect(fomodWarnings(warnings)).toEqual([]);
   });
 });
