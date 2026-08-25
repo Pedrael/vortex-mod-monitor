@@ -754,5 +754,60 @@ function isUuid(value: string): boolean {
  * decision. Callers must confirm before calling this.
  */
 export async function deletePublishedCollection(configPath: string): Promise<void> {
+  await deleteCollectionConfig(configPath);
+}
+
+/** Remove a config file. The primitive behind every deletion here. */
+export async function deleteCollectionConfig(configPath: string): Promise<void> {
   await fsp.rm(configPath, { force: true });
+}
+
+/** A config that exists but has never produced a package. */
+export type UnbuiltCollectionConfig = {
+  slug: string;
+  packageId: string;
+  configPath: string;
+};
+
+/**
+ * Configs that were never built — the complement of
+ * {@link listPublishedCollections}.
+ *
+ * These are created the moment the Build page opens, because the form needs a
+ * stable packageId and somewhere to keep external-mod overrides before
+ * anything is built. Most become collections. The rest linger, invisible on
+ * the dashboard, and they are not inert: a slug is an identity here, so
+ * building under an abandoned config's name years later silently resurrects
+ * ITS packageId and release lineage rather than starting fresh.
+ *
+ * Listing them is separate from deleting them on purpose. One of these is
+ * usually the config of the draft the curator has open right now, holding
+ * bundle ticks and instructions they have not shipped yet — so the caller has
+ * to decide what is safe to remove, and this function will not guess.
+ */
+export async function listNeverBuiltConfigs(
+  configDir: string,
+  opts?: ListPublishedCollectionsOptions,
+): Promise<UnbuiltCollectionConfig[]> {
+  let entries: string[];
+  try {
+    entries = await fsp.readdir(configDir);
+  } catch {
+    return [];
+  }
+  const out: UnbuiltCollectionConfig[] = [];
+  for (const filename of entries) {
+    if (!filename.endsWith(".json") || filename.startsWith(".")) continue;
+    const slug = filename.slice(0, -".json".length);
+    if (slug.length === 0) continue;
+    const configPath = path.join(configDir, filename);
+    try {
+      const config = parseAndValidate(await fsp.readFile(configPath, "utf8"), configPath);
+      if (config.lastBuiltAt !== undefined) continue;
+      out.push({ slug, packageId: config.packageId, configPath });
+    } catch (err) {
+      opts?.onError?.(filename, err);
+    }
+  }
+  return out.sort((a, b) => a.slug.localeCompare(b.slug));
 }

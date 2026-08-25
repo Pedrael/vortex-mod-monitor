@@ -1571,7 +1571,12 @@ function buildOutputFileName(name: string, version: string): string {
   return `${slug}-${safeVersion}.ehcoll`;
 }
 
-function slugify(s: string): string {
+/**
+ * Name to slug. Exported because the slug IS the collection's identity — the
+ * dashboard has to derive it exactly as the build does, or it will decide a
+ * config is unused while the build is about to write to it.
+ */
+export function slugify(s: string): string {
   return (
     s
       .toLowerCase()
@@ -1580,5 +1585,3 @@ function slugify(s: string): string {
       .slice(0, 64) || "collection"
   );
 }
-
-export { slugify };

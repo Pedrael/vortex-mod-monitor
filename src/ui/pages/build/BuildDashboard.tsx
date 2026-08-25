@@ -49,9 +49,12 @@ import {
   type DraftEnvelope,
 } from "../../../core/draftStorage";
 import {
+  deleteCollectionConfig,
   deletePublishedCollection,
+  listNeverBuiltConfigs,
   listPublishedCollections,
   type PublishedCollectionSummary,
+  type UnbuiltCollectionConfig,
 } from "../../../core/manifest/collectionConfig";
 import {
   profileFingerprint,
@@ -66,6 +69,7 @@ import { Button, Card, Pill, ProgressRing, useToast } from "../../components";
 import { useApi } from "../../state";
 import type { BuildDraftPayload } from "./buildSession";
 import { getBuildSessionRegistry } from "./buildSessionRegistry";
+import { slugify } from "./engine";
 import { getVortexUserDataPath } from "../../../core/paths";
 import {
   loadPublishedDetails,
@@ -93,6 +97,8 @@ interface DashboardState {
   loading: boolean;
   drafts: Array<DraftEnvelope<BuildDraftPayload>>;
   published: PublishedCollectionSummary[];
+  /** Configs that never produced a package. Invisible above; cleanable below. */
+  unbuilt: UnbuiltCollectionConfig[];
   errors: string[];
 }
 
@@ -109,6 +115,7 @@ export function BuildDashboard(props: BuildDashboardProps): JSX.Element {
     loading: true,
     drafts: [],
     published: [],
+    unbuilt: [],
     errors: [],
   });
   const [filter, setFilter] = React.useState<FilterKey>("all");
@@ -187,11 +194,20 @@ export function BuildDashboard(props: BuildDashboardProps): JSX.Element {
         },
       });
 
+      const unbuilt = await listNeverBuiltConfigs(configDir, {
+        onError: (filename, err) => {
+          errors.push(
+            `Couldn't read ${filename}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        },
+      });
+
       if (!alive) return;
       setState({
         loading: false,
         drafts,
         published,
+        unbuilt,
         errors,
       });
     })();
@@ -267,6 +283,78 @@ export function BuildDashboard(props: BuildDashboardProps): JSX.Element {
       });
     }
   }, [state.published, currentFingerprint]);
+
+  // Slugs an open draft is relying on. Its config holds bundle ticks and
+  // instructions the curator has not shipped yet, so cleanup must not touch
+  // it — a tidy-up that eats unsaved work is worse than the clutter.
+  const slugsInUse = React.useMemo<Set<string>>(() => {
+    const used = new Set<string>();
+    for (const env of state.drafts) {
+      const linked = env.payload.linkedSlug;
+      if (typeof linked === "string" && linked.length > 0) used.add(linked);
+      const name = env.payload.curator?.name;
+      if (typeof name === "string" && name.length > 0) used.add(slugify(name));
+      const title = env.payload.title;
+      if (typeof title === "string" && title.length > 0) used.add(slugify(title));
+    }
+    for (const session of registry.list()) {
+      const st = session.getState();
+      if (st.kind === "form" || st.kind === "queued" || st.kind === "building") {
+        if (st.curator.name.length > 0) used.add(slugify(st.curator.name));
+      }
+    }
+    return used;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.drafts, registry, registryTick]);
+
+  const cleanable = React.useMemo(
+    () => state.unbuilt.filter((c) => !slugsInUse.has(c.slug)),
+    [state.unbuilt, slugsInUse],
+  );
+
+  const handleCleanupUnbuilt = async (): Promise<void> => {
+    if (cleanable.length === 0) return;
+    const names = cleanable.map((c) => c.slug).join(", ");
+    const result = await api.showDialog?.(
+      "question",
+      `Remove ${cleanable.length} unused collection config${cleanable.length === 1 ? "" : "s"}?`,
+      {
+        text:
+          `These were created by opening the Build page and never produced a ` +
+          `package: ${names}.
+
+They are not harmless clutter — a collection's ` +
+          `name is its identity, so building under one of these names later ` +
+          `would silently adopt its package id and release lineage instead of ` +
+          `starting fresh. Removing them means such a build starts clean.
+
+` +
+          `Nothing you have built is affected, and any collection a draft is ` +
+          `currently using has been left out.`,
+      },
+      [{ label: "Cancel" }, { label: "Remove" }],
+    );
+    if (result?.action !== "Remove") return;
+
+    let removed = 0;
+    for (const c of cleanable) {
+      try {
+        await deleteCollectionConfig(c.configPath);
+        removed += 1;
+      } catch {
+        /* counted by omission; the toast reports what actually went */
+      }
+    }
+    showToast({
+      intent: removed === cleanable.length ? "success" : "warning",
+      title: "Cleaned up",
+      message:
+        removed === cleanable.length
+          ? `Removed ${removed} unused config${removed === 1 ? "" : "s"}.`
+          : `Removed ${removed} of ${cleanable.length}; the rest could not be deleted.`,
+    });
+    refresh();
+  };
 
   const publishedSlugs = React.useMemo(
     () => state.published.map((p) => p.slug),
@@ -685,6 +773,34 @@ export function BuildDashboard(props: BuildDashboardProps): JSX.Element {
         </div>
       )}
 
+      {cleanable.length > 0 && (
+        <div
+          style={{
+            marginTop: "var(--eh-sp-4)",
+            fontSize: "var(--eh-text-xs)",
+            color: "var(--eh-text-muted)",
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--eh-sp-2)",
+            flexWrap: "wrap",
+          }}
+        >
+          <span>
+            {cleanable.length} unused collection config
+            {cleanable.length === 1 ? "" : "s"} ({cleanable.map((c) => c.slug).join(", ")})
+            — created by opening the Build page, never built.
+          </span>
+          <Button
+            intent="ghost"
+            size="sm"
+            onClick={(): void => {
+              void handleCleanupUnbuilt();
+            }}
+          >
+            Clean up
+          </Button>
+        </div>
+      )}
       <DraftsRootHint />
     </div>
   );
