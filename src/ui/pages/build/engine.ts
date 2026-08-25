@@ -215,15 +215,26 @@ export interface BuildOverrides {
   readme: string;
   changelog: string;
   /**
-   * Curator's chosen integrity-verification depth. Defaults to
-   * `"fast"` (file-list + sizes only — catches Vortex's "lost file"
-   * bug without making large builds painful). `"thorough"` adds
-   * SHA-256 per file, which catches silent corruption but reads
-   * every file's bytes on the curator's machine.
+   * @deprecated Ignored. Every build verifies at `"thorough"`.
    *
-   * `"none"` is the explicit opt-out.
+   * It was a choice, and the choice was a trap: `"fast"` records paths and
+   * sizes only, and `computeStagingSetHash` needs a sha256 on EVERY file — so
+   * an external mod with no archive had no identity and could not be packaged
+   * at all. `"none"` shipped a collection with no integrity data. Kept on the
+   * type so existing drafts and saved configs still parse.
    */
   verificationLevel?: VerificationLevel;
+  /**
+   * Read every staged file again, ignoring cached hashes.
+   *
+   * Hashes are normally reused while a file's path, size and mtime all match,
+   * which is what makes verifying 205GB affordable on every build. The one
+   * thing that fingerprint cannot see is bytes rewritten IN PLACE without
+   * changing either — disk rot rather than anything Vortex does. This forces
+   * the full read for when the curator wants that guarantee rather than the
+   * fast answer.
+   */
+  reverifyEverything?: boolean;
 }
 
 // ===========================================================================
@@ -630,8 +641,15 @@ export async function runBuildPipeline(
   // `level === "none"` skips the walk entirely (no allocations, no
   // I/O); chosen by the curator when they want fast builds and
   // accept losing the post-install integrity check.
-  const verificationLevel: VerificationLevel = overrides.verificationLevel ?? "fast";
-  if (verificationLevel !== "none") {
+  // ALWAYS thorough. The level used to be the curator's choice, and the choice
+  // was a trap: `fast` records paths and sizes only, and `computeStagingSetHash`
+  // needs a sha256 on every file — so an external mod with no archive had no
+  // identity at all and simply could not be packaged. "Skip" shipped a
+  // collection with no integrity data, which is the one thing this tool exists
+  // to provide. What made thorough expensive was re-reading 205GB on every
+  // build; the hash cache removes that, so there is nothing left to trade.
+  const verificationLevel: VerificationLevel = "thorough";
+  {
     checkAbort();
     onProgress?.({
       phase: "inspecting-mods",
@@ -650,9 +668,22 @@ export async function runBuildPipeline(
     const stagingLogEvery = Math.max(25, Math.ceil(mods.length / 20));
     let stagingLogged = 0;
     const stagingStartedAt = Date.now();
+
+    // Re-verification deliberately passes NO cache, so every byte is read
+    // again. That is the escape hatch for the one thing a fingerprint cannot
+    // see: bytes rewritten in place without changing size or mtime.
+    const stagingDir = path.join(getVortexUserDataPath(), "event-horizon");
+    const stagingCache =
+      overrides.reverifyEverything === true
+        ? undefined
+        : await loadArchiveHashCache(stagingDir);
+    const stagingReuse =
+      stagingCache !== undefined ? makeHashLookup(stagingCache) : undefined;
+
     mods = await captureStagingFiles(state, gameId, mods, {
       level: verificationLevel,
       signal,
+      ...(stagingReuse !== undefined ? { hashCache: stagingReuse.lookup } : {}),
       onProgress: (done, total, mod) => {
         if (done - stagingLogged >= stagingLogEvery || done === total) {
           stagingLogged = done;
@@ -682,11 +713,30 @@ export async function runBuildPipeline(
     // `stagingFiles` populated here is what buildManifest turns into
     // stagingSetHash and what the self-check compares against, so an empty
     // count is the thing to notice — it silently disables both.
+    if (
+      stagingReuse !== undefined &&
+      stagingCache !== undefined &&
+      stagingReuse.added.size > 0
+    ) {
+      try {
+        await saveArchiveHashCache(
+          stagingDir,
+          mergeHashes(stagingCache, stagingReuse.added, new Date().toISOString()),
+        );
+      } catch (err) {
+        stagingOp.step("cache-write-failed", { err: String(err) });
+      }
+    }
+
     const withStaging = mods.filter((m) => (m.stagingFiles?.length ?? 0) > 0).length;
     stagingOp.ok({
       mods: mods.length,
       withStagingFiles: withStaging,
       withoutStagingFiles: mods.length - withStaging,
+      // Counted, not inferred — see the archive pass for why that matters.
+      filesReusedFromCache: stagingReuse?.hits ?? 0,
+      filesFreshlyHashed: stagingReuse?.added.size ?? 0,
+      reverified: overrides.reverifyEverything === true,
     });
   }
 

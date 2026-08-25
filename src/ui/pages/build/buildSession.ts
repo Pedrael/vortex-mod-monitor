@@ -180,6 +180,7 @@ export interface BuildDraftPayload {
    * the new default.
    */
   verificationLevel?: VerificationLevel;
+  reverifyEverything?: boolean;
 }
 
 export interface BuildErrorRecord {
@@ -211,6 +212,7 @@ export type BuildSessionState =
       readme: string;
       changelog: string;
       verificationLevel: VerificationLevel;
+      reverifyEverything: boolean;
       validationError?: string;
       /**
        * ISO timestamp of the autosaved draft we restored from.
@@ -234,6 +236,7 @@ export type BuildSessionState =
       readme: string;
       changelog: string;
       verificationLevel: VerificationLevel;
+      reverifyEverything: boolean;
       /**
        * 1-based queue position at the moment we entered the state.
        * Updated by the registry whenever someone ahead of us
@@ -297,6 +300,8 @@ export interface BuildAttemptInput {
    * drafts to fast on load).
    */
   verificationLevel?: VerificationLevel;
+  /** Force a full re-read, ignoring cached file hashes. */
+  reverifyEverything?: boolean;
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -450,7 +455,8 @@ class BuildSession {
       overrides: { ...ctx.collectionConfig.externalMods },
       readme: ctx.collectionConfig.readme ?? "",
       changelog: ctx.collectionConfig.changelog ?? "",
-      verificationLevel: "fast",
+      verificationLevel: "thorough",
+      reverifyEverything: false,
       restoredAt: undefined,
     });
   }
@@ -512,7 +518,8 @@ class BuildSession {
           overrides: { ...ctx.collectionConfig.externalMods },
           readme: ctx.collectionConfig.readme ?? "",
           changelog: ctx.collectionConfig.changelog ?? "",
-          verificationLevel: "fast",
+          verificationLevel: "thorough",
+      reverifyEverything: false,
         };
 
         let envelope: Awaited<
@@ -807,7 +814,8 @@ class BuildSession {
         overrides: input.overrides,
         readme: input.readme,
         changelog: input.changelog,
-        verificationLevel: input.verificationLevel ?? "fast",
+        verificationLevel: "thorough",
+        reverifyEverything: input.reverifyEverything ?? false,
         queuePosition,
       });
       return;
@@ -852,7 +860,8 @@ class BuildSession {
       overrides: input.overrides,
       readme: input.readme,
       changelog: input.changelog,
-      verificationLevel: input.verificationLevel ?? "fast",
+      verificationLevel: "thorough",
+      reverifyEverything: input.reverifyEverything ?? false,
     };
     this.setState({
       kind: "building",
@@ -871,7 +880,8 @@ class BuildSession {
             externalMods: input.overrides,
             readme: input.readme,
             changelog: input.changelog,
-            verificationLevel: input.verificationLevel ?? "fast",
+            verificationLevel: "thorough",
+        reverifyEverything: input.reverifyEverything ?? false,
           },
           {
             signal: controller.signal,
@@ -943,6 +953,7 @@ class BuildSession {
         readme: this.state.readme,
         changelog: this.state.changelog,
         verificationLevel: this.state.verificationLevel,
+      reverifyEverything: this.state.reverifyEverything,
       });
       void input; // silence unused
       return;

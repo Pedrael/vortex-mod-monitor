@@ -1,4 +1,5 @@
 import * as path from "path";
+import type { ArchiveHashLookup } from "../archiveHashCache";
 
 import { selectors } from "@nexusmods/vortex-api";
 import type { types } from "@nexusmods/vortex-api";
@@ -72,6 +73,11 @@ export type CaptureStagingOptions = {
    */
   onWarn?: (mod: AuditorMod, message: string) => void;
   signal?: AbortSignal;
+  /**
+   * Optional hash cache. Omitting it re-reads every staged file, which is what
+   * a "re-verify everything" run wants and what the install side always does.
+   */
+  hashCache?: ArchiveHashLookup;
 };
 
 /**
@@ -97,6 +103,7 @@ export async function captureStagingFiles(
     onProgress,
     onWarn,
     signal,
+    hashCache,
   } = options;
   const workers = hashConcurrency ?? getDefaultHashConcurrency();
 
@@ -164,6 +171,7 @@ export async function captureStagingFiles(
         workers,
         signal,
         (relPath, err) => onWarn?.(mod, `${relPath}: ${err.message}`),
+        hashCache,
       );
       enriched.stagingFiles = stagingFiles;
     } catch (err) {

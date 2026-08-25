@@ -281,6 +281,7 @@ function BuildWizard(props: BuildWizardProps): JSX.Element {
         readme: formState.readme,
         changelog: formState.changelog,
         verificationLevel: formState.verificationLevel,
+      reverifyEverything: formState.reverifyEverything,
       };
       void saveDraft(getAppDataPath(), "build", session.draftId, payload);
     }, DRAFT_AUTOSAVE_DEBOUNCE_MS);
@@ -568,6 +569,7 @@ function BuildWizard(props: BuildWizardProps): JSX.Element {
       readme: formState.readme,
       changelog: formState.changelog,
       verificationLevel: formState.verificationLevel,
+      reverifyEverything: formState.reverifyEverything,
     });
   };
 
@@ -961,7 +963,10 @@ function FormPanel(props: FormPanelProps): JSX.Element {
     recoverableCount,
     onRecoverArchives,
   } = props;
-  const { ctx, curator, overrides, readme, changelog, validationError, restoredAt } = state;
+  const {
+    ctx, curator, overrides, readme, changelog, validationError, restoredAt,
+    reverifyEverything,
+  } = state;
 
   const updateCurator = (patch: Partial<CuratorInput>): void =>
     onChange({ curator: { ...curator, ...patch } });
@@ -1183,11 +1188,9 @@ function FormPanel(props: FormPanelProps): JSX.Element {
       </Card>
 
       <IntegrityLevelCard
-        level={state.verificationLevel}
         modCount={ctx.mods.length}
-        onChange={(verificationLevel): void =>
-          onChange({ verificationLevel })
-        }
+        reverify={reverifyEverything}
+        onReverifyChange={(v): void => onChange({ reverifyEverything: v })}
       />
 
       <div
@@ -1232,33 +1235,30 @@ function FormPanel(props: FormPanelProps): JSX.Element {
 // ===========================================================================
 
 interface IntegrityLevelCardProps {
-  level: VerificationLevel;
   modCount: number;
-  onChange: (level: VerificationLevel) => void;
+  reverify: boolean;
+  onReverifyChange: (value: boolean) => void;
 }
 
 /**
- * Curator-facing integrity-verification picker. Every option produces
- * a valid `.ehcoll`; the trade-off is build-time cost vs. how much of
- * Vortex's "lost / corrupted file" failure mode the user-side install
- * can detect.
+ * Integrity verification is no longer a choice, and this explains why rather
+ * than just removing the control.
  *
- * - `"fast"` (default): walks each mod's staging folder, records
- *   `{path, size}` per file. Catches Vortex dropping files entirely
- *   plus any zero-byte / truncated writes. Cheap — no read of file
- *   contents.
+ * It used to offer fast / thorough / skip. "Fast" recorded paths and sizes
+ * only — but `computeStagingSetHash` requires a sha256 on every file, so an
+ * external mod with no surviving archive had no identity at all and the build
+ * refused to package it. A curator picking the option labelled "recommended"
+ * got a collection that would not build. "Skip" produced a package with no
+ * integrity data, which is the one thing this tool exists to provide.
  *
- * - `"thorough"`: same plus SHA-256 per file. Catches silent
- *   corruption (wrong content with right size). Reads every byte of
- *   every file in every mod's staging folder; cost scales with mod
- *   size, not count.
- *
- * - `"none"`: skip the check. Useful when build time matters more
- *   than catching post-install integrity bugs (or for re-builds of
- *   the same data where the curator already trusts their machine).
+ * Thorough was only ever expensive because it re-read every byte on every
+ * build. Hashes are now reused while a file's path, size and mtime all match,
+ * so the cost is paid once. What survives as a choice is the honest one: force
+ * a full re-read when you want to catch bytes rewritten in place, which is the
+ * single thing a fingerprint cannot see.
  */
 function IntegrityLevelCard(props: IntegrityLevelCardProps): JSX.Element {
-  const { level, modCount, onChange } = props;
+  const { modCount, reverify, onReverifyChange } = props;
   return (
     <Card title="Integrity verification">
       <p
@@ -1269,92 +1269,47 @@ function IntegrityLevelCard(props: IntegrityLevelCardProps): JSX.Element {
           fontSize: "var(--eh-text-sm)",
         }}
       >
-        Captures a per-mod fingerprint of the curator's staging folder
-        so users can detect when Vortex drops or corrupts files during
-        install.
+        Every build records a SHA-256 for each file in all {modCount} mods, so
+        an installing user can tell when Vortex drops or corrupts something.
+        It is also what identifies a mod whose source archive is gone. Files
+        already hashed are reused unless they changed, so this is only slow the
+        first time.
       </p>
-      <div
-        role="radiogroup"
-        aria-label="Integrity verification level"
+      <label
         style={{
           display: "flex",
-          flexDirection: "column",
-          gap: "var(--eh-sp-2)",
+          gap: "var(--eh-sp-3)",
+          padding: "var(--eh-sp-3)",
+          border: `1px solid ${reverify ? "var(--eh-accent)" : "var(--eh-border)"}`,
+          borderRadius: "var(--eh-radius-md)",
+          background: reverify ? "var(--eh-bg-elevated)" : "transparent",
+          cursor: "pointer",
+          alignItems: "flex-start",
         }}
       >
-        <IntegrityOption
-          checked={level === "fast"}
-          onChange={(): void => onChange("fast")}
-          title="Fast (recommended)"
-          subtitle={
-            `Records file paths + sizes for all ${modCount} mods. ` +
-            "Catches missing or truncated files. Build cost: minimal."
-          }
+        <input
+          type="checkbox"
+          checked={reverify}
+          onChange={(e): void => onReverifyChange(e.target.checked)}
+          style={{ marginTop: 3 }}
         />
-        <IntegrityOption
-          checked={level === "thorough"}
-          onChange={(): void => onChange("thorough")}
-          title="Thorough"
-          subtitle={
-            "Adds SHA-256 per file. Catches silent corruption. " +
-            "Build cost: reads every byte of every mod (slower for large collections)."
-          }
-        />
-        <IntegrityOption
-          checked={level === "none"}
-          onChange={(): void => onChange("none")}
-          title="Skip"
-          subtitle={
-            "No staging folder inspection. Builds fastest but users " +
-            "can't detect post-install file loss / corruption."
-          }
-        />
-      </div>
-    </Card>
-  );
-}
-
-function IntegrityOption(props: {
-  checked: boolean;
-  onChange: () => void;
-  title: string;
-  subtitle: string;
-}): JSX.Element {
-  const { checked, onChange, title, subtitle } = props;
-  return (
-    <label
-      style={{
-        display: "flex",
-        gap: "var(--eh-sp-3)",
-        padding: "var(--eh-sp-3)",
-        border: `1px solid ${
-          checked ? "var(--eh-accent)" : "var(--eh-border)"
-        }`,
-        borderRadius: "var(--eh-radius-md)",
-        background: checked ? "var(--eh-bg-elevated)" : "transparent",
-        cursor: "pointer",
-        alignItems: "flex-start",
-      }}
-    >
-      <input
-        type="radio"
-        name="eh-integrity-level"
-        checked={checked}
-        onChange={onChange}
-        style={{ marginTop: 3 }}
-      />
-      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        <span style={{ fontWeight: 600 }}>{title}</span>
-        <span
-          style={{
-            fontSize: "var(--eh-text-sm)",
-            color: "var(--eh-text-secondary)",
-          }}
-        >
-          {subtitle}
+        <span>
+          <strong>Re-read every file</strong>
+          <span
+            style={{
+              display: "block",
+              color: "var(--eh-text-secondary)",
+              fontSize: "var(--eh-text-sm)",
+            }}
+          >
+            Ignores cached hashes and reads all {modCount} mods from disk again.
+            Only worth it if you suspect a file changed without its size or
+            timestamp changing — disk corruption rather than anything Vortex
+            does. Costs a full pass over your staging folder.
+          </span>
         </span>
-      </div>
-    </label>
+      </label>
+    </Card>
   );
 }
 

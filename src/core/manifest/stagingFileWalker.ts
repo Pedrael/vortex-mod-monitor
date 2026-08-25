@@ -1,4 +1,8 @@
 import * as fs from "fs";
+import {
+  archiveFileCacheKey,
+  type ArchiveHashLookup,
+} from "../archiveHashCache";
 import * as os from "os";
 import * as path from "path";
 
@@ -59,6 +63,12 @@ export type WalkedFile = {
   /** Absolute path on disk. */
   absolutePath: string;
   size: number;
+  /**
+   * Last-modified time in ms. The walk already stats every file for its size,
+   * so this costs nothing and is what lets a hash be reused across builds
+   * instead of re-reading 205GB every time.
+   */
+  mtimeMs: number;
 };
 
 /**
@@ -124,6 +134,7 @@ export async function walkStagingFolder(
           relativePath: toPosix(path.relative(root, abs)),
           absolutePath: abs,
           size: lstat.size,
+          mtimeMs: lstat.mtimeMs,
         });
         continue;
       }
@@ -135,6 +146,7 @@ export async function walkStagingFolder(
           relativePath: toPosix(path.relative(root, abs)),
           absolutePath: abs,
           size: lstat.size,
+          mtimeMs: lstat.mtimeMs,
         });
       }
     }
@@ -170,6 +182,12 @@ export async function hashStagingFiles(
   concurrency: number | undefined,
   signal: AbortSignal | undefined,
   onFileWarn: (relativePath: string, err: Error) => void,
+  /**
+   * Optional. OPT-IN because the install side hashes a USER's staging folder,
+   * where reusing a curator-era hash would be meaningless; only the build
+   * passes one.
+   */
+  hashCache?: ArchiveHashLookup,
 ): Promise<EhcollStagingFile[]> {
   if (level === "fast") {
     return files.map<EhcollStagingFile>((f) => ({
@@ -188,7 +206,21 @@ export async function hashStagingFiles(
     workers,
     async (file) => {
       try {
+        // 205GB re-read on every build is what made "thorough" a level the
+        // curator had to opt into. A hash is reused only while path, size AND
+        // mtime all match, so a file that changed is always re-read.
+        const key =
+          hashCache !== undefined
+            ? archiveFileCacheKey(file.absolutePath, file.size, file.mtimeMs)
+            : undefined;
+        const cached = key === undefined ? undefined : hashCache!.get(key);
+        if (cached !== undefined) {
+          return { ok: true as const, sha256: cached };
+        }
         const sha256 = await hashFileSha256(file.absolutePath, signal);
+        if (key !== undefined) {
+          hashCache!.set(key, sha256);
+        }
         return { ok: true as const, sha256 };
       } catch (err) {
         if (err instanceof AbortError) throw err;
