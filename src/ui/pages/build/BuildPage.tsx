@@ -43,6 +43,7 @@ import {
   type CuratorInput,
 } from "./engine";
 import type { ExternalModConfigEntry } from "../../../core/manifest/collectionConfig";
+import { findRecoverableMods } from "../../../core/archiveRecovery";
 import type { VerificationLevel } from "../../../types/ehcoll";
 import { getAppDataPath, saveDraft } from "../../../core/draftStorage";
 import {
@@ -394,6 +395,66 @@ function BuildWizard(props: BuildWizardProps): JSX.Element {
       </div>
     );
   }
+  if (state.kind === "recovering") {
+    const pct =
+      state.total === 0 ? 0 : Math.round((state.done / state.total) * 100);
+    return (
+      <div className="eh-page">
+        {backToDashboard}
+        <Header stepIndex={stepIndex} stepLabel={stepLabels[stepIndex]} />
+        <Card title="Re-downloading source archives">
+          <p style={{ marginTop: 0, color: "var(--eh-text-secondary)" }}>
+            Fetching the archives Vortex no longer has, so these mods can be
+            identified. Only the archive is downloaded — your installed mods are
+            not touched and nothing is re-installed.
+          </p>
+          <p style={{ fontVariantNumeric: "tabular-nums" }}>
+            <strong>
+              {state.done} / {state.total}
+            </strong>{" "}
+            ({pct}%)
+            {state.currentMod !== undefined ? ` — ${state.currentMod}` : ""}
+          </p>
+          <div
+            aria-hidden="true"
+            style={{
+              height: 6,
+              borderRadius: 3,
+              background: "var(--eh-bg-elevated)",
+              overflow: "hidden",
+              margin: "var(--eh-sp-3) 0",
+            }}
+          >
+            <div
+              style={{
+                width: `${pct}%`,
+                height: "100%",
+                background: "var(--eh-accent, var(--eh-text-secondary))",
+                transition: "width 200ms linear",
+              }}
+            />
+          </div>
+          <Button
+            intent="ghost"
+            onClick={(): void => session.cancelRecovering()}
+          >
+            Stop after this one
+          </Button>
+          <p
+            style={{
+              marginBottom: 0,
+              fontSize: "var(--eh-text-sm)",
+              color: "var(--eh-text-secondary)",
+            }}
+          >
+            Vortex offers no way to abort a download already in progress, so
+            stopping takes effect once the current file finishes. Everything
+            recovered so far is kept.
+          </p>
+        </Card>
+      </div>
+    );
+  }
   if (state.kind === "error") {
     return (
       <div className="eh-page">
@@ -532,6 +593,10 @@ function BuildWizard(props: BuildWizardProps): JSX.Element {
         onBuild={onBuild}
         onDiscardDraft={handleDiscardDraft}
         onDismissDraftBanner={handleDismissDraftBanner}
+        recoverableCount={
+          findRecoverableMods(formState.ctx.mods).recoverable.length
+        }
+        onRecoverArchives={(): void => session.recoverArchives(api)}
       />
     </div>
   );
@@ -869,6 +934,9 @@ interface FormPanelProps {
   onBuild: () => void;
   onDiscardDraft: () => void;
   onDismissDraftBanner: () => void;
+  /** How many mods could have their archive fetched back from Nexus. */
+  recoverableCount: number;
+  onRecoverArchives: () => void;
 }
 
 function FormPanel(props: FormPanelProps): JSX.Element {
@@ -880,6 +948,8 @@ function FormPanel(props: FormPanelProps): JSX.Element {
     onBuild,
     onDiscardDraft,
     onDismissDraftBanner,
+    recoverableCount,
+    onRecoverArchives,
   } = props;
   const { ctx, curator, overrides, readme, changelog, validationError, restoredAt } = state;
 
@@ -937,6 +1007,14 @@ function FormPanel(props: FormPanelProps): JSX.Element {
                 </li>
               ))}
             </ul>
+            {recoverableCount > 0 && (
+              <div style={{ marginTop: "var(--eh-sp-3)" }}>
+                <Button intent="primary" size="sm" onClick={onRecoverArchives}>
+                  Re-download {recoverableCount} archive
+                  {recoverableCount === 1 ? "" : "s"}
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       )}

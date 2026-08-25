@@ -390,6 +390,12 @@ export async function loadBuildContext(
     });
   }
 
+  // What will ACTUALLY stop the manifest, now that both the disk and the cache
+  // have had their say. The pre-hash probe above is an early estimate for the
+  // log; this is the number the curator is told, and it is the one that shrinks
+  // when archives are recovered.
+  const unidentified = mods.filter((m) => m.archiveSha256 === undefined);
+
   // Two external mods can be separate downloads of byte-identical archives, so
   // they only collide once a hash exists. buildManifest catches it, but not
   // until after the staging pass — 31 minutes later on this profile.
@@ -451,7 +457,7 @@ export async function loadBuildContext(
     scopeWarnings: [
       ...describeScope(scope),
       ...describeHashedCollisions(hashedCollisions),
-      ...describeMissingArchives(noArchivePath),
+      ...describeMissingArchives(unidentified),
     ],
     externalMods,
     collectionConfig,
@@ -467,7 +473,7 @@ export async function loadBuildContext(
  * Tell the curator what a missing archive costs them, once, with a number —
  * rather than as N identical manifest errors after the build has run.
  */
-function describeMissingArchives(missing: AuditorMod[]): string[] {
+export function describeMissingArchives(missing: AuditorMod[]): string[] {
   if (missing.length === 0) return [];
   const fetchable = missing.filter(
     (m) => m.nexusModId !== undefined && m.nexusFileId !== undefined,

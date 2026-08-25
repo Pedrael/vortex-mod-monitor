@@ -74,6 +74,18 @@
 import type { types } from "@nexusmods/vortex-api";
 
 import { AbortError } from "../../../core/archiveHashing";
+import { getVortexUserDataPath } from "../../../core/paths";
+import {
+  applyRecovery,
+  findRecoverableMods,
+  recoverMissingArchives,
+} from "../../../core/archiveRecovery";
+import {
+  loadArchiveHashCache,
+  rememberArchiveHash,
+  saveArchiveHashCache,
+} from "../../../core/archiveHashCache";
+import { describeMissingArchives } from "./engine";
 import {
   deleteDraft,
   getAppDataPath,
@@ -228,6 +240,22 @@ export type BuildSessionState =
        * finishes / drops out. Purely informational.
        */
       queuePosition: number;
+    }
+  | {
+      /**
+       * Re-downloading source archives Vortex lost, so their hash can be
+       * computed. Distinct from `building` because nothing is being packaged
+       * and the form is coming straight back afterwards — the curator is
+       * repairing an input, not producing an output.
+       */
+      kind: "recovering";
+      form: Extract<BuildSessionState, { kind: "form" }>;
+      done: number;
+      total: number;
+      currentMod?: string;
+      /** Populated as it goes, so a cancel still shows what was achieved. */
+      recovered: number;
+      failed: number;
     }
   | {
       kind: "building";
@@ -541,6 +569,153 @@ class BuildSession {
         });
       }
     })();
+  }
+
+  /**
+   * Re-download the source archives Vortex has lost, and hash them.
+   *
+   * DOWNLOAD ONLY — `recoverMissingArchives` passes `allowInstall: false`, so
+   * the mods themselves are never touched. They are already installed with
+   * FOMOD choices the curator made once; re-running the installer to obtain a
+   * hash would risk the very thing the hash describes.
+   *
+   * The result is folded into the form's context in memory AND written to the
+   * hash cache, so a later build costs nothing even though Vortex's own records
+   * still point at the dead downloads.
+   */
+  recoverArchives(api: types.IExtensionApi): void {
+    if (this.state.kind !== "form") return;
+    const form = this.state;
+
+    const { recoverable } = findRecoverableMods(form.ctx.mods);
+    if (recoverable.length === 0) return;
+
+    this.controller?.abort();
+    const controller = new AbortController();
+    this.controller = controller;
+    this.setState({
+      kind: "recovering",
+      form,
+      done: 0,
+      total: recoverable.length,
+      recovered: 0,
+      failed: 0,
+    });
+
+    void (async (): Promise<void> => {
+      ehLog("info", "recover-archives.start", { mods: recoverable.length });
+      const startedAt = Date.now();
+      try {
+        const report = await recoverMissingArchives(
+          api,
+          form.ctx.gameId,
+          recoverable,
+          {
+            signal: controller.signal,
+            onProgress: (done, total, mod) => {
+              if (this.controller !== controller) return;
+              if (this.state.kind !== "recovering") return;
+              this.setState({ ...this.state, done, total, currentMod: mod.name });
+            },
+          },
+        );
+        if (this.controller !== controller) return;
+
+        // Persist before touching the UI: an interrupted save must not lose
+        // hashes the curator has already paid gigabytes for.
+        await this.persistRecoveredHashes(report);
+        if (this.controller !== controller) return;
+
+        const mods = applyRecovery(form.ctx.mods, report);
+        const stillMissing = mods.filter((m) => m.archiveSha256 === undefined);
+
+        ehLog("info", "recover-archives.ok", {
+          ms: Date.now() - startedAt,
+          recovered: report.recovered.length,
+          failed: report.failed.length,
+          stillMissing: stillMissing.length,
+          ...(report.failed.length > 0
+            ? {
+                failures: report.failed.slice(0, 15).map((f) => ({
+                  mod: f.mod.name,
+                  reason: (f as { reason: string }).reason,
+                })),
+              }
+            : {}),
+        });
+
+        this.controller = undefined;
+        this.setState({
+          ...form,
+          ctx: {
+            ...form.ctx,
+            mods,
+            // The warning has to shrink, or the curator cannot tell it worked.
+            scopeWarnings: [
+              ...form.ctx.scopeWarnings.filter(
+                (w) => !w.includes("no source archive in Vortex's download cache"),
+              ),
+              ...describeMissingArchives(stillMissing),
+              ...(report.failed.length > 0
+                ? [
+                    `${report.failed.length} archive(s) could not be re-downloaded ` +
+                      `(e.g. "${report.failed[0]!.mod.name}": ` +
+                      `${(report.failed[0] as { reason: string }).reason}). ` +
+                      `See the event-horizon log for the full list.`,
+                  ]
+                : []),
+            ],
+          },
+        });
+      } catch (err) {
+        if (this.controller !== controller) return;
+        this.controller = undefined;
+        if (isAbortError(err)) {
+          ehLog("info", "recover-archives.aborted");
+          this.setState(form);
+          return;
+        }
+        ehLog("error", "recover-archives.fail", { err });
+        this.setState({
+          kind: "error",
+          record: { errorId: ++this.errorSeq, error: err, phase: "load" },
+          formSnapshot: form,
+        });
+      }
+    })();
+  }
+
+  /** Store recovered hashes against `(modId, fileId)` so this is a one-off. */
+  private async persistRecoveredHashes(
+    report: Awaited<ReturnType<typeof recoverMissingArchives>>,
+  ): Promise<void> {
+    if (report.recovered.length === 0) return;
+    const dir = `${getVortexUserDataPath()}/event-horizon`;
+    try {
+      let cache = await loadArchiveHashCache(dir);
+      const at = new Date().toISOString();
+      for (const outcome of report.recovered) {
+        if (outcome.kind !== "recovered") continue;
+        cache = rememberArchiveHash(cache, {
+          nexusModId: outcome.nexusModId,
+          nexusFileId: outcome.nexusFileId,
+          sha256: outcome.archiveSha256,
+          ...(outcome.size !== undefined ? { size: outcome.size } : {}),
+          at,
+        });
+      }
+      await saveArchiveHashCache(dir, cache);
+    } catch (err) {
+      // A cache is an optimisation. Failing to write it costs a repeat download
+      // next time; failing the whole recovery over it would cost this one too.
+      ehLog("warn", "recover-archives.cache-write-failed", { err });
+    }
+  }
+
+  /** Stop starting new downloads. One already in flight cannot be aborted. */
+  cancelRecovering(): void {
+    if (this.state.kind !== "recovering") return;
+    this.controller?.abort();
   }
 
   cancelLoading(): void {
