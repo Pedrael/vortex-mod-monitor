@@ -1,4 +1,8 @@
 import * as crypto from "crypto";
+import {
+  archiveFileCacheKey,
+  type ArchiveHashLookup,
+} from "./archiveHashCache";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -116,6 +120,14 @@ export type EnrichOptions = {
    * latency dominates throughput.
    */
   concurrency?: number;
+  /**
+   * Optional read-through cache of file hashes.
+   *
+   * OPT-IN, and deliberately so: six call sites reach this function and only
+   * the build wants the caching. Omitting it reproduces the previous behaviour
+   * exactly — every archive is read and hashed.
+   */
+  hashCache?: ArchiveHashLookup;
   /** Called for each mod after it has been processed (success or skip). */
   onProgress?: (done: number, total: number, mod: AuditorMod) => void;
   /**
@@ -145,8 +157,12 @@ export async function enrichModsWithArchiveHashes(
   mods: AuditorMod[],
   options: EnrichOptions = {},
 ): Promise<AuditorMod[]> {
-  const { concurrency = getDefaultHashConcurrency(), onProgress, signal } =
-    options;
+  const {
+    concurrency = getDefaultHashConcurrency(),
+    onProgress,
+    signal,
+    hashCache,
+  } = options;
 
   let done = 0;
 

@@ -52,6 +52,9 @@ import { findModsWithNoArchivePath } from "../../../core/archiveRecovery";
 import {
   applyCachedHashes,
   loadArchiveHashCache,
+  makeHashLookup,
+  mergeHashes,
+  saveArchiveHashCache,
 } from "../../../core/archiveHashCache";
 import {
   packageEhcoll,
@@ -346,7 +349,12 @@ export async function loadBuildContext(
   const hashLogEvery = Math.max(25, Math.ceil(rawMods.length / 20));
   let lastLogged = 0;
   const hashStartedAt = Date.now();
+  const ehDir = path.join(getVortexUserDataPath(), "event-horizon");
+  const hashCache = await loadArchiveHashCache(ehDir);
+  const { lookup, added } = makeHashLookup(hashCache);
+
   let mods = await enrichModsWithArchiveHashes(state, gameId, rawMods, {
+    hashCache: lookup,
     concurrency: 4,
     signal,
     onProgress: (done, total, mod) => {
@@ -371,16 +379,31 @@ export async function loadBuildContext(
       });
     },
   });
-  op.step("hashing-done", { ms: Date.now() - hashStartedAt });
+  op.step("hashing-done", {
+    ms: Date.now() - hashStartedAt,
+    // A large profile is ~15 minutes of re-reading archives that have not
+    // changed. Reused vs freshly hashed says whether that is still happening.
+    reusedFromCache: rawMods.length - added.size,
+    freshlyHashed: added.size,
+  });
+
+  // Persist what was computed, so the next build reuses it. Failure here costs
+  // a repeat of the hashing pass, never the build itself.
+  if (added.size > 0) {
+    try {
+      await saveArchiveHashCache(
+        ehDir,
+        mergeHashes(hashCache, added, new Date().toISOString()),
+      );
+    } catch (err) {
+      op.step("hash-cache-write-failed", { err: String(err) });
+    }
+  }
 
   // Fill gaps left by archives Vortex no longer has, from hashes recovered on a
   // previous run. Applied AFTER hashing on purpose: anything hashed from a real
   // file this run keeps that value, so a stale cache entry can never contradict
-  // bytes on disk. Recovering 226 archives is gigabytes — it should cost that
-  // once, not every build.
-  const hashCache = await loadArchiveHashCache(
-    path.join(getVortexUserDataPath(), "event-horizon"),
-  );
+  // bytes on disk.
   const cached = applyCachedHashes(mods, hashCache);
   mods = cached.mods;
   if (cached.filled > 0) {

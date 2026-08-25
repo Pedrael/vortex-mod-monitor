@@ -56,6 +56,80 @@ export const emptyArchiveHashCache = (): ArchiveHashCache => ({
   entries: {},
 });
 
+/**
+ * `file:<path>|<size>|<mtimeMs>` — a fingerprint of the file ON DISK.
+ *
+ * The other key answers "what was this Nexus file's hash?" for archives that
+ * are gone. This one answers a different question: "have I already hashed
+ * exactly these bytes?" — so a build does not re-read 730 archives, ~15 minutes
+ * and tens of gigabytes, every single time the Build page is opened.
+ *
+ * Size AND modification time both have to match. Changing a file's contents
+ * without changing either is not something that happens by accident: any write
+ * updates mtime, and the pair is the standard fingerprint build tools use for
+ * exactly this. A file replaced with different bytes of identical size at an
+ * identical millisecond would be missed — that is a deliberate act, not a
+ * failure mode, and the archive-level sha256 is what would catch it anyway.
+ */
+export function archiveFileCacheKey(
+  absolutePath: string,
+  size: number,
+  mtimeMs: number,
+): string {
+  return `file:${absolutePath}|${size}|${Math.floor(mtimeMs)}`;
+}
+
+/**
+ * A read-through cache of file hashes, as `enrichModsWithArchiveHashes` sees
+ * it. Deliberately tiny: the hashing pass should not know about disk layout,
+ * JSON, or when a save happens.
+ */
+export type ArchiveHashLookup = {
+  get(key: string): string | undefined;
+  set(key: string, sha256: string): void;
+};
+
+/** Wrap a loaded cache as a lookup, recording whatever gets added. */
+export function makeHashLookup(cache: ArchiveHashCache): {
+  lookup: ArchiveHashLookup;
+  /** Entries added this run; empty means nothing needs saving. */
+  added: Map<string, string>;
+  hits: number;
+} {
+  const added = new Map<string, string>();
+  let hits = 0;
+  return {
+    added,
+    get hits() {
+      return hits;
+    },
+    lookup: {
+      get(key) {
+        const hit = cache.entries[key]?.sha256;
+        if (hit !== undefined) hits += 1;
+        return hit;
+      },
+      set(key, sha256) {
+        if (isHex64(sha256)) added.set(key, sha256);
+      },
+    },
+  };
+}
+
+/** Merge freshly-computed hashes into a cache. Input is not mutated. */
+export function mergeHashes(
+  cache: ArchiveHashCache,
+  added: ReadonlyMap<string, string>,
+  at: string,
+): ArchiveHashCache {
+  if (added.size === 0) return cache;
+  const entries = { ...cache.entries };
+  for (const [key, sha256] of added) {
+    entries[key] = { sha256, recoveredAt: at };
+  }
+  return { schemaVersion: 1, entries };
+}
+
 /** `nexus:<modId>:<fileId>` — the same identity the manifest uses. */
 export function archiveHashCacheKey(
   nexusModId: string | number,

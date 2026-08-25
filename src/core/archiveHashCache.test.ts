@@ -12,9 +12,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   ARCHIVE_HASH_CACHE_FILE,
   applyCachedHashes,
+  archiveFileCacheKey,
   archiveHashCacheKey,
   emptyArchiveHashCache,
   loadArchiveHashCache,
+  makeHashLookup,
+  mergeHashes,
   rememberArchiveHash,
   saveArchiveHashCache,
 } from "./archiveHashCache";
@@ -152,5 +155,59 @@ describe("persistence", () => {
     // Written to a temp name and renamed, so readers never see a partial file.
     await saveArchiveHashCache(dir, emptyArchiveHashCache());
     expect(fs.readdirSync(dir)).toEqual([ARCHIVE_HASH_CACHE_FILE]);
+  });
+});
+
+describe("file fingerprint cache", () => {
+  // Re-hashing 730 archives is ~15 minutes and tens of gigabytes on every
+  // build. Skipping that is only safe if the fingerprint proves the bytes are
+  // the ones already hashed.
+  it("reuses a hash only when path, size AND mtime all match", () => {
+    const cache = mergeHashes(
+      emptyArchiveHashCache(),
+      new Map([[archiveFileCacheKey("C:/dl/a.7z", 100, 1000), SHA_A]]),
+      "t",
+    );
+    const { lookup } = makeHashLookup(cache);
+    expect(lookup.get(archiveFileCacheKey("C:/dl/a.7z", 100, 1000))).toBe(SHA_A);
+    // any one of them differing is a different file as far as this is concerned
+    expect(lookup.get(archiveFileCacheKey("C:/dl/a.7z", 101, 1000))).toBeUndefined();
+    expect(lookup.get(archiveFileCacheKey("C:/dl/a.7z", 100, 1001))).toBeUndefined();
+    expect(lookup.get(archiveFileCacheKey("C:/dl/b.7z", 100, 1000))).toBeUndefined();
+  });
+
+  it("ignores sub-millisecond mtime jitter", () => {
+    // Windows reports fractional mtimeMs; the same file must not miss its own
+    // entry because the float came back a hair different.
+    expect(archiveFileCacheKey("a", 1, 1000.4)).toBe(
+      archiveFileCacheKey("a", 1, 1000.9),
+    );
+  });
+
+  it("records what it computed, and nothing it did not", () => {
+    const { lookup, added } = makeHashLookup(emptyArchiveHashCache());
+    lookup.set(archiveFileCacheKey("C:/dl/a.7z", 1, 2), SHA_A);
+    lookup.set(archiveFileCacheKey("C:/dl/b.7z", 1, 2), "not-a-hash");
+    expect(added.size).toBe(1);
+  });
+
+  it("keeps the nexus-keyed entries when merging file hashes", () => {
+    // Both key spaces share one file; recovering archives and hashing them
+    // must not evict each other.
+    const withNexus = rememberArchiveHash(emptyArchiveHashCache(), {
+      nexusModId: 1, nexusFileId: 2, sha256: SHA_A, at: "t",
+    });
+    const merged = mergeHashes(
+      withNexus,
+      new Map([[archiveFileCacheKey("C:/dl/a.7z", 1, 2), SHA_B]]),
+      "t",
+    );
+    expect(merged.entries[archiveHashCacheKey(1, 2)]!.sha256).toBe(SHA_A);
+    expect(Object.keys(merged.entries)).toHaveLength(2);
+  });
+
+  it("returns the same cache when nothing was computed", () => {
+    const cache = emptyArchiveHashCache();
+    expect(mergeHashes(cache, new Map(), "t")).toBe(cache);
   });
 });
