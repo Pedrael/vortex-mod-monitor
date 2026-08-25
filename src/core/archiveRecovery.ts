@@ -42,7 +42,7 @@ import * as path from "path";
 
 import { selectors, types } from "@nexusmods/vortex-api";
 
-import { AbortError, hashFileSha256 } from "./archiveHashing";
+import { AbortError, getModArchivePath, hashFileSha256 } from "./archiveHashing";
 import type { AuditorMod } from "./getModsListForProfile";
 
 /** A mod the build cannot identify, and the Nexus file that would fix it. */
@@ -83,10 +83,34 @@ export type RecoveryOptions = {
 };
 
 /**
+ * Mods whose archive Vortex cannot even point at, known BEFORE hashing.
+ *
+ * `getModArchivePath` reads state only — the mod's `archiveId`, then the
+ * download record it names — so this costs nothing and can run the instant a
+ * build starts. That matters: the alternative is discovering the same thing 15
+ * minutes into a hashing pass, or 45 minutes in when the manifest refuses.
+ *
+ * It is a LOWER BOUND on the problem. A path that resolves can still point at
+ * a file that has since been deleted, and only `stat` reveals that — those
+ * surface during hashing as usual. Everything reported here is definitely
+ * missing; not everything missing is reported here.
+ */
+export function findModsWithNoArchivePath(
+  state: types.IState,
+  gameId: string,
+  mods: AuditorMod[],
+): AuditorMod[] {
+  return mods.filter(
+    (mod) => getModArchivePath(state, mod.archiveId, gameId) === undefined,
+  );
+}
+
+/**
  * Which mods a recovery run would target.
  *
- * Cheap and pure — it reads Vortex state and nothing else, so it can be called
- * before the expensive hashing pass to warn that a build is going to fail.
+ * Keys off `archiveSha256`, so this is meaningful only AFTER the hashing pass —
+ * before it, no mod has a hash and everything would look broken. For the
+ * pre-hash warning use {@link findModsWithNoArchivePath}.
  */
 export function findRecoverableMods(mods: AuditorMod[]): {
   recoverable: RecoverableMod[];

@@ -912,6 +912,34 @@ function FormPanel(props: FormPanelProps): JSX.Element {
           onDismiss={onDismissDraftBanner}
         />
       )}
+      {ctx.scopeWarnings.length > 0 && (
+        <div
+          role="status"
+          style={{
+            padding: "var(--eh-sp-3) var(--eh-sp-4)",
+            background: "var(--eh-bg-elevated)",
+            border: "1px solid var(--eh-warning, var(--eh-border))",
+            borderRadius: "var(--eh-radius-md)",
+            color: "var(--eh-text-primary)",
+            fontSize: "var(--eh-text-sm)",
+            display: "flex",
+            gap: "var(--eh-sp-2)",
+            alignItems: "flex-start",
+          }}
+        >
+          <span aria-hidden="true">⚠</span>
+          <div>
+            <strong>Worth knowing before you build.</strong>
+            <ul style={{ margin: "var(--eh-sp-2) 0 0", paddingLeft: "var(--eh-sp-4)" }}>
+              {ctx.scopeWarnings.map((warning) => (
+                <li key={warning} style={{ marginBottom: "var(--eh-sp-1)" }}>
+                  {warning}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
       {ctx.mods.length === 0 && (
         <div
           role="alert"

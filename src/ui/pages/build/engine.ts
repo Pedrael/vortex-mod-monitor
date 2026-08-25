@@ -48,6 +48,7 @@ import {
   findHashedIdentityCollisions,
   scopeCollectionMods,
 } from "../../../core/manifest/collectionScope";
+import { findModsWithNoArchivePath } from "../../../core/archiveRecovery";
 import {
   packageEhcoll,
   type BundledArchiveSpec,
@@ -311,6 +312,22 @@ export async function loadBuildContext(
       : {}),
   });
 
+  // Costs nothing — pure state — and it answers in one second the question
+  // that otherwise costs 15 minutes of hashing, or 45 minutes and a rejected
+  // manifest: are the source archives even still there?
+  const noArchivePath = findModsWithNoArchivePath(state, gameId, rawMods);
+  if (noArchivePath.length > 0) {
+    const fetchable = noArchivePath.filter(
+      (m) => m.nexusModId !== undefined && m.nexusFileId !== undefined,
+    ).length;
+    op.step("archives-missing", {
+      mods: noArchivePath.length,
+      recoverableFromNexus: fetchable,
+      noNexusSource: noArchivePath.length - fetchable,
+      example: noArchivePath[0]?.name,
+    });
+  }
+
   onProgress?.({
     phase: "hashing-mods",
     message: `Hashing ${rawMods.length} mod archives...`,
@@ -413,6 +430,7 @@ export async function loadBuildContext(
     scopeWarnings: [
       ...describeScope(scope),
       ...describeHashedCollisions(hashedCollisions),
+      ...describeMissingArchives(noArchivePath),
     ],
     externalMods,
     collectionConfig,
@@ -422,6 +440,36 @@ export async function loadBuildContext(
     defaultVersion: "1.0.0",
     defaultAuthor: "",
   };
+}
+
+/**
+ * Tell the curator what a missing archive costs them, once, with a number —
+ * rather than as N identical manifest errors after the build has run.
+ */
+function describeMissingArchives(missing: AuditorMod[]): string[] {
+  if (missing.length === 0) return [];
+  const fetchable = missing.filter(
+    (m) => m.nexusModId !== undefined && m.nexusFileId !== undefined,
+  ).length;
+  const lines = [
+    `${missing.length} mod(s) have no source archive in Vortex's download cache. ` +
+      `A mod's identity is the hash of its archive, so these cannot be packaged ` +
+      `until the archives are back.`,
+  ];
+  if (fetchable > 0) {
+    lines.push(
+      `${fetchable} of them are Nexus mods and can be fetched automatically — ` +
+        `Event Horizon downloads the archive only, and never re-installs the mod.`,
+    );
+  }
+  if (fetchable < missing.length) {
+    lines.push(
+      `${missing.length - fetchable} have no Nexus source, so their archive has ` +
+        `to be re-imported by hand (or the mod rebuilt at verification level ` +
+        `"thorough", which identifies it from its deployed files instead).`,
+    );
+  }
+  return lines;
 }
 
 /**
