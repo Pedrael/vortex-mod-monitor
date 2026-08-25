@@ -206,6 +206,20 @@ describe("file fingerprint cache", () => {
     expect(Object.keys(merged.entries)).toHaveLength(2);
   });
 
+  it("re-verify ignores existing entries but STILL records what it computes", () => {
+    // Bypassing the cache entirely meant one re-verification cost the curator
+    // the fast path forever: everything re-read, nothing written, and the next
+    // ordinary build paying the full 26-minute pass again.
+    const key = archiveFileCacheKey("C:/dl/a.7z", 1, 2);
+    const cache = mergeHashes(emptyArchiveHashCache(), new Map([[key, SHA_A]]), "t");
+    const { lookup, added, ...rest } = makeHashLookup(cache, { ignoreExisting: true });
+
+    expect(lookup.get(key)).toBeUndefined(); // forced to re-read
+    lookup.set(key, SHA_B); // and the fresh answer is kept
+    expect(added.get(key)).toBe(SHA_B);
+    expect(rest.hits).toBe(0);
+  });
+
   it("returns the same cache when nothing was computed", () => {
     const cache = emptyArchiveHashCache();
     expect(mergeHashes(cache, new Map(), "t")).toBe(cache);

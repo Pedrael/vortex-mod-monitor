@@ -673,17 +673,20 @@ export async function runBuildPipeline(
     // again. That is the escape hatch for the one thing a fingerprint cannot
     // see: bytes rewritten in place without changing size or mtime.
     const stagingDir = path.join(getVortexUserDataPath(), "event-horizon");
-    const stagingCache =
-      overrides.reverifyEverything === true
-        ? undefined
-        : await loadArchiveHashCache(stagingDir);
-    const stagingReuse =
-      stagingCache !== undefined ? makeHashLookup(stagingCache) : undefined;
+    const stagingCache = await loadArchiveHashCache(stagingDir);
+    // Re-verification ignores what is already cached, so every byte is read
+    // again — but it still RECORDS what it computes. Skipping the cache
+    // entirely was the first attempt, and it meant one re-verify threw away the
+    // fast path permanently: 26 minutes of hashing, nothing written, and the
+    // next ordinary build paying it all over again.
+    const stagingReuse = makeHashLookup(stagingCache, {
+      ignoreExisting: overrides.reverifyEverything === true,
+    });
 
     mods = await captureStagingFiles(state, gameId, mods, {
       level: verificationLevel,
       signal,
-      ...(stagingReuse !== undefined ? { hashCache: stagingReuse.lookup } : {}),
+      hashCache: stagingReuse.lookup,
       onProgress: (done, total, mod) => {
         if (done - stagingLogged >= stagingLogEvery || done === total) {
           stagingLogged = done;
@@ -713,11 +716,7 @@ export async function runBuildPipeline(
     // `stagingFiles` populated here is what buildManifest turns into
     // stagingSetHash and what the self-check compares against, so an empty
     // count is the thing to notice — it silently disables both.
-    if (
-      stagingReuse !== undefined &&
-      stagingCache !== undefined &&
-      stagingReuse.added.size > 0
-    ) {
+    if (stagingReuse.added.size > 0) {
       try {
         await saveArchiveHashCache(
           stagingDir,
@@ -734,8 +733,8 @@ export async function runBuildPipeline(
       withStagingFiles: withStaging,
       withoutStagingFiles: mods.length - withStaging,
       // Counted, not inferred — see the archive pass for why that matters.
-      filesReusedFromCache: stagingReuse?.hits ?? 0,
-      filesFreshlyHashed: stagingReuse?.added.size ?? 0,
+      filesReusedFromCache: stagingReuse.hits,
+      filesFreshlyHashed: stagingReuse.added.size,
       reverified: overrides.reverifyEverything === true,
     });
   }

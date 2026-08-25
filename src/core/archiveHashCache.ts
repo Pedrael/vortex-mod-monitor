@@ -89,8 +89,22 @@ export type ArchiveHashLookup = {
   set(key: string, sha256: string): void;
 };
 
-/** Wrap a loaded cache as a lookup, recording whatever gets added. */
-export function makeHashLookup(cache: ArchiveHashCache): {
+/**
+ * Wrap a loaded cache as a lookup, recording whatever gets added.
+ *
+ * `ignoreExisting` makes every read miss while still recording what gets
+ * computed. That is what a "re-verify everything" run needs: it must re-read
+ * the bytes rather than trust a fingerprint, but it must still leave the cache
+ * populated — otherwise one re-verification permanently costs the curator the
+ * fast path, and the next ordinary build pays the full pass again for no
+ * reason. Bypassing the cache entirely was the first attempt and it had exactly
+ * that effect: 26 minutes of hashing, nothing written, right back to 26
+ * minutes.
+ */
+export function makeHashLookup(
+  cache: ArchiveHashCache,
+  options: { ignoreExisting?: boolean } = {},
+): {
   lookup: ArchiveHashLookup;
   /** Entries added this run; empty means nothing needs saving. */
   added: Map<string, string>;
@@ -105,6 +119,7 @@ export function makeHashLookup(cache: ArchiveHashCache): {
     },
     lookup: {
       get(key) {
+        if (options.ignoreExisting === true) return undefined;
         const hit = cache.entries[key]?.sha256;
         if (hit !== undefined) hits += 1;
         return hit;
