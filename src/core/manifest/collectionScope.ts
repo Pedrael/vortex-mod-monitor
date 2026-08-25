@@ -256,20 +256,48 @@ export function describeScope(scope: CollectionScope): string[] {
 }
 
 /**
- * A stable fingerprint of WHICH mods a collection was built from.
+ * A stable fingerprint of WHAT a collection was built from.
  *
- * Answers one question cheaply: has the profile's membership moved since the
- * last build? Pure state, no disk — the dashboard can ask it on every render.
+ * Answers one question cheaply: has the profile moved since the last build?
+ * Pure state, no disk — the dashboard can ask it on every render.
  *
- * It covers membership and nothing else. A curator who edits a file inside a
- * staged mod changes what the collection ships without changing this, so an
- * unchanged fingerprint means "the same mods", never "the same collection".
- * Anything shown to a curator on the strength of it has to say so.
+ * ## Identity, not just membership
+ *
+ * This hashed mod ids alone at first, and it was wrong in the field: the
+ * curator updated four mods, and the fingerprint did not move. Measured from
+ * the dashboard's own diagnostics, before and after: `enabled: 954`, the same
+ * 954 ids, the same hash. Updating a mod in Vortex does not necessarily mint a
+ * new mod key — the entry survives and its version, file id and staging folder
+ * change underneath it. A fingerprint over ids is blind to precisely the event
+ * a curator is most likely to be shipping an update FOR.
+ *
+ * So each mod contributes what actually identifies the bytes it will ship:
+ * its id, its version, the Nexus file it came from, and its staging folder.
+ * Any of those moving is a different collection.
+ *
+ * It still covers only what Vortex records. A curator who edits a file inside
+ * a staged mod changes what ships without changing any of these, so an
+ * unchanged fingerprint means "the same mods, at the same versions", never
+ * "the same bytes". Anything shown to a curator on the strength of it has to
+ * say so.
  */
 export function profileFingerprint(mods: readonly AuditorMod[]): string {
-  const ids = mods.map((m) => m.id).sort();
-  // Length-prefixed so two different id lists cannot collide by
-  // concatenating into the same string.
-  const payload = ids.map((id) => `${id.length}:${id}`).join("");
+  // Every field is length-prefixed, so nothing collides by concatenating into
+  // the same string — not two fields within a mod (id "ab" + version "c" vs
+  // id "a" + version "bc"), and not two mods within a profile.
+  const prefixed = (part: string): string => `${part.length}:${part}`;
+  const parts = mods
+    .map((m) =>
+      [
+        m.id,
+        m.version ?? "",
+        m.nexusFileId === undefined ? "" : String(m.nexusFileId),
+        m.installationPath ?? "",
+      ]
+        .map(prefixed)
+        .join(""),
+    )
+    .sort();
+  const payload = parts.map(prefixed).join("");
   return createHash("sha256").update(payload).digest("hex");
 }

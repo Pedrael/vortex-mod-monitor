@@ -230,6 +230,41 @@ describe("profileFingerprint", () => {
     );
   });
 
+  it("MOVES when a mod is updated in place — same id, new version", () => {
+    // The field failure: the curator updated four mods and the fingerprint did
+    // not budge. Vortex keeps the mod entry and swaps version / file id /
+    // staging folder underneath it, so hashing ids alone is blind to exactly
+    // the event an update is usually FOR.
+    const before = profileFingerprint([mod({ id: "karma", version: "1.0.0" })]);
+    const after = profileFingerprint([mod({ id: "karma", version: "1.1.0" })]);
+    expect(after).not.toBe(before);
+  });
+
+  it("moves when the Nexus file changes but the version string does not", () => {
+    // Re-uploads happen, and they are a different download.
+    const before = profileFingerprint([mod({ id: "k", version: "1.0", nexusFileId: 111 })]);
+    const after = profileFingerprint([mod({ id: "k", version: "1.0", nexusFileId: 222 })]);
+    expect(after).not.toBe(before);
+  });
+
+  it("moves when the staging folder is replaced", () => {
+    const before = profileFingerprint([mod({ id: "k", installationPath: "k-old" })]);
+    const after = profileFingerprint([mod({ id: "k", installationPath: "k-new" })]);
+    expect(after).not.toBe(before);
+  });
+
+  it("does NOT move when nothing about the mods changed", () => {
+    const one = [mod({ id: "a", version: "1", installationPath: "a" })];
+    const two = [mod({ id: "a", version: "1", installationPath: "a" })];
+    expect(profileFingerprint(one)).toBe(profileFingerprint(two));
+  });
+
+  it("cannot be fooled by fields that concatenate the same way", () => {
+    expect(profileFingerprint([mod({ id: "ab", version: "c" })])).not.toBe(
+      profileFingerprint([mod({ id: "a", version: "bc" })]),
+    );
+  });
+
   it("is empty-safe", () => {
     expect(profileFingerprint([])).toHaveLength(64);
   });
