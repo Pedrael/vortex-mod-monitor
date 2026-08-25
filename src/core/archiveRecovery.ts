@@ -53,8 +53,21 @@ export type RecoverableMod = {
 };
 
 export type RecoveryOutcome =
-  /** Downloaded and hashed; `archiveSha256` is now known. */
-  | { kind: "recovered"; mod: AuditorMod; archiveSha256: string; downloadId: string }
+  /**
+   * Downloaded and hashed; `archiveSha256` is now known.
+   *
+   * The Nexus ids are echoed back so the caller can persist the hash against a
+   * stable identity — the whole point of paying for a download once.
+   */
+  | {
+      kind: "recovered";
+      mod: AuditorMod;
+      archiveSha256: string;
+      downloadId: string;
+      nexusModId: number;
+      nexusFileId: number;
+      size?: number;
+    }
   /** Nexus refused, the download failed, or the file never landed. */
   | { kind: "failed"; mod: AuditorMod; reason: string };
 
@@ -240,7 +253,15 @@ export async function recoverMissingArchives(
       }
 
       const archiveSha256 = await hashFileSha256(archivePath, options.signal);
-      recovered.push({ kind: "recovered", mod: target.mod, archiveSha256, downloadId });
+      recovered.push({
+        kind: "recovered",
+        mod: target.mod,
+        archiveSha256,
+        downloadId,
+        nexusModId: target.nexusModId,
+        nexusFileId: target.nexusFileId,
+        size: stat.size,
+      });
     } catch (err) {
       if (err instanceof AbortError) throw err;
       failed.push({

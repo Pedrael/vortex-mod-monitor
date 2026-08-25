@@ -50,6 +50,10 @@ import {
 } from "../../../core/manifest/collectionScope";
 import { findModsWithNoArchivePath } from "../../../core/archiveRecovery";
 import {
+  applyCachedHashes,
+  loadArchiveHashCache,
+} from "../../../core/archiveHashCache";
+import {
   packageEhcoll,
   type BundledArchiveSpec,
   type PackageEhcollResult,
@@ -342,7 +346,7 @@ export async function loadBuildContext(
   const hashLogEvery = Math.max(25, Math.ceil(rawMods.length / 20));
   let lastLogged = 0;
   const hashStartedAt = Date.now();
-  const mods = await enrichModsWithArchiveHashes(state, gameId, rawMods, {
+  let mods = await enrichModsWithArchiveHashes(state, gameId, rawMods, {
     concurrency: 4,
     signal,
     onProgress: (done, total, mod) => {
@@ -368,6 +372,23 @@ export async function loadBuildContext(
     },
   });
   op.step("hashing-done", { ms: Date.now() - hashStartedAt });
+
+  // Fill gaps left by archives Vortex no longer has, from hashes recovered on a
+  // previous run. Applied AFTER hashing on purpose: anything hashed from a real
+  // file this run keeps that value, so a stale cache entry can never contradict
+  // bytes on disk. Recovering 226 archives is gigabytes — it should cost that
+  // once, not every build.
+  const hashCache = await loadArchiveHashCache(
+    path.join(getVortexUserDataPath(), "event-horizon"),
+  );
+  const cached = applyCachedHashes(mods, hashCache);
+  mods = cached.mods;
+  if (cached.filled > 0) {
+    op.step("hashes-from-cache", {
+      filled: cached.filled,
+      cacheEntries: Object.keys(hashCache.entries).length,
+    });
+  }
 
   // Two external mods can be separate downloads of byte-identical archives, so
   // they only collide once a hash exists. buildManifest catches it, but not
