@@ -478,22 +478,34 @@ export function describeMissingArchives(missing: AuditorMod[]): string[] {
   const fetchable = missing.filter(
     (m) => m.nexusModId !== undefined && m.nexusFileId !== undefined,
   ).length;
-  const lines = [
-    `${missing.length} mod(s) have no source archive in Vortex's download cache. ` +
-      `A mod's identity is the hash of its archive, so these cannot be packaged ` +
-      `until the archives are back.`,
-  ];
-  if (fetchable > 0) {
-    lines.push(
-      `${fetchable} of them are Nexus mods and can be fetched automatically — ` +
-        `Event Horizon downloads the archive only, and never re-installs the mod.`,
-    );
+  const n = missing.length;
+  const noun = `mod${n === 1 ? "" : "s"}`;
+
+  // When NONE can be fetched, saying it twice — "6 have no archive" then "6
+  // have no Nexus source" — reads like twelve mods. One sentence, one number.
+  if (fetchable === 0) {
+    return [
+      `${n} ${noun} have no source archive in Vortex's download cache and no ` +
+        `Nexus source to fetch one from. Build at verification level ` +
+        `"thorough" to identify them from their deployed files instead, or ` +
+        `re-import their archives by hand. At "fast" they cannot be packaged.`,
+    ];
   }
-  if (fetchable < missing.length) {
+
+  const lines = [
+    `${n} ${noun} have no source archive in Vortex's download cache. A mod's ` +
+      `identity is the hash of its archive, so these cannot be packaged until ` +
+      `the archives are back.`,
+  ];
+  lines.push(
+    `${fetchable} can be fetched automatically — Event Horizon downloads the ` +
+      `archive only, and never re-installs the mod.`,
+  );
+  if (fetchable < n) {
     lines.push(
-      `${missing.length - fetchable} have no Nexus source, so their archive has ` +
-        `to be re-imported by hand (or the mod rebuilt at verification level ` +
-        `"thorough", which identifies it from its deployed files instead).`,
+      `The other ${n - fetchable} have no Nexus source: build at verification ` +
+        `level "thorough" to identify them from their deployed files, or ` +
+        `re-import their archives by hand.`,
     );
   }
   return lines;
