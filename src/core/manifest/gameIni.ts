@@ -1,0 +1,194 @@
+/**
+ * ──────────────────────────────────────────────────────────────────────
+ * The game's own INI settings — shipped, minus the ones that belong to the
+ * machine rather than to the collection.
+ *
+ * A Creation Engine collection is not only its mods. `uGridsToLoad`,
+ * `bInvalidateOlderFiles`, the Papyrus block, resource directories — these
+ * change how the game loads and behaves, they are part of what the curator
+ * tuned, and none of them were in the package. Measured on a real Fallout 4
+ * setup: 328 settings across three files, all of them absent from every
+ * `.ehcoll` built so far.
+ *
+ * ## Why this cannot be a straight copy
+ *
+ * The same files hold settings that describe the CURATOR'S HARDWARE. Copying
+ * those onto somebody else is worse than shipping nothing:
+ *
+ *   iSize W / iSize H         their monitor, not yours (1920x1080 here)
+ *   iNumHWThreads             their CPU (4 here)
+ *   iMaxAllocatedMemoryBytes  their RAM
+ *   bFull Screen / bBorderless / bTopMostWindow / iPresentInterval
+ *                             their display and VSync preference
+ *   sAudioDevice / bEnableAudio
+ *                             their sound hardware
+ *   fDefault*FOV              a matter of taste, and motion sickness
+ *
+ * So each key is owned by either the COLLECTION or the MACHINE, and only
+ * collection-owned keys are applied on install. The list below is the whole
+ * of that judgement, in one place, so it can be argued with.
+ *
+ * ## The list is a denylist, and that has a known failure mode
+ *
+ * Anything not named here is applied. A hardware key nobody classified will
+ * therefore reach the user — so `machineOwnedKeys` errs toward including
+ * things, and anything matching the shape of a display, device or thread
+ * setting belongs in it even if it is rarely set.
+ * ──────────────────────────────────────────────────────────────────────
+ */
+
+/** One `key=value`, with the section it came from. */
+export type IniSetting = {
+  /** Section name without brackets, e.g. `Display`. Empty for keys above any section. */
+  section: string;
+  key: string;
+  value: string;
+};
+
+/** One INI file's parsed contents. */
+export type IniFileSnapshot = {
+  /** File name only, e.g. `Fallout4Prefs.ini`. Never a full path — that is the curator's disk. */
+  fileName: string;
+  settings: IniSetting[];
+};
+
+/**
+ * INI files that make up a game's configuration, in Vortex's own load order:
+ * later files override earlier ones, and `*Custom.ini` is where hand edits go.
+ */
+const INI_FILES_BY_GAME: Record<string, { folder: string; files: string[] }> = {
+  fallout4: {
+    folder: "Fallout4",
+    files: ["Fallout4.ini", "Fallout4Prefs.ini", "Fallout4Custom.ini"],
+  },
+  skyrimse: {
+    folder: "Skyrim Special Edition",
+    files: ["Skyrim.ini", "SkyrimPrefs.ini", "SkyrimCustom.ini"],
+  },
+  fallout3: { folder: "Fallout3", files: ["Fallout.ini", "FalloutPrefs.ini"] },
+  falloutnv: { folder: "FalloutNV", files: ["Fallout.ini", "FalloutPrefs.ini"] },
+  starfield: {
+    folder: "Starfield",
+    files: ["StarfieldPrefs.ini", "StarfieldCustom.ini"],
+  },
+};
+
+/**
+ * Keys that describe the machine or the person, never the collection.
+ *
+ * Matched case-insensitively against the key name alone, because the same key
+ * appears under different sections across games. Prefix matches are used where
+ * a family shares a stem (`iSize W`, `iSize H`).
+ */
+const MACHINE_OWNED = [
+  // Display and window
+  "isize w",
+  "isize h",
+  "bfull screen",
+  "bfullscreen",
+  "bborderless",
+  "btopmostwindow",
+  "bmaximizewindow",
+  "ipresentinterval", // VSync
+  "iadapter",
+  "sd3ddevice",
+  "uidisplay",
+  "benablefilewatcher",
+  // Field of view — taste, and a motion-sickness trigger
+  "fdefaultworldfov",
+  "fdefault1stpersonfov",
+  "fdefaultfov",
+  // CPU / memory
+  "inumhwthreads",
+  "imaxallocatedmemorybytes",
+  "busethreadedai",
+  "inumthreads",
+  // Audio hardware
+  "saudiodevice",
+  "benableaudio",
+  "imaxdesired",
+  // Language / locale
+  "slanguage",
+  // Personal counters and session state — not settings at all. Shipping a
+  // screenshot index tells the user how many screenshots the curator took and
+  // then renumbers theirs.
+  "iscreenshotindex",
+  "sscreenshotbasename",
+] as const;
+
+/** Is this key the user's business rather than the collection's? */
+export function isMachineOwned(key: string): boolean {
+  const k = key.trim().toLowerCase();
+  return MACHINE_OWNED.some((owned) => k === owned || k.startsWith(`${owned} `));
+}
+
+/** The machine-owned keys, for surfacing to a curator or a user. */
+export function machineOwnedKeys(): readonly string[] {
+  return MACHINE_OWNED;
+}
+
+/**
+ * Parse INI text into ordered settings.
+ *
+ * Deliberately lossy in one direction and lossless in the other: comments and
+ * blank lines are dropped because nothing consumes them, while duplicate keys
+ * are KEPT in order, since the game itself takes the last one and dropping
+ * earlier duplicates would silently change which value wins.
+ */
+export function parseIni(text: string): IniSetting[] {
+  const out: IniSetting[] = [];
+  let section = "";
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.length === 0) continue;
+    if (line.startsWith(";") || line.startsWith("#")) continue;
+    if (line.startsWith("[")) {
+      const close = line.indexOf("]");
+      section = close > 0 ? line.slice(1, close).trim() : line.slice(1).trim();
+      continue;
+    }
+    const eq = line.indexOf("=");
+    if (eq <= 0) continue;
+    out.push({
+      section,
+      key: line.slice(0, eq).trim(),
+      // Values keep their spacing and case: a path or a device name is not
+      // ours to normalise.
+      value: line.slice(eq + 1).trim(),
+    });
+  }
+  return out;
+}
+
+/** Which files this game keeps its settings in, and where. */
+export function iniLocationFor(
+  gameId: string,
+  documentsPath: string,
+): { dir: string; files: string[] } | undefined {
+  const spec = INI_FILES_BY_GAME[gameId];
+  if (spec === undefined) return undefined;
+  return {
+    dir: `${documentsPath}/My Games/${spec.folder}`.replace(/\\/g, "/"),
+    files: spec.files,
+  };
+}
+
+/**
+ * Split a captured snapshot into what the collection ships and what stays the
+ * user's.
+ *
+ * Both halves are returned because the second is worth SAYING: a curator who
+ * tuned their FOV should be told it will not travel, rather than discovering
+ * it did not.
+ */
+export function splitByOwnership(settings: readonly IniSetting[]): {
+  collection: IniSetting[];
+  machine: IniSetting[];
+} {
+  const collection: IniSetting[] = [];
+  const machine: IniSetting[] = [];
+  for (const setting of settings) {
+    (isMachineOwned(setting.key) ? machine : collection).push(setting);
+  }
+  return { collection, machine };
+}
