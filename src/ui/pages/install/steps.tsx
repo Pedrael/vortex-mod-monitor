@@ -1778,6 +1778,37 @@ export function DoneStep(props: DoneStepProps): JSX.Element {
  * away, because twelve of those is a wall and the fact that it happened is
  * what matters first.
  */
+/**
+ * Mods that installed as the wrong KIND.
+ *
+ * Above the settings notice and styled as a warning, because this one means
+ * something is broken rather than something changed — and it is invisible
+ * otherwise: every file is present, every hash matches, and the game just
+ * does not load the mod.
+ */
+function ModTypeNotice(props: { lines: readonly string[] }): JSX.Element | null {
+  if (props.lines.length === 0) return null;
+  const [summary, ...rest] = props.lines;
+  return (
+    <div
+      className="eh-inset"
+      style={{ borderColor: "var(--eh-warning)" }}
+    >
+      <div className="eh-row eh-row--sm" style={{ alignItems: "flex-start" }}>
+        <Pill intent="warning">Wrong folder</Pill>
+        <span className="eh-fill eh-secondary" style={{ fontSize: "var(--eh-text-sm)" }}>
+          {summary}
+        </span>
+      </div>
+      {rest.length > 0 && (
+        <div className="eh-note" style={{ marginTop: "var(--eh-sp-2)", whiteSpace: "pre-line" }}>
+          {rest.join("\n")}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GameIniNotice(props: { lines: readonly string[] }): JSX.Element | null {
   if (props.lines.length === 0) return null;
   const [summary, ...changes] = props.lines;
@@ -1821,6 +1852,7 @@ function SuccessBody(props: {
   );
   return (
     <div className="eh-stack eh-stack--lg">
+      <ModTypeNotice lines={result.modTypeNotice ?? []} />
       <GameIniNotice lines={result.gameIniNotice ?? []} />
       <div
         style={{

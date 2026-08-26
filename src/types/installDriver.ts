@@ -265,6 +265,15 @@ export type InstallSuccess = {
    */
   gameIniNotice?: string[];
   /**
+   * Mods whose installed KIND differs from the curator's, in words.
+   *
+   * Empty when every type matched. Present because the failure is silent:
+   * the files are all there and all correct, in a folder the game does not
+   * read — and for a script extender that means nothing depending on it
+   * works, with no error anywhere.
+   */
+  modTypeNotice?: string[];
+  /**
    * Mods the driver couldn't install for non-fatal reasons (user
    * chose `keep-existing`, `skip`, or the decision required input
    * the action handler did not supply).

@@ -157,6 +157,10 @@ import {
   shouldApplyGameIni,
 } from "./applyGameIni";
 import {
+  describeModTypeMismatches,
+  findModTypeMismatches,
+} from "./checkModTypes";
+import {
   summarizeVerifyFail,
   verifyModInstall,
   type VerifyResult,
@@ -954,6 +958,21 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
       ),
     };
 
+    // ── 7b2. did each mod install as the right KIND of mod? ─────────
+    // Vortex derives modType from the archive and we do not override it —
+    // it owns the concept. But when its answer differs from the curator's,
+    // the files deploy to a different folder while every file check passes,
+    // and for a script extender that means the game simply launches without
+    // it. Noticing is the whole contribution here.
+    const modTypeMismatches = findModTypeMismatches({
+      api: ctx.api,
+      gameId: plan.manifest.game.id,
+      installed: new Map(
+        installedMods.map((m) => [m.compareKey, m.vortexModId] as const),
+      ),
+      manifestMods: plan.manifest.mods,
+    });
+
     // ── 7c. game INI settings ───────────────────────────────────────
     // The collection states a starting configuration ONCE per release. The
     // previous receipt is what remembers that, because after this the file is
@@ -1042,6 +1061,9 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
       verifications,
       ...(gameIniApplication !== undefined
         ? { gameIniNotice: describeGameIniApplication(gameIniApplication) }
+        : {}),
+      ...(modTypeMismatches.length > 0
+        ? { modTypeNotice: describeModTypeMismatches(modTypeMismatches) }
         : {}),
     };
   } finally {
