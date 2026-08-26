@@ -188,6 +188,17 @@ export type RulesApplicationReceipt = {
    * profile-mode and we did not write plugins.txt, or when the game
    * does not use plugins.txt.
    */
+  /**
+   * The curator's plugin order, as shipped in the manifest.
+   *
+   * Recorded on every install and, as of today, READ BY NOTHING. Two comments
+   * described it as feeding drift detection and the post-install summary;
+   * neither was built. It is left in place because it is the one record of
+   * what the order was SUPPOSED to be, and comparing it against the user's
+   * actual plugins.txt after deploy is the check that would tell them whether
+   * the collection reproduced their load order or merely something LOOT found
+   * acceptable. That comparison does not exist yet.
+   */
   baselinePluginOrder: ReceiptPluginEntry[];
 };
 

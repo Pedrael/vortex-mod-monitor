@@ -533,8 +533,19 @@ export type EhcollFileOverride = {
 
 export type EhcollPlugins = {
   /**
-   * Plugin entries in `plugins.txt` order. The user-side installer
-   * overwrites the user's plugins.txt to match (with backup).
+   * Plugin entries in the curator's `plugins.txt` order.
+   *
+   * NOT written to the user's plugins.txt. That was the original plan and the
+   * sentence describing it outlived the code: the driver's
+   * `writing-plugins-txt` phase was deliberately removed in favour of the
+   * rules-only strategy, where the curator's LOOT userlist rules are applied
+   * and Vortex + LOOT compute the user's order from them at deploy.
+   *
+   * So this is a BASELINE, not an instruction. It records what the curator's
+   * order was, which is the only way to tell later whether the rules actually
+   * reproduced it. It is copied into the install receipt as
+   * `baselinePluginOrder` — and, today, nothing reads it back. See that
+   * field's note.
    */
   order: EhcollPluginEntry[];
 };

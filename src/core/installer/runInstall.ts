@@ -1003,10 +1003,11 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
       if (aborted) return aborted;
     }
 
-    // Capture the manifest's plugin order into the receipt for
-    // drift detection. This always happens (even when LoadOrder is
-    // empty) so the post-install summary can surface the
-    // collection's expected baseline.
+    // Record the curator's plugin order in the receipt.
+    //
+    // Always, even when LoadOrder is empty. Nothing reads it back yet — the
+    // drift check it was recorded for was never built — but it is the only
+    // record of what the order was supposed to be, and it costs one array.
     rulesApplication = {
       ...rulesApplication,
       baselinePluginOrder: plan.manifest.plugins.order.map(
