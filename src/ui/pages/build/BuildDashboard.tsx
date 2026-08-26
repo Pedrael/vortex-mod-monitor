@@ -70,7 +70,7 @@ import { useApi } from "../../state";
 import type { BuildDraftPayload } from "./buildSession";
 import { getBuildSessionRegistry } from "./buildSessionRegistry";
 import { slugify } from "./engine";
-import { getVortexUserDataPath } from "../../../core/paths";
+import { getCollectionsDir, getVortexUserDataPath } from "../../../core/paths";
 import {
   loadPublishedDetails,
   type PublishedDetails,
@@ -1083,7 +1083,7 @@ const formatBytes = (n: number): string =>
  * the old one is worse than no button.
  */
 function collectionsOutputDir(): string {
-  return path.join(getVortexUserDataPath(), "event-horizon", "collections");
+  return getCollectionsDir();
 }
 
 /**

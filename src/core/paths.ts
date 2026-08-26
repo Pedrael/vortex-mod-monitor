@@ -54,3 +54,21 @@ export function getEventHorizonRoot(): string {
 export function getEventHorizonDir(...segments: string[]): string {
   return path.join(getEventHorizonRoot(), ...segments);
 }
+
+/**
+ * `%APPDATA%/Vortex/event-horizon/collections` — where built `.ehcoll`
+ * packages land.
+ *
+ * Named rather than left as `getEventHorizonDir("collections")` at each call
+ * site because five places were joining these segments independently, and one
+ * of them was a button that opens the folder. A path that drifts is bad; a
+ * button that confidently opens the *old* one is worse.
+ */
+export function getCollectionsDir(): string {
+  return getEventHorizonDir("collections");
+}
+
+/** Per-collection config lives in a dot-directory beside the packages. */
+export function getCollectionsConfigDir(): string {
+  return path.join(getCollectionsDir(), ".config");
+}

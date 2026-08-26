@@ -34,7 +34,7 @@ import {
 import type { CollectionConfig } from "../../../core/manifest/collectionConfig";
 import type { InstallReceipt } from "../../../types/installLedger";
 import type { SupportedGameId } from "../../../types/ehcoll";
-import { getVortexUserDataPath } from "../../../core/paths";
+import { getCollectionsConfigDir, getCollectionsDir, getVortexUserDataPath } from "../../../core/paths";
 
 // ===========================================================================
 // Public types
@@ -185,12 +185,7 @@ async function loadReceipts(appDataPath: string): Promise<{
 async function loadCuratorConfigs(
   appDataPath: string,
 ): Promise<CuratorConfigSummary[]> {
-  const configDir = path.join(
-    appDataPath,
-    "event-horizon",
-    "collections",
-    ".config",
-  );
+  const configDir = getCollectionsConfigDir();
 
   let entries: string[];
   try {
@@ -255,7 +250,7 @@ async function loadCuratorConfigs(
 async function loadBuiltPackages(
   appDataPath: string,
 ): Promise<BuiltPackageSummary[]> {
-  const dir = path.join(appDataPath, "event-horizon", "collections");
+  const dir = getCollectionsDir();
   let entries: string[];
   try {
     entries = await fsp.readdir(dir);

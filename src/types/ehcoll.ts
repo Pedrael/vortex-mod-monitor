@@ -398,9 +398,26 @@ export type ModInstallState = {
    */
   installOrder: number;
   /**
-   * Curator's deployment priority (Vortex computes this from rules + age;
-   * we capture the resulting number). The installer feeds it back in so
-   * the user-side deploy resolves overrides identically.
+   * Recorded, and deliberately NOT applied. Read this before using it.
+   *
+   * The comment here used to say Vortex computes this from rules and age, that
+   * we capture the resulting number, and that the installer feeds it back so
+   * the user-side deploy resolves overrides identically. None of that was
+   * true: `buildModInstallState` assigns `mod.installOrder`, Vortex exposes no
+   * action to set a deployment priority, and nothing on the install side ever
+   * read the field. It was a description of an intention that was never built.
+   *
+   * It stays unapplied on purpose. Deployment order only decides a file
+   * conflict that no RULE decides, and measured on the real 954-mod collection
+   * that is 3 of 4,383 contested files — the other 4,380 are settled by the
+   * curator's rules, which the installer does apply. Building an ordering
+   * replay for three files would be machinery with its own failure modes
+   * guarding almost nothing.
+   *
+   * So: it is the curator's install ordinal, kept because it is cheap to carry
+   * and useful when diagnosing an ordering question by hand. If it ever does
+   * get applied, that is a new decision with a new measurement behind it, not
+   * the fulfilment of a promise this field was making.
    */
   deploymentPriority: number;
   /** Vortex modtype. Empty string is the default modtype. */

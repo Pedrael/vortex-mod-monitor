@@ -131,6 +131,11 @@ import {
   type ExistingRule,
 } from "./applyModRules";
 import {
+  applyIniTweaks,
+  describeIniTweaks,
+  emptyIniTweakApplication,
+} from "./applyIniTweaks";
+import {
   applyLoadOrder,
   type ApplyLoadOrderResult,
 } from "./applyLoadOrder";
@@ -724,6 +729,22 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
       carriedMods,
     );
 
+    // Re-enable the curator's INI tweaks.
+    //
+    // Placed here rather than per-mod because it needs the finished
+    // compareKey → local mod id map: a tweak has to be ticked against the mod
+    // THIS install produced, and the manifest's own id belongs to the curator.
+    //
+    // A tweak is the most invisible thing a collection ships — no file in the
+    // mod list, no plugin count change — so a missing one is only ever noticed
+    // as the game running differently. Additive: nothing is ever un-ticked.
+    const iniTweakApplication = applyIniTweaks({
+      api,
+      gameId: plan.manifest.game.id,
+      installed: modIdByCompareKey,
+      manifestMods: plan.manifest.mods,
+    });
+
     if (plan.manifest.rules.length > 0) {
       reportProgress(
         "applying-mod-rules",
@@ -1095,6 +1116,9 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
         : {}),
       ...(modTypeMismatches.length > 0
         ? { modTypeNotice: describeModTypeMismatches(modTypeMismatches) }
+        : {}),
+      ...(describeIniTweaks(iniTweakApplication).length > 0
+        ? { iniTweakNotice: describeIniTweaks(iniTweakApplication) }
         : {}),
     };
   } finally {

@@ -98,6 +98,16 @@ export const util = {
 
 export const actions = {
   setModEnabled: () => ({ type: "STUB_SET_MOD_ENABLED" }),
+  /** Carries its payload so a test can assert WHICH mod a tweak landed on. */
+  setINITweakEnabled: (
+    gameId: string,
+    modId: string,
+    tweak: string,
+    enabled: boolean,
+  ) => ({
+    type: "STUB_SET_INI_TWEAK_ENABLED",
+    payload: { gameId, modId, tweak, enabled },
+  }),
   /**
    * Carries its payload, because the thing worth asserting about adopting a
    * local archive is WHAT was registered — specifically that `localPath` is

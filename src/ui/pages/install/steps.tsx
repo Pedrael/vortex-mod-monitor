@@ -2040,26 +2040,87 @@ export function DoneStep(props: DoneStepProps): JSX.Element {
  * otherwise: every file is present, every hash matches, and the game just
  * does not load the mod.
  */
+/**
+ * The shared head of every post-install notice: a labelled pill and the
+ * summary line, in an inset card.
+ *
+ * The BODIES stay separate on purpose. Game settings folds behind a
+ * disclosure because it can list hundreds of INI keys; the others are a
+ * handful of lines and folding them would hide the whole message behind a
+ * click. Same head, different body, because the difference is real.
+ */
+function NoticeCard(props: {
+  label: string;
+  intent: "info" | "warning" | "danger" | "success" | "neutral";
+  summary: string;
+  accentBorder?: string;
+  children?: React.ReactNode;
+}): JSX.Element {
+  return (
+    <div
+      className="eh-inset"
+      style={
+        props.accentBorder !== undefined
+          ? { borderColor: props.accentBorder }
+          : undefined
+      }
+    >
+      <div className="eh-row eh-row--sm" style={{ alignItems: "flex-start" }}>
+        <Pill intent={props.intent}>{props.label}</Pill>
+        <span className="eh-fill eh-secondary" style={{ fontSize: "var(--eh-text-sm)" }}>
+          {props.summary}
+        </span>
+      </div>
+      {props.children}
+    </div>
+  );
+}
+
+/** Lines under a notice head, shown inline. */
+function NoticeLines(props: { lines: readonly string[] }): JSX.Element | null {
+  if (props.lines.length === 0) return null;
+  return (
+    <div className="eh-note" style={{ marginTop: "var(--eh-sp-2)", whiteSpace: "pre-line" }}>
+      {props.lines.join("\n")}
+    </div>
+  );
+}
+
 function ModTypeNotice(props: { lines: readonly string[] }): JSX.Element | null {
   if (props.lines.length === 0) return null;
   const [summary, ...rest] = props.lines;
   return (
-    <div
-      className="eh-inset"
-      style={{ borderColor: "var(--eh-warning)" }}
+    <NoticeCard
+      label="Wrong folder"
+      intent="warning"
+      summary={summary ?? ""}
+      accentBorder="var(--eh-warning)"
     >
-      <div className="eh-row eh-row--sm" style={{ alignItems: "flex-start" }}>
-        <Pill intent="warning">Wrong folder</Pill>
-        <span className="eh-fill eh-secondary" style={{ fontSize: "var(--eh-text-sm)" }}>
-          {summary}
-        </span>
-      </div>
-      {rest.length > 0 && (
-        <div className="eh-note" style={{ marginTop: "var(--eh-sp-2)", whiteSpace: "pre-line" }}>
-          {rest.join("\n")}
-        </div>
-      )}
-    </div>
+      <NoticeLines lines={rest} />
+    </NoticeCard>
+  );
+}
+
+/**
+ * INI tweaks the curator had on that could not be turned on here.
+ *
+ * Only failures reach this — see IniTweakApplication. A tweak that landed
+ * needs no sentence; one that did not changes how the game runs while
+ * changing nothing the user can see, which makes it the one thing on this
+ * screen they could never work out for themselves.
+ */
+function IniTweakNotice(props: { lines: readonly string[] }): JSX.Element | null {
+  if (props.lines.length === 0) return null;
+  const [summary, ...rest] = props.lines;
+  return (
+    <NoticeCard
+      label="INI tweaks"
+      intent="warning"
+      summary={summary ?? ""}
+      accentBorder="var(--eh-warning)"
+    >
+      <NoticeLines lines={rest} />
+    </NoticeCard>
   );
 }
 
@@ -2068,15 +2129,7 @@ function GameIniNotice(props: { lines: readonly string[] }): JSX.Element | null 
   const [summary, ...changes] = props.lines;
 
   return (
-    <div
-      className="eh-inset"
-    >
-      <div className="eh-row eh-row--sm" style={{ alignItems: "flex-start" }}>
-        <Pill intent="info">Game settings</Pill>
-        <span className="eh-fill eh-secondary" style={{ fontSize: "var(--eh-text-sm)" }}>
-          {summary}
-        </span>
-      </div>
+    <NoticeCard label="Game settings" intent="info" summary={summary ?? ""}>
       {changes.length > 0 && (
         <details style={{ marginTop: "var(--eh-sp-2)" }}>
           <summary className="eh-note" style={{ cursor: "pointer" }}>
@@ -2090,7 +2143,7 @@ function GameIniNotice(props: { lines: readonly string[] }): JSX.Element | null 
           </div>
         </details>
       )}
-    </div>
+    </NoticeCard>
   );
 }
 
@@ -2107,6 +2160,7 @@ function SuccessBody(props: {
   return (
     <div className="eh-stack eh-stack--lg">
       <ModTypeNotice lines={result.modTypeNotice ?? []} />
+      <IniTweakNotice lines={result.iniTweakNotice ?? []} />
       <GameIniNotice lines={result.gameIniNotice ?? []} />
       <div
         style={{

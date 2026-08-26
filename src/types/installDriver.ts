@@ -274,6 +274,15 @@ export type InstallSuccess = {
    */
   modTypeNotice?: string[];
   /**
+   * INI tweaks the curator had enabled that could not be enabled here.
+   *
+   * Only the FAILURES are reported. A tweak that landed is indistinguishable
+   * from a collection that shipped none, and neither is worth a sentence — but
+   * a tweak that did not land changes how the game runs while changing nothing
+   * visible, so it is the one thing here a user can neither see nor guess.
+   */
+  iniTweakNotice?: string[];
+  /**
    * Mods the driver couldn't install for non-fatal reasons (user
    * chose `keep-existing`, `skip`, or the decision required input
    * the action handler did not supply).

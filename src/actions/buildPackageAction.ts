@@ -89,7 +89,7 @@ import type {
   VortexDeploymentMethod,
 } from "../types/ehcoll";
 import { openFile, openFolder } from "../utils/utils";
-import { getVortexUserDataPath } from "../core/paths";
+import { getCollectionsDir, getVortexUserDataPath } from "../core/paths";
 import { beginOp } from "../core/logging/ehLog";
 
 const SUPPORTED_GAME_IDS: ReadonlySet<string> = new Set<SupportedGameId>([
@@ -188,11 +188,7 @@ export default function createBuildPackageAction(
       // builds reuse the same id, preserving release lineage.
       const slug = slugify(curator.name);
       const appDataPath = getVortexUserDataPath();
-      const outputDir = path.join(
-        appDataPath,
-        "event-horizon",
-        "collections",
-      );
+      const outputDir = getCollectionsDir();
       const configDir = path.join(outputDir, ".config");
 
       const loaded = await loadOrCreateCollectionConfig({ configDir, slug });

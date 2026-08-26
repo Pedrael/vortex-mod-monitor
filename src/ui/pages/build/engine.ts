@@ -100,7 +100,7 @@ import {
   downloadsFromState,
   modsFromState,
 } from "../../../core/manifest/externalHints";
-import { getVortexUserDataPath } from "../../../core/paths";
+import { getCollectionsConfigDir, getCollectionsDir, getVortexUserDataPath } from "../../../core/paths";
 import { beginOp } from "../../../core/logging/ehLog";
 import type {
   SupportedGameId,
@@ -503,12 +503,7 @@ export async function loadBuildContext(
   const externalMods = mods.filter((m) => !isNexusMod(m));
 
   const appDataPath = getVortexUserDataPath();
-  const configDir = path.join(
-    appDataPath,
-    "event-horizon",
-    "collections",
-    ".config",
-  );
+  const configDir = getCollectionsConfigDir();
 
   // Default to the collection this curator most recently built FOR THIS GAME,
   // not a hard-coded "My Collection".
@@ -718,7 +713,7 @@ export async function runBuildPipeline(
   // ── 1. Apply form overrides on top of the loaded config ────────────────
   const slug = slugify(curator.name);
   const appDataPath = getVortexUserDataPath();
-  const outputDir = path.join(appDataPath, "event-horizon", "collections");
+  const outputDir = getCollectionsDir();
   const configDir = path.join(outputDir, ".config");
 
   // If the curator renamed the collection, load (or create) the

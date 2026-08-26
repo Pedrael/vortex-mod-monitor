@@ -597,6 +597,9 @@ function buildModInstallState(
   return {
     enabled: mod.enabled,
     installOrder: mod.installOrder,
+    // Same number as installOrder, and named for an intention that was never
+    // built — see ExternalModSource's sibling field. Not a capture bug: there
+    // is no Vortex-computed priority to capture, and nothing reads it.
     deploymentPriority: mod.installOrder,
     modType: mod.modType,
     fileOverrides:
