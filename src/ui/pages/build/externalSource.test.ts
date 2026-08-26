@@ -62,27 +62,38 @@ describe("sourceProblem", () => {
   it("catches a link-based choice with no link", () => {
     // The user-side screen offers "open the page" — with no page.
     expect(
-      sourceProblem({ mode: "browse" }, { hasArchive: true }),
+      sourceProblem({ mode: "browse" }, { hasStagingFolder: true }),
     ).toMatch(/link to the mod's page/);
     expect(
-      sourceProblem({ mode: "direct" }, { hasArchive: true }),
+      sourceProblem({ mode: "direct" }, { hasStagingFolder: true }),
     ).toMatch(/link to the file/);
   });
 
   it("is happy with manual and no link — that is what manual means", () => {
-    expect(sourceProblem({ mode: "manual" }, { hasArchive: true })).toBeUndefined();
+    expect(sourceProblem({ mode: "manual" }, { hasStagingFolder: true })).toBeUndefined();
   });
 
-  it("catches bundled with no archive to bundle", () => {
-    const said = sourceProblem({ bundled: true }, { hasArchive: false });
-    expect(said).toMatch(/no longer has this mod's archive/);
+  it("catches bundled with no staging folder to pack", () => {
+    // NOT gated on the archive: repackBundledExternals packs the STAGING
+    // folder and re-keys the mod to the new archive hash, which is the whole
+    // reason a hand-made mod Vortex never downloaded can still be bundled.
+    const said = sourceProblem({ bundled: true }, { hasStagingFolder: false });
+    expect(said).toMatch(/no staging folder/);
+  });
+
+  it("allows bundling a mod with no original archive", () => {
+    // The regression this pins: gating on the archive would block bundling
+    // for exactly the hand-made mods the feature exists for.
+    expect(
+      sourceProblem({ bundled: true }, { hasStagingFolder: true }),
+    ).toBeUndefined();
   });
 
   it("says nothing about a well-formed choice", () => {
     expect(
-      sourceProblem({ mode: "browse", url: "https://e.com/p" }, { hasArchive: false }),
+      sourceProblem({ mode: "browse", url: "https://e.com/p" }, { hasStagingFolder: false }),
     ).toBeUndefined();
-    expect(sourceProblem({ bundled: true }, { hasArchive: true })).toBeUndefined();
+    expect(sourceProblem({ bundled: true }, { hasStagingFolder: true })).toBeUndefined();
   });
 });
 

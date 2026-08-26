@@ -79,14 +79,19 @@ export function sourcePatch(kind: ExternalSourceKind): SourceFields {
  */
 export function sourceProblem(
   entry: SourceFields,
-  opts: { hasArchive: boolean },
+  opts: { hasStagingFolder: boolean },
 ): string | undefined {
   const kind = sourceKindOf(entry);
 
-  if (kind === "bundled" && !opts.hasArchive) {
+  // Bundling does NOT need the original download. `repackBundledExternals`
+  // builds a fresh archive from the mod's STAGING folder and re-keys the mod
+  // to that archive's hash, which is the whole reason a hand-made mod with no
+  // archive can still ship. Gating this on the archive would block bundling
+  // for exactly the mods that most need it.
+  if (kind === "bundled" && !opts.hasStagingFolder) {
     return (
-      "Vortex no longer has this mod's archive, so there are no bytes to " +
-      "bundle. Re-import the archive, or pick another option."
+      "This mod has no staging folder on disk, so there is nothing to pack. " +
+      "Reinstall it in Vortex, or pick another option."
     );
   }
   if ((kind === "direct" || kind === "browse") && !hasText(entry.url)) {
@@ -106,7 +111,9 @@ export function describeSourceKind(kind: ExternalSourceKind): {
     case "bundled":
       return {
         label: "Bundled",
-        hint: "The archive ships inside the collection. Nothing to download.",
+        hint:
+          "Packed from your staging folder and shipped inside the collection. " +
+          "Nothing to download, and no original archive needed.",
       };
     case "direct":
       return {

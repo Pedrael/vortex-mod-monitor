@@ -1761,7 +1761,15 @@ function HintSuggestion(props: {
  */
 function SourceChoice(props: {
   value: ExternalSourceKind;
-  hasArchive: boolean;
+  /**
+   * Whether the mod has a staging folder to pack FROM.
+   *
+   * Deliberately not "has an archive": bundling repacks the staging folder
+   * into a new archive, so a hand-made mod Vortex never downloaded bundles
+   * perfectly well. Gating on the archive would have blocked the case this
+   * feature exists for.
+   */
+  hasStagingFolder: boolean;
   onChange: (kind: ExternalSourceKind) => void;
 }): JSX.Element {
   return (
@@ -1777,8 +1785,9 @@ function SourceChoice(props: {
           <option
             key={kind}
             value={kind}
-            /* Vortex no longer has the bytes, so there is nothing to ship. */
-            disabled={kind === "bundled" && !props.hasArchive}
+            /* Nothing on disk to pack from. Note this is the STAGING
+               folder, not the download — see the prop's doc. */
+            disabled={kind === "bundled" && !props.hasStagingFolder}
           >
             {describeSourceKind(kind).label}
           </option>
@@ -1823,6 +1832,16 @@ function ExternalModsTable(
       </div>
       {mods.map((mod) => {
         const override = overrides[mod.id] ?? {};
+        // What bundling actually needs. The archive is irrelevant to it —
+        // repackBundledExternals packs the staging folder and re-keys the mod
+        // to the new archive's hash before the manifest is built.
+        const hasStagingFolder =
+          typeof mod.installationPath === "string" &&
+          mod.installationPath.length > 0;
+        // A separate fact, and still worth showing: with no archive the mod's
+        // identity falls back to its staging-set hash rather than an archive
+        // sha. That affects how it is MATCHED on the user's machine, not
+        // whether it can ship.
         const hasArchive =
           typeof mod.archiveSha256 === "string" && mod.archiveSha256.length > 0;
         return (
@@ -1860,13 +1879,18 @@ function ExternalModsTable(
               </div>
               {!hasArchive && (
                 <div style={{ marginTop: 4 }}>
-                  <Pill intent="warning">no archive</Pill>
+                  {/* Neutral, not a warning: this does not stop the mod
+                      shipping. Bundling repacks the staging folder, and
+                      identity falls back to the staging-set hash. It was
+                      styled as a problem, which is what made "no archive"
+                      read as "cannot be bundled". */}
+                  <Pill intent="neutral">identified by files</Pill>
                 </div>
               )}
             </div>
             <SourceChoice
               value={sourceKindOf(override)}
-              hasArchive={hasArchive}
+              hasStagingFolder={hasStagingFolder}
               onChange={(kind): void => onChange(mod.id, sourcePatch(kind))}
             />
             <div className="eh-stack eh-stack--xs">
@@ -1916,9 +1940,9 @@ function ExternalModsTable(
                   open, or "Bundled" with no archive left to bundle. Caught
                   here because the user-side screen would otherwise offer a
                   button that has nothing behind it. */}
-              {sourceProblem(override, { hasArchive }) !== undefined && (
+              {sourceProblem(override, { hasStagingFolder }) !== undefined && (
                 <span className="eh-note" style={{ color: "var(--eh-warning)" }}>
-                  {sourceProblem(override, { hasArchive })}
+                  {sourceProblem(override, { hasStagingFolder })}
                 </span>
               )}
               <textarea
