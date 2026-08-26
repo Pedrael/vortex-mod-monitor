@@ -36,6 +36,14 @@ import { useToast } from "../../components";
 import { useKeyboardShortcut } from "../../hooks/useKeyboardShortcut";
 import { formatBytes } from "../../../utils/diskSpace";
 import {
+  describeElapsed,
+  describeQuiet,
+  estimateRemainingMs,
+  formatDuration,
+  trackPhase,
+} from "./installProgress";
+import type { PhaseTiming } from "./installProgress";
+import {
   countNexusDownloads,
   describeNexusAccount,
   readNexusAccount,
@@ -1676,12 +1684,43 @@ export function InstallingStep(props: {
 }): JSX.Element {
   const { progress, bundle } = props.state;
 
+  // This screen is up for HOURS on a real collection, and the driver goes
+  // quiet for minutes at a time during a large download. A clock that only
+  // advanced on driver beats would freeze during exactly the silence the
+  // reader needs explaining, so it ticks on its own.
+  const [startedAtMs] = React.useState(() => Date.now());
+  const [nowMs, setNowMs] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return (): void => clearInterval(id);
+  }, []);
+
+  // Timing is kept per phase because the driver's step counters reset at every
+  // transition — see installProgress.
+  const [timing, setTiming] = React.useState<PhaseTiming | undefined>(
+    undefined,
+  );
+  React.useEffect(() => {
+    if (progress === undefined) return;
+    setTiming((prev) => trackPhase(prev, progress, Date.now()));
+  }, [progress]);
+
   const phaseLabel =
     progress !== undefined ? PHASE_LABELS[progress.phase] : "Starting...";
   const ratio =
     progress !== undefined && progress.totalSteps > 0
       ? progress.currentStep / progress.totalSteps
       : undefined;
+
+  const remainingMs =
+    timing !== undefined && progress !== undefined
+      ? estimateRemainingMs({
+          timing,
+          totalSteps: progress.totalSteps,
+          nowMs,
+        })
+      : undefined;
+  const quiet = timing !== undefined ? describeQuiet(timing, nowMs) : undefined;
 
   return (
     <StepFrame
@@ -1721,20 +1760,36 @@ export function InstallingStep(props: {
             {progress?.message ??
               "Driver is starting up — this usually takes a few seconds."}
           </p>
-          {progress !== undefined && progress.totalSteps > 1 && (
-            <p
-              style={{
-                margin: "var(--eh-sp-2) 0 0 0",
-                color: "var(--eh-text-muted)",
-                fontSize: "var(--eh-text-xs)",
-                fontFamily: "var(--eh-font-mono)",
-              }}
-            >
-              step {progress.currentStep} / {progress.totalSteps}
-            </p>
-          )}
+          {/* Elapsed is always true and always worth knowing; the estimate
+              appears only once it is measured rather than guessed. */}
+          <p
+            style={{
+              margin: "var(--eh-sp-2) 0 0 0",
+              color: "var(--eh-text-muted)",
+              fontSize: "var(--eh-text-xs)",
+              fontFamily: "var(--eh-font-mono)",
+            }}
+          >
+            {describeElapsed(startedAtMs, nowMs)}
+            {progress !== undefined && progress.totalSteps > 1
+              ? ` · step ${progress.currentStep} / ${progress.totalSteps}`
+              : ""}
+            {remainingMs !== undefined
+              ? ` · about ${formatDuration(remainingMs)} left`
+              : ""}
+          </p>
         </div>
       </div>
+
+      {quiet !== undefined && (
+        <p
+          className="eh-note"
+          role="status"
+          style={{ margin: "var(--eh-sp-3) 0 0 0" }}
+        >
+          {quiet}
+        </p>
+      )}
     </StepFrame>
   );
 }
