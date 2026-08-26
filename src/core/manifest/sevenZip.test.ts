@@ -51,7 +51,7 @@ describe("sevenZipList", () => {
     // silent empty listing would report every staged file as unexplained.
     await expect(
       sevenZipList(fakeSevenZip({ unreadable: true }), "corrupt.zip"),
-    ).rejects.toThrow(/could not read/i);
+    ).rejects.toThrow(/no archive information/i);
   });
 
   it("returns empty for a valid but genuinely empty archive", async () => {

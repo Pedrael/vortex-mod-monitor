@@ -280,8 +280,28 @@ async function listZipEntries(
       "./diagnoseArchive"
     );
     const diagnosis = await diagnoseArchive(zipPath);
+
+    // If the file looks structurally complete, the failure is more likely to
+    // be 7z than the file — and node-7z's empty spec cannot tell us which. So
+    // ask 7z to do something that must succeed. Only in that case: when the
+    // file is visibly truncated or is not a ZIP, the answer is already known
+    // and a self-test would be noise.
+    const extra: string[] = [];
+    if (diagnosis.kind === "looks-like-a-zip") {
+      const { sevenZipSelfTest } = await import("./sevenZip");
+      const health = await sevenZipSelfTest(sevenZip);
+      if (!health.ok) {
+        extra.push(
+          `7z is not working on this system, so this is probably not your ` +
+            `file: ${health.why}`,
+        );
+      }
+    }
+
     throw new ReadEhcollError([
-      ...describeArchiveDiagnosis(diagnosis, zipPath),
+      ...(extra.length > 0
+        ? extra
+        : describeArchiveDiagnosis(diagnosis, zipPath)),
       `(7z reported: ${(err as Error).message})`,
     ]);
   }

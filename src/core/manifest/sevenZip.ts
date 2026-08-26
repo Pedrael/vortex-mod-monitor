@@ -191,6 +191,60 @@ function assertOk(result: SevenZipResult | undefined, what: string): void {
   );
 }
 
+/**
+ * Does 7z work on this machine at all?
+ *
+ * `list` cannot tell a bad archive from a 7z that will not run: both resolve
+ * with an empty spec and nothing else. The only way to separate them is to ask
+ * 7z to do something we KNOW should succeed — build a tiny archive and read it
+ * back. If that fails, the problem is 7z, not the user's file.
+ *
+ * This exists because an alpha tester on Proton hit a list failure and the
+ * error blamed his download. The file turned out to be the right question to
+ * ask, but nothing in the code could have said so, and "is 7z even working
+ * here" was unanswerable from the failure alone.
+ *
+ * Cheap: a few hundred bytes in a temp directory, run only when something has
+ * already gone wrong.
+ */
+export async function sevenZipSelfTest(
+  api: SevenZipApi,
+): Promise<{ ok: true } | { ok: false; why: string }> {
+  const fsp = await import("fs/promises");
+  const os = await import("os");
+  const path = await import("path");
+
+  let dir: string | undefined;
+  try {
+    dir = await fsp.mkdtemp(path.join(os.tmpdir(), "eh-7z-selftest-"));
+    const source = path.join(dir, "probe.txt");
+    const archive = path.join(dir, "probe.zip");
+    await fsp.writeFile(source, "event-horizon 7z self-test", "utf8");
+
+    await sevenZipAdd(api, archive, [source], { raw: ["-tzip"] });
+
+    const spec = await api.list(archive, {}, () => undefined);
+    if (typeof spec?.type !== "string") {
+      return {
+        ok: false,
+        why:
+          "7z created an archive but could not read it back. The 7z bundled " +
+          "with Vortex is not working on this system.",
+      };
+    }
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      why: `7z could not run: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  } finally {
+    if (dir !== undefined) {
+      await fsp.rm(dir, { recursive: true, force: true }).catch(() => undefined);
+    }
+  }
+}
+
 /** Wire an AbortSignal to the fork's progress-callback `cancel` hook. */
 function cancelOnAbort(signal: AbortSignal | undefined): SevenZipProgress {
   return (_files, _pct, _stdin, cancel) => {
@@ -222,10 +276,27 @@ export async function sevenZipList(
       }
     }
   });
+
+  // Defensive only — `list` resolves with an archive SPEC, not a result, and
+  // node-7z discards {code, errors} on this path. So there is no exit status
+  // here to read today, and this fires only if a future node-7z starts
+  // supplying one. It is not the diagnosis; see below.
+  assertOk(spec as SevenZipResult | undefined, `listing "${archive}"`);
+
   if (typeof spec?.type !== "string") {
+    // An EMPTY spec is all node-7z gives back, and it means the same thing for
+    // every cause: a corrupt file, a truncated download, a path 7z cannot
+    // reach, no permission, or a 7z binary that will not run at all. The
+    // result carries nothing that separates them.
+    //
+    // So the caller has to distinguish them by other means — inspecting the
+    // file (diagnoseArchive) and testing 7z itself (sevenZipSelfTest). This
+    // message deliberately does NOT accuse the file, because on the evidence
+    // available here that is a guess.
     throw new Error(
-      `7z could not read "${archive}" — it is missing, corrupt, ` +
-        `password-protected, or not an archive.`,
+      `7z returned no archive information for "${archive}". node-7z reports ` +
+        `nothing further on this path — the file, the path, or 7z itself ` +
+        `could be at fault.`,
     );
   }
   return entries;
