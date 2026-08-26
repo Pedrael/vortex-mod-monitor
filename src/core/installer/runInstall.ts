@@ -83,13 +83,14 @@
  * ──────────────────────────────────────────────────────────────────────
  */
 
-import { types } from "@nexusmods/vortex-api";
+import { types, util } from "@nexusmods/vortex-api";
 
 import {
   InstallLedgerError,
   writeReceipt,
 } from "../installLedger";
 import {
+  type GameIniApplicationReceipt,
   type InstallReceipt,
   type InstallReceiptMod,
   type ModVerificationFailExample,
@@ -150,6 +151,11 @@ import {
   uninstallMod,
 } from "./modInstall";
 import { choicesFor } from "./installerChoices";
+import {
+  applyGameIni,
+  describeGameIniApplication,
+  shouldApplyGameIni,
+} from "./applyGameIni";
 import {
   summarizeVerifyFail,
   verifyModInstall,
@@ -948,6 +954,43 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
       ),
     };
 
+    // ── 7c. game INI settings ───────────────────────────────────────
+    // The collection states a starting configuration ONCE per release. The
+    // previous receipt is what remembers that, because after this the file is
+    // the user's: re-applying on a later run would silently revert whatever
+    // they changed since, and that is the one behaviour they would not
+    // forgive.
+    let gameIniApplication: GameIniApplicationReceipt | undefined;
+    if (
+      shouldApplyGameIni({
+        gameIni: plan.manifest.gameIni,
+        packageVersion: plan.manifest.package.version,
+        ...(plan.previousInstall !== undefined
+          ? { previous: plan.previousInstall }
+          : {}),
+      })
+    ) {
+      reportProgress("writing-receipt", 0, 1, "Applying game settings...");
+      try {
+        gameIniApplication = await applyGameIni({
+          gameIni: plan.manifest.gameIni!,
+          gameId: plan.manifest.game.id,
+          documentsPath:
+            (util as unknown as { getVortexPath?: (id: string) => string })
+              .getVortexPath?.("documents") ?? "",
+        });
+      } catch (err) {
+        // Never fatal. A collection whose mods all installed is not a failure
+        // because one settings file could not be written.
+        gameIniApplication = {
+          appliedCount: 0,
+          alreadyMatchedCount: 0,
+          changes: [],
+          failed: [{ fileName: "(all)", reason: formatError(err) }],
+        };
+      }
+    }
+
     // ── 8. write receipt ────────────────────────────────────────────
     reportProgress("writing-receipt", 0, 1, "Writing install receipt...");
 
@@ -960,6 +1003,7 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
       rulesApplication,
       userlistApplication,
       verifications,
+      gameIniApplication,
     });
 
     let receiptPath: string;
@@ -996,6 +1040,9 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
       rulesApplication,
       userlistApplication,
       verifications,
+      ...(gameIniApplication !== undefined
+        ? { gameIniNotice: describeGameIniApplication(gameIniApplication) }
+        : {}),
     };
   } finally {
     // Cleanup of bundled-extract temp dirs is fire-and-forget. Each
@@ -1790,6 +1837,8 @@ function buildReceipt(args: {
   rulesApplication: RulesApplicationReceipt;
   userlistApplication: UserlistApplicationReceipt;
   verifications: ModVerificationReceipt[];
+  /** Absent when this release had already stated its settings. */
+  gameIniApplication?: GameIniApplicationReceipt;
 }): InstallReceipt {
   const {
     ctx,
@@ -1846,6 +1895,9 @@ function buildReceipt(args: {
     rulesApplication,
     userlistApplication,
     verifications,
+    ...(args.gameIniApplication !== undefined
+      ? { gameIniApplication: args.gameIniApplication }
+      : {}),
   };
 }
 

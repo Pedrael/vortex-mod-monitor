@@ -23,6 +23,12 @@
 export const __testPaths = {
   downloadPath: "/stub/downloads",
   installPath: "/stub/install",
+  /**
+   * What `getVortexPath("documents")` reports. Settable because the game's
+   * INI files live under it, and a test that writes real INIs needs them in a
+   * temp directory rather than the developer's own My Games folder.
+   */
+  documentsPath: "/stub/documents",
 };
 
 /** Vortex keeps the active profile in settings, never on the profile object. */
@@ -65,7 +71,8 @@ SevenZipStub.prototype.extractFull = async (): Promise<unknown> => ({
 
 export const util = {
   SevenZip: SevenZipStub,
-  getVortexPath: (id: string): string => `/stub/${id}`,
+  getVortexPath: (id: string): string =>
+    id === "documents" ? __testPaths.documentsPath : `/stub/${id}`,
   installIconSet: (): Promise<void> => Promise.resolve(),
   getManifest: (): unknown => ({}),
   removeMods: (): Promise<void> => Promise.resolve(),

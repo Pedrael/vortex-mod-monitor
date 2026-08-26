@@ -256,6 +256,15 @@ export type InstallSuccess = {
   /** Per-mod report — useful for the post-install summary. */
   installedMods: InstalledModReportEntry[];
   /**
+   * What the collection changed in the user's game settings, in words.
+   *
+   * Empty when it changed nothing, or when this release had already stated
+   * its settings on an earlier run. Present so the post-install screen can
+   * TELL them — a configuration edited silently is not acceptable even when
+   * it is correct.
+   */
+  gameIniNotice?: string[];
+  /**
    * Mods the driver couldn't install for non-fatal reasons (user
    * chose `keep-existing`, `skip`, or the decision required input
    * the action handler did not supply).

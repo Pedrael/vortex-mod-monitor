@@ -77,7 +77,11 @@ const userState = (): UserSideState =>
  * A driver that hangs produces a bare test timeout, which names the test and
  * not the phase. The phase list turns that into a diagnosis.
  */
-async function install(manifest: EhcollManifest, fake: ReturnType<typeof makeFakeVortex>) {
+async function install(
+  manifest: EhcollManifest,
+  fake: ReturnType<typeof makeFakeVortex>,
+  previousInstall?: { packageVersion: string; gameIniApplication?: unknown },
+) {
   const phases: string[] = [];
   // A first install. `current-profile` is a different mode with its own
   // invariant (it requires a previous install from the ledger), so it belongs
@@ -86,6 +90,9 @@ async function install(manifest: EhcollManifest, fake: ReturnType<typeof makeFak
     kind: "fresh-profile",
     profileName: "E2E Profile",
   } as never);
+  if (previousInstall !== undefined) {
+    (plan as { previousInstall?: unknown }).previousInstall = previousInstall;
+  }
   const running = runInstall({
     api: fake.api,
     plan,
@@ -181,5 +188,100 @@ describe("install driver, end to end", () => {
     // However the driver classifies it, the refusal must reach the result and
     // the run must end. Silence here is a 90-second stall in the real app.
     expect(JSON.stringify(result)).toMatch(/installer said no/);
+  });
+
+  it("writes the collection's game settings and TELLS the user", async () => {
+    // The user must hear that their configuration changed. Applying it
+    // silently is not acceptable even when it is correct.
+    const fs = await import("fs");
+    const os = await import("os");
+    const path = await import("path");
+    const docs = fs.mkdtempSync(path.join(os.tmpdir(), "eh-drv-ini-"));
+    const iniDir = path.join(docs, "My Games", "Fallout4");
+    fs.mkdirSync(iniDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(iniDir, "Fallout4.ini"),
+      ["[General]", "uGridsToLoad=5", ""].join("\n"),
+    );
+    const { __testPaths } = await import("../stubs/vortex-api");
+    const previousDocs = __testPaths.documentsPath;
+    __testPaths.documentsPath = docs;
+
+    world = makeWorld({
+      mods: [
+        { id: "m", nexus: { modId: 1, fileId: 1 }, archiveSha256: "a".repeat(64), files: { "a.esp": "a" } },
+      ],
+    });
+    const manifest = await packageFrom(world);
+    const withIni: EhcollManifest = {
+      ...manifest,
+      gameIni: {
+        files: [
+          {
+            fileName: "Fallout4.ini",
+            settings: [{ section: "General", key: "uGridsToLoad", value: "7" }],
+          },
+        ],
+      },
+    };
+
+    const result = await install(withIni, makeFakeVortex({ gameId: "fallout4" }));
+
+    expect(fs.readFileSync(path.join(iniDir, "Fallout4.ini"), "utf8")).toContain("uGridsToLoad=7");
+    const notice = ((result as { gameIniNotice?: string[] }).gameIniNotice ?? []).join(" ");
+    expect(notice).toMatch(/set 1 game setting/);
+    expect(notice).toMatch(/uGridsToLoad: 5 → 7/);
+    expect(notice).toMatch(/never re-applied/);
+
+    __testPaths.documentsPath = previousDocs;
+    fs.rmSync(docs, { recursive: true, force: true });
+  });
+
+  it("does NOT touch settings again for a version already applied", async () => {
+    // The user is free to change anything afterwards; a second apply would
+    // silently revert it.
+    const fs = await import("fs");
+    const os = await import("os");
+    const path = await import("path");
+    const docs = fs.mkdtempSync(path.join(os.tmpdir(), "eh-drv-ini2-"));
+    const iniDir = path.join(docs, "My Games", "Fallout4");
+    fs.mkdirSync(iniDir, { recursive: true });
+    // The user set it back to 5 after the first install.
+    fs.writeFileSync(
+      path.join(iniDir, "Fallout4.ini"),
+      ["[General]", "uGridsToLoad=5", ""].join("\n"),
+    );
+    const { __testPaths } = await import("../stubs/vortex-api");
+    const previousDocs = __testPaths.documentsPath;
+    __testPaths.documentsPath = docs;
+
+    world = makeWorld({
+      mods: [
+        { id: "m", nexus: { modId: 1, fileId: 1 }, archiveSha256: "a".repeat(64), files: { "a.esp": "a" } },
+      ],
+    });
+    const manifest = await packageFrom(world);
+    const withIni: EhcollManifest = {
+      ...manifest,
+      gameIni: {
+        files: [
+          {
+            fileName: "Fallout4.ini",
+            settings: [{ section: "General", key: "uGridsToLoad", value: "7" }],
+          },
+        ],
+      },
+    };
+
+    const result = await install(withIni, makeFakeVortex({ gameId: "fallout4" }), {
+      packageVersion: withIni.package.version,
+      gameIniApplication: { appliedCount: 1 },
+    });
+
+    expect(fs.readFileSync(path.join(iniDir, "Fallout4.ini"), "utf8")).toContain("uGridsToLoad=5");
+    expect((result as { gameIniNotice?: string[] }).gameIniNotice).toBeUndefined();
+
+    __testPaths.documentsPath = previousDocs;
+    fs.rmSync(docs, { recursive: true, force: true });
   });
 });
