@@ -12,6 +12,7 @@ import {
   probeInstallerApi,
   watchInstallCalls,
 } from "./core/installer/probeInstallerApi";
+import { probeNexusAccount } from "./core/installer/checkNexusAccount";
 import { EXTENSION_VERSION } from "./ui/version";
 
 /**
@@ -159,6 +160,10 @@ function init(context: types.IExtensionContext): boolean {
   context.once(() => {
     probeInstallerApi(context.api);
     watchInstallCalls(context.api);
+    // Whether this account can download at all is the other thing the
+    // typings cannot answer. Logged for the same reason: so a check that
+    // never works is visible as that, rather than as silence.
+    probeNexusAccount(context.api);
   });
 
   return true;

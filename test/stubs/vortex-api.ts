@@ -31,8 +31,26 @@ export const __testPaths = {
   documentsPath: "/stub/documents",
 };
 
+/**
+ * What the Nexus account selectors report.
+ *
+ * `undefined` means "this Vortex build does not answer" — which is a real
+ * case, not a test artifact: `@nexusmods/vortex-api` is types-only, so a
+ * selector present in `api.d.ts` may simply not exist in the app that loads
+ * the extension. Code reading these has to survive that, and leaving these
+ * unset is how a test puts it in that situation.
+ */
+export const __testNexusAccount: {
+  isLoggedIn?: boolean;
+  isPremium?: boolean;
+} = {};
+
 /** Vortex keeps the active profile in settings, never on the profile object. */
 export const selectors = {
+  isLoggedIn: (_state: any): boolean | undefined =>
+    __testNexusAccount.isLoggedIn,
+  isPremium: (_state: any): boolean | undefined =>
+    __testNexusAccount.isPremium,
   activeProfileId: (state: any): string | undefined =>
     state?.settings?.profiles?.activeProfileId,
   activeProfile: (state: any): any => {

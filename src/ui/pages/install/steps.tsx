@@ -31,10 +31,16 @@ import {
   ProgressRing,
   StepDots,
 } from "../../components";
-import { useApi } from "../../state";
+import { useApi, useApiOptional } from "../../state";
 import { useToast } from "../../components";
 import { useKeyboardShortcut } from "../../hooks/useKeyboardShortcut";
 import { formatBytes } from "../../../utils/diskSpace";
+import {
+  countNexusDownloads,
+  describeNexusAccount,
+  readNexusAccount,
+} from "../../../core/installer/checkNexusAccount";
+import type { NexusAccount } from "../../../core/installer/checkNexusAccount";
 import {
   ConflictChoice,
   DriverProgress,
@@ -610,7 +616,28 @@ export function PreviewStep(props: PreviewStepProps): JSX.Element {
   const target = plan.installTarget;
   const summary = plan.summary;
 
-  const verdict = computeVerdict(plan);
+  // Whether this account can actually download what the plan needs. Read
+  // here rather than in the resolver because it is a property of the person
+  // installing, not of the collection: the same plan is fine for one account
+  // and hundreds of manual clicks for another.
+  //
+  // Outside a Vortex tree there is no api and therefore no answer, which is
+  // the same "unknown" the reader gets from an unfamiliar state shape, and
+  // warns about nothing either way.
+  const api = useApiOptional();
+  const account: NexusAccount = React.useMemo(
+    () =>
+      api === undefined
+        ? { kind: "unknown", why: "not running inside Vortex" }
+        : readNexusAccount(api),
+    [api],
+  );
+  const accountLines = React.useMemo(
+    () => describeNexusAccount(account, countNexusDownloads(plan)),
+    [account, plan],
+  );
+
+  const verdict = computeVerdict(plan, accountLines);
 
   // Enter = continue to decisions/review. Esc = bail. Off when focus
   // is inside an input (there are no inputs on this screen yet, but
@@ -896,7 +923,20 @@ function RulesScopePreview(props: {
   );
 }
 
-function computeVerdict(plan: InstallPlan): {
+/**
+ * `accountLines` describes anything about the user's Nexus account that will
+ * make this install harder than the plan implies — see checkNexusAccount.
+ *
+ * It never sets `canProceed: false`, even for a logged-out account that
+ * genuinely cannot download. Blocking would rest the whole screen on one
+ * inferred state path, and a wrong block leaves the user with no way forward
+ * and no explanation; a wrong warning merely wastes a paragraph. The install
+ * driver still fails loudly if it turns out to be right.
+ */
+function computeVerdict(
+  plan: InstallPlan,
+  accountLines: readonly string[] = [],
+): {
   headline: string;
   lines: string[];
   color: string;
@@ -940,6 +980,7 @@ function computeVerdict(plan: InstallPlan): {
   }
 
   for (const w of compat.warnings) lines.push(w);
+  for (const a of accountLines) lines.push(a);
   if (plan.summary.needsUserConfirmation > 0) {
     lines.push(
       `${plan.summary.needsUserConfirmation} mod${plan.summary.needsUserConfirmation === 1 ? "" : "s"} need your input to resolve`,
@@ -956,16 +997,21 @@ function computeVerdict(plan: InstallPlan): {
     );
   }
 
+  // An account that cannot download counts as needing attention. Saying
+  // "Plan resolves cleanly" in green above a paragraph explaining that six
+  // hundred mods must be fetched by hand would be the headline contradicting
+  // the thing it is summarising.
+  const needsAttention =
+    plan.summary.needsUserConfirmation > 0 ||
+    plan.summary.orphans > 0 ||
+    accountLines.length > 0;
+
   return {
-    headline:
-      plan.summary.needsUserConfirmation > 0 || plan.summary.orphans > 0
-        ? "Plan resolves — needs your input"
-        : "Plan resolves cleanly",
+    headline: needsAttention
+      ? "Plan resolves — needs your input"
+      : "Plan resolves cleanly",
     lines,
-    color:
-      plan.summary.needsUserConfirmation > 0 || plan.summary.orphans > 0
-        ? "var(--eh-warning)"
-        : "var(--eh-success)",
+    color: needsAttention ? "var(--eh-warning)" : "var(--eh-success)",
     canProceed: true,
   };
 }
