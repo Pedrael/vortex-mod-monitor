@@ -43,6 +43,10 @@ import { buildManifest } from "../../../core/manifest/buildManifest";
 import { captureStagingFiles } from "../../../core/manifest/captureStagingFiles";
 import { runSelfChecks } from "../../../core/manifest/runSelfChecks";
 import {
+  captureGameIni,
+  describeMachineKept,
+} from "../../../core/manifest/gameIni";
+import {
   describeHashedCollisions,
   describeScope,
   findHashedIdentityCollisions,
@@ -1063,6 +1067,24 @@ export async function runBuildPipeline(
     userlist,
   };
 
+  // The game's own settings — `Fallout4.ini` and friends. Machine-owned keys
+  // (screen size, CPU threads, GPU model, audio device, FOV) are dropped
+  // during capture, so the curator's hardware never enters the package.
+  const gameIniCapture = await captureGameIni({
+    gameId,
+    documentsPath: (util as unknown as { getVortexPath?: (id: string) => string })
+      .getVortexPath?.("documents") ?? "",
+  }).catch(() => ({ files: [], machineKept: [], missing: [] }));
+  bundleWarnings.push(...describeMachineKept(gameIniCapture));
+  if (gameIniCapture.files.length > 0) {
+    op.step("game-ini-captured", {
+      files: gameIniCapture.files.map((f) => f.fileName),
+      shipped: gameIniCapture.files.reduce((n, f) => n + f.settings.length, 0),
+      keptByUser: gameIniCapture.machineKept.length,
+      missing: gameIniCapture.missing,
+    });
+  }
+
   const { manifest, warnings: manifestWarnings } = buildManifest({
     snapshot,
     package: {
@@ -1088,6 +1110,7 @@ export async function runBuildPipeline(
     pluginsTxtContent,
     externalMods: toBuildManifestExternalMods(collectionConfig),
     externalDependencies,
+    ...(gameIniCapture.files.length > 0 ? { gameIni: { files: gameIniCapture.files } } : {}),
   });
 
   // ── 4. Resolve bundled archives ────────────────────────────────────────

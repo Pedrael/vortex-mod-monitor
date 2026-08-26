@@ -90,6 +90,23 @@ export type EhcollManifest = {
    */
   userlist: EhcollUserlist;
   iniTweaks: EhcollIniTweak[];
+  /**
+   * The curator's GAME settings — `Fallout4.ini` and friends — carrying only
+   * the keys that belong to the collection.
+   *
+   * Distinct from {@link iniTweaks}, which is Vortex's per-mod `INI Tweaks`
+   * mechanism. This is the game's own configuration: `uGridsToLoad`, archive
+   * invalidation, the Papyrus block, LOD distances — settings that change how
+   * the game loads and that a curator tunes deliberately.
+   *
+   * Machine-owned keys (screen resolution, CPU threads, RAM, GPU model, audio
+   * device, FOV) are excluded when the package is BUILT, so they are not in
+   * here to be applied by accident. See `core/manifest/gameIni.ts`.
+   *
+   * Optional: manifests built before this existed have none, and the parser
+   * back-fills an empty capture.
+   */
+  gameIni?: EhcollGameIni;
   externalDependencies: EhcollExternalDependency[];
 };
 
@@ -314,6 +331,18 @@ export type ExternalModSource = {
    * `computeStagingSetHash`.
    */
   stagingSetHash?: string;
+};
+
+/** A game INI file, reduced to the settings this collection owns. */
+export type EhcollGameIniFile = {
+  /** File name only — never a path from the curator's disk. */
+  fileName: string;
+  settings: Array<{ section: string; key: string; value: string }>;
+};
+
+/** The curator's game configuration, as shipped. */
+export type EhcollGameIni = {
+  files: EhcollGameIniFile[];
 };
 
 export type ModInstallSpec = {

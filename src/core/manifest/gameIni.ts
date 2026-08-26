@@ -37,6 +37,9 @@
  * ──────────────────────────────────────────────────────────────────────
  */
 
+import * as fsp from "fs/promises";
+import * as path from "path";
+
 /** One `key=value`, with the section it came from. */
 export type IniSetting = {
   /** Section name without brackets, e.g. `Display`. Empty for keys above any section. */
@@ -191,4 +194,69 @@ export function splitByOwnership(settings: readonly IniSetting[]): {
     (isMachineOwned(setting.key) ? machine : collection).push(setting);
   }
   return { collection, machine };
+}
+
+/** What a build captured from the curator's INI files. */
+export type GameIniCapture = {
+  files: IniFileSnapshot[];
+  /** Settings deliberately left behind, for telling the curator. */
+  machineKept: IniSetting[];
+  /** Files that were expected but absent — normal for `*Custom.ini`. */
+  missing: string[];
+};
+
+/**
+ * Read the curator's INI files and keep only what the collection owns.
+ *
+ * The split happens HERE rather than at install time so the curator's
+ * hardware never enters the package at all: no monitor size, no CPU count, no
+ * GPU model string. A package that cannot leak it is better than one that
+ * carries it and promises not to apply it.
+ *
+ * Never throws. A missing `*Custom.ini` is the normal case, not an error, and
+ * a collection that failed to build because a settings file was absent would
+ * be a worse trade than one shipping without it.
+ */
+export async function captureGameIni(args: {
+  gameId: string;
+  documentsPath: string;
+}): Promise<GameIniCapture> {
+  const empty: GameIniCapture = { files: [], machineKept: [], missing: [] };
+  const location = iniLocationFor(args.gameId, args.documentsPath);
+  if (location === undefined) return empty;
+
+  const files: IniFileSnapshot[] = [];
+  const machineKept: IniSetting[] = [];
+  const missing: string[] = [];
+
+  for (const fileName of location.files) {
+    let text: string;
+    try {
+      text = await fsp.readFile(path.join(location.dir, fileName), "utf8");
+    } catch {
+      missing.push(fileName);
+      continue;
+    }
+    const { collection, machine } = splitByOwnership(parseIni(text));
+    machineKept.push(...machine);
+    // A file whose settings are ALL machine-owned still counts as read; an
+    // empty entry says "we looked and there was nothing to ship", which is
+    // different from the file being absent.
+    files.push({ fileName, settings: collection });
+  }
+
+  return { files, machineKept, missing };
+}
+
+/** One line telling the curator what did not travel, or nothing to say. */
+export function describeMachineKept(capture: GameIniCapture): string[] {
+  if (capture.machineKept.length === 0) return [];
+  const names = [...new Set(capture.machineKept.map((s) => s.key))].sort();
+  return [
+    `${capture.machineKept.length} INI setting(s) describe your machine rather ` +
+      `than this collection and were NOT shipped: ${names.slice(0, 8).join(", ")}` +
+      `${names.length > 8 ? `, and ${names.length - 8} more` : ""}. ` +
+      `Whoever installs this keeps their own screen resolution, CPU thread ` +
+      `count, audio device and field of view.`,
+  ];
 }

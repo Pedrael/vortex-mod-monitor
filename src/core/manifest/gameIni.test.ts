@@ -112,3 +112,61 @@ describe("iniLocationFor", () => {
     expect(iniLocationFor("someothergame", "C:/Users/x/Documents")).toBeUndefined();
   });
 });
+
+describe("captureGameIni (reads real files)", () => {
+  it("ships collection keys, keeps machine keys, and reports absent files", async () => {
+    const fs = await import("fs");
+    const os = await import("os");
+    const path = await import("path");
+    const { captureGameIni, describeMachineKept } = await import("./gameIni");
+
+    const docs = fs.mkdtempSync(path.join(os.tmpdir(), "eh-ini-"));
+    const dir = path.join(docs, "My Games", "Fallout4");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "Fallout4.ini"),
+      ["[General]", "uGridsToLoad=5", "[Display]", "iSize W=1920"].join("\n"),
+    );
+    fs.writeFileSync(
+      path.join(dir, "Fallout4Prefs.ini"),
+      ["[Display]", 'sD3DDevice="NVIDIA GeForce RTX 3070 Laptop GPU"', "fShadowDistance=20000"].join("\n"),
+    );
+    // Fallout4Custom.ini deliberately absent — the normal case.
+
+    const capture = await captureGameIni({ gameId: "fallout4", documentsPath: docs });
+
+    const shipped = capture.files.flatMap((f) => f.settings.map((s) => s.key));
+    expect(shipped).toEqual(["uGridsToLoad", "fShadowDistance"]);
+    // The curator's GPU model must never enter the package.
+    expect(JSON.stringify(capture.files)).not.toMatch(/RTX 3070/);
+    expect(capture.machineKept.map((s) => s.key).sort()).toEqual(["iSize W", "sD3DDevice"]);
+    expect(capture.missing).toEqual(["Fallout4Custom.ini"]);
+
+    const said = describeMachineKept(capture).join(" ");
+    expect(said).toMatch(/2 INI setting\(s\) describe your machine/);
+    expect(said).toMatch(/screen resolution/);
+
+    fs.rmSync(docs, { recursive: true, force: true });
+  });
+
+  it("returns an empty capture for a game with no known layout", async () => {
+    const { captureGameIni } = await import("./gameIni");
+    const capture = await captureGameIni({
+      gameId: "someothergame",
+      documentsPath: "C:/nowhere",
+    });
+    expect(capture).toEqual({ files: [], machineKept: [], missing: [] });
+  });
+
+  it("does not fail a build when the settings folder is missing entirely", async () => {
+    // A collection that failed to build because an INI was absent would be a
+    // worse trade than one shipping without it.
+    const { captureGameIni } = await import("./gameIni");
+    const capture = await captureGameIni({
+      gameId: "fallout4",
+      documentsPath: "C:/definitely/not/here",
+    });
+    expect(capture.files).toEqual([]);
+    expect(capture.missing).toHaveLength(3);
+  });
+});

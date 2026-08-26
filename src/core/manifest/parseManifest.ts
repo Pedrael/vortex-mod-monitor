@@ -65,6 +65,7 @@ import type {
   VerificationLevel,
   VortexDeploymentMethod,
   VortexMetadata,
+  EhcollGameIni,
 } from "../../types/ehcoll";
 import type {
   FomodSelectedChoice,
@@ -182,6 +183,10 @@ export function parseManifest(raw: string): ParseManifestResult {
   // because the field is additive.
   const userlist = validateUserlist(obj.userlist, errors);
   const iniTweaks = validateIniTweaks(obj.iniTweaks, errors);
+  // gameIni is additive like loadOrder and userlist: manifests built before it
+  // existed simply have none, and absence is not an error. Schema version
+  // stays at 1.
+  const gameIni = validateGameIni(obj.gameIni, errors);
   const externalDependencies = validateExternalDependencies(
     obj.externalDependencies,
     errors,
@@ -218,6 +223,7 @@ export function parseManifest(raw: string): ParseManifestResult {
     loadOrder: loadOrder!,
     userlist: userlist!,
     iniTweaks: iniTweaks!,
+    ...(gameIni !== undefined ? { gameIni } : {}),
     externalDependencies: externalDependencies!,
   };
 
@@ -1815,4 +1821,57 @@ function describe(value: unknown): string {
   if (Array.isArray(value)) return "array";
   if (value === undefined) return "undefined";
   return typeof value;
+}
+
+/**
+ * The curator's game INI settings.
+ *
+ * Absent is valid and common — manifests built before this field existed, and
+ * builds that could not read the files. A malformed entry is dropped with an
+ * error rather than half-parsed: a settings block that silently loses keys
+ * would apply a configuration nobody wrote.
+ */
+function validateGameIni(
+  raw: unknown,
+  errors: string[],
+): EhcollGameIni | undefined {
+  if (raw === undefined) return undefined;
+  if (!isObject(raw)) {
+    errors.push(`gameIni must be an object, got ${describe(raw)}.`);
+    return undefined;
+  }
+  const files = expectArray((raw as Record<string, unknown>).files, "gameIni.files", errors);
+  if (files === undefined) return undefined;
+
+  const out: EhcollGameIni["files"] = [];
+  files.forEach((entry, i) => {
+    const path = `gameIni.files[${i}]`;
+    if (!isObject(entry)) {
+      errors.push(`${path} must be an object, got ${describe(entry)}.`);
+      return;
+    }
+    const e = entry as Record<string, unknown>;
+    const fileName = expectString(e.fileName, `${path}.fileName`, errors);
+    const settings = expectArray(e.settings, `${path}.settings`, errors);
+    if (fileName === undefined || settings === undefined) return;
+
+    const parsedSettings: EhcollGameIni["files"][number]["settings"] = [];
+    settings.forEach((s, j) => {
+      const sp = `${path}.settings[${j}]`;
+      if (!isObject(s)) {
+        errors.push(`${sp} must be an object, got ${describe(s)}.`);
+        return;
+      }
+      const so = s as Record<string, unknown>;
+      const section = expectString(so.section, `${sp}.section`, errors);
+      const key = expectString(so.key, `${sp}.key`, errors);
+      const value = expectString(so.value, `${sp}.value`, errors);
+      if (section === undefined || key === undefined || value === undefined) return;
+      parsedSettings.push({ section, key, value });
+    });
+
+    out.push({ fileName, settings: parsedSettings });
+  });
+
+  return { files: out };
 }

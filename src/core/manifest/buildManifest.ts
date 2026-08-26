@@ -33,6 +33,7 @@ import { computeStagingSetHash } from "./stagingSetHash";
 import type { ExportedModsSnapshot } from "../../utils/utils";
 import type {
   EhcollExternalDependency,
+  EhcollGameIni,
   EhcollFileOverride,
   EhcollLoadOrderEntry,
   EhcollManifest,
@@ -170,6 +171,12 @@ export type BuildManifestInput = {
 
   /** Pass-through. Defaults to []. */
   externalDependencies?: EhcollExternalDependency[];
+
+  /**
+   * The curator's game INI settings, already reduced to collection-owned keys
+   * by `captureGameIni`. Omitted when the build could not read them.
+   */
+  gameIni?: EhcollGameIni;
 };
 
 export type BuildManifestResult = {
@@ -373,6 +380,12 @@ export function buildManifest(input: BuildManifestInput): BuildManifestResult {
     userlist,
     iniTweaks: [],
     externalDependencies: input.externalDependencies ?? [],
+    // Only written when there is something to write: an empty capture and an
+    // absent one mean the same thing to a consumer, and the smaller manifest
+    // is the honest one.
+    ...(input.gameIni !== undefined && input.gameIni.files.length > 0
+      ? { gameIni: input.gameIni }
+      : {}),
   };
 
   return { manifest, warnings };
