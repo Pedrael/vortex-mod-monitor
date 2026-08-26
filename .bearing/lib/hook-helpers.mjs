@@ -45,6 +45,83 @@ export const CONFIG_FILE = ".bearing/hooks.json";
 // Gitignored per-machine override — same shape as CONFIG_FILE, wins over it. Lets one dev tune the
 // mode / thresholds (e.g. taskCoreEveryEdits) without editing the
 // team-shared file. Precedence: defaults < CONFIG_FILE < LOCAL_CONFIG_FILE < env.
+/**
+ * Did this shell command CHANGE a file?
+ *
+ * The edit counters watched Write|Edit|MultiEdit|NotebookEdit and nothing else. Measured on a real
+ * three-day session: ~6 edits went through those tools and ~90 went through Bash — python heredocs,
+ * `sed -i`, redirection — so the counter reached 6 against a threshold of 25 and the task-core
+ * nudge never fired once. The core sat 67 hours stale while the work it describes was being done.
+ * An agent that works through the shell is not exotic, and it was invisible.
+ *
+ * Deliberately generous. A false positive makes the nudge arrive slightly early, which costs a line;
+ * a false negative is what produced silence for three days.
+ * @param {string} command @returns {boolean}
+ */
+export function bashWritesFiles(command) {
+  const cmd = String(command ?? "");
+  if (!cmd.trim()) return false;
+
+  // Redirection to a real path. `> /dev/null` and `2>&1` are plumbing, not edits — counting them
+  // would mean counting nearly every command that reports anything.
+  const redirect = /(?:^|[^0-9<>|&])>>?\s*(?!\/dev\/)(?![&|])[^\s;|&]+/.test(cmd);
+  const inPlace = /\bsed\s+-i|\bperl\s+-\w*i|\bgit\s+apply\b|\bpatch\b/.test(cmd);
+  const writers = /\b(?:cp|mv|install|tee|truncate|touch|mkdir|rmdir|rm|ln)\s/.test(cmd);
+  const formatters = /\b(?:prettier|eslint|black|gofmt|rustfmt)\b[^|]*--(?:write|fix|in-place)/.test(cmd);
+  // A heredoc fed to an interpreter is how most scripted edits are actually made.
+  const scripted =
+    /<<-?\s*['"]?\w+['"]?/.test(cmd) &&
+    /\b(?:python3?|node|ruby|perl|php|bash|sh)\b/.test(cmd);
+
+  return redirect || inPlace || writers || formatters || scripted;
+}
+
+/**
+ * Which FILES a shell command writes, where that is knowable.
+ *
+ * `bashWritesFiles` answers "was this an edit", which is enough to COUNT edits. The deep-review
+ * nudge counts DISTINCT FILES — twenty passes over one file is iteration, five files touched once
+ * is a change with a shape — so it needs the paths, and a Bash call does not hand you one.
+ *
+ * Best-effort by design, and partial on purpose: a python heredoc that computes its target at
+ * runtime cannot be read off the command line, and guessing would inflate the distinct-file count
+ * with paths that were never touched. Returning fewer, certain paths keeps the threshold meaning
+ * what it says.
+ * @param {string} command @returns {string[]} repo-relative-ish paths, deduped
+ */
+export function bashWriteTargets(command) {
+  const cmd = String(command ?? "");
+  if (!cmd.trim()) return [];
+  const out = new Set();
+  const add = (p) => {
+    const clean = String(p || "").replace(/^['"]|['"]$/g, "").trim();
+    if (!clean || clean.startsWith("/dev/") || clean.startsWith("-")) return;
+    // Must LOOK like a path. A capture with no separator and no extension is far more likely to be
+    // a string that happened to sit where a path goes — which is how `write_text('x')` once
+    // registered a file called `x`. Rejecting it costs a missed count; accepting it costs a wrong
+    // one AND suppresses the fallback that would have been right.
+    if (!clean.includes("/") && !/\.[A-Za-z0-9]{1,6}$/.test(clean)) return;
+    out.add(clean);
+  };
+
+  // `> path`, `>> path`
+  for (const m of cmd.matchAll(/(?:^|[^0-9<>|&])>>?\s*(?!\/dev\/)([^\s;|&<>]+)/g)) add(m[1]);
+  // `sed -i [ext] 's/…/…/' path…` — the trailing operands are the files
+  for (const m of cmd.matchAll(/\bsed\s+-i\b[^\n;|&]*/g)) {
+    const tail = m[0].split(/\s+/).slice(1).filter((t) => !t.startsWith("-") && !/^['"]?s[\/|]/.test(t));
+    for (const t of tail.slice(1)) add(t);
+  }
+  // `cp a b` / `mv a b` / `install a b` — the DESTINATION is what changed
+  for (const m of cmd.matchAll(/\b(?:cp|mv|install)\s+(?:-\S+\s+)*(\S+)\s+(\S+)/g)) add(m[2]);
+  // A quoted path inside a heredoc body. `Path(...)` and `writeFileSync(path, data)` take the path
+  // first; `write_text(...)` takes the CONTENT and was captured here by mistake — it recorded a
+  // file's text as its name, and worse, a non-empty bogus target suppressed the git fallback that
+  // would have got the answer right.
+  for (const m of cmd.matchAll(/(?:writeFileSync|Path|open)\s*\(\s*['"]([^'"]+)['"]/g)) add(m[1]);
+
+  return [...out];
+}
+
 export const LOCAL_CONFIG_FILE = ".bearing/hooks.local.json";
 
 /**
@@ -105,8 +182,22 @@ const DEFAULT_BROAD_GLOB_RES = [
 
 // Polyglot: GitNexus indexes many languages — enforcement should not be JS/TS-only.
 // Override in .bearing/hooks.json via "sourceExts": ["js","py","rs", …].
+// Every extension the ANALYZER indexes, plus a few it does not — the asymmetry is deliberate.
+//
+// This list decides what counts as drift, and drift decides whether the graph is too stale to
+// answer with. An extension missing here is not a wrong count, it is NO count: those edits never
+// register and the gate never fires. `.vue` was missing while the analyzer ships a vue module —
+// a whole framework whose graph went stale on exactly the files being edited, silently. `.cbl`,
+// `.cob` and `.cpy` were missing the same way.
+//
+// The extras (scala, lua, ex/exs, clj) have no analyzer module today. They are kept because the
+// two directions are not symmetric: an extra extension makes drift fire slightly early, which
+// costs a refresh; a missing one makes it never fire, which costs correctness.
+//
+// Re-derive when the analyzer gains a language:
+//   ls $(npm root -g)/gitnexus/dist/core/ingestion/languages/*.js | xargs grep -h "extensions:"
 const DEFAULT_SOURCE_EXT_RE =
-  /\.(js|mjs|cjs|jsx|ts|tsx|mts|cts|py|pyi|rb|go|rs|java|kt|kts|swift|php|cs|cpp|cc|cxx|hpp|hh|c|h|cu|cuh|scala|m|mm|dart|lua|ex|exs|clj)$/i;
+  /\.(js|mjs|cjs|jsx|ts|tsx|mts|cts|vue|py|pyi|rb|go|rs|java|kt|kts|swift|php|cs|cpp|cc|cxx|hpp|hh|c|h|cu|cuh|scala|m|mm|dart|lua|ex|exs|clj|cbl|cob|cpy)$/i;
 
 /** @param {string[]} exts */
 function buildExtRe(exts) {
@@ -129,6 +220,10 @@ export function loadHookConfig(root) {
     broadGlobRes: DEFAULT_BROAD_GLOB_RES,
     sourceExtRe: DEFAULT_SOURCE_EXT_RE,
     stalenessCacheTtlMs: 2500,
+    // Pose the consult test once per chat, at the first edit. false/0 disables.
+    consultNudge: true,
+    // Distinct files edited before the deep-review nudge fires. 0 disables.
+    microscopeFileThreshold: 5,
     // Working-tree drift: after this many uncommitted source edits since the index,
     // graph query tools require a fast incremental refresh. 0 disables the drift gate.
     // Does a STALE INDEX block anything? "off" (default) | "block".
@@ -200,6 +295,12 @@ function applyHookConfigFile(cfg, cfgPath) {
       cfg.driftRefreshThreshold = file.driftRefreshThreshold;
     if (typeof file.taskCoreEveryEdits === "number")
       cfg.taskCoreEveryEdits = file.taskCoreEveryEdits;
+    // Boolean OR 0, because "off" is spelled both ways by different people and a setting that
+    // silently ignores the spelling you chose is the same defect as one nothing reads at all.
+    if (file.consultNudge === false || file.consultNudge === 0) cfg.consultNudge = false;
+    if (file.consultNudge === true || file.consultNudge === 1) cfg.consultNudge = true;
+    if (typeof file.microscopeFileThreshold === "number")
+      cfg.microscopeFileThreshold = file.microscopeFileThreshold;
     // A non-empty string only: `"minionModel": ""` or a stray number would otherwise be handed to
     // a spawn as a model name.
     if (typeof file.minionModel === "string" && file.minionModel.trim())

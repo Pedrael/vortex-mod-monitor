@@ -5,18 +5,16 @@ description: "HTTP API route changes. Use api_impact/route_map/shape_check on fr
 
 # API Routes
 
+<!-- BEGIN GENERATED: graph-uncertainty — bearing regenerates this block; edits here are replaced on update -->
 ## The graph can be wrong
 
-It is derived from parsing, not ground truth, and it fails in three different ways:
-
-- **A zero is not absence.** Never conclude "unused", "no callers" or "safe to delete" from an empty result.
-- **A low-confidence edge is a lead, not proof.** Check `r.confidence` — `CALLS` and resolved `ACCESSES` come back at 0.85–1.0, while ~92% of `USES` edges sit near 0.5.
-- **A count can be a floor.** `impact` returns `epistemic: "lower-bound"` with a `boundaries` note when it knows it is guessing low; it returns `"exact"` when it is not.
-
-When the conclusion matters — deleting, renaming, "nothing reads this", a security claim — confirm with a scoped `Grep` or by reading the file, and **say which check you ran**. A scoped grep for this is explicitly allowed; it is not a gate violation. When the graph and a classical check disagree, the classical check wins on existence, and the disagreement is a defect worth reporting via `bearing:fallback`.
+A zero is not absence; a near-0.5 `r.confidence` edge is a lead, not proof (~92% of `USES`); a count
+can be a floor — `impact` says which in `epistemic`. Before a conclusion that matters, confirm with a
+scoped `Grep` (allowed here, not a gate violation) and say which check you ran.
+<!-- END GENERATED: graph-uncertainty -->
 
 
-The kit auto-detects the router style at install and writes `.cursor/gitnexus-api-profile.json`.
+The kit auto-detects the router style at install and writes `.bearing/gitnexus-api-profile.json`.
 Run `npm run bearing:detect-api` to refresh it after major server changes. Route the work by profile.
 
 | Profile | What it means | Use |
@@ -29,7 +27,7 @@ Run `npm run bearing:detect-api` to refresh it after major server changes. Route
 ## Framework routers (Express / Fastify / Hono / Next route handlers)
 
 ```
-1. gitnexus_api_impact({ route: "/api/<path>", repo: "vortex-mod-monitor" })   # consumers + shape + risk
+1. gitnexus_api_impact({ route: "/api/<path>", repo: "vmm" })   # consumers + shape + risk
 2. gitnexus_route_map({ route: "/api/<path>" })                                # handler + middleware chain
 3. gitnexus_shape_check({ route: "/api/<path>" })                              # response keys vs consumer access
 4. gitnexus_impact upstream on the handler symbol BEFORE editing
@@ -56,12 +54,12 @@ the dispatcher + handler symbols instead of Route tooling.
 6. gitnexus_detect_changes before commit
 ```
 
-Find the dispatcher symbol from the profile's `customSymbols`, or query for "request handler / router / dispatch".
+Find the dispatcher symbol from the profile's `sourceSignals.customSymbols` (nested, not top-level), or query for "request handler / router / dispatch".
 
 ## Checklist
 
 ```
-- [ ] Profile checked (.cursor/gitnexus-api-profile.json or npm run bearing:detect-api)
+- [ ] Profile checked (.bearing/gitnexus-api-profile.json or npm run bearing:detect-api)
 - [ ] context on dispatcher (custom) OR api_impact (framework)
 - [ ] impact upstream on the handler symbol
 - [ ] Response envelope / schema preserved (or consumers updated in the same change)

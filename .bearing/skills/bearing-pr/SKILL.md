@@ -5,22 +5,17 @@ description: "Use when opening a pull request, writing or improving a PR descrip
 
 # Writing a PR someone can actually review
 
+<!-- BEGIN GENERATED: graph-uncertainty — bearing regenerates this block; edits here are replaced on update -->
 ## The graph can be wrong
 
-It is derived from parsing, not ground truth. A zero is not absence; a near-0.5 `r.confidence` edge is
-a lead, not proof (~92% of `USES` edges are exactly that); and `impact` returns
-`epistemic: "lower-bound"` with a `boundaries` note when it knows it is guessing low.
+A zero is not absence; a near-0.5 `r.confidence` edge is a lead, not proof (~92% of `USES`); a count
+can be a floor — `impact` says which in `epistemic`. Before a conclusion that matters, confirm with a
+scoped `Grep` (allowed here, not a gate violation) and say which check you ran.
+<!-- END GENERATED: graph-uncertainty -->
 
-This matters more here than almost anywhere else: a PR body states the blast radius **to the team**,
-in writing. Confirm anything load-bearing with a scoped `Grep` and say which check you ran — and if
-`epistemic` is not `"exact"`, write the number as a floor, not a total.
+It matters more here than anywhere else: a PR body states the blast radius **to the team**, in
+writing, and you cannot take it back. If `epistemic` is not `"exact"`, write the number as a floor.
 
-
-## When to Use
-
-- You are about to open a PR, or have just opened one with a placeholder body
-- A PR came back with "what does this actually change?"
-- A branch is finished and you are deciding whether it is reviewable
 
 ## The problem this solves
 

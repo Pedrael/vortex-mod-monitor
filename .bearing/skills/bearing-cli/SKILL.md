@@ -5,15 +5,13 @@ description: "Use when the user needs to run GitNexus CLI commands like analyze/
 
 # GitNexus CLI Commands
 
+<!-- BEGIN GENERATED: graph-uncertainty — bearing regenerates this block; edits here are replaced on update -->
 ## The graph can be wrong
 
-It is derived from parsing, not ground truth, and it fails in three different ways:
-
-- **A zero is not absence.** Never conclude "unused", "no callers" or "safe to delete" from an empty result.
-- **A low-confidence edge is a lead, not proof.** Check `r.confidence` — `CALLS` and resolved `ACCESSES` come back at 0.85–1.0, while ~92% of `USES` edges sit near 0.5.
-- **A count can be a floor.** `impact` returns `epistemic: "lower-bound"` with a `boundaries` note when it knows it is guessing low; it returns `"exact"` when it is not.
-
-When the conclusion matters — deleting, renaming, "nothing reads this", a security claim — confirm with a scoped `Grep` or by reading the file, and **say which check you ran**. A scoped grep for this is explicitly allowed; it is not a gate violation. When the graph and a classical check disagree, the classical check wins on existence, and the disagreement is a defect worth reporting via `bearing:fallback`.
+A zero is not absence; a near-0.5 `r.confidence` edge is a lead, not proof (~92% of `USES`); a count
+can be a floor — `impact` says which in `epistemic`. Before a conclusion that matters, confirm with a
+scoped `Grep` (allowed here, not a gate violation) and say which check you ran.
+<!-- END GENERATED: graph-uncertainty -->
 
 
 Commands below use `node .gitnexus/run.cjs <command>` — the project-local runner `gitnexus analyze` drops next to the index. It auto-selects an available runner at call time (global `gitnexus`, else `pnpm dlx`, else `npx`), so no package-manager assumption and no global install is required.
@@ -33,10 +31,10 @@ Run from the project root. This parses all source files, builds the knowledge gr
 | Flag           | Effect                                                           |
 | -------------- | ---------------------------------------------------------------- |
 | `--force`      | Force full re-index even if up to date                           |
-| `--embeddings` | Enable embedding generation for semantic search (off by default) |
+| `--embeddings [n]` | Enable embeddings (off by default). **Caps at 50,000 nodes unless you pass a limit — `--embeddings 0` disables the cap**, which is what every `bearing:*` refresh script does. Bare `--embeddings` on a large repo silently embeds a prefix, and `query` degrades to blunt ranking for everything past it. |
 | `--drop-embeddings` | Drop existing embeddings on rebuild. By default, an `analyze` without `--embeddings` preserves them. |
 
-**When to run:** First time in a project, after major code changes, or when `bearing://repo/{name}/context` reports the index is stale. In Claude Code, a PostToolUse hook detects staleness after `git commit` and `git merge` and notifies the agent to run `analyze` — the hook does not run analyze itself, to avoid blocking the agent for up to 120s and risking KuzuDB corruption on timeout.
+**When to run:** First time in a project, after major code changes, or when `gitnexus://repo/{name}/context` reports the index is stale. In Claude Code, a PostToolUse hook detects staleness after `git commit` and `git merge` and notifies the agent to run `analyze` — the hook does not run analyze itself, to avoid blocking the agent for up to 120s and risking KuzuDB corruption on timeout.
 
 ### status — Check index freshness
 
@@ -67,14 +65,15 @@ node .gitnexus/run.cjs wiki
 
 Generates repository documentation from the knowledge graph using an LLM. Requires an API key (saved to `~/.gitnexus/config.json` on first use).
 
-| Flag                | Effect                                    |
-| ------------------- | ----------------------------------------- |
-| `--force`           | Force full regeneration                   |
-| `--model <model>`   | LLM model (default: minimax/minimax-m2.5) |
-| `--base-url <url>`  | LLM API base URL                          |
-| `--api-key <key>`   | LLM API key                               |
-| `--concurrency <n>` | Parallel LLM calls (default: 3)           |
-| `--gist`            | Publish wiki as a public GitHub Gist      |
+**Do not copy the flag list here — run `node .gitnexus/run.cjs wiki --help`.** This table used to
+mirror it and drifted: it named `minimax/minimax-m2.5` as the default model when the CLI had moved to
+`MiniMax-M3`, and never gained `--provider` (minimax · openai · openrouter · azure · custom · cursor ·
+claude · codex · opencode) or `--timeout`. A third-party flag table copied into a doc has one
+guaranteed future.
+
+What is worth knowing before you run it: it costs real LLM calls, `--force` regenerates everything
+rather than the delta, and `--gist` publishes the result PUBLICLY — that one is a one-way door, so
+confirm before using it.
 
 ### list — Show all indexed repos
 
@@ -86,7 +85,7 @@ Lists all repositories registered in `~/.gitnexus/registry.json`. The MCP `list_
 
 ## After Indexing
 
-1. **Read `bearing://repo/{name}/context`** to verify the index loaded
+1. **Read `gitnexus://repo/{name}/context`** to verify the index loaded
 2. Use the other GitNexus skills (`exploring`, `debugging`, `impact-analysis`, `refactoring`) for your task
 
 ## Troubleshooting

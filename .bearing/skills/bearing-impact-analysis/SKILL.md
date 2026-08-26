@@ -5,15 +5,13 @@ description: "Use when the user wants to know what will break if they change som
 
 # Impact Analysis with GitNexus
 
+<!-- BEGIN GENERATED: graph-uncertainty — bearing regenerates this block; edits here are replaced on update -->
 ## The graph can be wrong
 
-It is derived from parsing, not ground truth, and it fails in three different ways:
-
-- **A zero is not absence.** Never conclude "unused", "no callers" or "safe to delete" from an empty result.
-- **A low-confidence edge is a lead, not proof.** Check `r.confidence` — `CALLS` and resolved `ACCESSES` come back at 0.85–1.0, while ~92% of `USES` edges sit near 0.5.
-- **A count can be a floor.** `impact` returns `epistemic: "lower-bound"` with a `boundaries` note when it knows it is guessing low; it returns `"exact"` when it is not.
-
-When the conclusion matters — deleting, renaming, "nothing reads this", a security claim — confirm with a scoped `Grep` or by reading the file, and **say which check you ran**. A scoped grep for this is explicitly allowed; it is not a gate violation. When the graph and a classical check disagree, the classical check wins on existence, and the disagreement is a defect worth reporting via `bearing:fallback`.
+A zero is not absence; a near-0.5 `r.confidence` edge is a lead, not proof (~92% of `USES`); a count
+can be a floor — `impact` says which in `epistemic`. Before a conclusion that matters, confirm with a
+scoped `Grep` (allowed here, not a gate violation) and say which check you ran.
+<!-- END GENERATED: graph-uncertainty -->
 
 
 ## The count is a floor, not a total
@@ -59,38 +57,18 @@ cypher: MATCH (a)-[:CodeRelation {type:'USES'}]->(t {name:'IDraft'}) RETURN a.na
 codebase this layer is *larger* than the call graph, so a type change whose blast radius you checked
 only through `CALLS` was not checked.
 
-## When to Use
-
-- "Is it safe to change this function?"
-- "What will break if I modify X?"
-- "Show me the blast radius"
-- "Who uses this code?"
-- Before making non-trivial code changes
-- Before committing — to understand what your changes affect
-
 ## Workflow
 
 ```
 1. impact({target: "X", direction: "upstream"})  → What depends on this
    ↳ READ `epistemic`, `boundaries`, `causes` — not just `impactedCount`
-2. READ bearing://repo/{name}/processes                   → Check affected execution flows
+2. READ gitnexus://repo/{name}/processes                   → Check affected execution flows
 3. detect_changes()                               → Map current git changes to affected flows
 4. Assess risk and report to user
 ```
 
-> If "Index is stale" → run `node .gitnexus/run.cjs analyze` in terminal.
-
-## Checklist
-
-```
-- [ ] impact({target, direction: "upstream"}) to find dependents
-- [ ] For high-risk runtime/security/core edits: impact({target, direction: "upstream", mode: "pdg"}) if PDG layer exists
-- [ ] Review d=1 items first (these WILL BREAK)
-- [ ] Check high-confidence (>0.8) dependencies
-- [ ] READ processes to check affected execution flows
-- [ ] detect_changes() for pre-commit check
-- [ ] Assess risk level and report to user
-```
+> Stale index → `npm run bearing:agent-refresh` (always includes `--embeddings`; an index
+> without them counts as stale).
 
 ## Understanding Output
 
@@ -109,51 +87,30 @@ only through `CALLS` was not checked.
 | >15 symbols or many processes  | HIGH     |
 | Critical path (auth, payments) | CRITICAL |
 
-## Tools
-
-**impact** — the primary tool for symbol blast radius. Use `mode: "pdg"` for high-risk changes after a PDG refresh:
+## Worked example — "what breaks if I change `validateUser`?"
 
 ```
-impact({
-  target: "validateUser",
-  direction: "upstream",
-  minConfidence: 0.8,
-  maxDepth: 3
-})
+1. impact({ target: "validateUser", direction: "upstream",
+            minConfidence: 0.8, maxDepth: 3 })
 
-impact({
-  target: "validateUser",
-  direction: "upstream",
-  mode: "pdg"
-})
+   → epistemic: "exact"                     ← read this BEFORE the count
+   → d=1 (WILL BREAK):
+       loginHandler   src/auth/login.ts:42      [CALLS, 100%]
+       apiMiddleware  src/api/middleware.ts:15  [CALLS, 100%]
+   → d=2 (LIKELY AFFECTED):
+       authRouter     src/routes/auth.ts:22     [CALLS, 95%]
 
-→ d=1 (WILL BREAK):
-  - loginHandler (src/auth/login.ts:42) [CALLS, 100%]
-  - apiMiddleware (src/api/middleware.ts:15) [CALLS, 100%]
+2. READ gitnexus://repo/{repo}/processes
+   → LoginFlow and TokenRefresh both touch validateUser
 
-→ d=2 (LIKELY AFFECTED):
-  - authRouter (src/routes/auth.ts:22) [CALLS, 95%]
+3. detect_changes({ scope: "staged" })
+   → Changed: 5 symbols in 3 files
+   → Affected: LoginFlow, TokenRefresh, APIMiddlewarePipeline
+   → Risk: MEDIUM
+
+4. Report: 2 direct callers, 2 processes → MEDIUM, and say `epistemic` was exact.
 ```
 
-**detect_changes** — git-diff based impact analysis:
-
-```
-detect_changes({scope: "staged"})
-
-→ Changed: 5 symbols in 3 files
-→ Affected: LoginFlow, TokenRefresh, APIMiddlewarePipeline
-→ Risk: MEDIUM
-```
-
-## Example: "What breaks if I change validateUser?"
-
-```
-1. impact({target: "validateUser", direction: "upstream"})
-   → d=1: loginHandler, apiMiddleware (WILL BREAK)
-   → d=2: authRouter, sessionManager (LIKELY AFFECTED)
-
-2. READ bearing://repo/my-app/processes
-   → LoginFlow and TokenRefresh touch validateUser
-
-3. Risk: 2 direct callers, 2 processes = MEDIUM
-```
+`mode: "pdg"` narrows this to statement level for a high-risk change, but needs the PDG layer and a
+`line` anchor inside the symbol — a `line` that is not a statement returns an empty slice next to a
+populated count, and only `epistemic` tells you which you got.

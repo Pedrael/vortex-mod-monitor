@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# vortex-mod-monitor — all-in-one GitNexus + Cursor teaching + git hooks team installer.
+# vmm — all-in-one GitNexus + Cursor teaching + git hooks team installer.
 #
 # Installs:
 #   • Cursor teaching bundle (rules, hooks, skills sync, manifest)
@@ -93,7 +93,7 @@ semver_ge() {
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║  vortex-mod-monitor — GitNexus team setup                    ║"
+echo "║  vmm — GitNexus team setup                    ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo ""
 

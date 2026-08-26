@@ -5,18 +5,16 @@ description: "Scenario playbooks for GitNexus — pre-edit, pre-commit, PR revie
 
 # GitNexus Scenario Playbooks
 
+<!-- BEGIN GENERATED: graph-uncertainty — bearing regenerates this block; edits here are replaced on update -->
 ## The graph can be wrong
 
-It is derived from parsing, not ground truth, and it fails in three different ways:
-
-- **A zero is not absence.** Never conclude "unused", "no callers" or "safe to delete" from an empty result.
-- **A low-confidence edge is a lead, not proof.** Check `r.confidence` — `CALLS` and resolved `ACCESSES` come back at 0.85–1.0, while ~92% of `USES` edges sit near 0.5.
-- **A count can be a floor.** `impact` returns `epistemic: "lower-bound"` with a `boundaries` note when it knows it is guessing low; it returns `"exact"` when it is not.
-
-When the conclusion matters — deleting, renaming, "nothing reads this", a security claim — confirm with a scoped `Grep` or by reading the file, and **say which check you ran**. A scoped grep for this is explicitly allowed; it is not a gate violation. When the graph and a classical check disagree, the classical check wins on existence, and the disagreement is a defect worth reporting via `bearing:fallback`.
+A zero is not absence; a near-0.5 `r.confidence` edge is a lead, not proof (~92% of `USES`); a count
+can be a floor — `impact` says which in `epistemic`. Before a conclusion that matters, confirm with a
+scoped `Grep` (allowed here, not a gate violation) and say which check you ran.
+<!-- END GENERATED: graph-uncertainty -->
 
 
-Match your task to a playbook. Always start with READ `bearing://repo/vortex-mod-monitor/context`.
+Match your task to a playbook. Always start with READ `gitnexus://repo/vmm/context`.
 
 Cross-module flows / architecture questions → also read **`bearing-imaging`** skill.
 
@@ -24,7 +22,7 @@ Cross-module flows / architecture questions → also read **`bearing-imaging`** 
 
 ```
 - [ ] READ context resource — index fresh?
-- [ ] gitnexus_impact({target, direction: "upstream", repo: "vortex-mod-monitor"})
+- [ ] gitnexus_impact({target, direction: "upstream", repo: "vmm"})
 - [ ] Report d=1 (WILL BREAK), affected processes, risk level to user
 - [ ] If HIGH/CRITICAL → warn before editing; suggest narrower change or tests
 - [ ] Optional: widen with relationTypes: ["CALLS","IMPORTS","ACCESSES"] for field/member edits
@@ -35,7 +33,7 @@ Cross-module flows / architecture questions → also read **`bearing-imaging`** 
 ## 2. Pre-commit
 
 ```
-- [ ] gitnexus_detect_changes({ scope: "staged", repo: "vortex-mod-monitor" })
+- [ ] gitnexus_detect_changes({ scope: "staged", repo: "vmm" })
 - [ ] Review changed_symbols + affected_processes
 - [ ] Unexpected cross-module hits? → split commit or narrow scope
 - [ ] Risk CRITICAL/HIGH → run broader test suite before commit
@@ -45,7 +43,7 @@ Cross-module flows / architecture questions → also read **`bearing-imaging`** 
 ## 3. PR / branch review
 
 ```
-- [ ] gitnexus_detect_changes({ scope: "compare", base_ref: "main", repo: "vortex-mod-monitor" })
+- [ ] gitnexus_detect_changes({ scope: "compare", base_ref: "main", repo: "vmm" })
 - [ ] List affected processes — do they match PR intent?
 - [ ] For each changed entry-point symbol: gitnexus_impact upstream
 - [ ] Flag cross-community process breaks
@@ -57,7 +55,7 @@ Cross-module flows / architecture questions → also read **`bearing-imaging`** 
 ```
 - [ ] gitnexus_query({search_query: "<error or symptom>", task_context: "debugging", goal: "find throw site"})
 - [ ] gitnexus_context on top suspect from returned processes
-- [ ] READ bearing://repo/vortex-mod-monitor/processes — pick matching flow
+- [ ] READ gitnexus://repo/vmm/processes — pick matching flow
 - [ ] Optional cypher for call chains (see bearing-debugging skill)
 - [ ] Read source at flagged lines — confirm root cause
 - [ ] If regression: detect_changes on recent commits

@@ -5,34 +5,24 @@ description: "Use when WORKING IN a complex, multi-layered architecture — trac
 
 # Working across layered systems
 
+<!-- BEGIN GENERATED: graph-uncertainty — bearing regenerates this block; edits here are replaced on update -->
 ## The graph can be wrong
 
-It is derived from parsing, not ground truth, and it fails in three different ways:
-
-- **A zero is not absence.** Never conclude "unused", "no callers" or "safe to delete" from an empty result.
-- **A low-confidence edge is a lead, not proof.** Check `r.confidence` — `CALLS` and resolved `ACCESSES` come back at 0.85–1.0, while ~92% of `USES` edges sit near 0.5.
-- **A count can be a floor.** `impact` returns `epistemic: "lower-bound"` with a `boundaries` note when it knows it is guessing low; it returns `"exact"` when it is not.
-
-When the conclusion matters — deleting, renaming, "nothing reads this", a security claim — confirm with a scoped `Grep` or by reading the file, and **say which check you ran**. A scoped grep for this is explicitly allowed; it is not a gate violation. When the graph and a classical check disagree, the classical check wins on existence, and the disagreement is a defect worth reporting via `bearing:fallback`.
+A zero is not absence; a near-0.5 `r.confidence` edge is a lead, not proof (~92% of `USES`); a count
+can be a floor — `impact` says which in `epistemic`. Before a conclusion that matters, confirm with a
+scoped `Grep` (allowed here, not a gate violation) and say which check you ran.
+<!-- END GENERATED: graph-uncertainty -->
 
 
 Layered systems (controller → service → repository → model; or hexagonal/onion; or monorepo packages) defeat grep because a single feature is **smeared vertically across layers** and behind interfaces. The graph re-connects them: `trace` and process flows turn "how does the HTTP handler reach the DB write?" into one answer, and cross-layer `impact`/`cypher` keep a change from silently breaking a *different* layer.
 
 This is the *operate* counterpart to `bearing-architecture-review` (which *judges* structure).
 
-## When to Use
-
-- "Trace this request/event through the layers end-to-end"
-- "Which layer should this change go in?"
-- "What crosses this boundary (interface / DTO / port)?"
-- "Change the contract between two layers safely"
-- Monorepo: "what depends on this package across the others?"
-
 ## Workflow
 
 ```
 1. Map the layers:
-   READ bearing://repo/{name}/clusters        → functional areas ≈ layers/modules
+   READ gitnexus://repo/{name}/clusters        → functional areas ≈ layers/modules
    (HTTP? check .bearing/gitnexus-api-profile.json → framework vs custom router)
 2. Trace one feature top-to-bottom:
    query({search_query:"<feature>"}) → READ process/<flow>   → the cross-layer chain + step order

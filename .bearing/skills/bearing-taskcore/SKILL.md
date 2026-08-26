@@ -1,6 +1,6 @@
 ---
 name: bearing-taskcore
-description: "Maintain a dense, AI-facing TASK-CORE save-state so a long task survives context COMPACTION without drift. Load it when: a PostToolUse nudge says edits have accumulated since the core was last written, at a milestone / before a risky pivot / when the task shifts, OR on recovery after a compaction (read it back first). The core is for the model, not humans — terse, anchors over prose. Examples: \"context is filling — save state\", \"checkpoint the task before compaction\", \"recover the task after compaction\"."
+description: "Maintain a dense, AI-facing TASK-CORE save-state so a long task survives context COMPACTION without drift. Load it when: a PostToolUse nudge says edits have accumulated since the core was last written, at a milestone / before a risky pivot / when the task shifts, OR on recovery after a compaction (read it back first). The core is for the model, not humans — terse, anchors over prose. Examples: \"context is filling — save state\", \"update the task core\", \"clean it from log-like things but keep the lessons\", \"checkpoint the task before compaction\", \"recover the task after compaction\"."
 ---
 
 # Task-core — a compaction save-state that kills drift
@@ -45,40 +45,34 @@ USER-PREFS(this task): <corrections + constraints the user gave THIS task>
 
 **Include** the things a summary drops: the *why* behind decisions, dead-ends already ruled out, exact anchors, the user's precise wording on constraints, the immediate next action. **Exclude** narrative recap, tool-by-tool history, and anything re-derivable from the code in seconds.
 
-## On refresh — a rewrite, not an append
+## Distill — on the nudge, when asked, or before compaction
 
-The nudge fires every N edits and says *refresh*. **That means rewriting the file so it describes
-the task as it is NOW** — not adding today's paragraph to yesterday's. A core that only ever grows
-becomes the thing it exists to replace: a transcript, with the same problem of burying the load-
-bearing detail in narrative.
+**Update it, clean it from log-like things, keep all lessons, scars and valuable things.**
 
-One test per line, applied on every refresh:
+A rewrite, not an append: a core that only grows becomes the transcript it exists to replace.
 
-> **If I deleted this line, would a future me redo work or repeat a mistake?**
+One exception to "keep" — if a lesson outlives THIS task, move it to `.bearing/gold-practices.md`
+first, then delete it here. The core is per-chat; anything left in it dies with the chat.
 
-Keep it if yes. Delete it if no. Specifically:
+Git already keeps the log. A core that duplicates commits pays context for a worse copy.
 
-| Drop | Keep |
-| --- | --- |
-| Finished steps whose outcome is now IN THE CODE — the code says it better | The **why** behind a decision, when it still constrains what comes next |
-| Resolved OPEN-Qs (fold the answer into DECISIONS, delete the question) | Gotchas that would still bite — a trap you could walk into again today |
-| GOTCHAS about code that no longer exists | The user's exact wording on a constraint |
-| ANCHORS to files you are finished with | ANCHORS you will open again |
-| A DONE list that has become a changelog | One line of DONE, if it stops you re-opening a settled question |
+## On recovery — read it WHOLE
 
-**Git already keeps the log.** Completed work lives in commits, which are searchable, dated and
-permanent — a task-core that duplicates them is paying context for a worse copy.
+The SessionStart brief points you here. **Read the entire file: no `offset`, no `limit`, no skim.**
 
-A healthy core stays roughly the same SIZE across refreshes: things leave as things arrive. If it
-grows every time, it is being appended to rather than rewritten, and the signal is thinning with
-every pass.
+The one file where the usual discipline is wrong. The contract says to page large source with
+offset/limit, because source is huge and you want one part of it. This is one screen, every line
+survived a prune because deleting it would cost you work, and you cannot tell which line that is
+until you have read it. A partial read is this file's own failure mode wearing the costume of
+recovery: you do not know what you missed, so you proceed confidently on the rest.
 
-## On recovery (post-compaction / resume)
+Then:
 
-The SessionStart brief points you here. **Read the task-core FIRST**, before acting:
-1. Reconstruct the task from it — goal, constraints, decisions, state, next.
-2. **Verify against reality** (the core is a point-in-time snapshot; a file may have moved). Don't trust an anchor blindly — confirm it.
-3. Continue from `NEXT`. Do **not** re-derive what the core already settles, and do **not** repeat anything in `GOTCHAS`.
+1. Reconstruct the task — goal, constraints, decisions, state, next.
+2. **Verify against reality.** It is a point-in-time snapshot; a file may have moved. Confirm an
+   anchor before trusting it.
+3. Continue from `NEXT`. Do not re-derive what `DECISIONS` settles, and do not repeat what is in
+   `GOTCHAS` — that section is there because it already cost someone the time.
 
 ## Task-core vs. MEMORY.md
 

@@ -5,15 +5,13 @@ description: "Use when the user asks how code works, wants to understand archite
 
 # Exploring Codebases with GitNexus
 
+<!-- BEGIN GENERATED: graph-uncertainty — bearing regenerates this block; edits here are replaced on update -->
 ## The graph can be wrong
 
-It is derived from parsing, not ground truth, and it fails in three different ways:
-
-- **A zero is not absence.** Never conclude "unused", "no callers" or "safe to delete" from an empty result.
-- **A low-confidence edge is a lead, not proof.** Check `r.confidence` — `CALLS` and resolved `ACCESSES` come back at 0.85–1.0, while ~92% of `USES` edges sit near 0.5.
-- **A count can be a floor.** `impact` returns `epistemic: "lower-bound"` with a `boundaries` note when it knows it is guessing low; it returns `"exact"` when it is not.
-
-When the conclusion matters — deleting, renaming, "nothing reads this", a security claim — confirm with a scoped `Grep` or by reading the file, and **say which check you ran**. A scoped grep for this is explicitly allowed; it is not a gate violation. When the graph and a classical check disagree, the classical check wins on existence, and the disagreement is a defect worth reporting via `bearing:fallback`.
+A zero is not absence; a near-0.5 `r.confidence` edge is a lead, not proof (~92% of `USES`); a count
+can be a floor — `impact` says which in `epistemic`. Before a conclusion that matters, confirm with a
+scoped `Grep` (allowed here, not a gate violation) and say which check you ran.
+<!-- END GENERATED: graph-uncertainty -->
 
 
 ## The type layer is indexed too
@@ -39,75 +37,45 @@ values that came from cypher; use `context`/`query`/`impact` numbers as given.
 fully resolve. Treat a `USES` result as where to look, not as the finding, and say so when you report
 it. `cypher` can filter on `r.confidence`; `impact` takes `minConfidence`.
 
-## When to Use
-
-- "How does authentication work?"
-- "What's the project structure?"
-- "Show me the main components"
-- "Where is the database logic?"
-- Understanding code you haven't seen before
-
 ## Workflow
 
 ```
-1. READ bearing://repo/{name}/context             → Codebase overview, check staleness
+1. READ gitnexus://repo/{name}/context             → Codebase overview, check staleness
 2. query({search_query: "<what you want to understand>"})  → Find related execution flows
 3. context({name: "<symbol>"})            → Deep dive on specific symbol
 4. cypher({statement, params})                → Field ACCESSES, N-hop chains, overrides (READ schema first)
-5. READ bearing://repo/{name}/process/{name}      → Trace full execution flow
+5. READ gitnexus://repo/{name}/process/{name}      → Trace full execution flow
 ```
 
-> If step 2 says "Index is stale" → run `node .gitnexus/run.cjs analyze` in terminal.
-
-## Checklist
-
-```
-- [ ] READ bearing://repo/{name}/context
-- [ ] query for the concept you want to understand
-- [ ] Review returned processes (execution flows)
-- [ ] context on key symbols for callers/callees
-- [ ] cypher for field data flow or custom call chains if context is not enough (READ schema first)
-- [ ] READ process resource for full execution traces
-- [ ] Read source files for implementation details
-```
+> Stale index → `npm run bearing:agent-refresh` (always includes `--embeddings`; an index
+> without them counts as stale).
 
 ## Resources
 
 | Resource                                | What you get                                            |
 | --------------------------------------- | ------------------------------------------------------- |
-| `bearing://repo/{name}/context`        | Stats, staleness warning (~150 tokens)                  |
-| `bearing://repo/{name}/clusters`       | All functional areas with cohesion scores (~300 tokens) |
-| `bearing://repo/{name}/cluster/{name}` | Area members with file paths (~500 tokens)              |
-| `bearing://repo/{name}/process/{name}` | Step-by-step execution trace (~200 tokens)              |
+| `gitnexus://repo/{name}/context`        | Stats, staleness warning (~150 tokens)                  |
+| `gitnexus://repo/{name}/clusters`       | All functional areas with cohesion scores (~300 tokens) |
+| `gitnexus://repo/{name}/cluster/{name}` | Area members with file paths (~500 tokens)              |
+| `gitnexus://repo/{name}/process/{name}` | Step-by-step execution trace (~200 tokens)              |
 
-## Tools
-
-**query** — find execution flows related to a concept:
+## Worked example — "how does payment processing work?"
 
 ```
-query({search_query: "payment processing"})
-→ Processes: CheckoutFlow, RefundFlow, WebhookHandler
-→ Symbols grouped by flow with file locations
-```
-
-**context** — 360-degree view of a symbol:
-
-```
-context({name: "validateUser"})
-→ Incoming calls: loginHandler, apiMiddleware
-→ Outgoing calls: checkToken, getUserById
-→ Processes: LoginFlow (step 2/5), TokenRefresh (step 1/3)
-```
-
-## Example: "How does payment processing work?"
-
-```
-1. READ bearing://repo/my-app/context       → 918 symbols, 45 processes
-2. query({search_query: "payment processing"})
+1. READ gitnexus://repo/{repo}/context      → 918 symbols, 45 processes
+2. query({ search_query: "payment processing" })
    → CheckoutFlow: processPayment → validateCard → chargeStripe
-   → RefundFlow: initiateRefund → calculateRefund → processRefund
-3. context({name: "processPayment"})
+   → RefundFlow:   initiateRefund → calculateRefund → processRefund
+3. context({ name: "processPayment" })
    → Incoming: checkoutHandler, webhookHandler
    → Outgoing: validateCard, chargeStripe, saveTransaction
-4. Read src/payments/processor.ts for implementation details
+   → Processes: CheckoutFlow (step 2/5)
+4. Read src/payments/processor.ts at the lines context cited — offset/limit, not the whole file
 ```
+
+A grep gives you neither of the two things that matter here: the flow NAME each symbol belongs
+to, and its position in it. "step 2/5" is what turns a list of callers into an order of operations.
+
+`context` also carries `epistemic` / `causes`. A non-zero `causes.receiverTyping` means call sites
+were dropped because the analyzer could not type the receiver — "no incoming" then means "we lost
+this many", not "nothing calls it".

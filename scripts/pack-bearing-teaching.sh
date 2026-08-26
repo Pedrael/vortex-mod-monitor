@@ -136,10 +136,10 @@ const manifest = {
   bundle: 'gitnexus-cursor-teaching',
   version: ${VERSION},
   packedAt: new Date().toISOString(),
-  sourceRepo: 'vortex-mod-monitor',
+  sourceRepo: 'vmm',
   files: $(node -e "console.log(JSON.stringify(process.argv.slice(1)))" "${BUNDLE_PATHS[@]}" "package.json.scripts.snippet.json" "gitignore.snippet" "MANIFEST.json"),
   notes: [
-    'Project-specific: replace vortex-mod-monitor with target repo name in rules/hooks/skills',
+    'Project-specific: replace vmm with target repo name in rules/hooks/skills',
     'Run scripts/bearing-teaching/install-from-bundle.sh after extracting',
     'Area skills (.claude/skills/generated) are NOT bundled — created by bearing:refresh on target repo',
   ],

@@ -163,3 +163,33 @@ better does not prevent.
   around, yes. An account of how you got here, no.
   *Scar: a PR body carried notes on what remained unverified and why a branch was still draft —
   written for one person, read by the whole team, and useless to every one of them.*
+
+- **GP-20** — **An instrument that sees a subset reports success in the shape of the whole.** Before
+  trusting a count, ask what it CANNOT see — the part outside its scope never shows up as a zero, it
+  never shows up at all. Prefer observing the OUTCOME to enumerating the inputs you thought of: press
+  submit rather than counting filled fields. *Scar: a completeness check counted `input[type=text]`
+  and reported "all filled" while a date picker and two selects sat empty; a hook counting file edits
+  watched the edit tools and saw 6 of ~96, because the rest went through the shell.*
+
+- **GP-21** — **Hand over a decision, not a chore.** Whatever mechanical step you leave undone becomes
+  the recipient's, and it is the part most likely to make them defer the whole request. Do everything
+  that does not need them, then hand over exactly what does — the prefilled form, the exact command,
+  the diff, closed options with a recommendation. Holds for whoever is next: a subagent, a reviewer,
+  your own next session. *Scar: a blank KYC form handed to a person when every field but one was
+  already known.*
+
+- **GP-22** — **Declining to answer is the cheapest possible answer, so any comparison by cost ranks
+  it first.** Check both sides actually produced a result before comparing what producing it cost:
+  nothing in a cost metric separates a fast answer from a fast refusal, so the failing side takes the
+  prize and the worse it fails the more it wins. Same shape in a cache posting its best hit rate while
+  returning nulls. Score the answer first, the cost second, and name the non-answers. *Scar: a
+  benchmark priced `impact` against grep at 5294x — the graph had answered `impactedCount: 0` in ~250
+  tokens for a field it could not traverse, advising "confirm with a text search".*
+
+- **GP-23** — **Verify the exit condition, not that the remedy ran.** A fix that completes is not a
+  fix that worked: re-check the thing you were trying to clear. A remedy that recreates its own
+  precondition looks identical to one that succeeded, because the action *did* succeed — retry
+  storms, a cache-clear repopulating from the same bad source, a restart that re-runs the failing
+  migration. *Scar: three skills answered "index is stale" with a bare `analyze`, which omits
+  `--embeddings` — and an index without embeddings is stale by the contract's own definition.*
+

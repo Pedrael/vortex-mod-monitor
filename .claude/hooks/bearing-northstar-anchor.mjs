@@ -24,8 +24,18 @@ try {
 const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
 
 const lib = (rel) => import(pathToFileURL(path.join(root, ".bearing/lib", rel)).href);
-const { loadHookConfig } = await lib("hook-helpers.mjs");
-const { emitContext } = await lib("claude-emit.mjs");
+// FAIL OPEN when our own libs are gone. A missing `.bearing/lib` — partial uninstall, a failed
+// update mid-copy, `git clean -xdf` in a stealth repo — threw ERR_MODULE_NOT_FOUND and exited 1
+// here. A non-zero PreToolUse exit DENIES the call, so all five guards failing at once blocked Grep,
+// Read, Edit, Bash and MCP simultaneously, explained by a raw Node stack trace. A false deny is
+// worse than a missed gate (NS-5); with no libs there is no verdict to give, so give none.
+let loadHookConfig, emitContext;
+try {
+  ({ loadHookConfig } = await lib("hook-helpers.mjs"));
+  ({ emitContext } = await lib("claude-emit.mjs"));
+} catch {
+  process.exit(0);
+}
 const { northStarsExists, northStarsDigest, bumpNorthStarCounter, bumpScore } =
   await lib("session-primer.mjs");
 
@@ -42,7 +52,18 @@ const filePath = String(input.tool_input?.file_path || "");
 const wroteDoc = /^(Write|Edit|NotebookEdit)$/.test(tool) && /\.(md|mdx|txt)$/i.test(filePath);
 
 const n = bumpNorthStarCounter(root);
+
+// A doc write fires this regardless of the counter, because writing a doc is when a conclusion gets
+// recorded in durable form — that is the moment worth interrupting. But the counter RESETS on every
+// fire, so a burst of doc writes paid the full anchor once per file, re-emitting byte-identical text
+// while the previous copy was still in the window. Measured on this repo: 24 claims at up to 200
+// chars is ~1,000 tokens an anchor, and a docs-heavy session writes dozens of files.
+//
+// So debounce the doc path only: a low counter means an anchor just fired and the claims are still
+// present. The every-N path is untouched — it is already its own debounce.
+const DOC_DEBOUNCE = 5;
 if (!wroteDoc && n < every) process.exit(0);
+if (wroteDoc && n < DOC_DEBOUNCE) process.exit(0);
 
 // The re-anchor carries the CLAIM of every north-star, not its evidence. A rich proposition
 // ("rejected BECAUSE <mechanism> <numbers> <citation>") is right for reading the file, but

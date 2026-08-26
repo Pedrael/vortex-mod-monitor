@@ -39,10 +39,25 @@ try {
 const tool = input.tool_name || "";
 // Only tools that CHANGE the repo. A Read or a Grep produces nothing that a compaction could lose.
 const EDITS = new Set(["Write", "Edit", "NotebookEdit"]);
-if (!EDITS.has(tool)) process.exit(0);
 
 const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
 const lib = (rel) => import(pathToFileURL(path.join(root, ".bearing/lib", rel)).href);
+
+// A shell command that WRITES counts too. Watching only the edit tools measured ~6 of ~96 real
+// edits in one long session, so the counter crawled and the nudge never arrived. The check is in
+// hook-helpers so all three counters agree on what an edit is.
+let isEdit = EDITS.has(tool);
+if (!isEdit && tool === "Bash") {
+  try {
+    const { bashWritesFiles } = await import(
+      pathToFileURL(path.join(root, ".bearing/lib/hook-helpers.mjs")).href
+    );
+    isEdit = bashWritesFiles(input.tool_input?.command);
+  } catch {
+    /* no lib → not an edit we can see */
+  }
+}
+if (!isEdit) process.exit(0);
 
 let config;
 let sp;
@@ -100,7 +115,17 @@ if (state.edits < every) {
 }
 write({ edits: 0, coreAt });
 
-const { emitContext } = await lib("claude-emit.mjs");
+// FAIL OPEN when our own libs are gone. A missing `.bearing/lib` — partial uninstall, a failed
+// update mid-copy, `git clean -xdf` in a stealth repo — threw ERR_MODULE_NOT_FOUND and exited 1
+// here. A non-zero PreToolUse exit DENIES the call, so all five guards failing at once blocked Grep,
+// Read, Edit, Bash and MCP simultaneously, explained by a raw Node stack trace. A false deny is
+// worse than a missed gate (NS-5); with no libs there is no verdict to give, so give none.
+let emitContext;
+try {
+  ({ emitContext } = await lib("claude-emit.mjs"));
+} catch {
+  process.exit(0);
+}
 try {
   sp.bumpScore(root, "taskCoreNudges");
 } catch {
@@ -112,8 +137,9 @@ emitContext(
     `Refresh \`${corePath}\` — GOAL · CONSTRAINTS · DECISIONS(+why) · STATE(done/now/NEXT) · ` +
     "ANCHORS(file:line) · GOTCHAS(what you already tried that failed) · OPEN-Qs. Terse, for you, " +
     "not for a human. A compaction can land at any time and the transcript does not survive it; " +
-    "this file is what does. REWRITE it rather than appending — drop finished steps whose outcome " +
-    "is now in the code, and resolved questions; git already keeps the log. Skip it if the task " +
-    "has not moved.",
+    "this file is what does. REWRITE it rather than appending: clean it from log-like things, keep " +
+    "every lesson and scar — git already keeps the log. A lesson that outlives THIS task goes to " +
+    "`.bearing/gold-practices.md` BEFORE you drop it here, or it dies with the chat. Skip it if " +
+    "the task has not moved.",
   "PostToolUse",
 );

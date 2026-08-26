@@ -34,29 +34,19 @@ const lib = (rel) =>
   import(pathToFileURL(path.join(root, ".bearing/lib", rel)).href);
 
 const { existsSync } = await import("node:fs");
-const { gnContext, emitContext } = await lib("claude-emit.mjs");
-const { howToRun } = await lib("how-to-run.mjs");
-const {
-  clearSessionState,
-  shouldClearOnSource,
-  isImpactUsed,
-  isDetectUsed,
-  memoryPath,
-  fallbackGrant,
-  taskCorePath,
-  taskCoreReadPath,
-  taskCoreExists,
-  pruneTaskCores,
-  ensureTaskCoreDir,
-  sessionKey,
-  northStarsPath,
-  northStarsExists,
-  graphFeatureEnabled,
-  readTelemetry,
-  summarizeTelemetry,
-  readScorecard,
-  diagnoseEnforcement,
-} = await lib("session-primer.mjs");
+// FAIL OPEN when our own libs are gone. A missing `.bearing/lib` — partial uninstall, a failed
+// update mid-copy, `git clean -xdf` in a stealth repo — threw ERR_MODULE_NOT_FOUND and exited 1
+// here. A non-zero PreToolUse exit DENIES the call, so all five guards failing at once blocked Grep,
+// Read, Edit, Bash and MCP simultaneously, explained by a raw Node stack trace. A false deny is
+// worse than a missed gate (NS-5); with no libs there is no verdict to give, so give none.
+let gnContext, emitContext, howToRun, clearSessionState, shouldClearOnSource, isImpactUsed, isDetectUsed, memoryPath, fallbackGrant, taskCorePath, taskCoreReadPath, taskCoreExists, pruneTaskCores, ensureTaskCoreDir, sessionKey, northStarsPath, northStarsExists, graphFeatureEnabled, readTelemetry, summarizeTelemetry, readScorecard, diagnoseEnforcement;
+try {
+  ({ gnContext, emitContext } = await lib("claude-emit.mjs"));
+  ({ howToRun } = await lib("how-to-run.mjs"));
+  ({ clearSessionState, shouldClearOnSource, isImpactUsed, isDetectUsed, memoryPath, fallbackGrant, taskCorePath, taskCoreReadPath, taskCoreExists, pruneTaskCores, ensureTaskCoreDir, sessionKey, northStarsPath, northStarsExists, graphFeatureEnabled, readTelemetry, summarizeTelemetry, readScorecard, diagnoseEnforcement } = await lib("session-primer.mjs"));
+} catch {
+  process.exit(0);
+}
 
 // The brief names a path the agent is expected to write; make sure it can.
 ensureTaskCoreDir(root);
@@ -108,7 +98,7 @@ if (recovering) {
   lines = [
     `Context was ${source === "compact" ? "COMPACTED" : "resumed"} — the task CONTINUES${graphEnabled ? "; enforcement and this session's satisfied gates are PRESERVED" : ""}.`,
     hasCore
-      ? `READ your TASK-CORE FIRST — \`${tcp}\`${coreAge(tcp)}: a dense save-state of THIS task (goal/constraints/decisions/state/anchors/gotchas/next). Reconstruct from it, verify against reality, then continue — do not re-derive what it already settles.`
+      ? `READ your TASK-CORE FIRST — \`${tcp}\`${coreAge(tcp)}: a dense save-state of THIS task (goal/constraints/decisions/state/anchors/gotchas/next). **Read it WHOLE — no offset, no limit, no skim.** It is one screen, it is the only thing that survived the summary, and a partial read cannot tell you which part it missed. Reconstruct from it, verify against reality, then continue — do not re-derive what it already settles.`
       : `No TASK-CORE saved — reconstruct THIS task (goal/decisions/state/next) from your memory + the code before acting, and write \`${tcp}\` next time so compaction can't drift you. That path is THIS chat's own; other sessions in this repo have their own.`,
     // Graph-first discipline MUST be re-stated here, not only on fresh start: post-compaction is
     // exactly where agents drift back to grep/blind-read. "Gates preserved" ≠ "stop using the graph".

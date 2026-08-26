@@ -8,32 +8,24 @@ description: "Use when the user wants to rename, extract, split, move, or restru
 ## `rename` is not all graph — check the tag on every edit
 
 Every edit in a `rename` preview is tagged `confidence: "graph"` (resolved through the knowledge
-graph, safe) or `confidence: "text_search"` (a regex match — find-and-replace, labelled). A real
-rename came back **4 graph, 3 text_search**: 43% regex, landing on an object-literal key that merely
-shared the name.
+graph) or `confidence: "text_search"` (a regex match — find-and-replace, labelled).
+
+**The ratio varies wildly and is not the point.** One measured rename came back 4 graph / 3
+text_search; another, 36 / 1. What matters is WHICH edit is regex — in the second, the lone
+text_search hit was the only production caller, and every confident edit was in the spec file.
 
 `dry_run: true` is the default for a reason. Compare `graph_edits` against `text_search_edits`, read
 every `text_search` line on its own merits, and run `detect_changes` afterwards. "Safer than
 find-and-replace" is true and does not mean "is not find-and-replace".
 
+<!-- BEGIN GENERATED: graph-uncertainty — bearing regenerates this block; edits here are replaced on update -->
 ## The graph can be wrong
 
-It is derived from parsing, not ground truth, and it fails in three different ways:
+A zero is not absence; a near-0.5 `r.confidence` edge is a lead, not proof (~92% of `USES`); a count
+can be a floor — `impact` says which in `epistemic`. Before a conclusion that matters, confirm with a
+scoped `Grep` (allowed here, not a gate violation) and say which check you ran.
+<!-- END GENERATED: graph-uncertainty -->
 
-- **A zero is not absence.** Never conclude "unused", "no callers" or "safe to delete" from an empty result.
-- **A low-confidence edge is a lead, not proof.** Check `r.confidence` — `CALLS` and resolved `ACCESSES` come back at 0.85–1.0, while ~92% of `USES` edges sit near 0.5.
-- **A count can be a floor.** `impact` returns `epistemic: "lower-bound"` with a `boundaries` note when it knows it is guessing low; it returns `"exact"` when it is not.
-
-When the conclusion matters — deleting, renaming, "nothing reads this", a security claim — confirm with a scoped `Grep` or by reading the file, and **say which check you ran**. A scoped grep for this is explicitly allowed; it is not a gate violation. When the graph and a classical check disagree, the classical check wins on existence, and the disagreement is a defect worth reporting via `bearing:fallback`.
-
-
-## When to Use
-
-- "Rename this function safely"
-- "Extract this into a module"
-- "Split this service"
-- "Move this to a new file"
-- Any task involving renaming, extracting, splitting, or restructuring code
 
 ## Workflow
 
@@ -44,7 +36,8 @@ When the conclusion matters — deleting, renaming, "nothing reads this", a secu
 4. Plan update order: interfaces → implementations → callers → tests
 ```
 
-> If "Index is stale" → run `node .gitnexus/run.cjs analyze` in terminal.
+> Stale index → `npm run bearing:agent-refresh` (always includes `--embeddings`; an index
+> without them counts as stale).
 
 ## Checklists
 
@@ -52,7 +45,7 @@ When the conclusion matters — deleting, renaming, "nothing reads this", a secu
 
 ```
 - [ ] rename({symbol_name: "oldName", new_name: "newName", dry_run: true}) — preview all edits
-- [ ] Review graph edits (high confidence) and ast_search edits (review carefully)
+- [ ] Review graph edits (high confidence) and text_search edits (review carefully)
 - [ ] If satisfied: rename({..., dry_run: false}) — apply edits
 - [ ] detect_changes() — verify only expected files changed
 - [ ] Run tests for affected processes
@@ -81,41 +74,6 @@ When the conclusion matters — deleting, renaming, "nothing reads this", a secu
 - [ ] Run tests for affected processes
 ```
 
-## Tools
-
-**rename** — automated multi-file rename:
-
-```
-rename({symbol_name: "validateUser", new_name: "authenticateUser", dry_run: true})
-→ 12 edits across 8 files
-→ 10 graph edits (high confidence), 2 ast_search edits (review)
-→ Changes: [{file_path, edits: [{line, old_text, new_text, confidence}]}]
-```
-
-**impact** — map all dependents first:
-
-```
-impact({target: "validateUser", direction: "upstream"})
-→ d=1: loginHandler, apiMiddleware, testUtils
-→ Affected Processes: LoginFlow, TokenRefresh
-```
-
-**detect_changes** — verify your changes after refactoring:
-
-```
-detect_changes({scope: "all"})
-→ Changed: 8 files, 12 symbols
-→ Affected processes: LoginFlow, TokenRefresh
-→ Risk: MEDIUM
-```
-
-**cypher** — custom reference queries:
-
-```cypher
-MATCH (caller)-[:CodeRelation {type: 'CALLS'}]->(f:Function {name: "validateUser"})
-RETURN caller.name, caller.filePath ORDER BY caller.filePath
-```
-
 ## Risk Rules
 
 | Risk Factor         | Mitigation                                |
@@ -125,19 +83,25 @@ RETURN caller.name, caller.filePath ORDER BY caller.filePath
 | String/dynamic refs | query to find them               |
 | External/public API | Version and deprecate properly            |
 
-## Example: Rename `validateUser` to `authenticateUser`
+## Worked example — measured, not invented
+
+`rename({ symbol_name: "handleWebhookEvent", new_name: "...", dry_run: true })` on a real NestJS
+backend:
 
 ```
-1. rename({symbol_name: "validateUser", new_name: "authenticateUser", dry_run: true})
-   → 12 edits: 10 graph (safe), 2 ast_search (review)
-   → Files: validator.ts, login.ts, middleware.ts, config.json...
+files_affected: 3   total_edits: 37
+graph_edits: 36     text_search_edits: 1     ← read BOTH numbers
 
-2. Review ast_search edits (config.json: dynamic reference!)
-
-3. rename({symbol_name: "validateUser", new_name: "authenticateUser", dry_run: false})
-   → Applied 12 edits across 8 files
-
-4. detect_changes({scope: "all"})
-   → Affected: LoginFlow, TokenRefresh
-   → Risk: MEDIUM — run tests for these flows
+  stripe.service.ts:586        the definition                    confidence: "graph"
+  stripe.service.spec.ts       35 call sites in the test file    confidence: "graph"
+  stripe.controller.ts:231     await this.stripeService.handle…  confidence: "text_search"
 ```
+
+**The one regex edit is the only production caller.** The graph resolved every call in the spec
+file and fell back to text search for the call that actually ships — because it goes through
+`this.stripeService`, a receiver it could not type. That is `causes.receiverTyping` showing up in a
+rename.
+
+So the edit you most need to be right about is the one tagged lowest-confidence, and a preview that
+is "97% graph" is not 97% safe. Read every `text_search` line on its own merits, then
+`detect_changes({ scope: "all" })`.

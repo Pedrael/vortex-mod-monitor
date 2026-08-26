@@ -10,9 +10,9 @@ disable-model-invocation: false
 
 ## Rules (short)
 
-1. **Orient:** `query({ search_query, task_context, goal, repo: "vortex-mod-monitor", limit: 3, max_symbols: 8 })`
-2. **Symbol:** `context({ name, repo: "vortex-mod-monitor", include_content: false })`
-3. **Before edit:** `impact({ target, direction: "upstream", repo: "vortex-mod-monitor", summaryOnly: true })`
+1. **Orient:** `query({ search_query, task_context, goal, repo: "vmm", limit: 3, max_symbols: 8 })`
+2. **Symbol:** `context({ name, repo: "vmm", include_content: false })`
+3. **Before edit:** `impact({ target, direction: "upstream", repo: "vmm", summaryOnly: true })`
 4. **Path:** `trace({from, to})` when both endpoints are known
 5. **Control/data:** `pdg_query({mode: "controls"|"flows"})` when relevant
 6. **Structural:** READ schema → `cypher` (field ACCESSES, overrides, process steps)
