@@ -753,7 +753,7 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
         `Applying ${plan.manifest.rules.length} mod rule(s)...`,
       );
 
-      const modIdByNexusModId = buildNexusModIdMap(
+      const nexusIdIndex = buildNexusModIdMap(
         api,
         plan.manifest.game.id,
         installedMods,
@@ -771,7 +771,11 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
           gameId: plan.manifest.game.id,
           rules: plan.manifest.rules,
           modIdByCompareKey,
-          modIdByNexusModId,
+          modIdByNexusModId: nexusIdIndex.map,
+          // Partial pins naming one of these cannot be resolved — several
+          // variants of that Nexus mod are installed, and picking one would
+          // apply a conflict rule to the wrong variant.
+          ambiguousNexusModIds: nexusIdIndex.ambiguous,
           existingRulesBySourceModId,
           signal: ctx.abortSignal,
         });
@@ -2246,8 +2250,9 @@ function buildNexusModIdMap(
   gameId: string,
   installedMods: InstalledModReportEntry[],
   carriedMods: CarriedModReportEntry[],
-): Map<string, string> {
+): { map: Map<string, string>; ambiguous: Set<string> } {
   const map = new Map<string, string>();
+  const ambiguous = new Set<string>();
   const state = api.getState();
   const modsForGame = (
     state as unknown as {
@@ -2259,23 +2264,34 @@ function buildNexusModIdMap(
       };
     }
   ).persistent?.mods?.[gameId];
-  if (!modsForGame) return map;
+  if (!modsForGame) return { map, ambiguous };
 
   const collect = (vortexModId: string, source: "nexus" | "external"): void => {
     if (source !== "nexus") return;
     const record = modsForGame[vortexModId];
-    const nexusModId = record?.attributes?.modId;
-    if (typeof nexusModId === "number") {
-      map.set(String(nexusModId), vortexModId);
-    } else if (typeof nexusModId === "string" && nexusModId.length > 0) {
-      map.set(nexusModId, vortexModId);
+    const raw = record?.attributes?.modId;
+    const nexusModId =
+      typeof raw === "number"
+        ? String(raw)
+        : typeof raw === "string" && raw.length > 0
+          ? raw
+          : undefined;
+    if (nexusModId === undefined) return;
+    // A second mod for the same Nexus modId is NOT a data error — installing
+    // two variants of one mod is ordinary practice, and this profile has 104
+    // of them. It only means a partial pin naming this modId cannot be
+    // resolved, so record the collision instead of letting the last writer
+    // win silently.
+    if (map.has(nexusModId) && map.get(nexusModId) !== vortexModId) {
+      ambiguous.add(nexusModId);
     }
+    map.set(nexusModId, vortexModId);
   };
 
   for (const m of installedMods) collect(m.vortexModId, m.source);
   for (const c of carriedMods) collect(c.vortexModId, c.source);
 
-  return map;
+  return { map, ambiguous };
 }
 
 /**

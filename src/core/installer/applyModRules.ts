@@ -75,6 +75,15 @@ export type ApplyModRulesInput = {
    */
   modIdByNexusModId: ReadonlyMap<string, string>;
   /**
+   * Nexus modIds with MORE THAN ONE mod installed for them.
+   *
+   * A partial pin naming one of these cannot be resolved: the map holds
+   * whichever instance was written last, and applying a conflict rule to the
+   * wrong variant resolves file conflicts in the wrong direction. Optional so
+   * existing callers keep working; absent means "no known ambiguity".
+   */
+  ambiguousNexusModIds?: ReadonlySet<string>;
+  /**
    * Optional: user's pre-existing rules on the mods we touch, keyed
    * by source vortex modId. Used for collection-wins conflict
    * dedup. When omitted, the conflict pass is skipped.
@@ -172,7 +181,7 @@ export function applyModRules(input: ApplyModRulesInput): ApplyModRulesResult {
         reason:
           rule.reference.startsWith("nexus:") &&
           rule.reference.split(":").length === 2
-            ? `Partial Nexus pin "${rule.reference}" did not match any installed mod.`
+            ? partialPinReason(rule.reference, input)
             : `Reference "${rule.reference}" did not resolve to any installed mod.`,
       });
       continue;
@@ -248,6 +257,23 @@ export function applyModRules(input: ApplyModRulesInput): ApplyModRulesResult {
  * id. Strongest-form first: fully-pinned compareKeys map directly,
  * partial Nexus pins fall back to the nexusModId index.
  */
+/**
+ * Why a partial pin failed — "not installed" and "installed more than once"
+ * are different problems with different fixes, and one message for both would
+ * send the curator looking for a missing mod that is actually present twice.
+ */
+function partialPinReason(reference: string, input: ApplyModRulesInput): string {
+  const nexusModId = reference.split(":")[1] ?? "";
+  if (input.ambiguousNexusModIds?.has(nexusModId) === true) {
+    return (
+      `Partial Nexus pin "${reference}" matches more than one installed mod ` +
+      `(several variants of Nexus mod ${nexusModId} are installed), so the ` +
+      `rule could land on the wrong one. Skipped rather than guessed.`
+    );
+  }
+  return `Partial Nexus pin "${reference}" did not match any installed mod.`;
+}
+
 function resolveReferenceToModId(
   reference: string,
   input: ApplyModRulesInput,
@@ -257,14 +283,28 @@ function resolveReferenceToModId(
   const direct = input.modIdByCompareKey.get(reference);
   if (direct !== undefined) return direct;
 
-  // Partial Nexus pin: `nexus:<M>` (two segments). We resolve to any
-  // installed mod with that Nexus modId — by construction, the user
-  // can have at most one fileId per Nexus modId in a single profile,
-  // so this is unambiguous in practice.
+  // Partial Nexus pin: `nexus:<M>` (two segments).
+  //
+  // The comment here used to say a profile can hold at most one fileId per
+  // Nexus modId, "so this is unambiguous in practice". That is false, and
+  // measurably so: the curator's own 954-mod profile has 104 Nexus modIds
+  // installed more than once, one of them five times. Installing a second
+  // variant of a mod — different FOMOD answers, a patch version kept
+  // alongside — is ordinary practice, not an edge case.
+  //
+  // So an ambiguous pin RESOLVES TO NOTHING rather than to whichever instance
+  // the map happened to keep. The rule is then recorded as skipped, with a
+  // reason, and surfaces in the receipt. Applying a conflict rule to the wrong
+  // variant would silently resolve file conflicts in the wrong direction — a
+  // wrong answer that looks like the collection simply does not work, and one
+  // nobody would think to look for. A reported skip is recoverable; a silent
+  // mis-application is not.
   if (reference.startsWith("nexus:")) {
     const parts = reference.split(":");
     if (parts.length === 2) {
-      return input.modIdByNexusModId.get(parts[1]!);
+      const nexusModId = parts[1]!;
+      if (input.ambiguousNexusModIds?.has(nexusModId) === true) return undefined;
+      return input.modIdByNexusModId.get(nexusModId);
     }
   }
 
