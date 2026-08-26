@@ -60,6 +60,7 @@ import { getBuildSessionRegistry } from "./buildSessionRegistry";
 import { splitWarning, warningTone } from "./warningText";
 import { BuildDashboard } from "./BuildDashboard";
 import { revealInFileManager } from "./revealPath";
+import type { ExternalHint } from "../../../core/manifest/externalHints";
 import { ConcurrentOpBanner } from "../../runtime/ConcurrentOpBanner";
 import { nativeNotify } from "../../runtime/nativeNotify";
 import { getActiveGameId } from "../../../core/getModsListForProfile";
@@ -1293,6 +1294,7 @@ function FormPanel(props: FormPanelProps): JSX.Element {
           <ExternalModsTable
             mods={ctx.externalMods}
             overrides={overrides}
+            hints={ctx.externalHints}
             onChange={updateOverride}
           />
         )}
@@ -1657,7 +1659,72 @@ interface ExternalModsTableProps {
   onChange: (modId: string, patch: Partial<ExternalModConfigEntry>) => void;
 }
 
-function ExternalModsTable(props: ExternalModsTableProps): JSX.Element {
+/**
+ * What Vortex already knows about this mod, offered rather than applied.
+ *
+ * The suggestion is NOT written into the curator's config on its own. It came
+ * from a download record or a rule, not from them, and silently filling a
+ * field they will later read back as their own words is how a wrong link ends
+ * up published under their name. So it sits next to the field, says where it
+ * came from, and takes one click to accept.
+ *
+ * Nothing renders when Vortex knows nothing — which on a profile whose mods
+ * were all installed from disk is the normal case, not a failure.
+ */
+function HintSuggestion(props: {
+  hint?: ExternalHint;
+  current: { instructions?: string; url?: string };
+  onAccept: (patch: { instructions?: string; url?: string }) => void;
+}): JSX.Element | null {
+  const { hint, current } = props;
+  if (hint === undefined) return null;
+
+  // Only offer what would actually fill a gap. A curator who already wrote
+  // both fields does not need a button that changes nothing.
+  const offersUrl = hint.url !== undefined && current.url === undefined;
+  const offersText =
+    hint.instructions !== undefined && current.instructions === undefined;
+  if (!offersUrl && !offersText) return null;
+
+  const source =
+    hint.via === "collection-rule"
+      ? "your Vortex collection"
+      : hint.via === "homepage"
+        ? "the mod's homepage"
+        : "where the archive was downloaded from";
+
+  return (
+    <div className="eh-row eh-row--sm" style={{ alignItems: "flex-start" }}>
+      <span className="eh-note eh-fill">
+        From {source}:{" "}
+        {hint.url !== undefined && (
+          <span className="eh-mono" style={{ wordBreak: "break-all" }}>
+            {hint.url}
+          </span>
+        )}
+        {hint.instructions !== undefined && ` — ${hint.instructions}`}
+      </span>
+      <Button
+        intent="ghost"
+        onClick={(): void =>
+          props.onAccept({
+            ...(offersUrl ? { url: hint.url } : {}),
+            ...(offersText ? { instructions: hint.instructions } : {}),
+          })
+        }
+      >
+        Use
+      </Button>
+    </div>
+  );
+}
+
+function ExternalModsTable(
+  props: ExternalModsTableProps & {
+    /** What Vortex already knows about where each mod came from. */
+    hints?: ReadonlyMap<string, ExternalHint>;
+  },
+): JSX.Element {
   const { mods, overrides, onChange } = props;
   return (
     <div
@@ -1748,15 +1815,22 @@ function ExternalModsTable(props: ExternalModsTableProps): JSX.Element {
               />
               {override.bundled === true ? "Bundled" : "Manual"}
             </label>
-            <textarea
-              className="eh-input eh-input--textarea"
-              rows={2}
-              placeholder="Optional instructions shown when the user installs."
-              value={override.instructions ?? ""}
-              onChange={(e) =>
-                onChange(mod.id, { instructions: e.target.value })
-              }
-            />
+            <div className="eh-stack eh-stack--xs">
+              <textarea
+                className="eh-input eh-input--textarea"
+                rows={2}
+                placeholder="Optional instructions shown when the user installs."
+                value={override.instructions ?? ""}
+                onChange={(e) =>
+                  onChange(mod.id, { instructions: e.target.value })
+                }
+              />
+              <HintSuggestion
+                hint={props.hints?.get(mod.id)}
+                current={override}
+                onAccept={(patch): void => onChange(mod.id, patch)}
+              />
+            </div>
           </div>
         );
       })}

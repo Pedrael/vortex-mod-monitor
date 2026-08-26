@@ -102,6 +102,7 @@ import {
   modsFromState,
   undeclaredDependencies,
 } from "../../../core/manifest/externalHints";
+import type { ExternalHint } from "../../../core/manifest/externalHints";
 import { getCollectionsConfigDir, getCollectionsDir, getVortexUserDataPath } from "../../../core/paths";
 import { beginOp } from "../../../core/logging/ehLog";
 import type {
@@ -175,6 +176,14 @@ export interface BuildContext {
    * only mods the curator can flag as bundled.
    */
   externalMods: AuditorMod[];
+  /**
+   * Suggested link/instructions per external mod id, from Vortex's own data.
+   *
+   * A SUGGESTION, never an answer: the curator's own text always wins, and
+   * these are shown as something to accept rather than silently written into
+   * their config. See core/manifest/externalHints.
+   */
+  externalHints: ReadonlyMap<string, ExternalHint>;
   /**
    * The on-disk per-collection state. Loaded from
    * `<appData>/Vortex/event-horizon/collections/.config/<slug>.json`,
@@ -585,11 +594,31 @@ export async function loadBuildContext(
     hashed: mods.filter((m) => m.archiveSha256 !== undefined).length,
   });
 
+  // Suggested download links/instructions for the external mods, from what
+  // Vortex already knows. Computed HERE rather than only at build time,
+  // because the curator edits these on the Build form and a suggestion that
+  // only exists inside the built manifest is a suggestion they never see.
+  const externalHints = collectExternalHints({
+    modsInState: modsFromState(api, gameId),
+    downloads: downloadsFromState(api),
+    externalMods,
+  });
+  op.step("external-hints-available", {
+    found: externalHints.size,
+    ofExternal: externalMods.length,
+    // Which source answered. `found: 0` here means Vortex is holding nothing
+    // for these mods — no collection download hints, no usable sourceURI, no
+    // homepage — which is the difference between "the feature is broken" and
+    // "there is nothing to find".
+    via: countBy([...externalHints.values()].map((h) => h.via)),
+  });
+
   return {
     gameId: gameId as SupportedGameId,
     profileId,
     mods,
     detectedDependencies,
+    externalHints,
     gameVersion: await resolveGameVersion(state, gameId),
     scopeWarnings: [
       ...describeScope(scope),
@@ -1109,11 +1138,10 @@ export async function runBuildPipeline(
   // own Vortex-collection download hints, the URL the archive was fetched
   // from, the mod's homepage. Curator-written values always win; this only
   // fills gaps. See core/manifest/externalHints.
-  const externalHints = collectExternalHints({
-    modsInState: modsFromState(api, gameId),
-    downloads: downloadsFromState(api),
-    externalMods: context.externalMods,
-  });
+  // The same suggestions the form showed. Taken from the context rather than
+  // recomputed so the manifest cannot end up carrying a different link from
+  // the one the curator was looking at when they pressed Build.
+  const externalHints = context.externalHints;
   if (externalHints.size > 0) {
     op.step("external-hints-filled", {
       filled: externalHints.size,
