@@ -1043,11 +1043,14 @@ function DraftCard(props: {
           >
             Open
           </Button>
-          {/* Destructive, and kept away from Open — the two are one careless
-              click apart otherwise, and a discarded draft is unrecoverable. */}
+          {/* Kept away from Open — the two are one careless click apart
+              otherwise, and a discarded draft is unrecoverable. Named for its
+              object so it cannot be confused with "Delete collection" on a
+              published card, which ends a release lineage rather than losing
+              an afternoon's typing. */}
           <span className="eh-row__spacer" />
           <Button intent="ghost" onClick={props.onDiscard}>
-            Discard
+            Discard draft
           </Button>
         </div>
       </div>
@@ -1331,10 +1334,24 @@ function PublishedCard(props: {
               Show files
             </Button>
           </div>
-          {/* Destructive, kept apart from the routine three. Equal weight and
-              adjacency is how a misclick happens. */}
-          <Button intent="ghost" size="sm" onClick={props.onDelete}>
-            Delete
+          {/* Names its OBJECT, and is the only danger-styled BUTTON on this
+              page — deliberately. (An error Pill also uses the danger intent;
+              that is a status, not an action.)
+
+              "Delete" here and "Discard" on a draft card were two identical
+              ghost buttons for very different blast radii. This one ends the
+              release lineage: the packageId goes with it, so a later build
+              under the same name is a new collection and everyone who
+              installed the old one stops being offered updates. That reaches
+              other people's machines and cannot be undone by rebuilding.
+              Discarding a draft loses typing, on one computer, recoverable by
+              retyping.
+              
+              Danger is an OUTLINE here, not a filled red block: loud enough to
+              read differently at a glance, quiet enough not to shout on a card
+              that is otherwise calm. */}
+          <Button intent="danger" size="sm" onClick={props.onDelete}>
+            Delete collection
           </Button>
         </div>
         {revealError !== undefined && (
