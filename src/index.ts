@@ -8,7 +8,10 @@ import createBuildPackageAction from "./actions/buildPackageAction";
 import createInstallCollectionAction from "./actions/installCollectionAction";
 import { EventHorizonMainPage } from "./ui";
 import { ehLog, getLogFilePath } from "./core/logging/ehLog";
-import { probeInstallerApi } from "./core/installer/probeInstallerApi";
+import {
+  probeInstallerApi,
+  watchInstallCalls,
+} from "./core/installer/probeInstallerApi";
 import { EXTENSION_VERSION } from "./ui/version";
 
 /**
@@ -155,6 +158,7 @@ function init(context: types.IExtensionContext): boolean {
   // registered its handlers before we look.
   context.once(() => {
     probeInstallerApi(context.api);
+    watchInstallCalls(context.api);
   });
 
   return true;

@@ -48,6 +48,11 @@ import { util } from "@nexusmods/vortex-api";
 import type { types } from "@nexusmods/vortex-api";
 
 import {
+  installOptions,
+  type VortexInstallerChoices,
+} from "./installerChoices";
+
+import {
   type SevenZipApi,
   resolveSevenZip,
   sevenZipExtractFull,
@@ -102,6 +107,19 @@ export async function installNexusViaApi(
      * stops blocking immediately.
      */
     signal?: AbortSignal;
+    /**
+     * The curator's recorded installer answers.
+     *
+     * Their presence changes HOW the mod is installed, not just with what.
+     * Vortex's `nexusDownload(..., allowInstall = true)` downloads and
+     * installs in one step, and there is no seam in it to pass choices
+     * through — so a mod with choices is downloaded WITHOUT installing and
+     * then installed explicitly, which is the call that takes them.
+     *
+     * A mod with none takes the original single-step path untouched: this
+     * feature must not change how the other 840 mods in a collection install.
+     */
+    choices?: VortexInstallerChoices;
   },
 ): Promise<{ archiveId: string; vortexModId: string }> {
   if (!api.ext?.nexusDownload) {
@@ -115,20 +133,28 @@ export async function installNexusViaApi(
     throw makeAbortErrorLocal("nexus install");
   }
 
+  const replaying = args.choices !== undefined;
+
   // Subscribe BEFORE triggering — `did-install-mod` can fire before the
-  // `nexusDownload` promise resolves on hot caches.
-  const completed = waitForInstallCompletion(api, {
-    gameId: args.gameId,
-    matchArchiveId: undefined, // we don't know it yet; matched below
-    signal: args.signal,
-  });
+  // `nexusDownload` promise resolves on hot caches. Not needed when
+  // replaying: nothing installs until we say so, and
+  // installFromExistingDownload does its own waiting.
+  const completed = replaying
+    ? undefined
+    : waitForInstallCompletion(api, {
+        gameId: args.gameId,
+        matchArchiveId: undefined, // we don't know it yet; matched below
+        signal: args.signal,
+      });
 
   const archiveId = await api.ext.nexusDownload(
     args.gameId,
     args.nexusModId,
     args.nexusFileId,
     args.fileName,
-    true, // allowInstall — Vortex auto-installs
+    // Download only, when there are choices to hand the installer. The
+    // one-step form gives no opportunity to supply them.
+    !replaying,
   );
 
   if (typeof archiveId !== "string" || archiveId.length === 0) {
@@ -138,10 +164,20 @@ export async function installNexusViaApi(
     );
   }
 
-  // Now narrow the listener to this specific archiveId.
-  completed.setExpectedArchiveId(archiveId);
+  if (replaying) {
+    const installed = await installFromExistingDownload(api, {
+      gameId: args.gameId,
+      archiveId,
+      choices: args.choices!,
+      ...(args.signal !== undefined ? { signal: args.signal } : {}),
+    });
+    return { archiveId, vortexModId: installed.vortexModId };
+  }
 
-  const result = await completed.promise;
+  // Now narrow the listener to this specific archiveId.
+  completed!.setExpectedArchiveId(archiveId);
+
+  const result = await completed!.promise;
 
   return { archiveId, vortexModId: result.modId };
 }
@@ -155,6 +191,12 @@ export async function installFromExistingDownload(
   args: {
     gameId: string;
     archiveId: string;
+    /**
+     * The curator's recorded installer answers. When present they are handed
+     * to Vortex's installer so it does not ask the user; when absent the call
+     * is byte-for-byte what it was before replay existed.
+     */
+    choices?: VortexInstallerChoices;
     /** Optional cancellation token; see {@link installNexusViaApi}. */
     signal?: AbortSignal;
   },
@@ -169,9 +211,28 @@ export async function installFromExistingDownload(
     signal: args.signal,
   });
 
-  api.events.emit("start-install-download", args.archiveId);
+  if (args.choices === undefined) {
+    api.events.emit("start-install-download", args.archiveId);
+    const result = await completed.promise;
+    return { vortexModId: result.modId };
+  }
 
-  const result = await completed.promise;
+  // Observed signature — see installerChoices.ts. Vortex passes a callback of
+  // its own, and it is the only channel for a failure: without it a refused
+  // install would sit until the stall watchdog fires 90 seconds later, with
+  // the real reason discarded.
+  const failed = new Promise<never>((_resolve, reject) => {
+    api.events.emit(
+      "start-install-download",
+      args.archiveId,
+      installOptions(args.choices!),
+      (err: Error | null | undefined) => {
+        if (err) reject(err);
+      },
+    );
+  });
+
+  const result = await Promise.race([completed.promise, failed]);
   return { vortexModId: result.modId };
 }
 

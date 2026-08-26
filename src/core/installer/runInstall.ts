@@ -149,6 +149,7 @@ import {
   safeRmTempDir,
   uninstallMod,
 } from "./modInstall";
+import { choicesFor } from "./installerChoices";
 import {
   summarizeVerifyFail,
   verifyModInstall,
@@ -1087,6 +1088,11 @@ async function executeDecision(args: {
         nexusFileId: decision.fileId,
         fileName: decision.archiveName,
         signal: ctx.abortSignal,
+        // The curator's FOMOD answers, when this mod had any. Undefined
+        // leaves the install exactly as it was before replay existed.
+        ...(choicesFor(manifestEntry) !== undefined
+          ? { choices: choicesFor(manifestEntry) }
+          : {}),
       });
       return {
         compareKey,
@@ -1103,6 +1109,9 @@ async function executeDecision(args: {
         gameId: manifest.game.id,
         archiveId: decision.archiveId,
         signal: ctx.abortSignal,
+        ...(choicesFor(manifestEntry) !== undefined
+          ? { choices: choicesFor(manifestEntry) }
+          : {}),
       });
       return {
         compareKey,
@@ -1389,6 +1398,9 @@ async function installManifestEntry(args: {
       nexusFileId: nx.source.fileId,
       fileName: nx.source.archiveName,
       signal: ctx.abortSignal,
+      ...(choicesFor(manifestEntry) !== undefined
+        ? { choices: choicesFor(manifestEntry) }
+        : {}),
     });
     return {
       compareKey,

@@ -23,6 +23,50 @@ import type { types } from "@nexusmods/vortex-api";
 
 import { ehLog } from "../logging/ehLog";
 
+/**
+ * Watch what Vortex itself passes when a real install starts.
+ *
+ * The wrapper turned out to be a transparent error shim —
+ * `(...args) => cb(...args)` — so extra arguments DO reach the real handler.
+ * What that cannot show is the handler's own arity, because `cb` lives in a
+ * closure. But a passive listener on the same event sees every call anyone
+ * makes, including Vortex's own, and the argument shapes of a real install
+ * are the signature, observed instead of assumed.
+ *
+ * Records types and lengths, never contents: an archive path is a filesystem
+ * path from the user's machine and has no business in a log.
+ */
+export function watchInstallCalls(api: types.IExtensionApi): void {
+  for (const name of INSTALL_EVENTS) {
+    try {
+      api.events.on(name, (...args: unknown[]) => {
+        ehLog("debug", "installer.api-call", {
+          event: name,
+          argc: args.length,
+          shape: args.map(describeArg),
+        });
+      });
+    } catch {
+      /* a listener we could not attach is not worth failing over */
+    }
+  }
+}
+
+/** What an argument IS, with nothing of what it contains. */
+function describeArg(value: unknown): string {
+  if (value === null) return "null";
+  if (value === undefined) return "undefined";
+  if (typeof value === "function") return `function/${value.length}`;
+  if (Array.isArray(value)) return `array[${value.length}]`;
+  if (typeof value === "object") {
+    const keys = Object.keys(value as object).sort();
+    // Keys are the point: an options bag containing `choices` is the answer.
+    return `object{${keys.slice(0, 12).join(",")}}`;
+  }
+  if (typeof value === "string") return `string(len ${value.length})`;
+  return typeof value;
+}
+
 /** Events worth knowing the shape of before we try to drive them. */
 const INSTALL_EVENTS = [
   "start-install",
