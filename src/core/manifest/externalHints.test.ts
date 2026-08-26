@@ -13,8 +13,10 @@ import { describe, expect, it } from "vitest";
 import {
   applyHint,
   collectionHints,
+  describeUndeclared,
   downloadHint,
   findCollectionHint,
+  undeclaredDependencies,
 } from "./externalHints";
 
 const collectionMod = (rules: unknown[]) => ({
@@ -257,5 +259,110 @@ describe("download mode", () => {
       { url: "https://e.com/x", mode: "direct", via: "collection-rule" },
     );
     expect(out.mode).toBe("manual");
+  });
+});
+
+describe("undeclaredDependencies", () => {
+  const withRules = (rules: unknown[]) => collectionMod(rules);
+
+  it("reports a declared download this collection does not ship", () => {
+    // The catalogue is seven known tools found by their files. It cannot know
+    // about a Buffout or a custom ENB — but the curator's own collection does.
+    const out = undeclaredDependencies({
+      modsInState: withRules([
+        browseRule(
+          { logicalFileName: "Buffout4.7z" },
+          { url: "https://example.com/buffout", instructions: "Grab the NG build." },
+        ),
+      ]),
+      includedMods: [{ id: "mine-1", name: "Something Else" }],
+    });
+    expect(out).toEqual([
+      {
+        name: "Buffout4.7z",
+        url: "https://example.com/buffout",
+        instructions: "Grab the NG build.",
+      },
+    ]);
+  });
+
+  it("says nothing about a dependency the collection already ships", () => {
+    // Reporting a mod we install as missing would train the curator to ignore
+    // this warning entirely.
+    const out = undeclaredDependencies({
+      modsInState: withRules([
+        browseRule({ id: "mine-1" }, { url: "https://e.com/x" }),
+      ]),
+      includedMods: [{ id: "mine-1", name: "Shipped" }],
+    });
+    expect(out).toEqual([]);
+  });
+
+  it("matches a shipped mod by archive id and by archive filename", () => {
+    const byArchiveId = undeclaredDependencies({
+      modsInState: withRules([
+        browseRule({ archiveId: "arc-9" }, { url: "https://e.com/a" }),
+      ]),
+      includedMods: [{ id: "m", name: "M", archiveId: "arc-9" }],
+    });
+    expect(byArchiveId).toEqual([]);
+
+    const byFileName = undeclaredDependencies({
+      modsInState: withRules([
+        browseRule({ logicalFileName: "Mine.7z" }, { url: "https://e.com/b" }),
+      ]),
+      includedMods: [{ id: "m", name: "M" }],
+      archiveNames: new Map([["m", "mine.7z"]]),
+    });
+    expect(byFileName).toEqual([]);
+  });
+
+  it("ignores rules with no download hint", () => {
+    // Ordering rules are most of what a collection carries and declare nothing
+    // about where to get anything.
+    const out = undeclaredDependencies({
+      modsInState: withRules([{ reference: { id: "x" }, type: "after" }]),
+      includedMods: [],
+    });
+    expect(out).toEqual([]);
+  });
+
+  it("does not report the same download twice", () => {
+    const out = undeclaredDependencies({
+      modsInState: withRules([
+        browseRule({ logicalFileName: "Dup.7z" }, { url: "https://e.com/d" }),
+        browseRule({ logicalFileName: "Dup.7z" }, { url: "https://e.com/d" }),
+      ]),
+      includedMods: [],
+    });
+    expect(out).toHaveLength(1);
+  });
+
+  it("skips anything it cannot name, rather than warning about nothing", () => {
+    const out = undeclaredDependencies({
+      modsInState: withRules([
+        { reference: { md5Hint: "abc" }, downloadHint: { mode: "manual", instructions: "ask me" } },
+      ]),
+      includedMods: [],
+    });
+    expect(out).toEqual([]);
+  });
+});
+
+describe("describeUndeclared", () => {
+  it("says nothing when there is nothing", () => {
+    expect(describeUndeclared([])).toEqual([]);
+  });
+
+  it("frames it as what happens to the person installing", () => {
+    // The curator knows what their collection contains. What they cannot see
+    // is that the other end gets none of it.
+    const said = describeUndeclared([
+      { name: "Buffout4.7z", url: "https://e.com/b" },
+    ]).join(" ");
+    expect(said).toMatch(/will not be told they need them/);
+    expect(said).toMatch(/Buffout4\.7z/);
+    expect(said).toMatch(/https:\/\/e\.com\/b/);
+    expect(said).toMatch(/README/);
   });
 });

@@ -97,8 +97,10 @@ import {
 import {
   collectExternalHints,
   countBy,
+  describeUndeclared,
   downloadsFromState,
   modsFromState,
+  undeclaredDependencies,
 } from "../../../core/manifest/externalHints";
 import { getCollectionsConfigDir, getCollectionsDir, getVortexUserDataPath } from "../../../core/paths";
 import { beginOp } from "../../../core/logging/ehLog";
@@ -937,6 +939,19 @@ export async function runBuildPipeline(
       ...(signal !== undefined ? { signal } : {}),
     });
     bundleWarnings.push(...describeExternalDrift(drift));
+
+  // Anything the curator's own Vortex collection says is needed that this
+  // collection neither ships nor mentions. The prerequisite catalogue is a
+  // closed list of seven tools found by their files; their collection is an
+  // open list of the same thing, already written down with links.
+  bundleWarnings.push(
+    ...describeUndeclared(
+      undeclaredDependencies({
+        modsInState: modsFromState(api, gameId),
+        includedMods: context.mods,
+      }),
+    ),
+  );
 
     const repacked = await repackBundledExternals({
       state,

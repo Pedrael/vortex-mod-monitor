@@ -326,3 +326,102 @@ export function countBy(values: readonly string[]): Record<string, number> {
   for (const v of values) out[v] = (out[v] ?? 0) + 1;
   return out;
 }
+
+/**
+ * Mods the curator's Vortex collection says are needed, that this collection
+ * does not ship.
+ *
+ * The prerequisite catalogue (externalDependencies) is a CLOSED list — seven
+ * known tools, found by looking for their files in the game directory. It
+ * cannot know about a Buffout, an xSE plugin, or a custom ENB preset, so a
+ * collection depending on one ships without ever mentioning it and the user
+ * finds out when the game does not start.
+ *
+ * The curator's own Vortex collection is an OPEN list of the same thing: they
+ * already declared those dependencies, with a link and instructions, for
+ * exactly this purpose. Anything in there with a download hint that is not one
+ * of our own mods is something the user will need and we are not providing.
+ *
+ * ── Reported, not shipped ──
+ * This returns warnings for the curator to act on rather than manifest
+ * entries, and that is deliberate. `EhcollExternalDependency` is a
+ * files-on-disk contract — every entry carries hashed files the installer
+ * verifies — and a mod rule has no files to hash. Inventing an entry with no
+ * verifiable content would put something in the manifest that the installer
+ * can only take on faith, which is the opposite of what that type is for.
+ *
+ * The curator can act on the warning by adding the mod to the profile, or by
+ * writing it into the collection's prose. Both are better than a manifest
+ * entry nothing can check.
+ */
+export function undeclaredDependencies(args: {
+  modsInState: Readonly<Record<string, unknown>>;
+  /** Mods this collection ships, so a satisfied dependency is not reported. */
+  includedMods: readonly HintTarget[];
+  /** Archive filename per included mod id, when known. Improves matching. */
+  archiveNames?: ReadonlyMap<string, string>;
+}): { name: string; url?: string; instructions?: string }[] {
+  const index = collectionHints(args.modsInState);
+  if (index.length === 0) return [];
+
+  const out: { name: string; url?: string; instructions?: string }[] = [];
+  const seen = new Set<string>();
+
+  for (const entry of index) {
+    // Does any mod we ship answer this rule? Same identity ladder as
+    // findCollectionHint, run the other way round.
+    const satisfied = args.includedMods.some(
+      (mod) =>
+        (entry.keys.vortexModId !== undefined &&
+          entry.keys.vortexModId === mod.id) ||
+        (entry.keys.archiveId !== undefined &&
+          entry.keys.archiveId === mod.archiveId) ||
+        (entry.keys.logicalFileName !== undefined &&
+          args.archiveNames?.get(mod.id)?.toLowerCase() ===
+            entry.keys.logicalFileName.toLowerCase()),
+    );
+    if (satisfied) continue;
+
+    // Something has to name it, or the warning is unactionable.
+    const name = entry.keys.logicalFileName ?? entry.hint.url;
+    if (name === undefined || seen.has(name)) continue;
+    seen.add(name);
+
+    out.push({
+      name,
+      ...(entry.hint.url !== undefined ? { url: entry.hint.url } : {}),
+      ...(entry.hint.instructions !== undefined
+        ? { instructions: entry.hint.instructions }
+        : {}),
+    });
+  }
+  return out;
+}
+
+/**
+ * Say it in terms of what will happen to the person installing.
+ *
+ * A curator reading their own build output knows what their Vortex collection
+ * contains; what they cannot see is that the person on the other end will not
+ * get any of it.
+ */
+export function describeUndeclared(
+  found: readonly { name: string; url?: string }[],
+): string[] {
+  if (found.length === 0) return [];
+
+  const lines = [
+    `Your Vortex collection declares ${found.length} download(s) this ` +
+      `collection does not ship and does not mention. Whoever installs this ` +
+      `will not be told they need them:`,
+  ];
+  for (const dep of found.slice(0, 5)) {
+    lines.push(`  • ${dep.name}${dep.url !== undefined ? ` — ${dep.url}` : ""}`);
+  }
+  if (found.length > 5) lines.push(`  • and ${found.length - 5} more.`);
+  lines.push(
+    `Add them to this profile so they ship, or describe them in the ` +
+      `collection's README so the instruction reaches the user.`,
+  );
+  return lines;
+}
