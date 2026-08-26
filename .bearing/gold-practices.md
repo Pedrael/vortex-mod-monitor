@@ -193,3 +193,14 @@ better does not prevent.
   migration. *Scar: three skills answered "index is stale" with a bare `analyze`, which omits
   `--embeddings` — and an index without embeddings is stale by the contract's own definition.*
 
+- **GP-24** — **Undo what YOU changed, not what the file was.** `git checkout <file>` restores from the
+  index, so it discards every uncommitted change in that file — including the hours of work sitting
+  next to the one line you were reverting. It is the natural reach after deliberately breaking code to
+  prove a test fails, and it is silent: the command succeeds, the file looks plausible, and the loss
+  surfaces later as a test that no longer covers anything. Invert the edit you made, or copy the file
+  aside first and restore from the copy. Reserve `git checkout` for a file you have not touched since
+  the last commit. *Scar: three times in one session, mutation-testing a guard then reverting with
+  `git checkout` — once it wiped an uncommitted build-manifest change wholesale, once an INI-tweak
+  warning that had to be retyped from the commit message, and each time the file compiled and the
+  suite passed, so nothing announced it.*
+
