@@ -13,9 +13,8 @@
 #
 # What it answers:
 #   1. Is the .ehcoll file complete, or did the transfer cut it short?
-#   2. Does 7z work on this system at all?
-#   3. Where is Vortex's Wine prefix, and which build of the extension is it
-#      running?
+#   2. Where is Vortex's Wine prefix, and which build of the extension is in it?
+#   3. Does the 7z that Vortex actually uses work on this system?
 # =============================================================================
 
 set -u
@@ -62,6 +61,7 @@ fi
 if [ -z "$EHCOLL" ] || [ ! -f "$EHCOLL" ]; then
   say "NOT FOUND. Pass the path explicitly:"
   say "  bash diagnose-install.sh \"/home/you/Downloads/Telegram Desktop/ivy-2-1.0.9.ehcoll\""
+  EHCOLL=""
 else
   say "path:     $EHCOLL"
   ACTUAL_BYTES="$(stat -c%s "$EHCOLL" 2>/dev/null || stat -f%z "$EHCOLL" 2>/dev/null || echo 0)"
@@ -130,62 +130,186 @@ fi
 line
 say "[3] VORTEX / WINE PREFIX"
 
-# Common locations for a umu / Proton / Lutris / Bottles prefix holding Vortex.
-PREFIX=""
+# Two things this got wrong before, both of which produced a confident WRONG
+# negative — the worst shape a diagnostic can have:
+#
+#   1. It picked the first prefix that merely had a drive_c, then reported
+#      "not found" about THAT prefix — which was never Vortex's. A prefix is
+#      only the right one if Vortex is actually in it, so search by Vortex's
+#      own marker (AppData/Roaming/Vortex) and report every candidate.
+#   2. Depth. From drive_c the standard plugin path
+#        users/<user>/AppData/Roaming/Vortex/plugins/vortex-event-horizon
+#      is SEVEN levels down; the old -maxdepth 6 could not reach it and said
+#      "not found" every time. Measured, not guessed.
+
+VORTEX_PREFIX=""
+VORTEX_DIR=""
+SCANNED=0
+
 for c in \
   "$HOME/Games/umu"/* \
   "$HOME/.local/share/umu"* \
   "$HOME/.steam/steam/steamapps/compatdata"/*/pfx \
   "$HOME/.local/share/Steam/steamapps/compatdata"/*/pfx \
+  "$HOME/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/compatdata"/*/pfx \
   "$HOME/.wine" \
   "$HOME/Games"/*/pfx \
   "$HOME/.local/share/lutris/prefixes"/* ; do
   [ -d "$c/drive_c" ] || continue
-  if find "$c/drive_c" -maxdepth 6 -type d -name "vortex-event-horizon" -print -quit 2>/dev/null | grep -q .; then
-    PREFIX="$c"; break
+  SCANNED=$(( SCANNED + 1 ))
+  # Vortex's roaming data dir is the marker: it exists whenever Vortex has run
+  # in this prefix, even if our extension failed to install.
+  v="$(find "$c/drive_c" -maxdepth 6 -type d -path '*/AppData/Roaming/Vortex' -print -quit 2>/dev/null)"
+  if [ -n "$v" ]; then
+    say "prefix:  $c   <- Vortex found here"
+    VORTEX_PREFIX="$c"
+    VORTEX_DIR="$v"
+    break
   fi
-  [ -z "$PREFIX" ] && PREFIX="$c"
 done
 
-if [ -z "$PREFIX" ]; then
-  say "prefix:  NOT FOUND automatically."
-  say "         Run:  find \$HOME -maxdepth 6 -type d -name drive_c 2>/dev/null"
+say "prefixes scanned: $SCANNED"
+
+# Last resort: a bounded sweep of the whole home dir. Slower, but a miss here
+# is real rather than an artefact of guessing the wrong directory list.
+if [ -z "$VORTEX_PREFIX" ]; then
+  say "no Vortex in the usual locations — sweeping \$HOME (this takes a moment)"
+  VORTEX_DIR="$(find "$HOME" -maxdepth 12 -type d -path '*/AppData/Roaming/Vortex' -print -quit 2>/dev/null)"
+  if [ -n "$VORTEX_DIR" ]; then
+    # Walk back up to the prefix root (the parent of drive_c).
+    VORTEX_PREFIX="${VORTEX_DIR%%/drive_c/*}"
+    say "prefix:  $VORTEX_PREFIX   <- found by sweep"
+  fi
+fi
+
+if [ -z "$VORTEX_DIR" ]; then
+  say "RESULT:  Vortex's data directory was NOT found anywhere under \$HOME."
+  say "         That is a real finding, not a search failure — but if you know"
+  say "         where the prefix is, run:"
+  say "           ls \"<prefix>/drive_c/users\"/*/AppData/Roaming/Vortex"
 else
-  say "prefix:  $PREFIX"
-  EXT="$(find "$PREFIX/drive_c" -maxdepth 8 -type d -name 'vortex-event-horizon' -print -quit 2>/dev/null)"
-  if [ -n "$EXT" ]; then
+  say "vortex data: $VORTEX_DIR"
+
+  EXT="$VORTEX_DIR/plugins/vortex-event-horizon"
+  if [ -d "$EXT" ]; then
     say "ext dir: $EXT"
     if [ -r "$EXT/info.json" ]; then
-      say "version: $(grep -o '\"version\"[^,]*' "$EXT/info.json" | head -1)"
+      say "version: $(grep -o '\"version\"[[:space:]]*:[[:space:]]*\"[^\"]*\"' "$EXT/info.json" | head -1 | sed 's/.*:[[:space:]]*"//;s/"$//')"
     fi
-    # Which fixes are present tells us whether he is on a current build.
+    # Which fixes are present tells us whether this is a current build.
     for f in dist/core/manifest/diagnoseArchive.js dist/core/revealPath.js \
              dist/core/installer/checkPluginOrder.js ; do
-      [ -f "$EXT/$f" ] && say "build:   has $(basename "$f")" || say "build:   MISSING $(basename "$f")  <- older build"
+      if [ -f "$EXT/$f" ]; then
+        say "build:   has $(basename "$f")"
+      else
+        say "build:   MISSING $(basename "$f")  <- OLDER BUILD, re-pull and rebuild"
+      fi
     done
   else
-    say "ext dir: not found under this prefix"
+    say "ext dir: NOT present at $EXT"
+    say "         (the extension is not installed in this prefix)"
   fi
-
-  # Vortex bundles its own 7z. If this is absent, that is the answer.
-  say "bundled 7z binaries found:"
-  find "$PREFIX/drive_c" -maxdepth 10 \( -iname '7z.exe' -o -iname '7za.exe' -o -iname '7z.dll' \) \
-    -printf '  %s bytes  %p\n' 2>/dev/null | head -8 || say "  (none found)"
 fi
 
-# ── 4. Extension log ─────────────────────────────────────────────────────────
+# ── 4. The 7z Vortex actually uses ───────────────────────────────────────────
 line
-say "[4] EVENT HORIZON LOG (last 25 lines)"
-LOGDIR=""
-if [ -n "$PREFIX" ]; then
-  LOGDIR="$(find "$PREFIX/drive_c" -maxdepth 10 -type d -path '*event-horizon/logs' -print -quit 2>/dev/null)"
+say "[4] VORTEX'S BUNDLED 7z"
+
+# `find` exits 0 when it matches nothing, so the old `find ... || say "(none)"`
+# never fired and an empty result printed as an empty heading — indistinguishable
+# from "the section did not run". Capture, then test the capture.
+SEVENZIP_LIST=""
+if [ -n "$VORTEX_PREFIX" ]; then
+  SEVENZIP_LIST="$(find "$VORTEX_PREFIX/drive_c" -maxdepth 12 \
+    \( -iname '7z.exe' -o -iname '7za.exe' -o -iname '7z.dll' -o -iname '7z.so' \) \
+    -printf '  %s bytes  %p\n' 2>/dev/null)"
 fi
-if [ -n "$LOGDIR" ]; then
-  LOGFILE="$(ls -1t "$LOGDIR"/*.log 2>/dev/null | head -1)"
-  say "log: $LOGFILE"
-  [ -n "$LOGFILE" ] && tail -n 25 "$LOGFILE"
+
+if [ -n "$SEVENZIP_LIST" ]; then
+  say "found:"
+  printf '%s\n' "$SEVENZIP_LIST" | head -10
 else
-  say "log dir not found (expected under .../AppData/Roaming/Vortex/event-horizon/logs)"
+  say "found:   NONE under the Vortex prefix."
+  if [ -z "$VORTEX_PREFIX" ]; then
+    say "         (no prefix identified, so this checked nothing — not a result)"
+  else
+    say "         Vortex ships 7z with itself, so an empty list here is worth"
+    say "         reporting: it means the file Vortex calls to open archives"
+    say "         is not where it should be."
+  fi
+fi
+
+# ── 5. The decisive test: can that 7z read the file? ─────────────────────────
+line
+say "[5] CAN 7z READ THE COLLECTION?"
+
+# Sections 1-2 can prove the file is fine. Only this can prove 7z is fine.
+# Read-only: `l` lists an archive, it does not extract or modify anything.
+
+if [ -z "$EHCOLL" ]; then
+  say "skipped: no collection file to test."
+elif command -v 7z >/dev/null 2>&1; then
+  say "-- native linux 7z --"
+  if 7z l "$EHCOLL" >/dev/null 2>&1; then
+    say "   reads OK  (so the FILE is fine; any failure is Wine-side)"
+  else
+    say "   FAILED    (surprising, given unzip could read it — paste the error:)"
+    7z l "$EHCOLL" 2>&1 | tail -5
+  fi
+else
+  say "-- native linux 7z: not installed, skipped --"
+fi
+
+# And the one that matters: the Windows 7z binary, run through Wine, on the
+# same path Vortex would hand it.
+WINE_BIN=""
+if [ -n "$EHCOLL" ]; then
+for w in "${WINE:-}" wine wine64 ; do
+  [ -n "$w" ] && command -v "$w" >/dev/null 2>&1 && { WINE_BIN="$w"; break; }
+done
+
+SEVENZIP_EXE="$(printf '%s\n' "$SEVENZIP_LIST" | grep -i -m1 '7za\?\.exe' | sed 's/^ *[0-9]* bytes  //')"
+
+if [ -z "$WINE_BIN" ]; then
+  say "-- wine 7z: no 'wine' on PATH (Proton ships its own), skipped --"
+  say "   To test by hand, from inside the same runtime Vortex uses:"
+  say "     7z.exe l \"<the .ehcoll>\""
+elif [ -z "$SEVENZIP_EXE" ]; then
+  say "-- wine 7z: no 7z .exe located in section 4, nothing to run --"
+else
+  say "-- wine 7z: $SEVENZIP_EXE --"
+  WIN_PATH="$EHCOLL"
+  if command -v winepath >/dev/null 2>&1; then
+    WIN_PATH="$(WINEPREFIX="$VORTEX_PREFIX" winepath -w "$EHCOLL" 2>/dev/null || printf '%s' "$EHCOLL")"
+  fi
+  say "   windows path: $WIN_PATH"
+  if WINEPREFIX="$VORTEX_PREFIX" WINEDEBUG=-all \
+     "$WINE_BIN" "$SEVENZIP_EXE" l "$WIN_PATH" >/dev/null 2>&1; then
+    say "   reads OK   <<< 7z is FINE under Wine; the fault is above 7z"
+  else
+    say "   FAILED     <<< THIS IS THE ANSWER — 7z cannot read it under Wine"
+    say "   error output:"
+    WINEPREFIX="$VORTEX_PREFIX" WINEDEBUG=-all \
+      "$WINE_BIN" "$SEVENZIP_EXE" l "$WIN_PATH" 2>&1 | tail -12 | sed 's/^/     /'
+  fi
+fi
+fi
+
+# ── 6. Extension log ─────────────────────────────────────────────────────────
+line
+say "[6] EVENT HORIZON LOG (last 25 lines)"
+LOGFILE=""
+if [ -n "$VORTEX_DIR" ] && [ -d "$VORTEX_DIR/event-horizon/logs" ]; then
+  LOGFILE="$(ls -1t "$VORTEX_DIR/event-horizon/logs"/*.log 2>/dev/null | head -1)"
+fi
+if [ -n "$LOGFILE" ]; then
+  say "log: $LOGFILE"
+  tail -n 25 "$LOGFILE"
+elif [ -n "$VORTEX_DIR" ]; then
+  say "no log yet at $VORTEX_DIR/event-horizon/logs"
+  say "(the extension writes one on first run — none means it has not run)"
+else
+  say "skipped: Vortex data directory not located."
 fi
 
 line
