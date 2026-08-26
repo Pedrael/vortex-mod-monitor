@@ -175,6 +175,15 @@ export type BuildManifestInput = {
 
   /** Per-AuditorMod.id overrides for external (non-Nexus) mods. */
   externalMods?: Record<string, ExternalModSpec>;
+  /**
+   * Mods whose archive this build REPACKED from the staging folder.
+   *
+   * Their identity is keyed on content rather than on the repacked archive's
+   * hash, because that hash encodes file mtimes — see buildExternalMod. The
+   * builder cannot infer this: repacking happens before it runs and only
+   * replaces `archiveSha256`, which by then looks like any other archive hash.
+   */
+  repackedModIds?: ReadonlySet<string>;
 
   /** Pass-through. Defaults to []. */
   externalDependencies?: EhcollExternalDependency[];
@@ -263,6 +272,7 @@ export function buildManifest(input: BuildManifestInput): BuildManifestResult {
       gameId,
       input.externalMods?.[mod.id],
       errors,
+      input.repackedModIds,
     );
     if (!built) continue;
 
@@ -447,6 +457,7 @@ function buildModEntry(
   gameId: SupportedGameId,
   spec: ExternalModSpec | undefined,
   errors: string[],
+  repackedModIds?: ReadonlySet<string>,
 ): EhcollMod | undefined {
   if (isNexusMod(mod)) {
     if (!mod.archiveSha256) {
@@ -461,7 +472,7 @@ function buildModEntry(
     return buildNexusMod(mod, gameId);
   }
 
-  return buildExternalMod(mod, spec, errors);
+  return buildExternalMod(mod, spec, errors, repackedModIds);
 }
 
 function isNexusMod(mod: AuditorMod): boolean {
@@ -502,6 +513,8 @@ function buildExternalMod(
   mod: AuditorMod,
   spec: ExternalModSpec | undefined,
   errors: string[],
+  /** Mods whose archive is one we repacked from staging — see compareKey. */
+  repackedModIds?: ReadonlySet<string>,
 ): ExternalEhcollMod | undefined {
   const archiveSha = mod.archiveSha256;
   const stagingSetHash = mod.stagingFiles
@@ -539,12 +552,36 @@ function buildExternalMod(
   }
 
   // CompareKey scheme:
-  //  - With archive: "external:<archiveSha>" (unchanged for backward compat).
-  //  - Without archive: "external:staging:<stagingSetHash>" (new in v1.1).
+  //  - Repacked from staging: "external:staging:<stagingSetHash>". See below.
+  //  - With archive:          "external:<archiveSha>" (unchanged, back-compat).
+  //  - Without archive:       "external:staging:<stagingSetHash>" (v1.1).
+  //
+  // ── Why a repacked mod does NOT use its archive hash ──
+  // A bundled mod's `archiveSha` is the hash of an archive WE just built from
+  // the curator's staging folder, and a ZIP stores each file's modification
+  // time. So the hash encodes mtimes — metadata that says nothing about the
+  // mod's contents. Verified: repacking the same folder after `touch`-ing one
+  // file, with contents byte-identical, produces a different hash.
+  //
+  // Identity is what the user-side reconciler compares across releases. Key a
+  // mod on that hash and any mtime change — reinstalling the same mod version,
+  // a redeploy, a backup tool, copying the staging folder — re-keys it. On the
+  // next update the old key is absent from the manifest, so the mod is
+  // reported as an ORPHAN and the user is asked to uninstall something that is
+  // still in the collection, while the new key installs a second copy of it.
+  //
+  // `stagingSetHash` is path + size + content sha over the same files, so it
+  // is immune to all of that by construction, and it is already computed. The
+  // archive hash stays on `source.sha256`, where it belongs: it LOCATES the
+  // bundled archive inside the package. Locator and identity are different
+  // jobs and this is the mod where they diverge.
+  const wasRepacked = repackedModIds?.has(mod.id) === true;
   const compareKey =
-    archiveSha !== undefined
-      ? `external:${archiveSha}`
-      : `external:staging:${stagingSetHash!}`;
+    wasRepacked && stagingSetHash !== undefined
+      ? `external:staging:${stagingSetHash}`
+      : archiveSha !== undefined
+        ? `external:${archiveSha}`
+        : `external:staging:${stagingSetHash!}`;
 
   const source: ExternalModSource = {
     kind: "external",

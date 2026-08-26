@@ -1185,6 +1185,11 @@ export async function runBuildPipeline(
     },
     pluginsTxtContent,
     externalMods: toBuildManifestExternalMods(collectionConfig, externalHints),
+    // Mods whose archive we just built from staging. Their identity must not
+    // be the repacked archive's hash — it encodes file mtimes, so an
+    // unchanged mod would re-key itself and show up as an orphan on the next
+    // update. See buildExternalMod's compareKey note.
+    repackedModIds: new Set(repackedBundles.map((b) => b.modId)),
     externalDependencies,
     ...(gameIniCapture.files.length > 0 ? { gameIni: { files: gameIniCapture.files } } : {}),
   });
