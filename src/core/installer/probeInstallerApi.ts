@@ -57,6 +57,11 @@ export function probeInstallerApi(api: types.IExtensionApi): void {
         signatures: handlers.map((h) => ({
           arity: h.length,
           head: describeParams(h),
+          // Vortex wraps its handlers as `(...args) => ...`, so arity says
+          // nothing. The wrapper BODY is the last thing that can: it usually
+          // names the function it forwards to, and how many arguments it
+          // passes on.
+          body: describeBody(h),
         })),
       });
     }
@@ -83,4 +88,21 @@ function describeParams(fn: (...args: unknown[]) => unknown): string {
   const close = src.indexOf(")", open);
   const params = open >= 0 && close > open ? src.slice(open + 1, close) : "";
   return params.replace(/\s+/g, " ").slice(0, 200);
+}
+
+/**
+ * The opening of a function's body.
+ *
+ * A `(...args)` wrapper hides the real signature behind it, but what it does
+ * with those args — forwards them whole, destructures a fixed number, names an
+ * inner handler — is the evidence that survives minification.
+ */
+function describeBody(fn: (...args: unknown[]) => unknown): string {
+  let src: string;
+  try {
+    src = Function.prototype.toString.call(fn);
+  } catch {
+    return "<unreadable>";
+  }
+  return src.replace(/\s+/g, " ").slice(0, 400);
 }
