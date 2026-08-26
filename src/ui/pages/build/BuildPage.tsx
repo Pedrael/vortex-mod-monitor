@@ -57,6 +57,7 @@ import {
   type BuildSessionState,
 } from "./buildSession";
 import { getBuildSessionRegistry } from "./buildSessionRegistry";
+import { splitWarning, warningTone } from "./warningText";
 import { BuildDashboard } from "./BuildDashboard";
 import { ConcurrentOpBanner } from "../../runtime/ConcurrentOpBanner";
 import { nativeNotify } from "../../runtime/nativeNotify";
@@ -956,6 +957,70 @@ interface FormPanelProps {
   onRecoverArchives: () => void;
 }
 
+/**
+ * One warning: a headline you can scan, with the explanation folded away.
+ *
+ * The warnings are prose on purpose — a curator meeting "9 external mods no
+ * longer match" needs what happened, why it matters and what to do. Ten of
+ * those as ten paragraphs is a wall, and a wall gets skimmed, which loses the
+ * one that mattered.
+ */
+function WarningRow(props: { text: string }): JSX.Element {
+  const { headline, detail } = splitWarning(props.text);
+  const tone = warningTone(props.text);
+  const dot =
+    tone === "blocking"
+      ? "var(--eh-danger)"
+      : tone === "attention"
+      ? "var(--eh-warning)"
+      : "var(--eh-text-muted)";
+
+  if (detail.length === 0) {
+    return (
+      <div className="eh-row eh-row--sm">
+        <Dot color={dot} />
+        <span className="eh-fill eh-secondary">{headline}</span>
+      </div>
+    );
+  }
+
+  return (
+    <details>
+      <summary style={{ cursor: "pointer", listStyle: "none" }}>
+        <span className="eh-row eh-row--sm" style={{ display: "inline-flex" }}>
+          <Dot color={dot} />
+          <span className="eh-secondary">{headline}</span>
+        </span>
+      </summary>
+      <div
+        className="eh-note"
+        style={{
+          whiteSpace: "pre-line",
+          margin: "var(--eh-sp-1) 0 0 var(--eh-sp-4)",
+        }}
+      >
+        {detail}
+      </div>
+    </details>
+  );
+}
+
+/** Severity as a shape, not a word — the list stays scannable. */
+function Dot(props: { color: string }): JSX.Element {
+  return (
+    <span
+      aria-hidden
+      style={{
+        width: 6,
+        height: 6,
+        borderRadius: "50%",
+        background: props.color,
+        flexShrink: 0,
+      }}
+    />
+  );
+}
+
 function FormPanel(props: FormPanelProps): JSX.Element {
   const {
     state,
@@ -1851,22 +1916,11 @@ function DonePanel(props: {
             <summary style={{ cursor: "pointer" }}>
               {result.warnings.length} warning{result.warnings.length === 1 ? "" : "s"}
             </summary>
-            <ul
-              style={{
-                margin: "var(--eh-sp-2) 0 0 0",
-                paddingLeft: "var(--eh-sp-5)",
-                color: "var(--eh-text-secondary)",
-                fontSize: "var(--eh-text-sm)",
-              }}
-            >
+            <div className="eh-stack eh-stack--sm" style={{ marginTop: "var(--eh-sp-2)" }}>
               {result.warnings.map((w, i) => (
-                // A warning carries its own detail lines, newline-separated,
-                // so one problem stays one bullet and one count.
-                <li key={i} style={{ whiteSpace: "pre-line", marginBottom: "var(--eh-sp-2)" }}>
-                  {w}
-                </li>
+                <WarningRow key={i} text={w} />
               ))}
-            </ul>
+            </div>
           </details>
         )}
         <div

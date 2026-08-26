@@ -23,6 +23,7 @@ import { TOKENS_CSS } from "./tokens";
 import { KEYFRAMES_CSS } from "./keyframes";
 import { BASE_CSS } from "./base";
 import { COMPONENTS_CSS } from "./components";
+import { UTILITIES_CSS } from "./utilities";
 import { LOGO_CSS } from "./logo";
 
 const STYLE_ID = "eh-styles";
@@ -32,6 +33,9 @@ const COMBINED_CSS = [
   KEYFRAMES_CSS,
   BASE_CSS,
   COMPONENTS_CSS,
+  // After components: a utility should be able to override a component's
+  // default spacing at a call site, which is the whole point of having them.
+  UTILITIES_CSS,
   LOGO_CSS,
 ].join("\n\n");
 
