@@ -20,7 +20,10 @@ import * as os from "os";
 import * as path from "path";
 
 import { __testPaths } from "../stubs/vortex-api";
-import type { AuditorMod } from "../../src/core/getModsListForProfile";
+import {
+  getModsForProfile,
+  type AuditorMod,
+} from "../../src/core/getModsListForProfile";
 
 export type WorldMod = {
   id: string;
@@ -35,6 +38,12 @@ export type WorldMod = {
   /** Archive sha256 the build would have computed. Absent ⇒ archive-less. */
   archiveSha256?: string;
   installOrder?: number;
+  /**
+   * Vortex's `attributes.installerChoices`, verbatim — `{ type, options }`.
+   * Written into state exactly as Vortex stores it so the capture path is
+   * exercised rather than bypassed.
+   */
+  installerChoices?: { type: string; options: unknown };
 };
 
 export type World = {
@@ -72,7 +81,6 @@ export function makeWorld(args: {
   __testPaths.installPath = stagingRoot;
   __testPaths.downloadPath = downloadRoot;
 
-  const mods: AuditorMod[] = [];
   const modState: Record<string, { enabled: boolean }> = {};
   const persistentMods: Record<string, unknown> = {};
 
@@ -84,40 +92,27 @@ export function makeWorld(args: {
       fs.writeFileSync(full, contents);
     }
 
-    const enabled = spec.enabled ?? true;
-    modState[spec.id] = { enabled };
+    modState[spec.id] = { enabled: spec.enabled ?? true };
     persistentMods[spec.id] = {
       id: spec.id,
       installationPath: spec.id,
+      installOrder: spec.installOrder ?? index,
+      type: spec.modType ?? "",
       attributes: {
         name: spec.name ?? spec.id,
         version: spec.version ?? "1.0.0",
+        installTime: new Date(2026, 0, 1 + index).toISOString(),
+        ...(spec.installerChoices !== undefined
+          ? { installerChoices: spec.installerChoices }
+          : {}),
+        ...(spec.archiveSha256 !== undefined
+          ? { archiveSha256: spec.archiveSha256 }
+          : {}),
         ...(spec.nexus !== undefined
           ? { modId: spec.nexus.modId, fileId: spec.nexus.fileId, source: "nexus" }
           : {}),
       },
     };
-
-    mods.push({
-      id: spec.id,
-      name: spec.name ?? spec.id,
-      version: spec.version ?? "1.0.0",
-      enabled,
-      installationPath: spec.id,
-      modType: spec.modType ?? "",
-      installOrder: spec.installOrder ?? index,
-      collectionIds: [],
-      hasInstallerChoices: false,
-      hasDetailedInstallerChoices: false,
-      fomodSelections: [],
-      rules: [],
-      fileOverrides: [],
-      enabledINITweaks: [],
-      ...(spec.nexus !== undefined
-        ? { nexusModId: spec.nexus.modId, nexusFileId: spec.nexus.fileId, source: "nexus" }
-        : {}),
-      ...(spec.archiveSha256 !== undefined ? { archiveSha256: spec.archiveSha256 } : {}),
-    } as AuditorMod);
   });
 
   const state = {
@@ -132,6 +127,16 @@ export function makeWorld(args: {
     },
     app: { appVersion: "2.6.0" },
   };
+
+  // Derived by the SAME function the build uses, not hand-assembled. An
+  // earlier version of this harness filled AuditorMod fields directly and so
+  // could not have caught a capture bug — it skipped the code that captures.
+  const mods = getModsForProfile(state as never, gameId, profileId).map((m) => ({
+    ...m,
+    ...(args.mods.find((spec) => spec.id === m.id)?.archiveSha256 !== undefined
+      ? { archiveSha256: args.mods.find((spec) => spec.id === m.id)!.archiveSha256 }
+      : {}),
+  })) as AuditorMod[];
 
   return {
     root,

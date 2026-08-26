@@ -303,13 +303,24 @@ export type ExternalModSource = {
 
 export type ModInstallSpec = {
   /**
-   * Saved FOMOD wizard answers, replayed by the installer in unattended
-   * mode. Empty array when the mod isn't FOMOD or had no choices.
-   * Order is significant — it mirrors the installer's step sequence.
+   * The curator's saved FOMOD wizard answers. Empty when the mod isn't FOMOD
+   * or had no choices. Order is significant — it mirrors the installer's step
+   * sequence.
+   *
+   * NOT yet replayed on install: every archive is handed to Vortex's
+   * `start-install`, which runs the FOMOD UI and lets the user pick. This
+   * docstring used to claim they were replayed "in unattended mode", which
+   * described an intention rather than the code.
    */
   fomodSelections: FomodSelectionStep[];
   /** Vortex installer type, e.g. `"fomod"` or `"raw"`. */
   installerType?: string;
+  /**
+   * `installerChoices.type` — which installer's answer format
+   * `fomodSelections` is written in. Vortex's `IChoiceType` is
+   * `{ type, options }`, and replay has to hand back both halves.
+   */
+  installerChoicesType?: string;
 };
 
 export type ModInstallState = {

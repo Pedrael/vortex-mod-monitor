@@ -539,6 +539,9 @@ function buildModInstallSpec(
   return {
     fomodSelections,
     installerType: mod.installerType,
+    ...(mod.installerChoicesType !== undefined
+      ? { installerChoicesType: mod.installerChoicesType }
+      : {}),
   };
 }
 

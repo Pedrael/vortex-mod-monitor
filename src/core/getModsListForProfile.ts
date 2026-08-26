@@ -120,6 +120,17 @@ export type AuditorMod = {
    * Sorted alphabetically. Empty array when no tweaks are enabled.
    */
   enabledINITweaks: string[];
+  /**
+   * `installerChoices.type` from Vortex — which installer's answer format
+   * `fomodSelections` is written in.
+   *
+   * Vortex's `IChoiceType` is `{ type, options }` and we were keeping only
+   * `options`. Replaying choices means handing back the whole structure, and
+   * assuming `"fomod"` would be a guess that silently mismatches any other
+   * installer. Captured now so the data is complete before anything depends
+   * on it.
+   */
+  installerChoicesType?: string;
 
   /**
    * Curator's `mod.attributes.installTime` normalized to an ISO-8601 string
@@ -556,6 +567,10 @@ export function getModsForProfile(
       modType: typeof mod?.type === "string" ? mod.type : "",
       fileOverrides: normalizeStringArray(mod?.fileOverrides),
       enabledINITweaks: normalizeStringArray(mod?.enabledINITweaks),
+      ...(typeof installerChoices?.type === "string"
+        ? { installerChoicesType: String(installerChoices.type) }
+        : {}),
+
       installTime: normalizeInstallTime(attributes.installTime),
       installOrder: 0,
       installationPath:

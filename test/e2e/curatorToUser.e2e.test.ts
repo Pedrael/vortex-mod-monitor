@@ -187,6 +187,53 @@ describe("curator profile → package → install plan", () => {
     expect(parsed.mods.map((m) => m.name)).toEqual(["real"]);
   });
 
+  it("carries the curator's FOMOD answers through intact, type and all", async () => {
+    // Replay is not built yet, but it will consume exactly this structure.
+    // Vortex's `IChoiceType` is `{ type, options }` and the capture kept only
+    // `options` — a manifest that looked complete and could only ever hand
+    // the installer half of what it needs.
+    world = makeWorld({
+      mods: [
+        {
+          id: "fomod-mod",
+          name: "A FOMOD Mod",
+          nexus: { modId: 5, fileId: 6 },
+          archiveSha256: ARCHIVE_A,
+          files: { "Data/chosen.esp": "chosen" },
+          installerChoices: {
+            type: "fomod",
+            options: [
+              {
+                name: "Choose Options",
+                groups: [
+                  { name: "Patches", choices: [{ name: "AFT Plus Ivy Patch", idx: 2 }] },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    });
+    const parsed = roundTrip((await buildFromWorld(world)).manifest);
+    const spec = parsed.mods[0]!.install;
+
+    expect(spec.installerChoicesType).toBe("fomod");
+    expect(spec.fomodSelections).toHaveLength(1);
+    expect(spec.fomodSelections[0]!.groups[0]!.choices[0]).toEqual({
+      name: "AFT Plus Ivy Patch",
+      idx: 2,
+    });
+  });
+
+  it("does not invent a choice type for a mod that recorded none", async () => {
+    world = makeWorld({
+      mods: [{ id: "plain", nexus: { modId: 1, fileId: 1 }, archiveSha256: ARCHIVE_A, files: { "a.esp": "a" } }],
+    });
+    const parsed = roundTrip((await buildFromWorld(world)).manifest);
+    expect(parsed.mods[0]!.install.installerChoicesType).toBeUndefined();
+    expect(parsed.mods[0]!.install.fomodSelections).toEqual([]);
+  });
+
   it("blocks nobody when the curator's game version could not be detected", async () => {
     // Shipped for four releases: version "unknown" under an exact policy,
     // which no real install can satisfy.

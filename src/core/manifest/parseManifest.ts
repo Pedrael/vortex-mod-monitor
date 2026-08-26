@@ -641,11 +641,23 @@ function validateInstallSpec(
     obj.installerType === undefined
       ? undefined
       : expectString(obj.installerType, `${path}.installerType`, errors);
+  // Which installer's answer format the selections are written in. Dropping
+  // it on parse would make the manifest carry a replayable structure and hand
+  // the installer half of it.
+  const installerChoicesType =
+    obj.installerChoicesType === undefined
+      ? undefined
+      : expectString(
+          obj.installerChoicesType,
+          `${path}.installerChoicesType`,
+          errors,
+        );
 
   if (fomodSelections === undefined) return undefined;
   return {
     fomodSelections,
     ...(installerType !== undefined ? { installerType } : {}),
+    ...(installerChoicesType !== undefined ? { installerChoicesType } : {}),
   };
 }
 
