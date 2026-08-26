@@ -6,7 +6,7 @@
  *   2. Loading:  read state, hash mods, load (or create) collection config.
  *   3. Form:     metadata + per-mod overrides + README / CHANGELOG editors.
  *   4. Building: run the manifest + package pipeline with progress.
- *   5. Done:     success card with "Open package" / "Open folder" actions.
+ *   5. Done:     success card with "Copy path" / "Show in folder" actions.
  *
  * Crucially the page DOES NOT own the pipeline state. All in-flight
  * work (loadBuildContext, runBuildPipeline, AbortControllers, draft
@@ -59,6 +59,7 @@ import {
 import { getBuildSessionRegistry } from "./buildSessionRegistry";
 import { splitWarning, warningTone } from "./warningText";
 import { BuildDashboard } from "./BuildDashboard";
+import { revealInFileManager } from "./revealPath";
 import { ConcurrentOpBanner } from "../../runtime/ConcurrentOpBanner";
 import { nativeNotify } from "../../runtime/nativeNotify";
 import { getActiveGameId } from "../../../core/getModsListForProfile";
@@ -1855,6 +1856,23 @@ function DonePanel(props: {
     });
   }, [result.outputPath, showToast]);
 
+  const handleShowInFolder = React.useCallback((): void => {
+    void (async (): Promise<void> => {
+      const outcome = await revealInFileManager({
+        filePath: result.outputPath,
+        folderPath: result.outputPath.replace(/[\\/][^\\/]+$/, ""),
+      });
+      if (outcome.kind === "failed") {
+        showToast({
+          intent: "warning",
+          title: "Couldn't open the folder",
+          message: result.outputPath,
+          ttl: 6000,
+        });
+      }
+    })();
+  }, [result.outputPath, showToast]);
+
   return (
     <Card title="Build complete">
       <div
@@ -1919,22 +1937,18 @@ function DonePanel(props: {
           <Button intent="ghost" onClick={handleCopyPath}>
             Copy path
           </Button>
-          <Button
-            intent="ghost"
-            onClick={(): void => {
-              void openShellPath(result.outputPath);
-            }}
-          >
-            Open file
-          </Button>
-          <Button
-            intent="ghost"
-            onClick={(): void => {
-              const dir = result.outputPath.replace(/[\\/][^\\/]+$/, "");
-              void openShellPath(dir);
-            }}
-          >
-            Open folder
+          {/* Was two buttons, "Open file" and "Open folder", both routed
+              through a helper that ignored shell.openPath's returned error
+              string — so a failure did nothing and said nothing. "Open file"
+              could not have worked often anyway: .ehcoll has no handler
+              registered on a normal machine, so the OS returns "no
+              application associated" and that was the string being dropped.
+
+              One action now, the one people actually want: show the package
+              in the file manager with it highlighted, ready to attach or
+              copy. It reports when it cannot. */}
+          <Button intent="ghost" onClick={handleShowInFolder}>
+            Show in folder
           </Button>
           <Button intent="ghost" onClick={props.onBuildAnother}>
             Build another
@@ -2131,19 +2145,6 @@ function BuildRulesScopeSummary(props: {
   );
 }
 
-async function openShellPath(p: string): Promise<void> {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const electron = require("electron") as {
-      shell?: { openPath?: (p: string) => Promise<string> };
-    };
-    if (electron.shell?.openPath) {
-      await electron.shell.openPath(p);
-    }
-  } catch {
-    // Best-effort; swallow if Electron isn't available.
-  }
-}
 
 /**
  * Best-effort clipboard write. Tries the navigator API first (works
