@@ -1288,17 +1288,26 @@ function PublishedCard(props: {
           style={{ marginTop: "var(--eh-sp-2)" }}
         >
           <div className="eh-row">
+            {/* Both of these OPEN THE EDITOR — `handleUpdatePublished` creates
+                a draft and navigates; nothing is built until the curator
+                presses Build inside it. "Rebuild anyway" said otherwise, which
+                is why this card looked like it had no way to just open the
+                collection: the button that opens it was named after a step it
+                does not take. "Update" survives because it names the WORKFLOW
+                the curator is starting, and the card already says whether
+                there is anything to update. */}
             {upToDate ? (
-              <Button intent="ghost" onClick={props.onUpdate}>
-                Rebuild anyway
+              <Button intent="ghost" size="sm" onClick={props.onUpdate}>
+                Edit
               </Button>
             ) : (
-              <Button intent="primary" onClick={props.onUpdate}>
+              <Button intent="primary" size="sm" onClick={props.onUpdate}>
                 Update
               </Button>
             )}
             <Button
               intent="ghost"
+              size="sm"
               onClick={(): void => setShowDetails((v) => !v)}
             >
               {showDetails ? "Hide details" : "Details"}
@@ -1308,6 +1317,7 @@ function PublishedCard(props: {
                 know the path. */}
             <Button
               intent="ghost"
+              size="sm"
               onClick={(): void => {
                 void (async (): Promise<void> => {
                   const outcome = await revealPublished(
@@ -1323,7 +1333,7 @@ function PublishedCard(props: {
           </div>
           {/* Destructive, kept apart from the routine three. Equal weight and
               adjacency is how a misclick happens. */}
-          <Button intent="ghost" onClick={props.onDelete}>
+          <Button intent="ghost" size="sm" onClick={props.onDelete}>
             Delete
           </Button>
         </div>
