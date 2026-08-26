@@ -219,8 +219,31 @@ export function buildManifest(input: BuildManifestInput): BuildManifestResult {
   const compareKeyById = new Map<string, string>();
   const usedCompareKeys = new Map<string, string>();
 
+  // Emit mods in the curator's install order.
+  //
+  // The snapshot arrives in `Object.entries(state.persistent.mods)` order —
+  // Redux insertion order, which means nothing and is not guaranteed stable
+  // across a Vortex restart. Two builds of an unchanged profile could then
+  // differ in this array while being identical collections, which is noise in
+  // exactly the artifact whose promise is determinism.
+  //
+  // `installOrder` is already computed as a deterministic ordinal (installTime,
+  // ties broken by id) and was recorded and never used. Ordering by it costs
+  // nothing, makes the array mean something, and makes the installer — which
+  // walks this array — install in the sequence the curator did.
+  //
+  // Measured on a real 954-mod collection, that sequence decides almost
+  // nothing: of 4,383 contested files, 4,380 have a mod rule between their
+  // providers and are resolved by rules the installer already applies. The
+  // remaining 3 were `fomod/info.xml`, `readme.txt` and an animation-offsets
+  // file. So this is for determinism, not for conflict resolution — worth one
+  // sort, and not worth a feature.
+  const orderedMods = [...input.snapshot.mods].sort(
+    (a, b) => a.installOrder - b.installOrder,
+  );
+
   const mods: EhcollMod[] = [];
-  for (const mod of input.snapshot.mods) {
+  for (const mod of orderedMods) {
     const built = buildModEntry(
       mod,
       gameId,

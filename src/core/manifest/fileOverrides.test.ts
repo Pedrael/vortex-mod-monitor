@@ -129,3 +129,32 @@ describe("fileOverrides", () => {
     expect(manifest.fileOverrides).toEqual([]);
   });
 });
+
+describe("mod order in the manifest", () => {
+  it("emits mods in the curator's install order, not the order they arrived", () => {
+    // The snapshot arrives in Redux insertion order, which means nothing and
+    // is not guaranteed stable across a Vortex restart — so two builds of one
+    // unchanged profile could differ in this array. `installOrder` is already
+    // a deterministic ordinal; using it makes the array mean something.
+    const { manifest } = build(
+      [
+        mod({ id: "third", installOrder: 2, stagingFiles: staged("c.esp") as never }),
+        mod({ id: "first", nexusFileId: 2, installOrder: 0, stagingFiles: staged("a.esp") as never }),
+        mod({ id: "second", nexusFileId: 3, installOrder: 1, stagingFiles: staged("b.esp") as never }),
+      ],
+      [],
+    );
+    expect(manifest.mods.map((m) => m.name)).toEqual(["first", "second", "third"]);
+  });
+
+  it("keeps that order stable however the snapshot is shuffled", () => {
+    const mods = [
+      mod({ id: "b", installOrder: 1, stagingFiles: staged("b.esp") as never }),
+      mod({ id: "a", nexusFileId: 2, installOrder: 0, stagingFiles: staged("a.esp") as never }),
+    ];
+    const forwards = build(mods, []).manifest.mods.map((m) => m.name);
+    const backwards = build([...mods].reverse(), []).manifest.mods.map((m) => m.name);
+    expect(forwards).toEqual(backwards);
+    expect(forwards).toEqual(["a", "b"]);
+  });
+});
