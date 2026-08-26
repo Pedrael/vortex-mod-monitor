@@ -75,6 +75,7 @@ import {
   loadPublishedDetails,
   type PublishedDetails,
 } from "./publishedDetails";
+import { revealInFileManager } from "./revealPath";
 import { ehLog } from "../../../core/logging/ehLog";
 
 // ───────────────────────────────────────────────────────────────────────
@@ -180,12 +181,7 @@ export function BuildDashboard(props: BuildDashboardProps): JSX.Element {
         );
       }
 
-      const configDir = path.join(
-        getVortexUserDataPath(),
-        "event-horizon",
-        "collections",
-        ".config",
-      );
+      const configDir = path.join(collectionsOutputDir(), ".config");
       const published = await listPublishedCollections(configDir, {
         onError: (filename, err) => {
           errors.push(
@@ -1078,6 +1074,42 @@ const formatBytes = (n: number): string =>
  * render — reading a package means unzipping its manifest, which is not
  * something every card on the dashboard should do unasked.
  */
+/**
+ * Where builds land: `<VortexUserData>/event-horizon/collections`.
+ *
+ * The same three segments are joined in five places across the codebase. This
+ * is not the fix for that, but the reveal button must not become the sixth
+ * independent copy — if the output directory ever moves, a button that opens
+ * the old one is worse than no button.
+ */
+function collectionsOutputDir(): string {
+  return path.join(getVortexUserDataPath(), "event-horizon", "collections");
+}
+
+/**
+ * Open the folder a collection's packages are in, highlighting the newest one
+ * when we can find it.
+ *
+ * The lookup is best-effort and the button works without it: revealing the
+ * folder is the promise, and pointing at the exact file is the bonus. Failing
+ * to read the directory should not turn "open my builds folder" into an error.
+ */
+async function revealPublished(
+  summary: PublishedCollectionSummary,
+  knownSlugs: readonly string[],
+): Promise<ReturnType<typeof revealInFileManager>> {
+  const folderPath = collectionsOutputDir();
+  let filePath: string | undefined;
+  try {
+    const { findBuiltPackages } = await import("./publishedDetails");
+    const packages = await findBuiltPackages(folderPath, summary.slug, knownSlugs);
+    filePath = packages[0]?.fullPath;
+  } catch {
+    /* no highlight, still open the folder */
+  }
+  return revealInFileManager({ filePath, folderPath });
+}
+
 function PublishedDetailsPanel(props: {
   summary: PublishedCollectionSummary;
   /** Every published slug, so a shared prefix cannot mis-claim a build. */
@@ -1093,11 +1125,7 @@ function PublishedDetailsPanel(props: {
         const { loadOrCreateCollectionConfig } = await import(
           "../../../core/manifest/collectionConfig"
         );
-        const outputDir = path.join(
-          getVortexUserDataPath(),
-          "event-horizon",
-          "collections",
-        );
+        const outputDir = collectionsOutputDir();
         const { config } = await loadOrCreateCollectionConfig({
           configDir: path.join(outputDir, ".config"),
           slug: props.summary.slug,
@@ -1214,6 +1242,7 @@ function PublishedCard(props: {
   const { summary, upToDate } = props;
   const title = summary.lastBuiltName ?? summary.slug;
   const [showDetails, setShowDetails] = React.useState(false);
+  const [revealError, setRevealError] = React.useState<string | undefined>();
   return (
     <Card
       title={title}
@@ -1260,6 +1289,20 @@ function PublishedCard(props: {
           <Button intent="ghost" onClick={(): void => setShowDetails((v) => !v)}>
             {showDetails ? "Hide details" : "Details"}
           </Button>
+          {/* The package is the thing the curator hands to someone else, and
+              until now there was no way to reach it from here — you had to
+              know the path. */}
+          <Button
+            intent="ghost"
+            onClick={(): void => {
+              void (async (): Promise<void> => {
+                const outcome = await revealPublished(summary, props.knownSlugs);
+                if (outcome.kind === "failed") setRevealError(outcome.why);
+              })();
+            }}
+          >
+            Show files
+          </Button>
           {/* Destructive, and pushed away from the two routine buttons. Equal
               weight and adjacency is how a misclick happens. */}
           <span className="eh-row__spacer" />
@@ -1267,6 +1310,12 @@ function PublishedCard(props: {
             Delete
           </Button>
         </div>
+        {revealError !== undefined && (
+          <div className="eh-note" role="alert">
+            Could not open the folder: {revealError}. The packages are in{" "}
+            <span className="eh-mono">{collectionsOutputDir()}</span>.
+          </div>
+        )}
         {showDetails && (
           <PublishedDetailsPanel summary={summary} knownSlugs={props.knownSlugs} />
         )}
