@@ -765,6 +765,43 @@ function validateExternalMods(
         sanitized.instructions = entry.instructions;
       }
     }
+    // These two are as load-bearing as `instructions` and were being dropped.
+    //
+    // This function is a WHITELIST: it copies known fields onto a fresh object
+    // and silently discards the rest. So adding a field to the type and
+    // writing it correctly is not enough — the value survived to disk, was
+    // thrown away on the next read, and the loss cascaded: `mode` reset the
+    // Source dropdown to Manual, which HID the link input, which made it
+    // impossible to enter a URL at all.
+    if (entry.url !== undefined) {
+      if (typeof entry.url !== "string") {
+        errors.push(`externalMods["${modId}"].url must be a string.`);
+      } else {
+        sanitized.url = entry.url;
+      }
+    }
+    if (entry.mode !== undefined) {
+      if (typeof entry.mode !== "string") {
+        // Not a string is corruption, and worth refusing.
+        errors.push(`externalMods["${modId}"].mode must be a string.`);
+      } else if (
+        entry.mode === "direct" ||
+        entry.mode === "browse" ||
+        entry.mode === "manual"
+      ) {
+        sanitized.mode = entry.mode;
+      }
+      // An unrecognised mode is DROPPED, not rejected.
+      //
+      // Refusing the file would make the whole config unloadable, and this
+      // config carries the packageId that ties every release of the
+      // collection together — losing it ends the lineage and a rebuild starts
+      // a new one that installers will not recognise as an update. Ending a
+      // collection's history over one unknown enum member is wildly out of
+      // proportion, and it is the failure mode a future version writing a
+      // fourth mode would hand to every older build. Dropping costs one field
+      // and falls back to the same default an absent mode gets.
+    }
     out[modId] = sanitized;
   }
   return out;
