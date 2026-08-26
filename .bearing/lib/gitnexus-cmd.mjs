@@ -13,6 +13,7 @@
  * npx as the last resort so a machine with no global install still works.
  */
 import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
@@ -89,7 +90,7 @@ export function mcpEntryFor(root = process.cwd()) {
 
 // `node .bearing/lib/gitnexus-cmd.mjs [--mcp-entry]` — so shell scripts can ask the same question
 // the JS callers do instead of hardcoding an answer that goes stale.
-if (process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(new URL(import.meta.url).pathname)) {
+if (process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url))) {
   const root = process.cwd();
   process.stdout.write(
     (process.argv.includes('--mcp-entry')
