@@ -47,6 +47,8 @@ import * as path from "path";
 import { util } from "@nexusmods/vortex-api";
 import type { types } from "@nexusmods/vortex-api";
 
+import { adoptLocalArchive } from "./adoptLocalArchive";
+
 import {
   installOptions,
   type VortexInstallerChoices,
@@ -261,10 +263,38 @@ export async function installFromLocalArchive(
     archivePath: string;
     /** Optional cancellation token; see {@link installNexusViaApi}. */
     signal?: AbortSignal;
+    /**
+     * The curator's recorded installer answers.
+     *
+     * When present the archive is REGISTERED as a Vortex download first and
+     * installed through `start-install-download`, because that is the only
+     * install call whose choices-carrying shape we have actually observed —
+     * see adoptLocalArchive for the evidence and the reasoning. Passing a
+     * third argument to `start-install` on a guess would install with
+     * defaults and report success, which is the bug this fixes.
+     *
+     * When absent the call below is byte-for-byte what it was before replay
+     * existed: a mod with no installer choices must not start copying
+     * archives around because of a feature it does not use.
+     */
+    choices?: VortexInstallerChoices;
   },
 ): Promise<{ vortexModId: string }> {
   if (args.signal?.aborted) {
     throw makeAbortErrorLocal("install from local archive");
+  }
+
+  if (args.choices !== undefined) {
+    const adopted = await adoptLocalArchive(api, {
+      gameId: args.gameId,
+      archivePath: args.archivePath,
+    });
+    return installFromExistingDownload(api, {
+      gameId: args.gameId,
+      archiveId: adopted.archiveId,
+      choices: args.choices,
+      ...(args.signal !== undefined ? { signal: args.signal } : {}),
+    });
   }
 
   const completed = waitForInstallCompletion(api, {

@@ -48,7 +48,31 @@ export type ExternalHint = {
   instructions?: string;
   /** Which of the three sources this came from — surfaced so the UI can say. */
   via: "collection-rule" | "download-uri" | "homepage";
+  /**
+   * Vortex's own `downloadHint.mode`, when the hint came from a collection
+   * rule. It says what kind of link this is, which is what the user-side
+   * screen needs to give the right instruction:
+   *
+   *   `browse`  — a mod PAGE. Open it, find the file, download it.
+   *   `direct`  — a link straight to the file. Opening it starts a download.
+   *   `manual`  — no usable link; the curator is describing where to look.
+   *
+   * Absent for a hint we inferred, because inferring the mode as well would
+   * be guessing on top of guessing: a `homepage` attribute is page-shaped and
+   * a `sourceURI` is file-shaped, but neither is a statement of intent the way
+   * the curator's own choice is.
+   */
+  mode?: DownloadMode;
 };
+
+export type DownloadMode = "direct" | "browse" | "manual";
+
+/** Vortex's own three; anything else is not something we can act on. */
+function asMode(raw: unknown): DownloadMode | undefined {
+  return raw === "direct" || raw === "browse" || raw === "manual"
+    ? raw
+    : undefined;
+}
 
 /** Identity a hint can be matched by, strongest first. */
 type HintKeys = {
@@ -107,6 +131,9 @@ export function collectionHints(
           ...(url !== undefined ? { url } : {}),
           ...(instructions !== undefined ? { instructions } : {}),
           via: "collection-rule",
+          ...(asMode(r.downloadHint?.mode) !== undefined
+            ? { mode: asMode(r.downloadHint?.mode) }
+            : {}),
         },
       });
     }
@@ -201,9 +228,14 @@ const str = (v: unknown): string | undefined => {
  * instructions but no URL keeps their instructions and gains the link.
  */
 export function applyHint(
-  existing: { url?: string; instructions?: string },
+  existing: { url?: string; instructions?: string; mode?: DownloadMode },
   hint: ExternalHint | undefined,
-): { url?: string; instructions?: string; filledFrom?: ExternalHint["via"] } {
+): {
+  url?: string;
+  instructions?: string;
+  mode?: DownloadMode;
+  filledFrom?: ExternalHint["via"];
+} {
   if (hint === undefined) return existing;
 
   const url = existing.url ?? hint.url;
@@ -212,9 +244,11 @@ export function applyHint(
     (existing.url === undefined && hint.url !== undefined) ||
     (existing.instructions === undefined && hint.instructions !== undefined);
 
+  const mode = existing.mode ?? hint.mode;
   return {
     ...(url !== undefined ? { url } : {}),
     ...(instructions !== undefined ? { instructions } : {}),
+    ...(mode !== undefined ? { mode } : {}),
     ...(filled ? { filledFrom: hint.via } : {}),
   };
 }

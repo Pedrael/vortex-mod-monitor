@@ -1281,6 +1281,7 @@ async function executeDecision(args: {
       return executePromptUserChoice({
         ctx,
         resolution,
+        manifestEntry,
         choice,
         onSkip,
       });
@@ -1420,10 +1421,12 @@ async function executeDivergedChoice(args: {
 async function executePromptUserChoice(args: {
   ctx: DriverContext;
   resolution: ModResolution;
+  /** Needed for the curator's installer answers — see the local-archive call. */
+  manifestEntry: EhcollMod;
   choice: ConflictChoice;
   onSkip: (entry: SkippedModReportEntry) => void;
 }): Promise<InstalledModReportEntry | undefined> {
-  const { ctx, resolution, choice, onSkip } = args;
+  const { ctx, resolution, manifestEntry, choice, onSkip } = args;
   const compareKey = resolution.compareKey;
 
   if (choice.kind === "skip") {
@@ -1442,10 +1445,17 @@ async function executePromptUserChoice(args: {
     );
   }
 
+  // The curator's installer answers apply here exactly as they do to a mod
+  // we downloaded ourselves. This was the one install path that dropped them:
+  // a user who supplied a FOMOD by hand got the default options while the
+  // collection claimed to be reproducing the curator's build.
   const result = await installFromLocalArchive(ctx.api, {
     gameId: ctx.plan.manifest.game.id,
     archivePath: choice.localPath,
     signal: ctx.abortSignal,
+    ...(choicesFor(manifestEntry) !== undefined
+      ? { choices: choicesFor(manifestEntry) }
+      : {}),
   });
 
   return {

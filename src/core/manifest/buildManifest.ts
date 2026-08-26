@@ -118,6 +118,8 @@ export type ExternalModSpec = {
    * what Vortex already knows (see externalHints), which is the point.
    */
   url?: string;
+  /** What kind of link `url` is. See ExternalModSource.downloadMode. */
+  mode?: "direct" | "browse" | "manual";
   /** Include the archive in the `.ehcoll` package at `bundled/<sha256>.<ext>`. */
   bundled?: boolean;
 };
@@ -551,6 +553,7 @@ function buildExternalMod(
     ...(stagingSetHash !== undefined ? { stagingSetHash } : {}),
     instructions: spec?.instructions,
     ...(spec?.url !== undefined ? { url: spec.url } : {}),
+    ...(spec?.mode !== undefined ? { downloadMode: spec.mode } : {}),
     bundled: wantsBundled,
   };
 

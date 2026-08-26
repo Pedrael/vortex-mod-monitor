@@ -311,6 +311,15 @@ export type ExternalModSource = {
    */
   url?: string;
   /**
+   * What kind of link {@link url} is, from Vortex's own `downloadHint.mode`.
+   *
+   * Changes the instruction the user gets, which is the whole reason to carry
+   * it: "open this page and find the file" and "this link starts a download"
+   * are different actions, and guessing which one from the URL is exactly the
+   * kind of inference that produces confidently wrong guidance.
+   */
+  downloadMode?: "direct" | "browse" | "manual";
+  /**
    * `true` ⇒ archive is included in the package at `bundled/<sha256>.<ext>`.
    * `false` ⇒ the user must supply a local copy.
    *

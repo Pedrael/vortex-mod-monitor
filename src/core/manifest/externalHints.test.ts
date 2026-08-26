@@ -41,6 +41,9 @@ describe("collectionHints", () => {
       url: "https://example.com/coolmod",
       instructions: "Take the FOMOD.",
       via: "collection-rule",
+      // Vortex's own mode travels with the hint: it is the difference between
+      // "find the file on this page" and "this link starts a download".
+      mode: "browse",
     });
   });
 
@@ -209,5 +212,50 @@ describe("applyHint", () => {
     // tool guessed, and judge it accordingly.
     const out = applyHint({}, { url: "https://e.com/x", via: "homepage" });
     expect(out.filledFrom).toBe("homepage");
+  });
+});
+
+describe("download mode", () => {
+  it("keeps Vortex's own mode, which is a statement of intent", () => {
+    const direct = collectionHints(
+      collectionMod([
+        {
+          reference: { id: "m" },
+          downloadHint: { mode: "direct", url: "https://e.com/f.7z" },
+        },
+      ]),
+    );
+    expect(direct[0]?.hint.mode).toBe("direct");
+  });
+
+  it("drops a mode Vortex does not define", () => {
+    const odd = collectionHints(
+      collectionMod([
+        {
+          reference: { id: "m" },
+          downloadHint: { mode: "telepathy", url: "https://e.com/x" },
+        },
+      ]),
+    );
+    expect(odd[0]?.hint.url).toBe("https://e.com/x");
+    expect(odd[0]?.hint.mode).toBeUndefined();
+  });
+
+  it("infers no mode for a scraped URL", () => {
+    // A homepage attribute is page-shaped and a sourceURI is file-shaped, but
+    // neither is the curator saying what kind of link it is. Guessing on top
+    // of a guess is how confident wrong instructions get produced.
+    expect(
+      downloadHint({ details: { homepage: "https://e.com/p" } })?.mode,
+    ).toBeUndefined();
+    expect(downloadHint({ sourceURI: "https://e.com/f.7z" })?.mode).toBeUndefined();
+  });
+
+  it("never lets a scraped hint overwrite the curator's mode", () => {
+    const out = applyHint(
+      { mode: "manual" },
+      { url: "https://e.com/x", mode: "direct", via: "collection-rule" },
+    );
+    expect(out.mode).toBe("manual");
   });
 });

@@ -582,6 +582,7 @@ function validateExternalSource(
         );
   const bundled = expectBoolean(obj.bundled, `${path}.bundled`, errors);
   const url = validateExternalUrl(obj.url, `${path}.url`, errors);
+  const downloadMode = validateDownloadMode(obj.downloadMode);
   const instructions =
     obj.instructions === undefined
       ? undefined
@@ -626,7 +627,22 @@ function validateExternalSource(
     ...(stagingSetHash !== undefined ? { stagingSetHash } : {}),
     ...(instructions !== undefined ? { instructions } : {}),
     ...(url !== undefined ? { url } : {}),
+    ...(downloadMode !== undefined ? { downloadMode } : {}),
   };
+}
+
+/**
+ * Vortex's own three download modes. An unrecognised value is DROPPED rather
+ * than rejected — the mod still installs, it just gets the generic wording
+ * instead of the mode-specific one, and refusing a whole collection over an
+ * unknown enum member would be badly out of proportion.
+ */
+function validateDownloadMode(
+  raw: unknown,
+): "direct" | "browse" | "manual" | undefined {
+  return raw === "direct" || raw === "browse" || raw === "manual"
+    ? raw
+    : undefined;
 }
 
 /**

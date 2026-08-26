@@ -11,6 +11,9 @@
  * is the level where every bug this cycle lived.
  */
 
+import * as fs from "fs";
+import * as path from "path";
+
 import { afterEach, describe, expect, it } from "vitest";
 
 import { runInstall } from "../../src/core/installer/runInstall";
@@ -81,6 +84,13 @@ async function install(
   manifest: EhcollManifest,
   fake: ReturnType<typeof makeFakeVortex>,
   previousInstall?: { packageVersion: string; gameIniApplication?: unknown },
+  /**
+   * What the user chose on the decisions screen. An external mod that is not
+   * bundled resolves to `external-prompt-user`, and the driver REFUSES to run
+   * without a matching choice — so reaching that path at all means supplying
+   * one here.
+   */
+  decisions: unknown = {},
 ) {
   const phases: string[] = [];
   // A first install. `current-profile` is a different mode with its own
@@ -99,7 +109,7 @@ async function install(
     ehcoll: { manifest, bundledArchives: [], warnings: [] } as never,
     ehcollZipPath: "C:/nowhere/pkg.ehcoll",
     appDataPath: "C:/nowhere/appdata",
-    decisions: {},
+    decisions,
   } as never);
 
   const stalled = new Promise<never>((_r, reject) =>
@@ -144,6 +154,58 @@ describe("install driver, end to end", () => {
       allowAutoEnable: true,
       choices: FOMOD_CHOICES,
     });
+  });
+
+  it("replays the curator's choices for an archive the USER supplied by hand", async () => {
+    // The gap this closes: an external mod is fetched by the user and pointed
+    // at with "Pick a local file". That path emitted `start-install`, which
+    // has no argument for installer answers — so a FOMOD supplied by hand
+    // installed with DEFAULT options while the collection promised the
+    // curator's. Every file present, every file correct, and the wrong ones.
+    //
+    // The fix registers the picked archive as a Vortex download and installs
+    // it through `start-install-download`, the ONLY choices-carrying install
+    // call whose shape has actually been observed on a real Vortex. This
+    // asserts that call, because "it adopts the archive" and "the choices
+    // reach the installer" are otherwise indistinguishable from outside.
+    world = makeWorld({
+      mods: [
+        {
+          id: "hand-supplied",
+          name: "A Hand-Supplied FOMOD",
+          // No `nexus` ⇒ external.
+          archiveSha256: "c".repeat(64),
+          files: { "Data/handpicked.esp": "handpicked" },
+          installerChoices: FOMOD_CHOICES,
+        },
+      ],
+    });
+    const manifest = await packageFrom(world);
+    const fake = makeFakeVortex({ gameId: "fallout4" });
+
+    const entry = manifest.mods[0]!;
+    // The archive the user "downloaded" and picked, somewhere outside Vortex.
+    const picked = path.join(world.root, "user-downloads", "HandSupplied.7z");
+    fs.mkdirSync(path.dirname(picked), { recursive: true });
+    fs.writeFileSync(picked, Buffer.alloc(64, 7));
+
+    await install(manifest, fake, undefined, {
+      conflictChoices: {
+        [entry.compareKey]: { kind: "use-local-file", localPath: picked },
+      },
+    });
+
+    const call = emitsOf(fake, "start-install-download")[0];
+    expect(
+      call,
+      "a hand-picked archive never reached the choices-carrying install call",
+    ).toBeDefined();
+    expect(call!.args[1]).toEqual({
+      allowAutoEnable: true,
+      choices: FOMOD_CHOICES,
+    });
+    // And NOT through the call that cannot carry them.
+    expect(emitsOf(fake, "start-install")).toEqual([]);
   });
 
   it("leaves a mod with no recorded choices on the original one-step path", async () => {

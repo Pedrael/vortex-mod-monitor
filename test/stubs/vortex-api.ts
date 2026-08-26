@@ -98,6 +98,22 @@ export const util = {
 
 export const actions = {
   setModEnabled: () => ({ type: "STUB_SET_MOD_ENABLED" }),
+  /**
+   * Carries its payload, because the thing worth asserting about adopting a
+   * local archive is WHAT was registered — specifically that `localPath` is
+   * relative to the download folder. Vortex resolves it against that folder,
+   * so an absolute path here produces an entry it can never find again, and a
+   * stub that dropped the payload could not catch it.
+   */
+  addLocalDownload: (
+    id: string,
+    game: string,
+    localPath: string,
+    fileSize: number,
+  ) => ({
+    type: "STUB_ADD_LOCAL_DOWNLOAD",
+    payload: { id, game, localPath, fileSize },
+  }),
   setLoadOrder: () => ({ type: "STUB_SET_LOAD_ORDER" }),
   addModRule: () => ({ type: "STUB_ADD_MOD_RULE" }),
   removeModRule: () => ({ type: "STUB_REMOVE_MOD_RULE" }),

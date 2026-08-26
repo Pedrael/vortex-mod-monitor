@@ -52,7 +52,7 @@ import { randomUUID } from "crypto";
 import * as fsp from "fs/promises";
 import * as path from "path";
 import { applyHint } from "./externalHints";
-import type { ExternalHint } from "./externalHints";
+import type { DownloadMode, ExternalHint } from "./externalHints";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -82,6 +82,8 @@ export type ExternalModConfigEntry = {
    * is never overwritten by a suggestion.
    */
   url?: string;
+  /** What kind of link `url` is. See ExternalModSource.downloadMode. */
+  mode?: DownloadMode;
 };
 
 /** What the curator decided about one detected prerequisite. */
@@ -343,6 +345,7 @@ export function toBuildManifestExternalMods(
           ? { instructions: entry.instructions }
           : {}),
         ...(entry.url !== undefined ? { url: entry.url } : {}),
+        ...(entry.mode !== undefined ? { mode: entry.mode } : {}),
       },
       hints?.get(modId),
     );
@@ -350,6 +353,7 @@ export function toBuildManifestExternalMods(
       instructions: merged.instructions,
       bundled: entry.bundled,
       ...(merged.url !== undefined ? { url: merged.url } : {}),
+      ...(merged.mode !== undefined ? { mode: merged.mode } : {}),
     };
   }
   return out;
@@ -359,6 +363,7 @@ export type ExternalModBuildSpec = {
   instructions?: string;
   bundled?: boolean;
   url?: string;
+  mode?: DownloadMode;
 };
 
 // ---------------------------------------------------------------------------

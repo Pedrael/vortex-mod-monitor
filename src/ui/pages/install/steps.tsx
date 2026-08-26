@@ -36,6 +36,7 @@ import { useToast } from "../../components";
 import { useKeyboardShortcut } from "../../hooks/useKeyboardShortcut";
 import { formatBytes } from "../../../utils/diskSpace";
 import { openExternalUrl } from "../build/revealPath";
+import { describeDownload } from "./downloadGuidance";
 import {
   describeElapsed,
   describeQuiet,
@@ -1190,6 +1191,60 @@ function SectionHeader(props: {
   );
 }
 
+/**
+ * How to fetch a mod Event Horizon cannot fetch: the link, what kind of link
+ * it is, and what to do once the file is on disk.
+ *
+ * Renders even with no URL, because the mod is still installable by hand and
+ * the last step — pick the file, we take it from there — is the same either
+ * way. A block that vanished when the link was missing would leave the
+ * "Pick a local file" radio with no explanation of where the file comes from.
+ */
+function ExternalDownloadGuide(props: {
+  url?: string;
+  mode?: "direct" | "browse" | "manual";
+  expectedFilename?: string;
+}): JSX.Element {
+  const guide = describeDownload({
+    ...(props.url !== undefined ? { url: props.url } : {}),
+    ...(props.mode !== undefined ? { mode: props.mode } : {}),
+    ...(props.expectedFilename !== undefined
+      ? { expectedFilename: props.expectedFilename }
+      : {}),
+  });
+
+  return (
+    <div
+      className="eh-stack eh-stack--sm eh-inset"
+      style={{ marginBottom: "var(--eh-sp-3)" }}
+    >
+      {guide.canOpen && props.url !== undefined && (
+        <div className="eh-row">
+          <span
+            className="eh-mono eh-fill"
+            style={{ fontSize: "var(--eh-text-xs)", wordBreak: "break-all" }}
+          >
+            {props.url}
+          </span>
+          <Button
+            intent="ghost"
+            onClick={(): void => {
+              void openExternalUrl(props.url as string);
+            }}
+          >
+            {guide.action}
+          </Button>
+        </div>
+      )}
+      <ol className="eh-list eh-note" style={{ margin: 0 }}>
+        {guide.steps.map((step, i) => (
+          <li key={i}>{step}</li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 function ConflictRow(props: {
   resolution: ModResolution;
   value: ConflictChoice | undefined;
@@ -1275,28 +1330,23 @@ function ConflictRow(props: {
         {describeConflict(resolution)}
       </p>
 
-      {/* Where to get it, when the collection says.
-          The URL is shown in full rather than hidden behind "Open page": it
-          came out of a manifest someone else authored, and the person about to
-          click it should be able to see where they are being sent first.
-          openExternalUrl refuses anything that is not http(s) regardless. */}
-      {decision.kind === "external-prompt-user" && decision.url !== undefined && (
-        <div
-          className="eh-row"
-          style={{ marginBottom: "var(--eh-sp-3)" }}
-        >
-          <span className="eh-mono eh-fill" style={{ fontSize: "var(--eh-text-xs)" }}>
-            {decision.url}
-          </span>
-          <Button
-            intent="ghost"
-            onClick={(): void => {
-              void openExternalUrl(decision.url as string);
-            }}
-          >
-            Open page
-          </Button>
-        </div>
+      {/* Get it yourself, in your own browser.
+          Vortex answers a browse-website dependency with an embedded browser;
+          this deliberately does not. That window is signed out of everything,
+          has no password manager, no ad-blocker and no download manager, and
+          handles a Cloudflare check badly — the one flow where someone most
+          needs their own environment gets the worst version of it.
+
+          The URL is shown in FULL rather than hidden behind the button: it
+          came out of a manifest someone else authored, and the person about
+          to click should see where they are being sent. openExternalUrl
+          refuses anything that is not http(s) regardless. */}
+      {decision.kind === "external-prompt-user" && (
+        <ExternalDownloadGuide
+          url={decision.url}
+          mode={decision.downloadMode}
+          expectedFilename={decision.expectedFilename}
+        />
       )}
 
       {decision.kind === "external-prompt-user" ? (

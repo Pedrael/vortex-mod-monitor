@@ -733,6 +733,8 @@ export type ExternalPromptUserDecision = {
   instructions?: string;
   /** Where to get it, when the manifest carries a link. http(s) only. */
   url?: string;
+  /** What kind of link `url` is. See ExternalModSource.downloadMode. */
+  downloadMode?: "direct" | "browse" | "manual";
 };
 
 /**

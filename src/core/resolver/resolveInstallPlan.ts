@@ -507,6 +507,7 @@ function resolveExternalMod(
     expectedFilename,
     instructions,
     url,
+    downloadMode,
     bundled,
   } = mod.source;
 
@@ -579,6 +580,7 @@ function resolveExternalMod(
         : {}),
       instructions,
       ...(url !== undefined ? { url } : {}),
+      ...(downloadMode !== undefined ? { downloadMode } : {}),
     };
   }
   return {
@@ -590,6 +592,7 @@ function resolveExternalMod(
       : {}),
     instructions,
     ...(url !== undefined ? { url } : {}),
+    ...(downloadMode !== undefined ? { downloadMode } : {}),
   };
 }
 
