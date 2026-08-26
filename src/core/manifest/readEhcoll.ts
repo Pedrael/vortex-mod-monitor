@@ -271,9 +271,18 @@ async function listZipEntries(
   try {
     return await sevenZipList(sevenZip, zipPath);
   } catch (err) {
+    // 7z says "missing, corrupt, password-protected, or not an archive" —
+    // four different problems with four different fixes and no way to tell
+    // which. Everything needed to separate them is in the file's first and
+    // last bytes, and the person who hit this is usually not the person who
+    // can look. See diagnoseArchive.
+    const { diagnoseArchive, describeArchiveDiagnosis } = await import(
+      "./diagnoseArchive"
+    );
+    const diagnosis = await diagnoseArchive(zipPath);
     throw new ReadEhcollError([
-      `7z failed to list "${zipPath}": ${(err as Error).message} ` +
-        `The file may be corrupt, password-protected, or not a ZIP.`,
+      ...describeArchiveDiagnosis(diagnosis, zipPath),
+      `(7z reported: ${(err as Error).message})`,
     ]);
   }
 }
