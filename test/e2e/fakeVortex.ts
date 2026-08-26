@@ -1,0 +1,185 @@
+/**
+ * A Vortex that installs, for driving the real install driver in tests.
+ *
+ * The install side is 5,600 lines and, until now, was reachable only by
+ * installing a collection by hand in Vortex. That is a slow loop and a
+ * one-shot one: the interesting cases (a refused install, a mod whose bytes
+ * diverge, a FOMOD whose choices must be replayed) are awkward to stage on a
+ * real machine and trivial to stage here.
+ *
+ * The whole surface the installer touches is small — measured across
+ * `src/core/installer`: `getState`, `store.dispatch`, `events`, and
+ * `ext.nexusDownload`. That is what this implements, with Vortex's real
+ * semantics rather than placeholders:
+ *
+ *  - `nexusDownload` returns an archiveId, and only installs when
+ *    `allowInstall` is true, which is the flag the replay path turns off.
+ *  - `start-install-download` and `start-install` complete asynchronously by
+ *    emitting `did-install-mod`, because that is the order the driver depends
+ *    on: it subscribes, emits, and waits.
+ *  - every emit is recorded, so a test can assert the CALL and not just the
+ *    outcome — the level at which this project's bugs have actually lived.
+ */
+
+import { EventEmitter } from "events";
+
+import type { types } from "@nexusmods/vortex-api";
+
+export type RecordedEmit = { event: string; args: unknown[] };
+
+export type FakeVortex = {
+  api: types.IExtensionApi;
+  emits: RecordedEmit[];
+  dispatched: unknown[];
+  /** Mods the fake "installed", in order, keyed by the id it handed back. */
+  installed: Array<{ vortexModId: string; archiveId: string }>;
+  /** Make the next install fail through Vortex's callback. */
+  failNextInstall: (message: string) => void;
+  /** Make deployment fail — the step after every mod is installed. */
+  failDeployment: (message: string) => void;
+  state: Record<string, unknown>;
+};
+
+export function makeFakeVortex(args: {
+  gameId: string;
+  /** Downloads Vortex already knows about: archiveId → local path. */
+  downloads?: Record<string, string>;
+}): FakeVortex {
+  const events = new EventEmitter();
+  const emits: RecordedEmit[] = [];
+  const dispatched: unknown[] = [];
+  const installed: Array<{ vortexModId: string; archiveId: string }> = [];
+  let failure: string | undefined;
+  let deployFailure: string | undefined;
+  let modSeq = 0;
+
+  const state: Record<string, unknown> = {
+    settings: {
+      profiles: { activeProfileId: "profile-1", activeGameId: args.gameId },
+    },
+    persistent: {
+      profiles: { "profile-1": { gameId: args.gameId, modState: {} } },
+      mods: { [args.gameId]: {} },
+      downloads: {
+        files: Object.fromEntries(
+          Object.entries(args.downloads ?? {}).map(([id, localPath]) => [
+            id,
+            { localPath, state: "finished", received: 1, size: 1 },
+          ]),
+        ),
+      },
+    },
+  };
+
+  const realEmit = events.emit.bind(events);
+  const complete = (archiveId: string, cb?: unknown): void => {
+    // Asynchronous on purpose: the driver subscribes, emits, then awaits.
+    // Completing synchronously would let a driver that never subscribed pass.
+    setTimeout(() => {
+      if (failure !== undefined) {
+        const message = failure;
+        failure = undefined;
+        if (typeof cb === "function") (cb as (e: Error) => void)(new Error(message));
+        return;
+      }
+      const vortexModId = `installed-${++modSeq}`;
+      installed.push({ vortexModId, archiveId });
+      realEmit("did-install-mod", args.gameId, archiveId, vortexModId);
+    }, 0);
+  };
+
+  (events as unknown as { emit: (e: string, ...a: unknown[]) => boolean }).emit = (
+    event: string,
+    ...rest: unknown[]
+  ): boolean => {
+    emits.push({ event, args: rest });
+    if (event === "start-install-download") {
+      // (downloadId, options?, cb?) — the shape Vortex was observed to use.
+      complete(rest[0] as string, rest[2] ?? rest[1]);
+    } else if (event === "start-install") {
+      complete(`from-path:${String(rest[0])}`, rest[1]);
+    } else if (event === "deploy-mods") {
+      // Vortex deploys asynchronously and reports through `did-deploy`; the
+      // callback is only for failures. A double that acknowledged neither
+      // left the driver waiting on a deployment that never happened.
+      setTimeout(() => {
+        if (deployFailure !== undefined) {
+          const message = deployFailure;
+          deployFailure = undefined;
+          const cb = rest[1];
+          if (typeof cb === "function") (cb as (e: Error) => void)(new Error(message));
+          return;
+        }
+        realEmit("did-deploy", rest[0]);
+      }, 0);
+    }
+    return realEmit(event, ...rest);
+  };
+
+  const api = {
+    events,
+    getState: () => state,
+    store: {
+      dispatch: (action: unknown): void => {
+        dispatched.push(action);
+        const a = action as { type?: string; payload?: unknown };
+        if (a?.type === "STUB_SET_PROFILE") {
+          // Vortex would put the new profile in state; the driver reads it
+          // back when reconciling, so a double that only records is a double
+          // that deadlocks.
+          const profile = a.payload as { id: string; gameId: string };
+          const profiles = (state.persistent as { profiles: Record<string, unknown> })
+            .profiles;
+          profiles[profile.id] = { ...profile, modState: {} };
+        }
+        if (a?.type === "STUB_SET_NEXT_PROFILE") {
+          // The switch is asynchronous in Vortex and the driver waits on the
+          // event, not the dispatch.
+          const id = a.payload as string;
+          setTimeout(() => {
+            (
+              (state.settings as { profiles: Record<string, unknown> }).profiles as {
+                activeProfileId?: string;
+              }
+            ).activeProfileId = id;
+            realEmit("profile-did-change", id);
+          }, 0);
+        }
+      },
+    },
+    ext: {
+      nexusDownload: async (
+        _gameId: string,
+        modId: number,
+        fileId: number,
+        _fileName?: string,
+        allowInstall?: boolean,
+      ): Promise<string> => {
+        const archiveId = `dl-${modId}-${fileId}`;
+        // The one-step path: Vortex downloads AND installs. The replay path
+        // passes false precisely to get between the two.
+        if (allowInstall === true) complete(archiveId);
+        return archiveId;
+      },
+    },
+  } as unknown as types.IExtensionApi;
+
+  return {
+    api,
+    emits,
+    dispatched,
+    installed,
+    state,
+    failNextInstall: (message: string): void => {
+      failure = message;
+    },
+    failDeployment: (message: string): void => {
+      deployFailure = message;
+    },
+  };
+}
+
+/** Every emit of one event, in order. */
+export function emitsOf(fake: FakeVortex, event: string): RecordedEmit[] {
+  return fake.emits.filter((e) => e.event === event);
+}

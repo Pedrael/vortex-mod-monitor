@@ -76,8 +76,14 @@ export const actions = {
   setLoadOrder: () => ({ type: "STUB_SET_LOAD_ORDER" }),
   addModRule: () => ({ type: "STUB_ADD_MOD_RULE" }),
   removeModRule: () => ({ type: "STUB_REMOVE_MOD_RULE" }),
-  setNextProfile: () => ({ type: "STUB_SET_NEXT_PROFILE" }),
-  setProfile: () => ({ type: "STUB_SET_PROFILE" }),
+  // Payloads are carried, not dropped: a test double has to be able to react
+  // to what the code asked for (switching to profile X emits X's did-change),
+  // and an action that forgets its argument makes that impossible.
+  setNextProfile: (profileId: string) => ({
+    type: "STUB_SET_NEXT_PROFILE",
+    payload: profileId,
+  }),
+  setProfile: (profile: unknown) => ({ type: "STUB_SET_PROFILE", payload: profile }),
 };
 
 /** Swallowed by default so tests do not print. Reassign in a test to assert on it. */
