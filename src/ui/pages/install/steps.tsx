@@ -2114,6 +2114,31 @@ function ModTypeNotice(props: { lines: readonly string[] }): JSX.Element | null 
  * changing nothing the user can see, which makes it the one thing on this
  * screen they could never work out for themselves.
  */
+/**
+ * How the resulting load order differs from the curator's.
+ *
+ * Given its own notice rather than folded into the others because it is the
+ * one failure here that a file check cannot see: every mod can install
+ * perfectly and the game still play differently, because load order decides
+ * which mod's records win. Shown only when something actually differs.
+ */
+function PluginOrderNotice(props: {
+  lines: readonly string[];
+}): JSX.Element | null {
+  if (props.lines.length === 0) return null;
+  const [summary, ...rest] = props.lines;
+  return (
+    <NoticeCard
+      label="Load order"
+      intent="warning"
+      summary={summary ?? ""}
+      accentBorder="var(--eh-warning)"
+    >
+      <NoticeLines lines={rest} />
+    </NoticeCard>
+  );
+}
+
 function IniTweakNotice(props: { lines: readonly string[] }): JSX.Element | null {
   if (props.lines.length === 0) return null;
   const [summary, ...rest] = props.lines;
@@ -2166,6 +2191,7 @@ function SuccessBody(props: {
     <div className="eh-stack eh-stack--lg">
       <ModTypeNotice lines={result.modTypeNotice ?? []} />
       <IniTweakNotice lines={result.iniTweakNotice ?? []} />
+      <PluginOrderNotice lines={result.pluginOrderNotice ?? []} />
       <GameIniNotice lines={result.gameIniNotice ?? []} />
       <div
         style={{

@@ -283,6 +283,18 @@ export type InstallSuccess = {
    */
   iniTweakNotice?: string[];
   /**
+   * How the user's resulting plugin order differs from the curator's.
+   *
+   * Applying the curator's LOOT rules is not the same as reproducing their
+   * order: many orders satisfy the same rules, and which one LOOT picks
+   * depends on the user's masterlist version and their own plugins. For a
+   * Bethesda game that difference decides which mod's records win, so an
+   * install can be file-perfect and still play differently.
+   *
+   * Present only when something actually differs.
+   */
+  pluginOrderNotice?: string[];
+  /**
    * Mods the driver couldn't install for non-fatal reasons (user
    * chose `keep-existing`, `skip`, or the decision required input
    * the action handler did not supply).

@@ -136,6 +136,12 @@ import {
   emptyIniTweakApplication,
 } from "./applyIniTweaks";
 import {
+  comparePluginOrder,
+  describePluginOrderDrift,
+  emptyPluginOrderDrift,
+  readUserPluginsTxt,
+} from "./checkPluginOrder";
+import {
   applyLoadOrder,
   type ApplyLoadOrderResult,
 } from "./applyLoadOrder";
@@ -1015,6 +1021,39 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
       ),
     };
 
+    // ── 7b1. did the load order actually come out like the curator's? ──
+    //
+    // Applying the curator's LOOT rules is not the same as reproducing their
+    // order: many orders satisfy the same rules, and which one LOOT picks
+    // depends on the user's masterlist version and their own plugins. For a
+    // Bethesda game that difference decides which mod's records win, so this
+    // reads what the user actually ended up with and reports how it differs.
+    // It changes nothing — the order is Vortex's and LOOT's to own.
+    let pluginOrderDrift = emptyPluginOrderDrift();
+    try {
+      const actual = await readUserPluginsTxt(plan.manifest.game.id);
+      if (actual !== undefined) {
+        pluginOrderDrift = comparePluginOrder(
+          plan.manifest.plugins.order,
+          actual,
+        );
+        // The numbers reach the user through the notice below; this line is
+        // for a support conversation about someone else's machine, where
+        // "misordered: 0 of 412" and "misordered: 118 of 412" are very
+        // different stories and neither is visible after the fact.
+        reportProgress(
+          "deploying",
+          1,
+          1,
+          `Load order: ${pluginOrderDrift.misordered.length} of ` +
+            `${pluginOrderDrift.compared} plugins differ from the curator's.`,
+        );
+      }
+    } catch {
+      // A plugins.txt we cannot read is not a reason to fail an install that
+      // otherwise succeeded — it only means this one check has no answer.
+    }
+
     // ── 7b2. did each mod install as the right KIND of mod? ─────────
     // Vortex derives modType from the archive and we do not override it —
     // it owns the concept. But when its answer differs from the curator's,
@@ -1124,6 +1163,9 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
         : {}),
       ...(describeIniTweaks(iniTweakApplication).length > 0
         ? { iniTweakNotice: describeIniTweaks(iniTweakApplication) }
+        : {}),
+      ...(describePluginOrderDrift(pluginOrderDrift).length > 0
+        ? { pluginOrderNotice: describePluginOrderDrift(pluginOrderDrift) }
         : {}),
     };
   } finally {
