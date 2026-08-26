@@ -731,6 +731,8 @@ export type ExternalPromptUserDecision = {
   expectedStagingSetHash?: string;
   /** Curator's free-form prose for the prompt. */
   instructions?: string;
+  /** Where to get it, when the manifest carries a link. http(s) only. */
+  url?: string;
 };
 
 /**
@@ -758,6 +760,8 @@ export type ExternalMissingDecision = {
    */
   expectedStagingSetHash?: string;
   instructions?: string;
+  /** Where to get it, when the manifest carries a link. http(s) only. */
+  url?: string;
 };
 
 /**

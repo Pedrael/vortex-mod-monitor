@@ -10,7 +10,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
-import { revealInFileManager } from "./revealPath";
+import { openExternalUrl, revealInFileManager } from "./revealPath";
 
 const FOLDER = "C:\\Users\\x\\AppData\\Roaming\\Vortex\\event-horizon\\collections";
 const FILE = `${FOLDER}\\my-collection-1.2.0.ehcoll`;
@@ -122,5 +122,65 @@ describe("revealInFileManager", () => {
         },
       ),
     ).resolves.toMatchObject({ kind: "failed" });
+  });
+});
+
+describe("openExternalUrl", () => {
+  it("opens a web link", async () => {
+    const openExternal = vi.fn(async () => undefined);
+    const out = await openExternalUrl("https://example.com/mods/42", {
+      shell: { openExternal },
+      opn: vi.fn(),
+    });
+    expect(out.kind).toBe("revealed");
+    expect(openExternal).toHaveBeenCalledWith("https://example.com/mods/42");
+  });
+
+  it("refuses a file:// link", async () => {
+    // The URL comes from a manifest someone else wrote. openExternal would
+    // hand this to the OS, so a hostile collection could use the button to
+    // launch something local.
+    const openExternal = vi.fn();
+    const opn = vi.fn();
+    const out = await openExternalUrl("file:///C:/Windows/System32/calc.exe", {
+      shell: { openExternal },
+      opn,
+    });
+    expect(out.kind).toBe("failed");
+    expect(openExternal).not.toHaveBeenCalled();
+    expect(opn).not.toHaveBeenCalled();
+  });
+
+  it("refuses other schemes and junk", async () => {
+    const opn = vi.fn();
+    for (const bad of [
+      "javascript:alert(1)",
+      "nxm://fallout4/mods/1/files/2",
+      "C:\\Windows\\System32\\calc.exe",
+      "   ",
+    ]) {
+      const out = await openExternalUrl(bad, { shell: {}, opn });
+      expect(out.kind, bad).toBe("failed");
+    }
+    expect(opn).not.toHaveBeenCalled();
+  });
+
+  it("falls back to opn when openExternal is missing or throws", async () => {
+    const opn = vi.fn(async () => undefined);
+    expect(
+      (await openExternalUrl("https://e.com/a", { shell: {}, opn })).kind,
+    ).toBe("revealed");
+    expect(
+      (
+        await openExternalUrl("https://e.com/b", {
+          shell: {
+            openExternal: async () => {
+              throw new Error("no");
+            },
+          },
+          opn,
+        })
+      ).kind,
+    ).toBe("revealed");
   });
 });

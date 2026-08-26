@@ -35,6 +35,7 @@ import { useApi, useApiOptional } from "../../state";
 import { useToast } from "../../components";
 import { useKeyboardShortcut } from "../../hooks/useKeyboardShortcut";
 import { formatBytes } from "../../../utils/diskSpace";
+import { openExternalUrl } from "../build/revealPath";
 import {
   describeElapsed,
   describeQuiet,
@@ -1273,6 +1274,30 @@ function ConflictRow(props: {
       >
         {describeConflict(resolution)}
       </p>
+
+      {/* Where to get it, when the collection says.
+          The URL is shown in full rather than hidden behind "Open page": it
+          came out of a manifest someone else authored, and the person about to
+          click it should be able to see where they are being sent first.
+          openExternalUrl refuses anything that is not http(s) regardless. */}
+      {decision.kind === "external-prompt-user" && decision.url !== undefined && (
+        <div
+          className="eh-row"
+          style={{ marginBottom: "var(--eh-sp-3)" }}
+        >
+          <span className="eh-mono eh-fill" style={{ fontSize: "var(--eh-text-xs)" }}>
+            {decision.url}
+          </span>
+          <Button
+            intent="ghost"
+            onClick={(): void => {
+              void openExternalUrl(decision.url as string);
+            }}
+          >
+            Open page
+          </Button>
+        </div>
+      )}
 
       {decision.kind === "external-prompt-user" ? (
         <div

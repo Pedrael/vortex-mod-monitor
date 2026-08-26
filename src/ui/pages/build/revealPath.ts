@@ -120,3 +120,51 @@ function loadShell(): ShellLike | undefined {
 const defaultOpn = async (target: string): Promise<void> => {
   await (util as unknown as { opn: (t: string) => Promise<void> }).opn(target);
 };
+
+/**
+ * Open a web link in the user's browser.
+ *
+ * Separate from {@link revealInFileManager} because a URL is not a path:
+ * Electron exposes `shell.openExternal` for this, and `openPath` will not do
+ * it. Same shape otherwise — try the good route, fall back, report.
+ *
+ * ── Only http(s) ──
+ * The URL comes out of a manifest someone else authored, so it is untrusted
+ * input, and `shell.openExternal` will happily hand a `file://` — and on
+ * Windows historically worse schemes — to the OS to act on. Refusing anything
+ * that is not http(s) here means a hostile collection cannot use this button
+ * to launch something local. The manifest parser already filters on the way
+ * in; this is the same check at the point of use, because that is where the
+ * consequence is.
+ */
+export async function openExternalUrl(
+  url: string,
+  deps: { shell?: { openExternal?: (u: string) => Promise<void> } | undefined; opn?: (t: string) => Promise<void> } = {},
+): Promise<RevealOutcome> {
+  const trimmed = url.trim();
+  if (!/^https?:\/\/\S+$/i.test(trimmed)) {
+    return { kind: "failed", why: `Refusing to open a non-web link: ${trimmed}` };
+  }
+
+  const shell =
+    deps.shell !== undefined
+      ? deps.shell
+      : (loadShell() as { openExternal?: (u: string) => Promise<void> } | undefined);
+  const opn = deps.opn ?? defaultOpn;
+
+  if (typeof shell?.openExternal === "function") {
+    try {
+      await shell.openExternal(trimmed);
+      return { kind: "revealed", via: "openPath" };
+    } catch (err) {
+      /* fall through to opn */
+      void err;
+    }
+  }
+  try {
+    await opn(trimmed);
+    return { kind: "revealed", via: "opn" };
+  } catch (err) {
+    return { kind: "failed", why: describe(err) };
+  }
+}

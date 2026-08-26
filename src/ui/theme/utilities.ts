@@ -49,8 +49,16 @@ export const UTILITIES_CSS = `
 .eh-row--lg { gap: var(--eh-sp-3); }
 /* A row that must stay on one line — a toolbar, not a pill cloud. */
 .eh-row--nowrap { flex-wrap: nowrap; }
-/* Push everything after this to the far edge. */
+/* Push everything after this to the far edge.
+   Only reliable on a row that does NOT wrap: margin-left:auto acts within the
+   line the element lands on, so once a wrapping row breaks, the "far edge"
+   becomes the far edge of whatever line it fell onto. For a row that can wrap,
+   group the buttons and use .eh-row--split instead. */
 .eh-row__spacer { margin-left: auto; }
+/* Two groups held apart, which survives wrapping: the groups stay whole and
+   drop as units instead of one stray button being carried down with the
+   destructive one. */
+.eh-row--split { justify-content: space-between; }
 /* The element that absorbs the leftover width. min-width:0 is what stops a
    long unbroken string (a mod name, a path) forcing the row wider than its
    container — the single most common flexbox surprise. */

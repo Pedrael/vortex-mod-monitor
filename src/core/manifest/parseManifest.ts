@@ -581,6 +581,7 @@ function validateExternalSource(
           errors,
         );
   const bundled = expectBoolean(obj.bundled, `${path}.bundled`, errors);
+  const url = validateExternalUrl(obj.url, `${path}.url`, errors);
   const instructions =
     obj.instructions === undefined
       ? undefined
@@ -624,7 +625,29 @@ function validateExternalSource(
     ...(sha256 !== undefined ? { sha256 } : {}),
     ...(stagingSetHash !== undefined ? { stagingSetHash } : {}),
     ...(instructions !== undefined ? { instructions } : {}),
+    ...(url !== undefined ? { url } : {}),
   };
+}
+
+/**
+ * A download link the user can actually open.
+ *
+ * Anything that is not http(s) is DROPPED rather than rejected: a manifest is
+ * not invalid because it carries an origin we cannot present, and refusing to
+ * install a whole collection over one unusable link would be wildly out of
+ * proportion. The mod still has its instructions.
+ */
+function validateExternalUrl(
+  raw: unknown,
+  path: string,
+  errors: string[],
+): string | undefined {
+  if (raw === undefined) return undefined;
+  const value = expectString(raw, path, errors);
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  if (!/^https?:\/\/\S+$/i.test(trimmed)) return undefined;
+  return trimmed;
 }
 
 function validateInstallSpec(

@@ -1276,36 +1276,53 @@ function PublishedCard(props: {
         )}
         {/* Slug moved into Details: it is the on-disk identity, useful when
             something goes wrong and noise the rest of the time. */}
-        <div className="eh-row" style={{ marginTop: "var(--eh-sp-2)" }}>
-          {upToDate ? (
-            <Button intent="ghost" onClick={props.onUpdate}>
-              Rebuild anyway
+        {/* Two GROUPS, not four buttons and a spacer.
+            A spacer works by margin-left:auto, which only pushes to the end of
+            the line the element lands on — so as soon as four buttons stopped
+            fitting on one line, "Show files" was carried down next to Delete
+            and the row read as an arbitrary 2x2. Grouping makes the wrap
+            meaningful: the routine actions stay together and Delete drops as
+            its own unit, still at the far edge, still separated. */}
+        <div
+          className="eh-row eh-row--split"
+          style={{ marginTop: "var(--eh-sp-2)" }}
+        >
+          <div className="eh-row">
+            {upToDate ? (
+              <Button intent="ghost" onClick={props.onUpdate}>
+                Rebuild anyway
+              </Button>
+            ) : (
+              <Button intent="primary" onClick={props.onUpdate}>
+                Update
+              </Button>
+            )}
+            <Button
+              intent="ghost"
+              onClick={(): void => setShowDetails((v) => !v)}
+            >
+              {showDetails ? "Hide details" : "Details"}
             </Button>
-          ) : (
-            <Button intent="primary" onClick={props.onUpdate}>
-              Update
+            {/* The package is the thing the curator hands to someone else, and
+                until now there was no way to reach it from here — you had to
+                know the path. */}
+            <Button
+              intent="ghost"
+              onClick={(): void => {
+                void (async (): Promise<void> => {
+                  const outcome = await revealPublished(
+                    summary,
+                    props.knownSlugs,
+                  );
+                  if (outcome.kind === "failed") setRevealError(outcome.why);
+                })();
+              }}
+            >
+              Show files
             </Button>
-          )}
-          <Button intent="ghost" onClick={(): void => setShowDetails((v) => !v)}>
-            {showDetails ? "Hide details" : "Details"}
-          </Button>
-          {/* The package is the thing the curator hands to someone else, and
-              until now there was no way to reach it from here — you had to
-              know the path. */}
-          <Button
-            intent="ghost"
-            onClick={(): void => {
-              void (async (): Promise<void> => {
-                const outcome = await revealPublished(summary, props.knownSlugs);
-                if (outcome.kind === "failed") setRevealError(outcome.why);
-              })();
-            }}
-          >
-            Show files
-          </Button>
-          {/* Destructive, and pushed away from the two routine buttons. Equal
-              weight and adjacency is how a misclick happens. */}
-          <span className="eh-row__spacer" />
+          </div>
+          {/* Destructive, kept apart from the routine three. Equal weight and
+              adjacency is how a misclick happens. */}
           <Button intent="ghost" onClick={props.onDelete}>
             Delete
           </Button>

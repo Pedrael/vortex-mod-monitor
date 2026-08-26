@@ -113,6 +113,11 @@ export type ExternalModSpec = {
   expectedFilename?: string;
   /** Free-form text shown when the mod isn't bundled. Required when bundled=false. */
   instructions?: string;
+  /**
+   * Where to get it. Usually not typed by the curator at all — filled from
+   * what Vortex already knows (see externalHints), which is the point.
+   */
+  url?: string;
   /** Include the archive in the `.ehcoll` package at `bundled/<sha256>.<ext>`. */
   bundled?: boolean;
 };
@@ -545,6 +550,7 @@ function buildExternalMod(
     ...(archiveSha !== undefined ? { sha256: archiveSha } : {}),
     ...(stagingSetHash !== undefined ? { stagingSetHash } : {}),
     instructions: spec?.instructions,
+    ...(spec?.url !== undefined ? { url: spec.url } : {}),
     bundled: wantsBundled,
   };
 

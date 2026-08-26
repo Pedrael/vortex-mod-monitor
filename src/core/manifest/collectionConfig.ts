@@ -51,6 +51,8 @@
 import { randomUUID } from "crypto";
 import * as fsp from "fs/promises";
 import * as path from "path";
+import { applyHint } from "./externalHints";
+import type { ExternalHint } from "./externalHints";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -74,6 +76,12 @@ export type ExternalModConfigEntry = {
   bundled?: boolean;
   /** Free-form text shown to the user when the mod isn't bundled. */
   instructions?: string;
+  /**
+   * Where to get it. Usually filled in from what Vortex already knows rather
+   * than typed — see externalHints — but curator-editable, and a curator value
+   * is never overwritten by a suggestion.
+   */
+  url?: string;
 };
 
 /** What the curator decided about one detected prerequisite. */
@@ -319,16 +327,39 @@ export function reconcileExternalModsConfig(
  */
 export function toBuildManifestExternalMods(
   config: CollectionConfig,
-): Record<string, { instructions?: string; bundled?: boolean }> {
-  const out: Record<string, { instructions?: string; bundled?: boolean }> = {};
+  /**
+   * What Vortex already knows about where each mod came from, by Vortex mod
+   * id. Optional — without it this behaves exactly as it did, which is what
+   * keeps the callers that have no api handle working.
+   */
+  hints?: ReadonlyMap<string, ExternalHint>,
+): Record<string, ExternalModBuildSpec> {
+  const out: Record<string, ExternalModBuildSpec> = {};
   for (const [modId, entry] of Object.entries(config.externalMods)) {
+    // The curator's own words win field by field; a hint only fills a gap.
+    const merged = applyHint(
+      {
+        ...(entry.instructions !== undefined
+          ? { instructions: entry.instructions }
+          : {}),
+        ...(entry.url !== undefined ? { url: entry.url } : {}),
+      },
+      hints?.get(modId),
+    );
     out[modId] = {
-      instructions: entry.instructions,
+      instructions: merged.instructions,
       bundled: entry.bundled,
+      ...(merged.url !== undefined ? { url: merged.url } : {}),
     };
   }
   return out;
 }
+
+export type ExternalModBuildSpec = {
+  instructions?: string;
+  bundled?: boolean;
+  url?: string;
+};
 
 // ---------------------------------------------------------------------------
 // Curator-side index ("My published collections")

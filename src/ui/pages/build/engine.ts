@@ -94,6 +94,12 @@ import {
   type ExternalModConfigEntry,
   type PublishedCollectionSummary,
 } from "../../../core/manifest/collectionConfig";
+import {
+  collectExternalHints,
+  countBy,
+  downloadsFromState,
+  modsFromState,
+} from "../../../core/manifest/externalHints";
 import { getVortexUserDataPath } from "../../../core/paths";
 import { beginOp } from "../../../core/logging/ehLog";
 import type {
@@ -1085,6 +1091,29 @@ export async function runBuildPipeline(
     });
   }
 
+  // What does Vortex already know about where the external mods came from?
+  //
+  // Each one otherwise needs a link and instructions typed by hand, which on a
+  // large collection is the most tedious part of publishing — and it is
+  // tedious for information Vortex is usually already holding: the curator's
+  // own Vortex-collection download hints, the URL the archive was fetched
+  // from, the mod's homepage. Curator-written values always win; this only
+  // fills gaps. See core/manifest/externalHints.
+  const externalHints = collectExternalHints({
+    modsInState: modsFromState(api, gameId),
+    downloads: downloadsFromState(api),
+    externalMods: context.externalMods,
+  });
+  if (externalHints.size > 0) {
+    op.step("external-hints-filled", {
+      filled: externalHints.size,
+      ofExternal: context.externalMods.length,
+      // Which source answered, so a build log says whether this is finding the
+      // curator's own answers or falling back to scraped URLs.
+      via: countBy([...externalHints.values()].map((h) => h.via)),
+    });
+  }
+
   const { manifest, warnings: manifestWarnings } = buildManifest({
     snapshot,
     package: {
@@ -1108,7 +1137,7 @@ export async function runBuildPipeline(
       deploymentMethod: resolveDeploymentMethod(state, gameId),
     },
     pluginsTxtContent,
-    externalMods: toBuildManifestExternalMods(collectionConfig),
+    externalMods: toBuildManifestExternalMods(collectionConfig, externalHints),
     externalDependencies,
     ...(gameIniCapture.files.length > 0 ? { gameIni: { files: gameIniCapture.files } } : {}),
   });

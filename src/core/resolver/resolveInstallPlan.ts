@@ -506,6 +506,7 @@ function resolveExternalMod(
     stagingSetHash,
     expectedFilename,
     instructions,
+    url,
     bundled,
   } = mod.source;
 
@@ -577,6 +578,7 @@ function resolveExternalMod(
         ? { expectedStagingSetHash: stagingSetHash }
         : {}),
       instructions,
+      ...(url !== undefined ? { url } : {}),
     };
   }
   return {
@@ -587,6 +589,7 @@ function resolveExternalMod(
       ? { expectedStagingSetHash: stagingSetHash }
       : {}),
     instructions,
+    ...(url !== undefined ? { url } : {}),
   };
 }
 

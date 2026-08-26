@@ -297,6 +297,20 @@ export type ExternalModSource = {
   /** Free-form text shown to the user when the file isn't in `bundled/`. */
   instructions?: string;
   /**
+   * Where to get this mod. Shown as an openable link when the file is not
+   * bundled.
+   *
+   * `http(s)` only, enforced at parse: Vortex also records `nxm://` links and
+   * bare local paths for a mod's origin, and neither is something the person
+   * installing can act on — a local path is the CURATOR's disk, so shipping
+   * one would send the user hunting a folder they do not have and would
+   * publish the curator's directory layout along the way.
+   *
+   * Optional, and instructions remain the load-bearing field: a link alone
+   * does not say which of eleven files on the page to take.
+   */
+  url?: string;
+  /**
    * `true` ⇒ archive is included in the package at `bundled/<sha256>.<ext>`.
    * `false` ⇒ the user must supply a local copy.
    *
