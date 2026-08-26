@@ -425,3 +425,67 @@ export function describeUndeclared(
   );
   return lines;
 }
+
+/**
+ * Why did the hints find nothing?
+ *
+ * `found: 0` has two very different causes and the count cannot tell them
+ * apart: Vortex is holding no origin data for these mods, or we are reading
+ * the wrong place. The state paths here are the same ones `archiveHashing`
+ * uses to resolve 955 archives successfully, so the second is unlikely — but
+ * "unlikely" is not "checked", and this checks it.
+ *
+ * Records which FIELDS EXIST, never their contents. A `sourceURI` is a URL
+ * from the curator's browsing and `localPath` is a path on their disk;
+ * neither belongs in a log to answer a question about field presence.
+ */
+export function diagnoseHintSources(args: {
+  modsInState: Readonly<Record<string, unknown>>;
+  downloads: Readonly<Record<string, unknown>>;
+  externalMods: readonly HintTarget[];
+}): Record<string, number> {
+  const tally: Record<string, number> = {
+    mods: args.externalMods.length,
+    modRecordFound: 0,
+    hasArchiveId: 0,
+    downloadRecordFound: 0,
+    hasSourceURI: 0,
+    hasDetailsHomepage: 0,
+    hasAttributesHomepage: 0,
+    hasAttributesSource: 0,
+    collectionRules: collectionHints(args.modsInState).length,
+    collectionModsSeen: 0,
+  };
+
+  for (const value of Object.values(args.modsInState)) {
+    if ((value as { type?: string }).type === "collection") {
+      tally["collectionModsSeen"] = (tally["collectionModsSeen"] ?? 0) + 1;
+    }
+  }
+
+  const bump = (k: string): void => {
+    tally[k] = (tally[k] ?? 0) + 1;
+  };
+
+  for (const mod of args.externalMods) {
+    const record = args.modsInState[mod.id] as
+      | { attributes?: Record<string, unknown> }
+      | undefined;
+    if (record !== undefined) bump("modRecordFound");
+    if (mod.archiveId !== undefined) bump("hasArchiveId");
+
+    const attrs = record?.attributes;
+    if (str(attrs?.["homepage"]) !== undefined) bump("hasAttributesHomepage");
+    if (str(attrs?.["source"]) !== undefined) bump("hasAttributesSource");
+
+    if (mod.archiveId === undefined) continue;
+    const dl = args.downloads[mod.archiveId] as
+      | { sourceURI?: unknown; details?: { homepage?: unknown } }
+      | undefined;
+    if (dl !== undefined) bump("downloadRecordFound");
+    if (str(dl?.sourceURI) !== undefined) bump("hasSourceURI");
+    if (str(dl?.details?.homepage) !== undefined) bump("hasDetailsHomepage");
+  }
+
+  return tally;
+}

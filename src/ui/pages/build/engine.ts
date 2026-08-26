@@ -98,6 +98,7 @@ import {
   collectExternalHints,
   countBy,
   describeUndeclared,
+  diagnoseHintSources,
   downloadsFromState,
   modsFromState,
   undeclaredDependencies,
@@ -606,6 +607,14 @@ export async function loadBuildContext(
   op.step("external-hints-available", {
     found: externalHints.size,
     ofExternal: externalMods.length,
+    // Which fields Vortex actually holds for these mods. Distinguishes "there
+    // is nothing to find" from "we are reading the wrong place" — field
+    // NAMES only, never their contents.
+    sources: diagnoseHintSources({
+      modsInState: modsFromState(api, gameId),
+      downloads: downloadsFromState(api),
+      externalMods,
+    }),
     // Which source answered. `found: 0` here means Vortex is holding nothing
     // for these mods — no collection download hints, no usable sourceURI, no
     // homepage — which is the difference between "the feature is broken" and

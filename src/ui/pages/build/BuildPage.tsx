@@ -1671,6 +1671,25 @@ interface ExternalModsTableProps {
  * Nothing renders when Vortex knows nothing — which on a profile whose mods
  * were all installed from disk is the normal case, not a failure.
  */
+/**
+ * Why this link will not survive, in the curator's words.
+ *
+ * The manifest only carries http(s): a `file://` or bare path is the
+ * curator's own machine and means nothing to anyone else, and the parser
+ * drops anything else on the way IN — silently, on someone else's computer,
+ * long after the curator could have fixed it.
+ */
+export function urlProblem(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return undefined;
+  if (/^https?:\/\/\S+$/i.test(trimmed)) return undefined;
+  if (/^[a-z]+:\/\//i.test(trimmed)) {
+    return "Only http:// and https:// links are shipped — this one will be dropped.";
+  }
+  return "Needs the full address, starting with https:// — otherwise it is dropped.";
+}
+
 function HintSuggestion(props: {
   hint?: ExternalHint;
   current: { instructions?: string; url?: string };
@@ -1749,7 +1768,7 @@ function ExternalModsTable(
       >
         <span>Mod</span>
         <span>Bundle</span>
-        <span>Instructions</span>
+        <span>Link and instructions</span>
       </div>
       {mods.map((mod) => {
         const override = overrides[mod.id] ?? {};
@@ -1816,6 +1835,36 @@ function ExternalModsTable(
               {override.bundled === true ? "Bundled" : "Manual"}
             </label>
             <div className="eh-stack eh-stack--xs">
+              {/* The link the user gets when this mod is not bundled.
+                  Everything downstream of this existed before the field did —
+                  the manifest carries a url, the install screen renders it as
+                  "Open the page", and openExternalUrl opens it in the user's
+                  own browser — but there was nowhere to type one, so the whole
+                  chain was unreachable unless Vortex happened to know the URL
+                  itself. On a profile of hand-added archives it never does. */}
+              <input
+                className="eh-input"
+                type="url"
+                inputMode="url"
+                placeholder="Download page (optional) — https://..."
+                value={override.url ?? ""}
+                onChange={(e) => onChange(mod.id, { url: e.target.value })}
+                style={
+                  urlProblem(override.url) !== undefined
+                    ? { borderColor: "var(--eh-warning)" }
+                    : undefined
+                }
+              />
+              {/* Said HERE rather than at build time, because the manifest
+                  parser drops a non-http(s) link on the user's machine — so a
+                  curator who typed "example.com" would publish a collection
+                  with no link and never find out. Caught where it is typed,
+                  and where it can be fixed. */}
+              {urlProblem(override.url) !== undefined && (
+                <span className="eh-note" style={{ color: "var(--eh-warning)" }}>
+                  {urlProblem(override.url)}
+                </span>
+              )}
               <textarea
                 className="eh-input eh-input--textarea"
                 rows={2}
