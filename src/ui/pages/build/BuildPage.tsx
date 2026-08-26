@@ -61,6 +61,14 @@ import { splitWarning, warningTone } from "./warningText";
 import { BuildDashboard } from "./BuildDashboard";
 import { revealInFileManager } from "./revealPath";
 import type { ExternalHint } from "../../../core/manifest/externalHints";
+import {
+  describeSourceKind,
+  SOURCE_KINDS,
+  sourceKindOf,
+  sourcePatch,
+  sourceProblem,
+} from "./externalSource";
+import type { ExternalSourceKind } from "./externalSource";
 import { ConcurrentOpBanner } from "../../runtime/ConcurrentOpBanner";
 import { nativeNotify } from "../../runtime/nativeNotify";
 import { getActiveGameId } from "../../../core/getModsListForProfile";
@@ -1738,6 +1746,49 @@ function HintSuggestion(props: {
   );
 }
 
+/**
+ * How the user gets this mod: bundled, a direct link, a website, or by hand.
+ *
+ * A four-way choice rather than the old bundled/not checkbox, because that is
+ * the choice Vortex itself models and the one the install screen already acts
+ * on — it tells someone the link "starts downloading" or that they should
+ * "find the file on the page", and only the curator knows which is true.
+ *
+ * The selected option's consequence is spelled out underneath rather than
+ * left to the label. "Direct link" and "From website" are indistinguishable
+ * as words to anyone who has not thought about the difference, and this form
+ * is the only place the difference gets decided.
+ */
+function SourceChoice(props: {
+  value: ExternalSourceKind;
+  hasArchive: boolean;
+  onChange: (kind: ExternalSourceKind) => void;
+}): JSX.Element {
+  return (
+    <div className="eh-stack eh-stack--xs" style={{ minWidth: "9rem" }}>
+      <select
+        className="eh-input"
+        value={props.value}
+        onChange={(e): void =>
+          props.onChange(e.target.value as ExternalSourceKind)
+        }
+      >
+        {SOURCE_KINDS.map((kind) => (
+          <option
+            key={kind}
+            value={kind}
+            /* Vortex no longer has the bytes, so there is nothing to ship. */
+            disabled={kind === "bundled" && !props.hasArchive}
+          >
+            {describeSourceKind(kind).label}
+          </option>
+        ))}
+      </select>
+      <span className="eh-note">{describeSourceKind(props.value).hint}</span>
+    </div>
+  );
+}
+
 function ExternalModsTable(
   props: ExternalModsTableProps & {
     /** What Vortex already knows about where each mod came from. */
@@ -1767,7 +1818,7 @@ function ExternalModsTable(
         }}
       >
         <span>Mod</span>
-        <span>Bundle</span>
+        <span>Source</span>
         <span>Link and instructions</span>
       </div>
       {mods.map((mod) => {
@@ -1813,27 +1864,11 @@ function ExternalModsTable(
                 </div>
               )}
             </div>
-            <label
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "var(--eh-sp-2)",
-                cursor: hasArchive ? "pointer" : "not-allowed",
-                opacity: hasArchive ? 1 : 0.5,
-                color: "var(--eh-text-secondary)",
-                fontSize: "var(--eh-text-sm)",
-              }}
-            >
-              <input
-                type="checkbox"
-                disabled={!hasArchive}
-                checked={override.bundled === true}
-                onChange={(e) =>
-                  onChange(mod.id, { bundled: e.target.checked })
-                }
-              />
-              {override.bundled === true ? "Bundled" : "Manual"}
-            </label>
+            <SourceChoice
+              value={sourceKindOf(override)}
+              hasArchive={hasArchive}
+              onChange={(kind): void => onChange(mod.id, sourcePatch(kind))}
+            />
             <div className="eh-stack eh-stack--xs">
               {/* The link the user gets when this mod is not bundled.
                   Everything downstream of this existed before the field did —
@@ -1842,19 +1877,31 @@ function ExternalModsTable(
                   own browser — but there was nowhere to type one, so the whole
                   chain was unreachable unless Vortex happened to know the URL
                   itself. On a profile of hand-added archives it never does. */}
-              <input
-                className="eh-input"
-                type="url"
-                inputMode="url"
-                placeholder="Download page (optional) — https://..."
-                value={override.url ?? ""}
-                onChange={(e) => onChange(mod.id, { url: e.target.value })}
-                style={
-                  urlProblem(override.url) !== undefined
-                    ? { borderColor: "var(--eh-warning)" }
-                    : undefined
-                }
-              />
+              {/* Only the link-based kinds have anywhere to put a link.
+                  Shown for Bundled too when one was already typed, so
+                  switching to Bundled does not make the curator's own text
+                  vanish — it is kept, just not used. */}
+              {(sourceKindOf(override) === "direct" ||
+                sourceKindOf(override) === "browse" ||
+                (override.url ?? "").length > 0) && (
+                <input
+                  className="eh-input"
+                  type="url"
+                  inputMode="url"
+                  placeholder={
+                    sourceKindOf(override) === "direct"
+                      ? "Link to the file — https://..."
+                      : "Link to the mod's page — https://..."
+                  }
+                  value={override.url ?? ""}
+                  onChange={(e) => onChange(mod.id, { url: e.target.value })}
+                  style={
+                    urlProblem(override.url) !== undefined
+                      ? { borderColor: "var(--eh-warning)" }
+                      : undefined
+                  }
+                />
+              )}
               {/* Said HERE rather than at build time, because the manifest
                   parser drops a non-http(s) link on the user's machine — so a
                   curator who typed "example.com" would publish a collection
@@ -1863,6 +1910,15 @@ function ExternalModsTable(
               {urlProblem(override.url) !== undefined && (
                 <span className="eh-note" style={{ color: "var(--eh-warning)" }}>
                   {urlProblem(override.url)}
+                </span>
+              )}
+              {/* A choice that cannot work: "From website" with no page to
+                  open, or "Bundled" with no archive left to bundle. Caught
+                  here because the user-side screen would otherwise offer a
+                  button that has nothing behind it. */}
+              {sourceProblem(override, { hasArchive }) !== undefined && (
+                <span className="eh-note" style={{ color: "var(--eh-warning)" }}>
+                  {sourceProblem(override, { hasArchive })}
                 </span>
               )}
               <textarea
