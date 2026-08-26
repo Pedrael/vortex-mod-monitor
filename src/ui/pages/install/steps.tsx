@@ -73,6 +73,7 @@ import {
   WizardState,
   buildUserConfirmedDecisions,
   canProceedFromDecisions,
+  countUndecidedConflicts,
   defaultConflictChoice,
   defaultOrphanChoice,
   fillDefaultConflictChoices,
@@ -1050,6 +1051,10 @@ export function DecisionsStep(props: DecisionsStepProps): JSX.Element {
     state.bundle,
     state.conflictChoices,
   );
+  const undecided = countUndecidedConflicts(
+    state.bundle,
+    state.conflictChoices,
+  );
 
   return (
     <StepFrame
@@ -1138,16 +1143,16 @@ export function DecisionsStep(props: DecisionsStepProps): JSX.Element {
         >
           ← Back
         </Button>
-        <Button
-          intent="primary"
-          disabled={!canProceed}
-          onClick={onContinue}
-          title={
-            canProceed
-              ? undefined
-              : "One or more conflicts still need an explicit choice"
-          }
-        >
+        {/* The reason used to live in a `title` on the DISABLED button, which
+            browsers frequently do not render at all — so someone stuck here
+            had no way to learn why. Said out loud, and counted. */}
+        {!canProceed && (
+          <span className="eh-note" role="status">
+            {undecided} {undecided === 1 ? "mod" : "mods"} above still need a
+            choice before you can continue.
+          </span>
+        )}
+        <Button intent="primary" disabled={!canProceed} onClick={onContinue}>
           Continue →
         </Button>
       </div>

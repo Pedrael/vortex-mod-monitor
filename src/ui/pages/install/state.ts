@@ -378,6 +378,32 @@ export function canProceedFromDecisions(
 }
 
 /**
+ * How many conflicts still need an explicit choice from the user.
+ *
+ * The same rule `canProceedFromDecisions` applies, counted instead of
+ * collapsed to a boolean. A disabled Continue button explained only by a
+ * `title` tooltip is explained to nobody — browsers frequently do not render
+ * tooltips on disabled elements at all, so the reason a person cannot go
+ * forward was, in practice, invisible. A number they can see is the fix.
+ *
+ * Only blocking conflicts count. One with a safe default is already resolved
+ * whether or not the user looked at it, and including those would report work
+ * outstanding that nothing requires — which on a large collection is the
+ * difference between "three things need you" and a list of two hundred.
+ */
+export function countUndecidedConflicts(
+  bundle: PreviewBundle,
+  conflictChoices: Record<string, ConflictChoice>,
+): number {
+  let n = 0;
+  for (const r of selectConflictResolutions(bundle)) {
+    if (conflictChoices[r.compareKey] !== undefined) continue;
+    if (defaultConflictChoice(r) === undefined) n += 1;
+  }
+  return n;
+}
+
+/**
  * Apply defaults for any conflict the user didn't explicitly resolve.
  * Used when transitioning from `decisions` to `confirm`.
  */
