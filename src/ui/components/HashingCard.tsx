@@ -100,7 +100,7 @@ export function HashingCard(props: HashingCardProps): JSX.Element {
             className="eh-hashing__current"
             title={currentItem}
           >
-            <span style={{ color: "var(--eh-text-muted)" }}>now: </span>
+            <span className="eh-muted">now: </span>
             {currentItem}
           </span>
         )}

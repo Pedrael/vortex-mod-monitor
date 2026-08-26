@@ -183,7 +183,7 @@ function CollectionsList(props: CollectionsPageProps): JSX.Element {
           }}
         >
           <ProgressRing size={56} />
-          <span style={{ color: "var(--eh-text-secondary)" }}>
+          <span className="eh-secondary">
             Scanning %APPDATA%/Vortex/event-horizon/installs/
           </span>
         </div>
@@ -350,7 +350,7 @@ function CollectionsList(props: CollectionsPageProps): JSX.Element {
           }}
         >
           No collections match{" "}
-          <strong style={{ color: "var(--eh-text-primary)" }}>
+          <strong className="eh-strong">
             &quot;{query}&quot;
           </strong>
           .{" "}
@@ -459,7 +459,7 @@ function ReceiptCard(props: {
       onClick={onOpen}
       title={receipt.packageName}
       footer={
-        <span style={{ color: "var(--eh-text-muted)" }}>
+        <span className="eh-muted">
           installed {new Date(receipt.installedAt).toLocaleDateString()}
         </span>
       }
@@ -730,7 +730,7 @@ function ReceiptDetailModal(props: {
                     gap: "var(--eh-sp-2)",
                   }}
                 >
-                  <span style={{ color: "var(--eh-text-primary)" }}>
+                  <span className="eh-strong">
                     {m.name}
                   </span>
                   <span

@@ -2238,7 +2238,7 @@ function DistributionHint(): JSX.Element {
         color: "var(--eh-text-secondary)",
       }}
     >
-      <strong style={{ color: "var(--eh-text-primary)" }}>Next: share it.</strong>{" "}
+      <strong className="eh-strong">Next: share it.</strong>{" "}
       Upload this <code>.ehcoll</code> as a regular Nexus mod
       attachment under your collection&apos;s mod page — testers install it via
       Event Horizon&apos;s install tab. A one-click publish flow is

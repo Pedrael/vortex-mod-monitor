@@ -154,7 +154,7 @@ function LoadingPanel(): JSX.Element {
         }}
       >
         <ProgressRing size={48} />
-        <span style={{ color: "var(--eh-text-secondary)" }}>
+        <span className="eh-secondary">
           Reading receipts and configs...
         </span>
       </div>
@@ -444,7 +444,7 @@ function PlayerPanel(props: {
             alignItems: "baseline",
           }}
         >
-          <span style={{ color: "var(--eh-text-secondary)" }}>
+          <span className="eh-secondary">
             {receipts.length === 0
               ? "No collections installed yet."
               : `${receipts.length} collection${receipts.length === 1 ? "" : "s"} on this machine.`}
@@ -588,7 +588,7 @@ function CuratorPanel(props: {
             alignItems: "baseline",
           }}
         >
-          <span style={{ color: "var(--eh-text-secondary)" }}>
+          <span className="eh-secondary">
             {configs.length} config{configs.length === 1 ? "" : "s"} ·{" "}
             {builtPackages.length} built package
             {builtPackages.length === 1 ? "" : "s"}

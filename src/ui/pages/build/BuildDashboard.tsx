@@ -676,7 +676,7 @@ They are not harmless clutter — a collection's ` +
           }}
         >
           <ProgressRing size={48} />
-          <span style={{ color: "var(--eh-text-secondary)" }}>
+          <span className="eh-secondary">
             Listing drafts and published collections...
           </span>
         </div>
@@ -857,7 +857,7 @@ function DashboardHeader(props: {
           {props.activeGameId !== undefined && (
             <>
               {" · active game: "}
-              <strong style={{ color: "var(--eh-text-primary)" }}>
+              <strong className="eh-strong">
                 {props.activeGameId}
               </strong>
             </>
@@ -998,7 +998,7 @@ function DraftCard(props: {
     <Card
       title={title}
       footer={
-        <span style={{ color: "var(--eh-text-muted)" }}>
+        <span className="eh-muted">
           autosaved {relativeTime(env.savedAt)}
         </span>
       }
@@ -1029,7 +1029,7 @@ function DraftCard(props: {
           {liveStatus === "done" && <Pill intent="success">built</Pill>}
         </div>
         {payload.linkedSlug !== undefined && (
-          <div style={{ color: "var(--eh-text-muted)" }}>
+          <div className="eh-muted">
             <strong>Updates:</strong> {payload.linkedSlug}
             {payload.curator?.version !== undefined && (
               <> → v{payload.curator.version}</>
@@ -1127,7 +1127,7 @@ function PublishedDetailsPanel(props: {
     return <div style={{ color: "var(--eh-warning)" }}>Couldn't read details: {error}</div>;
   }
   if (details === undefined) {
-    return <div style={{ color: "var(--eh-text-muted)" }}>Reading...</div>;
+    return <div className="eh-muted">Reading...</div>;
   }
 
   const s = details.shipped;
@@ -1159,7 +1159,7 @@ function PublishedDetailsPanel(props: {
           <DetailRow label="Author">{s.author.length > 0 ? s.author : "not set"}</DetailRow>
         </>
       ) : (
-        <div style={{ color: "var(--eh-text-muted)" }}>{details.shippedNote}</div>
+        <div className="eh-muted">{details.shippedNote}</div>
       )}
 
       {/* What the config will do on the NEXT build — not always the same thing. */}
@@ -1224,7 +1224,7 @@ function PublishedCard(props: {
     <Card
       title={title}
       footer={
-        <span style={{ color: "var(--eh-text-muted)" }}>
+        <span className="eh-muted">
           {summary.lastBuiltAt !== undefined
             ? `last built ${relativeTime(summary.lastBuiltAt)}`
             : "never built"}
@@ -1247,7 +1247,7 @@ function PublishedCard(props: {
           )}
           {upToDate && <Pill intent="neutral">no mod changes</Pill>}
         </div>
-        <div style={{ color: "var(--eh-text-muted)" }}>
+        <div className="eh-muted">
           <strong>Slug:</strong> {summary.slug}
         </div>
         {upToDate && (
@@ -1256,7 +1256,7 @@ function PublishedCard(props: {
           // looking at "no mod changes" while holding a real change. Telling
           // them what was compared is the difference between a helpful default
           // and a wrong one.
-          <div style={{ color: "var(--eh-text-muted)" }}>
+          <div className="eh-muted">
             The same mods are enabled now as when v{summary.lastBuiltVersion} was
             built, so there is nothing new to ship. Edits to files inside a mod
             are not detected here — rebuild if you made any.

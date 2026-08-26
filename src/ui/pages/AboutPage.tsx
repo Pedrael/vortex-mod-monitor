@@ -65,7 +65,7 @@ export function AboutPage(): JSX.Element {
             <Pill intent="warning">Pre-release</Pill>
           </div>
           <h4 style={{ marginBottom: "var(--eh-sp-2)" }}>Supported games</h4>
-          <p style={{ color: "var(--eh-text-muted)" }}>
+          <p className="eh-muted">
             Skyrim Special Edition / Anniversary Edition, Fallout 3,
             Fallout: New Vegas, Fallout 4, Starfield.
           </p>
@@ -77,12 +77,12 @@ export function AboutPage(): JSX.Element {
           >
             Authors
           </h4>
-          <p style={{ color: "var(--eh-text-muted)" }}>
-            <strong style={{ color: "var(--eh-text-secondary)" }}>
+          <p className="eh-muted">
+            <strong className="eh-secondary">
               DuduPhudu
             </strong>{" "}
             and{" "}
-            <strong style={{ color: "var(--eh-text-secondary)" }}>
+            <strong className="eh-secondary">
               Bluuuk
             </strong>
             .
@@ -166,20 +166,20 @@ export function AboutPage(): JSX.Element {
             }}
           >
             <li>
-              <strong style={{ color: "var(--eh-text-primary)" }}>
+              <strong className="eh-strong">
                 vortex-api
               </strong>{" "}
               — extension framework + types from the Vortex team.
             </li>
             <li>
-              <strong style={{ color: "var(--eh-text-primary)" }}>
+              <strong className="eh-strong">
                 node-7z
               </strong>{" "}
               — streaming 7-Zip wrapper used to package and unpack
               <code> .ehcoll</code> archives.
             </li>
             <li>
-              <strong style={{ color: "var(--eh-text-primary)" }}>React</strong>{" "}
+              <strong className="eh-strong">React</strong>{" "}
               — UI runtime; thanks to the Vortex bundle for shipping it.
             </li>
             <li>

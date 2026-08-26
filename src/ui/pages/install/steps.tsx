@@ -495,7 +495,7 @@ export function StaleReceiptStep(
           <div>
             <strong>Was installed into:</strong>{" "}
             {state.receipt.vortexProfileName}{" "}
-            <span style={{ color: "var(--eh-text-muted)" }}>
+            <span className="eh-muted">
               (deleted — id {state.receipt.vortexProfileId})
             </span>
           </div>
@@ -676,7 +676,7 @@ export function PreviewStep(props: PreviewStepProps): JSX.Element {
               }}
             >
               A new Vortex profile (suggested name{" "}
-              <strong style={{ color: "var(--eh-text-primary)" }}>
+              <strong className="eh-strong">
                 {target.suggestedProfileName}
               </strong>
               ) will be created. Your current profile is not modified — you
@@ -697,7 +697,7 @@ export function PreviewStep(props: PreviewStepProps): JSX.Element {
               }}
             >
               The collection will install on top of{" "}
-              <strong style={{ color: "var(--eh-text-primary)" }}>
+              <strong className="eh-strong">
                 {target.profileName}
               </strong>
               . Conflicts and orphans you choose to apply WILL modify your
@@ -711,7 +711,7 @@ export function PreviewStep(props: PreviewStepProps): JSX.Element {
         <Card
           title="Verdict"
           footer={
-            <span style={{ color: "var(--eh-text-muted)" }}>
+            <span className="eh-muted">
               Compatibility checks against your active game install
             </span>
           }
@@ -1842,6 +1842,54 @@ export function DoneStep(props: DoneStepProps): JSX.Element {
   );
 }
 
+/**
+ * What the collection changed in the user's game settings.
+ *
+ * Shown without being asked for. A configuration edited silently is not
+ * acceptable even when it is correct, and this is the one moment the user is
+ * actually looking — burying it in a receipt they will never open would be
+ * the same as not telling them.
+ *
+ * The summary is the visible part; the per-key `before → after` list folds
+ * away, because twelve of those is a wall and the fact that it happened is
+ * what matters first.
+ */
+function GameIniNotice(props: { lines: readonly string[] }): JSX.Element | null {
+  if (props.lines.length === 0) return null;
+  const [summary, ...changes] = props.lines;
+
+  return (
+    <div
+      style={{
+        padding: "var(--eh-sp-3)",
+        background: "var(--eh-bg-base)",
+        border: "1px solid var(--eh-border-subtle)",
+        borderRadius: "var(--eh-radius-sm)",
+      }}
+    >
+      <div className="eh-row eh-row--sm" style={{ alignItems: "flex-start" }}>
+        <Pill intent="info">Game settings</Pill>
+        <span className="eh-fill eh-secondary" style={{ fontSize: "var(--eh-text-sm)" }}>
+          {summary}
+        </span>
+      </div>
+      {changes.length > 0 && (
+        <details style={{ marginTop: "var(--eh-sp-2)" }}>
+          <summary className="eh-note" style={{ cursor: "pointer" }}>
+            Show the {changes.length} setting{changes.length === 1 ? "" : "s"} that changed
+          </summary>
+          <div
+            className="eh-mono eh-muted"
+            style={{ marginTop: "var(--eh-sp-2)", whiteSpace: "pre-line" }}
+          >
+            {changes.join("\n")}
+          </div>
+        </details>
+      )}
+    </div>
+  );
+}
+
 function SuccessBody(props: {
   result: Extract<InstallResult, { kind: "success" }>;
 }): JSX.Element {
@@ -1853,13 +1901,8 @@ function SuccessBody(props: {
     result.removedMods.map((m) => m.reason),
   );
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "var(--eh-sp-4)",
-      }}
-    >
+    <div className="eh-stack eh-stack--lg">
+      <GameIniNotice lines={result.gameIniNotice ?? []} />
       <div
         style={{
           display: "grid",
@@ -1931,7 +1974,7 @@ function SuccessBody(props: {
           >
             {result.skippedMods.map((s) => (
               <li key={s.compareKey}>
-                {s.name} <em style={{ color: "var(--eh-text-muted)" }}>— {s.reason}</em>
+                {s.name} <em className="eh-muted">— {s.reason}</em>
               </li>
             ))}
           </ul>
@@ -2123,7 +2166,7 @@ function IntegritySection(props: {
             {fails.map((f) => (
               <li key={f.vortexModId} style={{ marginBottom: "var(--eh-sp-2)" }}>
                 <strong>{f.name}</strong>{" "}
-                <em style={{ color: "var(--eh-text-muted)" }}>
+                <em className="eh-muted">
                   — {f.missingFileCount} missing,{" "}
                   {f.sizeMismatchCount} truncated,{" "}
                   {f.hashMismatchCount} corrupt of {f.expectedFileCount}
@@ -2145,7 +2188,7 @@ function IntegritySection(props: {
                       </li>
                     ))}
                     {f.examples.length > 6 && (
-                      <li style={{ color: "var(--eh-text-muted)" }}>
+                      <li className="eh-muted">
                         ... and {f.examples.length - 6} more
                       </li>
                     )}
@@ -2294,13 +2337,13 @@ function RulesAndUserlistSection(props: {
             {rules.skippedRules.map((s, i) => (
               <li key={`mr-${i}`}>
                 <code>{s.source}</code> {s.ruleType} <code>{s.reference}</code>{" "}
-                <em style={{ color: "var(--eh-text-muted)" }}>— {s.reason}</em>
+                <em className="eh-muted">— {s.reason}</em>
               </li>
             ))}
             {rules.skippedLoadOrderEntries.map((s, i) => (
               <li key={`lo-${i}`}>
                 load-order <code>{s.compareKey}</code> @ {s.pos}{" "}
-                <em style={{ color: "var(--eh-text-muted)" }}>— {s.reason}</em>
+                <em className="eh-muted">— {s.reason}</em>
               </li>
             ))}
             {userlist.skippedUserlistEntries.map((s, i) => (
@@ -2312,7 +2355,7 @@ function RulesAndUserlistSection(props: {
                     {s.ruleKind ?? ""} <code>{s.reference}</code>
                   </>
                 )}{" "}
-                <em style={{ color: "var(--eh-text-muted)" }}>— {s.reason}</em>
+                <em className="eh-muted">— {s.reason}</em>
               </li>
             ))}
           </ul>
@@ -2339,16 +2382,16 @@ function FailureBody(props: {
       }}
     >
       <div>
-        <strong style={{ color: "var(--eh-text-primary)" }}>Phase:</strong>{" "}
+        <strong className="eh-strong">Phase:</strong>{" "}
         {props.phase}
       </div>
       <div>
-        <strong style={{ color: "var(--eh-text-primary)" }}>Reason:</strong>{" "}
+        <strong className="eh-strong">Reason:</strong>{" "}
         {props.message}
       </div>
       {props.partialProfileId !== undefined && (
         <div>
-          <strong style={{ color: "var(--eh-text-primary)" }}>
+          <strong className="eh-strong">
             Partial profile:
           </strong>{" "}
           {props.partialProfileId}
@@ -2367,7 +2410,7 @@ function FailureBody(props: {
       )}
       {props.installedSoFar !== undefined && (
         <div>
-          <strong style={{ color: "var(--eh-text-primary)" }}>
+          <strong className="eh-strong">
             Mods installed before failure:
           </strong>{" "}
           {props.installedSoFar}

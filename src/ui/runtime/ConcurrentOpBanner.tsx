@@ -60,7 +60,7 @@ export function ConcurrentOpBanner(
         <strong style={{ display: "block", marginBottom: 2 }}>
           A {otherLabel} is in progress on the other tab.
         </strong>
-        <span style={{ color: "var(--eh-text-secondary)" }}>
+        <span className="eh-secondary">
           Both pipelines read Vortex state at the same time. You can
           continue, but a snapshot taken now may not match the disk
           once the {otherLabel} finishes.
