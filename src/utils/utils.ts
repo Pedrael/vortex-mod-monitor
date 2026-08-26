@@ -1,4 +1,4 @@
-import { exec } from "child_process";
+import { revealInFileManager } from "../core/revealPath";
 import * as fs from "fs/promises";
 import * as path from "path";
 import type { types } from "@nexusmods/vortex-api";
@@ -11,11 +11,34 @@ import type { CapturedDeploymentManifest } from "../core/deploymentManifest";
 import type { CapturedLoadOrderEntry } from "../core/loadOrder";
 import type { CapturedUserlist } from "../core/userlist";
 
-export function openFolder(folderPath: string) {
-  exec(`start "" "${folderPath}"`);
+/**
+ * Show a folder, or a file inside its folder, in the OS file manager.
+ *
+ * These used to be `exec(\`start "" "${p}"\`)`, which was wrong three ways.
+ *
+ * It built a SHELL COMMAND by string interpolation, so any path containing a
+ * quote or a shell metacharacter would have been executed rather than opened.
+ * The paths here are ours and the slug is sanitised, so it was not reachable
+ * today — but "not reachable today" is the state a shell-injection pattern is
+ * in right up until someone passes it a different string.
+ *
+ * `start` is a cmd.exe builtin, so under Proton it reaches Wine's shell rather
+ * than the user's desktop, which is a supported target for this project.
+ *
+ * And it duplicated `revealInFileManager`, which already tries
+ * showItemInFolder, then openPath, then Vortex's own opener, checks the return
+ * value that openPath lies with, and reports which one worked. Two openers is
+ * one more than can be kept correct.
+ *
+ * Fire-and-forget, as before: these back notification buttons, and a file
+ * manager that will not open is not worth failing anything over.
+ */
+export function openFolder(folderPath: string): void {
+  void revealInFileManager({ folderPath });
 }
-export function openFile(filePath: string) {
-  exec(`start "" "${filePath}"`);
+
+export function openFile(filePath: string): void {
+  void revealInFileManager({ filePath, folderPath: path.dirname(filePath) });
 }
 
 export function findInObject(

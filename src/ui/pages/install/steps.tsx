@@ -35,7 +35,7 @@ import { useApi, useApiOptional } from "../../state";
 import { useToast } from "../../components";
 import { useKeyboardShortcut } from "../../hooks/useKeyboardShortcut";
 import { formatBytes } from "../../../utils/diskSpace";
-import { openExternalUrl } from "../build/revealPath";
+import { openExternalUrl } from "../../../core/revealPath";
 import { describeDownload } from "./downloadGuidance";
 import {
   describeElapsed,
@@ -1211,6 +1211,16 @@ function ExternalDownloadGuide(props: {
   mode?: "direct" | "browse" | "manual";
   expectedFilename?: string;
 }): JSX.Element {
+  // Whether the last attempt to open the link actually reached a browser.
+  //
+  // On Windows `shell.openExternal` hands off to the shell; under Wine it goes
+  // through winebrowser to the host, which USUALLY works and is not something
+  // this code can verify from inside the prefix. So the outcome is surfaced
+  // rather than assumed: if nothing opened, the user is told, and the full URL
+  // is already on screen beside the button for them to copy. Discarding the
+  // result would leave someone clicking a button that does nothing, with no
+  // way to tell that from a slow browser.
+  const [openFailed, setOpenFailed] = React.useState(false);
   const guide = describeDownload({
     ...(props.url !== undefined ? { url: props.url } : {}),
     ...(props.mode !== undefined ? { mode: props.mode } : {}),
@@ -1235,12 +1245,21 @@ function ExternalDownloadGuide(props: {
           <Button
             intent="ghost"
             onClick={(): void => {
-              void openExternalUrl(props.url as string);
+              void (async (): Promise<void> => {
+                const outcome = await openExternalUrl(props.url as string);
+                setOpenFailed(outcome.kind === "failed");
+              })();
             }}
           >
             {guide.action}
           </Button>
         </div>
+      )}
+      {openFailed && (
+        <span className="eh-note" role="alert" style={{ color: "var(--eh-warning)" }}>
+          Nothing opened — your system may not have a browser Vortex can reach.
+          Copy the link above into your own browser.
+        </span>
       )}
       <ol className="eh-list eh-note" style={{ margin: 0 }}>
         {guide.steps.map((step, i) => (

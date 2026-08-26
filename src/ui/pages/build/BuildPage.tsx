@@ -60,7 +60,7 @@ import {
 import { getBuildSessionRegistry } from "./buildSessionRegistry";
 import { splitWarning, warningTone } from "./warningText";
 import { BuildDashboard } from "./BuildDashboard";
-import { revealInFileManager } from "./revealPath";
+import { revealInFileManager } from "../../../core/revealPath";
 import type { ExternalHint } from "../../../core/manifest/externalHints";
 import {
   describeSourceKind,

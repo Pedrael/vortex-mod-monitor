@@ -75,7 +75,7 @@ import {
   loadPublishedDetails,
   type PublishedDetails,
 } from "./publishedDetails";
-import { revealInFileManager } from "./revealPath";
+import { revealInFileManager } from "../../../core/revealPath";
 import { ehLog } from "../../../core/logging/ehLog";
 
 // ───────────────────────────────────────────────────────────────────────

@@ -265,17 +265,16 @@ function LinkRow(props: LinkRowProps): JSX.Element {
   );
 }
 
+/**
+ * One implementation of "open a link", shared with the install flow.
+ *
+ * This used to be a second, thinner copy: `shell.openExternal` with no
+ * fallback and no scheme check. `openExternalUrl` adds both — it falls back to
+ * Vortex's own opener when Electron's shell is unavailable, and refuses
+ * anything that is not http(s), which matters because the same helper is used
+ * on URLs that came out of somebody else's manifest.
+ */
 async function openExternal(url: string): Promise<void> {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const electron = require("electron") as {
-      shell?: { openExternal?: (u: string) => Promise<void> };
-    };
-    if (electron.shell?.openExternal) {
-      await electron.shell.openExternal(url);
-    }
-  } catch {
-    /* Best-effort; if Electron is unavailable just give up silently.
-     * The user can still copy the URL from the visible link text. */
-  }
+  const { openExternalUrl } = await import("../../core/revealPath");
+  await openExternalUrl(url);
 }
