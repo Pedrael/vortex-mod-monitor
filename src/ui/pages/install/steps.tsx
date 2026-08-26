@@ -775,15 +775,7 @@ function SummaryTile(props: {
         borderRadius: "var(--eh-radius-md)",
       }}
     >
-      <div
-        style={{
-          color: "var(--eh-text-muted)",
-          fontSize: "var(--eh-text-xs)",
-          textTransform: "uppercase",
-          letterSpacing: "var(--eh-tracking-widest)",
-          marginBottom: "var(--eh-sp-2)",
-        }}
-      >
+      <div className="eh-label" style={{ marginBottom: "var(--eh-sp-2)" }}>
         {props.label}
       </div>
       <div
@@ -2281,49 +2273,43 @@ function FailureBody(props: {
   installedSoFar?: number;
 }): JSX.Element {
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "var(--eh-sp-3)",
-        color: "var(--eh-text-secondary)",
-        fontSize: "var(--eh-text-sm)",
-      }}
-    >
-      <div>
-        <strong className="eh-strong">Phase:</strong>{" "}
-        {props.phase}
-      </div>
-      <div>
-        <strong className="eh-strong">Reason:</strong>{" "}
+    <div className="eh-stack">
+      {/* The reason leads. Someone reading this screen just had an install
+          fail; what went wrong is the whole question, and "Phase:" is our
+          vocabulary rather than theirs. It used to be the first line. */}
+      <p className="eh-body eh-strong" style={{ fontSize: "var(--eh-text-md)" }}>
         {props.message}
+      </p>
+
+      {/* Then the facts about the state their machine is now in, as aligned
+          fields rather than a stack of bold-prefixed sentences. */}
+      <div className="eh-stack eh-stack--xs">
+        <div className="eh-field">
+          <span className="eh-field__label">Failed during</span>
+          <span className="eh-fill">{props.phase}</span>
+        </div>
+        {props.installedSoFar !== undefined && (
+          <div className="eh-field">
+            <span className="eh-field__label">Mods installed first</span>
+            <span className="eh-fill">{props.installedSoFar}</span>
+          </div>
+        )}
+        {props.partialProfileId !== undefined && (
+          <div className="eh-field">
+            <span className="eh-field__label">Partial profile</span>
+            <span className="eh-fill eh-mono">{props.partialProfileId}</span>
+          </div>
+        )}
       </div>
+
+      {/* And last, what to do — which only makes sense once they know what
+          happened and what exists. */}
       {props.partialProfileId !== undefined && (
-        <div>
-          <strong className="eh-strong">
-            Partial profile:
-          </strong>{" "}
-          {props.partialProfileId}
-          <p
-            style={{
-              margin: "var(--eh-sp-1) 0 0 0",
-              color: "var(--eh-text-muted)",
-              fontSize: "var(--eh-text-xs)",
-            }}
-          >
-            Event Horizon does NOT roll back. The partial profile is left in
-            place; switch to your previous profile in Vortex to keep going as
-            before, or stay on this profile and inspect what was installed.
-          </p>
-        </div>
-      )}
-      {props.installedSoFar !== undefined && (
-        <div>
-          <strong className="eh-strong">
-            Mods installed before failure:
-          </strong>{" "}
-          {props.installedSoFar}
-        </div>
+        <p className="eh-note">
+          Event Horizon does not roll back. The partial profile is left in
+          place: switch to your previous profile in Vortex to carry on as
+          before, or stay on this one and inspect what was installed.
+        </p>
       )}
     </div>
   );

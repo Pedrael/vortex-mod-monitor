@@ -204,3 +204,15 @@ better does not prevent.
   warning that had to be retyped from the commit message, and each time the file compiled and the
   suite passed, so nothing announced it.*
 
+- **GP-25** — **A type-checker cannot miss what a template cannot require.** Index-arithmetic
+  edits to markup — find a start, find a close tag, splice — silently swallow the CONTENT
+  between them, and the result still compiles, because children are optional in JSX, cells are
+  optional in a table row, and a body is optional in most templates. The compiler proves the
+  brackets balance, not that anything is inside them. Edit markup by matching a unique literal
+  string, and after any bulk pass grep for the empty shape you might have created
+  (`<div className="x"></div>`) and count a token you know must survive
+  (`grep -c "{props.label}"` before vs after). *Scar: converting an inline style to a class by
+  splicing from the style attribute to the next `</div>` deleted `{props.label}` from a stat
+  tile — typecheck passed, 340 tests passed, and the only evidence was a blank label on a
+  screen nobody had opened yet.*
+
