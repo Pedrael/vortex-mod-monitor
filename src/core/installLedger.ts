@@ -58,6 +58,7 @@ import type {
   InstallReceiptMod,
   InstallTargetMode,
   ModVerificationReceipt,
+  GameIniApplicationReceipt,
   RulesApplicationReceipt,
   UserlistApplicationReceipt,
 } from "../types/installLedger";
@@ -253,6 +254,17 @@ export function parseReceipt(raw: string): InstallReceipt {
     "verifications",
     errors,
   ) as ModVerificationReceipt[] | undefined;
+  // Was missing, and `serializeReceipt` validates through this parser BEFORE
+  // writing — so this field was not lost on read, it was destroyed on write
+  // and never reached disk at all. `shouldApplyGameIni` then read a field that
+  // could never be present, which turned "apply the curator's INI settings
+  // once" into "apply them on every install and every update", silently
+  // overwriting whatever the user had changed since.
+  const gameIniApplication = passthroughObject(
+    obj.gameIniApplication,
+    "gameIniApplication",
+    errors,
+  ) as GameIniApplicationReceipt | undefined;
 
   if (errors.length > 0) {
     throw new InstallLedgerError(errors);
@@ -274,6 +286,8 @@ export function parseReceipt(raw: string): InstallReceipt {
   if (userlistApplication !== undefined)
     out.userlistApplication = userlistApplication;
   if (verifications !== undefined) out.verifications = verifications;
+  if (gameIniApplication !== undefined)
+    out.gameIniApplication = gameIniApplication;
   return out;
 }
 

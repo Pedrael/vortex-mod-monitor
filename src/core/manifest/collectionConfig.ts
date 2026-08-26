@@ -727,82 +727,102 @@ function validateExternalDependencyEntries(
   return out;
 }
 
+/**
+ * Per-field readers for an external-mod entry.
+ *
+ * ── Why a TABLE and not a run of if-blocks ──
+ * This validator is a WHITELIST: it copies known fields onto a fresh object
+ * and silently discards the rest. Whitelisting untrusted input is right — a
+ * config can be hand-edited and a manifest arrives from a stranger, so copying
+ * unknown keys through invites prototype pollution and unbounded junk. The
+ * defect was never the whitelist. It was that NOTHING CONNECTED THE WHITELIST
+ * TO THE TYPE: a field could be added to `ExternalModConfigEntry`, written
+ * correctly, saved to disk, and still be discarded on the next read, with the
+ * compiler perfectly happy and no test failing.
+ *
+ * That is what happened to `url` and `mode`, and the loss cascaded — a dropped
+ * `mode` reset the Source control to Manual, which hides the link input, so the
+ * curator could not even re-enter what had been eaten.
+ *
+ * The mapped type below is the fix. `Required<ExternalModConfigEntry>` forces
+ * an entry for EVERY field, so adding one to the type without adding a reader
+ * here is a compile error at this line rather than data loss on a user's
+ * machine. It is the cheapest possible link, and it points the right way: the
+ * type is the source of truth and the validator has to keep up.
+ */
+const EXTERNAL_MOD_FIELDS: {
+  [K in keyof Required<ExternalModConfigEntry>]: (
+    raw: unknown,
+    path: string,
+    errors: string[],
+  ) => Required<ExternalModConfigEntry>[K] | undefined;
+} = {
+  name: (raw, path, errors) => expectStringField(raw, path, errors),
+  instructions: (raw, path, errors) => expectStringField(raw, path, errors),
+  url: (raw, path, errors) => expectStringField(raw, path, errors),
+  bundled: (raw, path, errors) => {
+    if (typeof raw !== "boolean") {
+      errors.push(`${path} must be a boolean.`);
+      return undefined;
+    }
+    return raw;
+  },
+  mode: (raw, path, errors) => {
+    if (typeof raw !== "string") {
+      // Not a string is corruption, and worth refusing.
+      errors.push(`${path} must be a string.`);
+      return undefined;
+    }
+    if (raw === "direct" || raw === "browse" || raw === "manual") return raw;
+    // An unrecognised mode is DROPPED, not rejected.
+    //
+    // Refusing the file would make the whole config unloadable, and it carries
+    // the packageId that ties every release together — losing it ends the
+    // lineage, and a rebuild starts a new one installers will not recognise as
+    // an update. Ending a collection's history over one unknown enum member is
+    // out of proportion, and it is exactly what a future version writing a
+    // fourth mode would hand to every older build.
+    return undefined;
+  },
+};
+
+function expectStringField(
+  raw: unknown,
+  path: string,
+  errors: string[],
+): string | undefined {
+  if (typeof raw !== "string") {
+    errors.push(`${path} must be a string.`);
+    return undefined;
+  }
+  return raw;
+}
+
 function validateExternalMods(
   raw: Record<string, unknown>,
   errors: string[],
 ): Record<string, ExternalModConfigEntry> {
   const out: Record<string, ExternalModConfigEntry> = {};
   for (const [modId, value] of Object.entries(raw)) {
-    if (
-      value === null ||
-      typeof value !== "object" ||
-      Array.isArray(value)
-    ) {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
       errors.push(`externalMods["${modId}"] must be an object.`);
       continue;
     }
     const entry = value as Record<string, unknown>;
-    const sanitized: ExternalModConfigEntry = {};
+    const sanitized: Record<string, unknown> = {};
 
-    if (entry.name !== undefined) {
-      if (typeof entry.name !== "string") {
-        errors.push(`externalMods["${modId}"].name must be a string.`);
-      } else {
-        sanitized.name = entry.name;
-      }
+    for (const [key, read] of Object.entries(EXTERNAL_MOD_FIELDS)) {
+      const present = entry[key];
+      if (present === undefined) continue;
+      const parsed = (read as (r: unknown, p: string, e: string[]) => unknown)(
+        present,
+        `externalMods["${modId}"].${key}`,
+        errors,
+      );
+      if (parsed !== undefined) sanitized[key] = parsed;
     }
-    if (entry.bundled !== undefined) {
-      if (typeof entry.bundled !== "boolean") {
-        errors.push(`externalMods["${modId}"].bundled must be a boolean.`);
-      } else {
-        sanitized.bundled = entry.bundled;
-      }
-    }
-    if (entry.instructions !== undefined) {
-      if (typeof entry.instructions !== "string") {
-        errors.push(`externalMods["${modId}"].instructions must be a string.`);
-      } else {
-        sanitized.instructions = entry.instructions;
-      }
-    }
-    // These two are as load-bearing as `instructions` and were being dropped.
-    //
-    // This function is a WHITELIST: it copies known fields onto a fresh object
-    // and silently discards the rest. So adding a field to the type and
-    // writing it correctly is not enough — the value survived to disk, was
-    // thrown away on the next read, and the loss cascaded: `mode` reset the
-    // Source dropdown to Manual, which HID the link input, which made it
-    // impossible to enter a URL at all.
-    if (entry.url !== undefined) {
-      if (typeof entry.url !== "string") {
-        errors.push(`externalMods["${modId}"].url must be a string.`);
-      } else {
-        sanitized.url = entry.url;
-      }
-    }
-    if (entry.mode !== undefined) {
-      if (typeof entry.mode !== "string") {
-        // Not a string is corruption, and worth refusing.
-        errors.push(`externalMods["${modId}"].mode must be a string.`);
-      } else if (
-        entry.mode === "direct" ||
-        entry.mode === "browse" ||
-        entry.mode === "manual"
-      ) {
-        sanitized.mode = entry.mode;
-      }
-      // An unrecognised mode is DROPPED, not rejected.
-      //
-      // Refusing the file would make the whole config unloadable, and this
-      // config carries the packageId that ties every release of the
-      // collection together — losing it ends the lineage and a rebuild starts
-      // a new one that installers will not recognise as an update. Ending a
-      // collection's history over one unknown enum member is wildly out of
-      // proportion, and it is the failure mode a future version writing a
-      // fourth mode would hand to every older build. Dropping costs one field
-      // and falls back to the same default an absent mode gets.
-    }
-    out[modId] = sanitized;
+
+    out[modId] = sanitized as ExternalModConfigEntry;
   }
   return out;
 }
