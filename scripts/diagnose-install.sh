@@ -194,7 +194,7 @@ else
   if [ -d "$EXT" ]; then
     say "ext dir: $EXT"
     if [ -r "$EXT/info.json" ]; then
-      say "version: $(grep -o '\"version\"[[:space:]]*:[[:space:]]*\"[^\"]*\"' "$EXT/info.json" | head -1 | sed 's/.*:[[:space:]]*"//;s/"$//')"
+      say "version: $(grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' "$EXT/info.json" | head -1 | sed 's/.*:[[:space:]]*"//;s/"$//')"
     fi
     # Which fixes are present tells us whether this is a current build.
     for f in dist/core/manifest/diagnoseArchive.js dist/core/revealPath.js \
@@ -316,14 +316,26 @@ else
   if [ -z "$WIN_PATH" ]; then
     say "   INCONCLUSIVE -- the path could not be expressed in Windows form,"
     say "   so this test did not run. It proves nothing either way."
-  elif WINEPREFIX="$VORTEX_PREFIX" WINEDEBUG=-all \
-     "$WINE_BIN" "$SEVENZIP_EXE" l "$WIN_PATH" >/dev/null 2>&1; then
-    say "   reads OK   <<< 7z is FINE under Wine; the fault is above 7z"
   else
-    say "   FAILED     <<< THIS IS THE ANSWER — 7z cannot read it under Wine"
-    say "   error output:"
-    WINEPREFIX="$VORTEX_PREFIX" WINEDEBUG=-all \
-      "$WINE_BIN" "$SEVENZIP_EXE" l "$WIN_PATH" 2>&1 | tail -12 | sed 's/^/     /'
+    WINE_OUT="$(WINEPREFIX="$VORTEX_PREFIX" WINEDEBUG=-all \
+      "$WINE_BIN" "$SEVENZIP_EXE" l "$WIN_PATH" 2>&1)"
+    WINE_RC=$?
+    if [ "$WINE_RC" = 0 ]; then
+      say "   reads OK   <<< 7z is FINE under Wine; the fault is above 7z"
+    elif printf '%s' "$WINE_OUT" | grep -qiE 'wineserver|version mismatch|wine client error'; then
+      # The runtime would not start. Vortex drives its own wine against this
+      # prefix and does not have this problem, so this says nothing about
+      # whether 7z works for Vortex -- only that it does not work for US.
+      say "   INCONCLUSIVE -- this wine cannot attach to that prefix:"
+      printf '%s' "$WINE_OUT" | grep -iE 'wineserver|version mismatch|wine client error' \
+        | head -3 | sed 's/^/     /'
+      say "   7z never opened the file, so this is not a verdict on the archive."
+      say "   Vortex uses its own wine here; retry the install in Vortex instead."
+    else
+      say "   FAILED     <<< 7z ran and could not read it"
+      say "   error output:"
+      printf '%s' "$WINE_OUT" | tail -12 | sed 's/^/     /'
+    fi
   fi
 fi
 fi
