@@ -6,7 +6,11 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { describeIniChanges, mergeIniText } from "./applyGameIni";
+import {
+  describeIniChanges,
+  mergeIniText,
+  shouldApplyGameIni,
+} from "./applyGameIni";
 
 const lf = (...lines: string[]) => lines.join("\n");
 
@@ -126,5 +130,140 @@ describe("describeIniChanges", () => {
     ]);
     expect(said[0]).toBe("Fallout4Custom.ini [General] uGridsToLoad: 5 → 7");
     expect(said[1]).toBe("Fallout4Custom.ini [Papyrus] iMinMemoryPageSize = 256 (added)");
+  });
+});
+
+describe("applyGameIni (writes real files)", () => {
+  const setup = async () => {
+    const fs = await import("fs");
+    const os = await import("os");
+    const path = await import("path");
+    const docs = fs.mkdtempSync(path.join(os.tmpdir(), "eh-apply-"));
+    const dir = path.join(docs, "My Games", "Fallout4");
+    fs.mkdirSync(dir, { recursive: true });
+    return { fs, path, docs, dir };
+  };
+
+  it("writes the collection's settings and reports each one", async () => {
+    const { fs, path, docs, dir } = await setup();
+    const { applyGameIni } = await import("./applyGameIni");
+    fs.writeFileSync(
+      path.join(dir, "Fallout4.ini"),
+      ["; keep me", "[General]", "uGridsToLoad=5"].join("\n"),
+    );
+
+    const receipt = await applyGameIni({
+      gameId: "fallout4",
+      documentsPath: docs,
+      gameIni: {
+        files: [
+          {
+            fileName: "Fallout4.ini",
+            settings: [{ section: "General", key: "uGridsToLoad", value: "7" }],
+          },
+        ],
+      },
+    });
+
+    expect(receipt.appliedCount).toBe(1);
+    expect(receipt.changes[0]).toMatch(/uGridsToLoad: 5 → 7/);
+    const written = fs.readFileSync(path.join(dir, "Fallout4.ini"), "utf8");
+    expect(written).toContain("uGridsToLoad=7");
+    expect(written).toContain("; keep me");
+    fs.rmSync(docs, { recursive: true, force: true });
+  });
+
+  it("refuses to write a machine key even if one reaches it", async () => {
+    // Capture already drops these. This is the last point before someone
+    // else's screen resolution lands in their file, so it checks again.
+    const { fs, path, docs, dir } = await setup();
+    const { applyGameIni } = await import("./applyGameIni");
+    fs.writeFileSync(path.join(dir, "Fallout4Prefs.ini"), ["[Display]", "iSize W=2560"].join("\n"));
+
+    const receipt = await applyGameIni({
+      gameId: "fallout4",
+      documentsPath: docs,
+      gameIni: {
+        files: [
+          {
+            fileName: "Fallout4Prefs.ini",
+            settings: [{ section: "Display", key: "iSize W", value: "1920" }],
+          },
+        ],
+      },
+    });
+
+    expect(receipt.appliedCount).toBe(0);
+    expect(fs.readFileSync(path.join(dir, "Fallout4Prefs.ini"), "utf8")).toContain("iSize W=2560");
+    fs.rmSync(docs, { recursive: true, force: true });
+  });
+
+  it("creates a Custom.ini that does not exist yet", async () => {
+    const { fs, path, docs, dir } = await setup();
+    const { applyGameIni } = await import("./applyGameIni");
+    const receipt = await applyGameIni({
+      gameId: "fallout4",
+      documentsPath: docs,
+      gameIni: {
+        files: [
+          {
+            fileName: "Fallout4Custom.ini",
+            settings: [{ section: "Papyrus", key: "iMinMemoryPageSize", value: "256" }],
+          },
+        ],
+      },
+    });
+    expect(receipt.appliedCount).toBe(1);
+    expect(fs.readFileSync(path.join(dir, "Fallout4Custom.ini"), "utf8")).toContain(
+      "iMinMemoryPageSize=256",
+    );
+    fs.rmSync(docs, { recursive: true, force: true });
+  });
+});
+
+describe("shouldApplyGameIni", () => {
+  const gameIni = {
+    files: [{ fileName: "Fallout4.ini", settings: [{ section: "A", key: "k", value: "v" }] }],
+  };
+
+  it("applies on a first install", () => {
+    expect(shouldApplyGameIni({ gameIni, packageVersion: "1.0.0" })).toBe(true);
+  });
+
+  it("does NOT re-apply the same version — the user may have changed it since", () => {
+    // The whole reason the receipt records this. A second apply would silently
+    // revert whatever they set afterwards.
+    expect(
+      shouldApplyGameIni({
+        gameIni,
+        packageVersion: "1.0.0",
+        previous: { packageVersion: "1.0.0", gameIniApplication: { appliedCount: 3 } },
+      }),
+    ).toBe(false);
+  });
+
+  it("applies again for a NEW version — that is what an update means", () => {
+    expect(
+      shouldApplyGameIni({
+        gameIni,
+        packageVersion: "1.1.0",
+        previous: { packageVersion: "1.0.0", gameIniApplication: { appliedCount: 3 } },
+      }),
+    ).toBe(true);
+  });
+
+  it("applies when an earlier install of this version never got to the settings", () => {
+    expect(
+      shouldApplyGameIni({
+        gameIni,
+        packageVersion: "1.0.0",
+        previous: { packageVersion: "1.0.0" },
+      }),
+    ).toBe(true);
+  });
+
+  it("does nothing when the collection ships no settings", () => {
+    expect(shouldApplyGameIni({ gameIni: undefined, packageVersion: "1.0.0" })).toBe(false);
+    expect(shouldApplyGameIni({ gameIni: { files: [] }, packageVersion: "1.0.0" })).toBe(false);
   });
 });

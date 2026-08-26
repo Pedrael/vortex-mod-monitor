@@ -95,6 +95,20 @@ export type InstallReceipt = {
    */
   rulesApplication?: RulesApplicationReceipt;
   /**
+   * Game INI settings written for this release, and the record that they
+   * WERE written.
+   *
+   * Load-bearing beyond reporting: the collection states a starting
+   * configuration once, on install or update, and never re-asserts it. The
+   * user is free to change any of it afterwards, and a second apply would
+   * silently undo that. So this entry's presence for a given
+   * `packageVersion` is what stops it happening twice.
+   *
+   * Optional and additive: receipts written before game INI capture existed
+   * do not have it, and absent means "never applied".
+   */
+  gameIniApplication?: GameIniApplicationReceipt;
+  /**
    * Slice 6d — LOOT userlist application summary.
    *
    * Optional and additive: receipts written before slice 6d shipped
@@ -374,4 +388,16 @@ export type InstallReceiptMod = {
   name: string;
   /** ISO-8601 UTC of when this specific mod was installed. */
   installedAt: string;
+};
+
+/** What the install wrote into the user's INI files, and what it left. */
+export type GameIniApplicationReceipt = {
+  /** Settings whose value this install changed or added. */
+  appliedCount: number;
+  /** Settings already at the collection's value — nothing to do. */
+  alreadyMatchedCount: number;
+  /** Per-file, human-readable `key: before → after` lines. */
+  changes: string[];
+  /** Files the collection had settings for but that could not be written. */
+  failed: Array<{ fileName: string; reason: string }>;
 };
