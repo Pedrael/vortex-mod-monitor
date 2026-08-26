@@ -157,13 +157,7 @@ export function AboutPage(): JSX.Element {
 
         <Card title="Credits">
           <ul
-            style={{
-              margin: 0,
-              paddingLeft: "var(--eh-sp-5)",
-              color: "var(--eh-text-secondary)",
-              fontSize: "var(--eh-text-sm)",
-              lineHeight: "var(--eh-leading-relaxed)",
-            }}
+            className="eh-list"
           >
             <li>
               <strong className="eh-strong">

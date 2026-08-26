@@ -259,7 +259,7 @@ function ToastCard(props: {
         WebkitBackdropFilter: "blur(6px)",
       }}
     >
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div className="eh-fill">
         {toast.title !== undefined && (
           <div
             style={{

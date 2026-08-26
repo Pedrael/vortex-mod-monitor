@@ -112,12 +112,7 @@ function Stepper(props: { current: WizardState["kind"] }): JSX.Element {
     >
       <StepDots total={visibleStates.length} current={safeIdx} />
       <span
-        style={{
-          color: "var(--eh-text-muted)",
-          fontSize: "var(--eh-text-xs)",
-          textTransform: "uppercase",
-          letterSpacing: "var(--eh-tracking-widest)",
-        }}
+        className="eh-label"
       >
         Step {safeIdx + 1} / {visibleStates.length}
         {STEP_LABELS[safeIdx]?.label
@@ -395,7 +390,7 @@ export function LoadingStep(props: {
           }}
         >
           <ProgressRing value={ratio} size={88} />
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="eh-fill">
             <strong
               style={{
                 color: "var(--eh-text-primary)",
@@ -717,11 +712,7 @@ export function PreviewStep(props: PreviewStepProps): JSX.Element {
           }
         >
           <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "var(--eh-sp-2)",
-            }}
+            className="eh-stack eh-stack--sm"
           >
             <strong
               style={{
@@ -747,13 +738,7 @@ export function PreviewStep(props: PreviewStepProps): JSX.Element {
       </div>
 
       <div
-        style={{
-          display: "flex",
-          gap: "var(--eh-sp-2)",
-          marginTop: "var(--eh-sp-5)",
-          flexWrap: "wrap",
-          justifyContent: "flex-end",
-        }}
+        className="eh-actions"
       >
         <Button intent="ghost" onClick={onCancel}>
           Cancel
@@ -846,12 +831,7 @@ function RulesScopePreview(props: {
       }}
     >
       <div
-        style={{
-          color: "var(--eh-text-muted)",
-          fontSize: "var(--eh-text-xs)",
-          textTransform: "uppercase",
-          letterSpacing: "var(--eh-tracking-widest)",
-        }}
+        className="eh-label"
       >
         Rules &amp; ordering this collection ships
       </div>
@@ -1006,11 +986,7 @@ export function DecisionsStep(props: DecisionsStepProps): JSX.Element {
       {conflicts.length === 0 && orphans.length === 0 && (
         <Card title="Nothing to resolve">
           <p
-            style={{
-              margin: 0,
-              color: "var(--eh-text-secondary)",
-              fontSize: "var(--eh-text-sm)",
-            }}
+            className="eh-body"
           >
             The plan resolved cleanly. Click Continue to review the install
             target one last time.
@@ -1026,11 +1002,7 @@ export function DecisionsStep(props: DecisionsStepProps): JSX.Element {
             description="The collection's version differs from what's installed on your machine."
           />
           <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "var(--eh-sp-3)",
-            }}
+            className="eh-stack"
           >
             {conflicts.map((r) => (
               <ConflictRow
@@ -1061,11 +1033,7 @@ export function DecisionsStep(props: DecisionsStepProps): JSX.Element {
             description="These were installed by a previous release of this collection but are no longer referenced."
           />
           <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "var(--eh-sp-3)",
-            }}
+            className="eh-stack"
           >
             {orphans.map((o) => (
               <OrphanRow
@@ -1088,13 +1056,7 @@ export function DecisionsStep(props: DecisionsStepProps): JSX.Element {
       )}
 
       <div
-        style={{
-          display: "flex",
-          gap: "var(--eh-sp-2)",
-          marginTop: "var(--eh-sp-5)",
-          flexWrap: "wrap",
-          justifyContent: "flex-end",
-        }}
+        className="eh-actions"
       >
         <Button
           intent="ghost"
@@ -1242,11 +1204,7 @@ function ConflictRow(props: {
 
       {decision.kind === "external-prompt-user" ? (
         <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "var(--eh-sp-2)",
-          }}
+          className="eh-stack eh-stack--sm"
         >
           <RadioOption
             checked={value?.kind === "use-local-file"}
@@ -1269,11 +1227,7 @@ function ConflictRow(props: {
         </div>
       ) : (
         <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "var(--eh-sp-2)",
-          }}
+          className="eh-stack eh-stack--sm"
         >
           <RadioOption
             checked={value?.kind === "keep-existing"}
@@ -1341,11 +1295,7 @@ function OrphanRow(props: {
         <Pill intent="warning">orphaned</Pill>
       </header>
       <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "var(--eh-sp-2)",
-        }}
+        className="eh-stack eh-stack--sm"
       >
         <RadioOption
           checked={value.kind === "keep"}
@@ -1526,13 +1476,7 @@ export function ConfirmStep(props: ConfirmStepProps): JSX.Element {
         title={`${bundle.plan.manifest.package.name} v${bundle.plan.manifest.package.version}`}
       >
         <ul
-          style={{
-            margin: 0,
-            paddingLeft: "var(--eh-sp-5)",
-            color: "var(--eh-text-secondary)",
-            fontSize: "var(--eh-text-sm)",
-            lineHeight: "var(--eh-leading-relaxed)",
-          }}
+          className="eh-list"
         >
           <li>
             <strong>Target:</strong>{" "}
@@ -1619,13 +1563,7 @@ export function ConfirmStep(props: ConfirmStepProps): JSX.Element {
         )}
 
       <div
-        style={{
-          display: "flex",
-          gap: "var(--eh-sp-2)",
-          marginTop: "var(--eh-sp-5)",
-          flexWrap: "wrap",
-          justifyContent: "flex-end",
-        }}
+        className="eh-actions"
       >
         <Button intent="ghost" onClick={onBack}>
           ← Back
@@ -1812,13 +1750,7 @@ export function DoneStep(props: DoneStepProps): JSX.Element {
       <Card title={null}>{body}</Card>
 
       <div
-        style={{
-          display: "flex",
-          gap: "var(--eh-sp-2)",
-          marginTop: "var(--eh-sp-5)",
-          flexWrap: "wrap",
-          justifyContent: "flex-end",
-        }}
+        className="eh-actions"
       >
         <Button intent="ghost" onClick={onStartOver}>
           Install another collection
@@ -1860,12 +1792,7 @@ function GameIniNotice(props: { lines: readonly string[] }): JSX.Element | null 
 
   return (
     <div
-      style={{
-        padding: "var(--eh-sp-3)",
-        background: "var(--eh-bg-base)",
-        border: "1px solid var(--eh-border-subtle)",
-        borderRadius: "var(--eh-radius-sm)",
-      }}
+      className="eh-inset"
     >
       <div className="eh-row eh-row--sm" style={{ alignItems: "flex-start" }}>
         <Pill intent="info">Game settings</Pill>
@@ -2063,19 +1990,10 @@ function IntegritySection(props: {
 
   return (
     <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "var(--eh-sp-3)",
-      }}
+      className="eh-stack"
     >
       <div
-        style={{
-          color: "var(--eh-text-muted)",
-          fontSize: "var(--eh-text-xs)",
-          textTransform: "uppercase",
-          letterSpacing: "var(--eh-tracking-widest)",
-        }}
+        className="eh-label"
       >
         Integrity check
       </div>
@@ -2244,19 +2162,10 @@ function RulesAndUserlistSection(props: {
 
   return (
     <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "var(--eh-sp-3)",
-      }}
+      className="eh-stack"
     >
       <div
-        style={{
-          color: "var(--eh-text-muted)",
-          fontSize: "var(--eh-text-xs)",
-          textTransform: "uppercase",
-          letterSpacing: "var(--eh-tracking-widest)",
-        }}
+        className="eh-label"
       >
         Rules &amp; ordering
       </div>
@@ -2427,12 +2336,7 @@ function Tile(props: {
 }): JSX.Element {
   return (
     <div
-      style={{
-        padding: "var(--eh-sp-3)",
-        background: "var(--eh-bg-base)",
-        border: "1px solid var(--eh-border-subtle)",
-        borderRadius: "var(--eh-radius-sm)",
-      }}
+      className="eh-inset"
     >
       <div
         style={{

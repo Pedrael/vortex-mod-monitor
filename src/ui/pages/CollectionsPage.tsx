@@ -473,7 +473,7 @@ function ReceiptCard(props: {
           fontSize: "var(--eh-text-sm)",
         }}
       >
-        <div style={{ display: "flex", gap: "var(--eh-sp-2)", flexWrap: "wrap" }}>
+        <div className="eh-row">
           <Pill intent="info">v{receipt.packageVersion}</Pill>
           <Pill intent="neutral">{receipt.gameId}</Pill>
           {receipt.installTargetMode === "fresh-profile" ? (
@@ -660,11 +660,7 @@ function ReceiptDetailModal(props: {
     >
       {receipt !== undefined && (
         <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "var(--eh-sp-4)",
-          }}
+          className="eh-stack eh-stack--lg"
         >
           <div
             style={{
@@ -834,20 +830,10 @@ function DetailTile(props: {
 }): JSX.Element {
   return (
     <div
-      style={{
-        padding: "var(--eh-sp-3)",
-        background: "var(--eh-bg-base)",
-        border: "1px solid var(--eh-border-subtle)",
-        borderRadius: "var(--eh-radius-sm)",
-      }}
+      className="eh-inset"
     >
       <div
-        style={{
-          color: "var(--eh-text-muted)",
-          fontSize: "var(--eh-text-xs)",
-          textTransform: "uppercase",
-          letterSpacing: "var(--eh-tracking-widest)",
-        }}
+        className="eh-label"
       >
         {props.label}
       </div>

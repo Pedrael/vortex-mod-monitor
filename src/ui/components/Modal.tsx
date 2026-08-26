@@ -160,7 +160,7 @@ export function Modal(props: ModalProps): JSX.Element | null {
               borderBottom: "1px solid var(--eh-border-subtle)",
             }}
           >
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="eh-fill">
               {title !== undefined && (
                 <h3
                   style={{

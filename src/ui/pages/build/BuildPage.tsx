@@ -768,13 +768,7 @@ function IdlePanel(props: {
           and CHANGELOG before packaging the .ehcoll.
         </p>
         <ul
-          style={{
-            margin: 0,
-            paddingLeft: "var(--eh-sp-5)",
-            color: "var(--eh-text-secondary)",
-            fontSize: "var(--eh-text-sm)",
-            lineHeight: "var(--eh-leading-relaxed)",
-          }}
+          className="eh-list"
         >
           <li>
             Hashing is read-only and safe to cancel. Big profiles can
@@ -857,12 +851,7 @@ function Header(props: { stepIndex: number; stepLabel: string }): JSX.Element {
       >
         <StepDots total={5} current={props.stepIndex} />
         <span
-          style={{
-            color: "var(--eh-text-muted)",
-            fontSize: "var(--eh-text-xs)",
-            textTransform: "uppercase",
-            letterSpacing: "var(--eh-tracking-widest)",
-          }}
+          className="eh-label"
         >
           Step {props.stepIndex + 1} / 5 · {props.stepLabel}
         </span>
@@ -909,7 +898,7 @@ function LoadingPanel(props: {
         }}
       >
         <ProgressRing size={64} />
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="eh-fill">
           <h3 style={{ margin: 0, color: "var(--eh-text-primary)" }}>
             Preparing build context
           </h3>
@@ -1457,7 +1446,7 @@ function PrerequisitesCard(props: PrerequisitesCardProps): JSX.Element {
           ships with the collection, so it is deliberately not listed here.
         </p>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: "var(--eh-sp-3)" }}>
+        <div className="eh-stack">
           {detected.map((dep) => {
             const o = overrides[dep.id] ?? {};
             const included = o.included !== false;
@@ -1869,11 +1858,7 @@ function DonePanel(props: {
   return (
     <Card title="Build complete">
       <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "var(--eh-sp-4)",
-        }}
+        className="eh-stack eh-stack--lg"
       >
         <div
           style={{
@@ -1982,11 +1967,7 @@ function ErrorPanel(props: { onRetry: () => void }): JSX.Element {
           Something went wrong
         </h3>
         <p
-          style={{
-            margin: 0,
-            color: "var(--eh-text-secondary)",
-            fontSize: "var(--eh-text-sm)",
-          }}
+          className="eh-body"
         >
           A detailed error report should already be open. Once you're done
           reading it you can retry — Event Horizon will reload your active
@@ -2047,20 +2028,10 @@ function Field(props: {
 function Stat(props: { label: string; value: string }): JSX.Element {
   return (
     <div
-      style={{
-        padding: "var(--eh-sp-3)",
-        background: "var(--eh-bg-base)",
-        border: "1px solid var(--eh-border-subtle)",
-        borderRadius: "var(--eh-radius-sm)",
-      }}
+      className="eh-inset"
     >
       <div
-        style={{
-          color: "var(--eh-text-muted)",
-          fontSize: "var(--eh-text-xs)",
-          textTransform: "uppercase",
-          letterSpacing: "var(--eh-tracking-widest)",
-        }}
+        className="eh-label"
       >
         {props.label}
       </div>
@@ -2111,19 +2082,10 @@ function BuildRulesScopeSummary(props: {
 
   return (
     <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "var(--eh-sp-2)",
-      }}
+      className="eh-stack eh-stack--sm"
     >
       <div
-        style={{
-          color: "var(--eh-text-muted)",
-          fontSize: "var(--eh-text-xs)",
-          textTransform: "uppercase",
-          letterSpacing: "var(--eh-tracking-widest)",
-        }}
+        className="eh-label"
       >
         Captured into the package
       </div>
@@ -2345,7 +2307,7 @@ function DraftRestoredBanner(props: {
           flexShrink: 0,
         }}
       />
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div className="eh-fill">
         <div style={{ fontWeight: 600 }}>Draft restored</div>
         <div
           style={{

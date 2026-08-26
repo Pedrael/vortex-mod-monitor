@@ -290,12 +290,7 @@ function StatusTile(props: {
       }}
     >
       <span
-        style={{
-          color: "var(--eh-text-muted)",
-          fontSize: "var(--eh-text-xs)",
-          textTransform: "uppercase",
-          letterSpacing: "var(--eh-tracking-widest)",
-        }}
+        className="eh-label"
       >
         {props.label}
       </span>
@@ -431,11 +426,7 @@ function PlayerPanel(props: {
   return (
     <Card title="Player — installed collections">
       <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "var(--eh-sp-3)",
-        }}
+        className="eh-stack"
       >
         <div
           style={{
@@ -574,11 +565,7 @@ function CuratorPanel(props: {
   return (
     <Card title="Curator — workshop">
       <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "var(--eh-sp-3)",
-        }}
+        className="eh-stack"
       >
         <div
           style={{

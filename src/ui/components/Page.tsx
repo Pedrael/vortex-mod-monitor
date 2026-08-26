@@ -55,11 +55,7 @@ export function Page(props: PageProps): JSX.Element {
           </div>
           {actions !== undefined && (
             <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "var(--eh-sp-2)",
-              }}
+              className="eh-row eh-row--nowrap"
             >
               {actions}
             </div>

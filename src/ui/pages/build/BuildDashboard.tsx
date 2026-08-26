@@ -872,7 +872,7 @@ function DashboardHeader(props: {
           alignItems: "flex-end",
         }}
       >
-        <div style={{ display: "flex", gap: "var(--eh-sp-2)", flexWrap: "wrap" }}>
+        <div className="eh-row">
           <Button intent="ghost" onClick={props.onRefresh}>
             Refresh
           </Button>

@@ -76,7 +76,7 @@ export const UTILITIES_CSS = `
   color: var(--eh-text-muted);
   font-size: var(--eh-text-xs);
   text-transform: uppercase;
-  letter-spacing: var(--eh-tracking-wide);
+  letter-spacing: var(--eh-tracking-widest);
 }
 
 /* A key/value line: label of fixed width, value taking the rest. */
@@ -89,6 +89,41 @@ export const UTILITIES_CSS = `
 .eh-field__label {
   color: var(--eh-text-muted);
   min-width: 132px;
+}
+
+/* Body copy inside a card: the default paragraph of this UI. */
+.eh-body {
+  margin: 0;
+  color: var(--eh-text-secondary);
+  font-size: var(--eh-text-sm);
+}
+
+/* A bulleted list of reasons or items, indented off the text column. */
+.eh-list {
+  margin: 0;
+  padding-left: var(--eh-sp-5);
+  color: var(--eh-text-secondary);
+  font-size: var(--eh-text-sm);
+  line-height: var(--eh-leading-relaxed);
+}
+
+/* A recessed block inside a card — a path, a payload, a quoted detail. */
+.eh-inset {
+  padding: var(--eh-sp-3);
+  background: var(--eh-bg-base);
+  border: 1px solid var(--eh-border-subtle);
+  border-radius: var(--eh-radius-sm);
+}
+
+/* The row of actions at the bottom of a step or a card. Right-aligned,
+   because that is where the eye finishes and where the primary action for a
+   flow belongs. */
+.eh-actions {
+  display: flex;
+  gap: var(--eh-sp-2);
+  margin-top: var(--eh-sp-5);
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 /* Monospace for things that are identifiers rather than prose. */

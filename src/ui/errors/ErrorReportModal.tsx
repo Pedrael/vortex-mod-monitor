@@ -127,18 +127,10 @@ export function ErrorReportModal(props: ErrorReportModalProps): JSX.Element {
       }
     >
       <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "var(--eh-sp-4)",
-        }}
+        className="eh-stack eh-stack--lg"
       >
         <div
-          style={{
-            display: "flex",
-            gap: "var(--eh-sp-2)",
-            flexWrap: "wrap",
-          }}
+          className="eh-row"
         >
           <Pill
             intent={error.severity === "warning" ? "warning" : "danger"}
@@ -227,13 +219,7 @@ function Section(props: {
 function BulletList(props: { items: string[] }): JSX.Element {
   return (
     <ul
-      style={{
-        margin: 0,
-        paddingLeft: "var(--eh-sp-5)",
-        color: "var(--eh-text-secondary)",
-        fontSize: "var(--eh-text-sm)",
-        lineHeight: "var(--eh-leading-relaxed)",
-      }}
+      className="eh-list"
     >
       {props.items.map((item, idx) => (
         <li key={idx} style={{ marginBottom: "var(--eh-sp-1)" }}>
