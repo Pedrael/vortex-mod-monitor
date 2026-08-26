@@ -1003,16 +1003,8 @@ function DraftCard(props: {
         </span>
       }
     >
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "var(--eh-sp-2)",
-          color: "var(--eh-text-secondary)",
-          fontSize: "var(--eh-text-sm)",
-        }}
-      >
-        <div style={{ display: "flex", gap: "var(--eh-sp-2)", flexWrap: "wrap" }}>
+      <div className="eh-stack eh-stack--sm eh-secondary" style={{ fontSize: "var(--eh-text-sm)" }}>
+        <div className="eh-row">
           <Pill intent="info">draft</Pill>
           <Pill intent="neutral">{gameId}</Pill>
           {!draftMatchesGame && (
@@ -1042,7 +1034,7 @@ function DraftCard(props: {
               <strong>Version:</strong> v{payload.curator.version || "—"}
             </div>
           )}
-        <div style={{ display: "flex", gap: "var(--eh-sp-2)", marginTop: "var(--eh-sp-2)" }}>
+        <div className="eh-row" style={{ marginTop: "var(--eh-sp-2)" }}>
           <Button
             intent="primary"
             onClick={props.onOpen}
@@ -1055,6 +1047,9 @@ function DraftCard(props: {
           >
             Open
           </Button>
+          {/* Destructive, and kept away from Open — the two are one careless
+              click apart otherwise, and a discarded draft is unrecoverable. */}
+          <span className="eh-row__spacer" />
           <Button intent="ghost" onClick={props.onDiscard}>
             Discard
           </Button>
@@ -1066,9 +1061,9 @@ function DraftCard(props: {
 
 function DetailRow(props: { label: string; children: React.ReactNode }): JSX.Element {
   return (
-    <div style={{ display: "flex", gap: "var(--eh-sp-2)", flexWrap: "wrap" }}>
-      <span style={{ color: "var(--eh-text-muted)", minWidth: 132 }}>{props.label}</span>
-      <span>{props.children}</span>
+    <div className="eh-field">
+      <span className="eh-field__label">{props.label}</span>
+      <span className="eh-fill">{props.children}</span>
     </div>
   );
 }
@@ -1133,10 +1128,8 @@ function PublishedDetailsPanel(props: {
   const s = details.shipped;
   return (
     <div
+      className="eh-stack eh-stack--sm"
       style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "var(--eh-sp-2)",
         marginTop: "var(--eh-sp-3)",
         paddingTop: "var(--eh-sp-3)",
         borderTop: "1px solid var(--eh-border-subtle)",
@@ -1186,6 +1179,7 @@ function PublishedDetailsPanel(props: {
           .join(" + ") || "none"}
       </DetailRow>
 
+      <DetailRow label="Slug">{props.summary.slug}</DetailRow>
       <DetailRow label="Identity">
         <code style={{ fontFamily: "var(--eh-font-mono)", fontSize: "var(--eh-text-xs)" }}>
           {props.summary.packageId}
@@ -1231,38 +1225,29 @@ function PublishedCard(props: {
         </span>
       }
     >
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "var(--eh-sp-2)",
-          color: "var(--eh-text-secondary)",
-          fontSize: "var(--eh-text-sm)",
-        }}
-      >
-        <div style={{ display: "flex", gap: "var(--eh-sp-2)", flexWrap: "wrap" }}>
+      <div className="eh-stack eh-stack--sm eh-secondary" style={{ fontSize: "var(--eh-text-sm)" }}>
+        <div className="eh-row">
           <Pill intent="success">published</Pill>
           {summary.lastBuiltVersion !== undefined && (
             <Pill intent="info">v{summary.lastBuiltVersion}</Pill>
           )}
           {upToDate && <Pill intent="neutral">no mod changes</Pill>}
         </div>
-        <div className="eh-muted">
-          <strong>Slug:</strong> {summary.slug}
-        </div>
         {upToDate && (
-          // Said in full rather than just greying the button out: the check is
-          // membership-only, so a curator who edited a file inside a mod is
-          // looking at "no mod changes" while holding a real change. Telling
-          // them what was compared is the difference between a helpful default
-          // and a wrong one.
-          <div className="eh-muted">
-            The same mods are enabled now as when v{summary.lastBuiltVersion} was
-            built, so there is nothing new to ship. Edits to files inside a mod
-            are not detected here — rebuild if you made any.
+          // Kept, not dropped: the check is membership-only, so a curator who
+          // edited a file inside a mod is looking at "no mod changes" while
+          // holding a real change. Saying what was compared is the difference
+          // between a helpful default and a wrong one — it is just said in one
+          // line now instead of four, because a paragraph on every up-to-date
+          // card is what made this view feel heavy.
+          <div className="eh-note">
+            Same mods as when v{summary.lastBuiltVersion} was built. Edits to
+            files inside a mod are not detected — rebuild if you made any.
           </div>
         )}
-        <div style={{ display: "flex", gap: "var(--eh-sp-2)", marginTop: "var(--eh-sp-2)" }}>
+        {/* Slug moved into Details: it is the on-disk identity, useful when
+            something goes wrong and noise the rest of the time. */}
+        <div className="eh-row" style={{ marginTop: "var(--eh-sp-2)" }}>
           {upToDate ? (
             <Button intent="ghost" onClick={props.onUpdate}>
               Rebuild anyway
@@ -1275,6 +1260,9 @@ function PublishedCard(props: {
           <Button intent="ghost" onClick={(): void => setShowDetails((v) => !v)}>
             {showDetails ? "Hide details" : "Details"}
           </Button>
+          {/* Destructive, and pushed away from the two routine buttons. Equal
+              weight and adjacency is how a misclick happens. */}
+          <span className="eh-row__spacer" />
           <Button intent="ghost" onClick={props.onDelete}>
             Delete
           </Button>
