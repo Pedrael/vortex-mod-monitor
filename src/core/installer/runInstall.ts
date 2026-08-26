@@ -1260,6 +1260,10 @@ async function executeDecision(args: {
         bundledZipEntry: decision.zipPath,
         signal: ctx.abortSignal,
         preExtracted,
+        // Bundling a mod must not cost it the curator's installer answers.
+        ...(choicesFor(manifestEntry) !== undefined
+          ? { choices: choicesFor(manifestEntry) }
+          : {}),
       });
       // Track the temp **directory**, not the file: cherry-picked
       // entries can have nested paths inside the dir.
@@ -1568,6 +1572,12 @@ async function installManifestEntry(args: {
     bundledZipEntry: bundledEntry,
     signal: ctx.abortSignal,
     preExtracted,
+    // The Nexus branch of this same function already did this; the bundled
+    // branch did not, and a "replace existing" choice therefore reinstalled
+    // the mod with default installer options.
+    ...(choicesFor(manifestEntry) !== undefined
+      ? { choices: choicesFor(manifestEntry) }
+      : {}),
   });
   onTempArchive(result.tempDir);
 

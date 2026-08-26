@@ -412,6 +412,21 @@ export async function installFromBundledArchive(
      * cleanup after Vortex consumes the archive).
      */
     preExtracted?: { extractedPath: string; tempDir: string };
+    /**
+     * The curator's recorded installer answers.
+     *
+     * Bundling a mod must not lose them. `start-install` — the call this
+     * function otherwise makes — has no argument for choices, so a bundled
+     * FOMOD installed with DEFAULT options while the collection claimed to
+     * reproduce the curator's build. Exactly the gap that existed on the
+     * hand-picked path, in a third place.
+     *
+     * When present the extracted archive is registered as a Vortex download
+     * and installed through `start-install-download`, the only choices-
+     * carrying install call whose shape has been OBSERVED on a real Vortex.
+     * See adoptLocalArchive for that evidence.
+     */
+    choices?: VortexInstallerChoices;
   },
 ): Promise<{
   vortexModId: string;
@@ -438,6 +453,24 @@ export async function installFromBundledArchive(
       // start-install dispatch entirely. The catch below cleans up
       // tempDir.
       throw makeAbortErrorLocal("install from bundled archive");
+    }
+
+    if (args.choices !== undefined) {
+      // Same route as a hand-picked archive: register the extracted bundle as
+      // a download so it can be installed through the call that carries the
+      // curator's answers. The temp copy is still cleaned up by the caller —
+      // Vortex now has its own copy in the download folder.
+      const adopted = await adoptLocalArchive(api, {
+        gameId: args.gameId,
+        archivePath: extractedPath,
+      });
+      const installed = await installFromExistingDownload(api, {
+        gameId: args.gameId,
+        archiveId: adopted.archiveId,
+        choices: args.choices,
+        ...(args.signal !== undefined ? { signal: args.signal } : {}),
+      });
+      return { vortexModId: installed.vortexModId, extractedPath, tempDir };
     }
 
     const completed = waitForInstallCompletion(api, {
