@@ -1656,6 +1656,8 @@ interface ImportPreviousButtonProps {
 function ImportPreviousButton(props: ImportPreviousButtonProps): JSX.Element {
   const reportError = useErrorReporter();
   const showToast = useToast();
+  // Vortex's own picker, not Electron's — see pickEhcollFile.
+  const api = useApi();
   const [busy, setBusy] = React.useState(false);
 
   const handleClick = React.useCallback(async (): Promise<void> => {
@@ -1663,7 +1665,7 @@ function ImportPreviousButton(props: ImportPreviousButtonProps): JSX.Element {
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { pickEhcollFile } = await import("../../../utils/utils");
-      const file = await pickEhcollFile();
+      const file = await pickEhcollFile(api);
       if (file === undefined) return;
 
       // eslint-disable-next-line @typescript-eslint/no-var-requires

@@ -117,7 +117,7 @@ export default function createInstallCollectionAction(
 
     try {
       // ── 1. file pick ─────────────────────────────────────────────────
-      const zipPath = await pickEhcollFile();
+      const zipPath = await pickEhcollFile(context.api);
       if (zipPath === undefined) {
         op.ok({ cancelled: "file-picker" });
         return; // user cancelled
@@ -808,6 +808,7 @@ async function pickExternalPromptUserChoice(
     }
 
     const filePath = await pickModArchiveFile({
+      api,
       title: `Select archive for "${resolution.name}"`,
       expectedFilename: decision.expectedFilename,
     });

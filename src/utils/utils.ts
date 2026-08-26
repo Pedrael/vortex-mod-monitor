@@ -56,32 +56,31 @@ export async function pickJsonFile(
   return filePath?.length ? filePath : undefined;
 }
 
-export async function pickEhcollFile(): Promise<string | undefined> {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const electron = require("electron");
-
-  const dialog = electron.remote?.dialog ?? electron.dialog;
-
-  if (!dialog?.showOpenDialog) {
-    throw new Error("Electron dialog is not available");
-  }
-
-  const result = await dialog.showOpenDialog({
+/**
+ * Ask the user for a `.ehcoll` package.
+ *
+ * Goes through Vortex's own `api.selectFile`, NOT Electron's dialog.
+ *
+ * This used to `require("electron")` and reach for `remote.dialog ?? dialog`.
+ * Both halves of that are dead: `remote` was removed in Electron 14, and
+ * `dialog` is a MAIN-process module that a renderer never has. It could only
+ * ever have worked on a Vortex old enough to still expose remote — and it
+ * failed outright for a user running Vortex under Proton, which is where it
+ * was finally noticed. `pickJsonFile`, four lines up in this same file, had
+ * been doing it correctly the whole time.
+ *
+ * Vortex's own picker is also the right dependency for a reason beyond
+ * availability: it is the one that knows about Vortex's window, its modal
+ * stack, and whatever wrapper the host platform needs.
+ */
+export async function pickEhcollFile(
+  api: types.IExtensionApi,
+): Promise<string | undefined> {
+  const filePath = await api.selectFile({
     title: "Select Event Horizon collection (.ehcoll)",
-    properties: ["openFile"],
-    filters: [
-      {
-        name: "Event Horizon collections",
-        extensions: ["ehcoll"],
-      },
-    ],
+    filters: [{ name: "Event Horizon collections", extensions: ["ehcoll"] }],
   });
-
-  if (result.canceled || !result.filePaths?.length) {
-    return undefined;
-  }
-
-  return result.filePaths[0];
+  return filePath?.length ? filePath : undefined;
 }
 
 /**
@@ -90,38 +89,21 @@ export async function pickEhcollFile(): Promise<string | undefined> {
  * user a hint of what they're being asked to provide.
  */
 export async function pickModArchiveFile(args: {
+  api: types.IExtensionApi;
   title: string;
   expectedFilename?: string;
 }): Promise<string | undefined> {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const electron = require("electron");
-
-  const dialog = electron.remote?.dialog ?? electron.dialog;
-
-  if (!dialog?.showOpenDialog) {
-    throw new Error("Electron dialog is not available");
-  }
-
-  const filters: Array<{ name: string; extensions: string[] }> = [
-    {
-      name: "Mod archives",
-      extensions: ["zip", "7z", "rar", "tar", "tgz", "gz"],
-    },
-    { name: "All files", extensions: ["*"] },
-  ];
-
-  const result = await dialog.showOpenDialog({
+  const filePath = await args.api.selectFile({
     title: args.title,
-    defaultPath: args.expectedFilename,
-    properties: ["openFile"],
-    filters,
+    ...(args.expectedFilename !== undefined
+      ? { defaultPath: args.expectedFilename }
+      : {}),
+    filters: [
+      { name: "Mod archives", extensions: ["zip", "7z", "rar", "tar", "tgz", "gz"] },
+      { name: "All files", extensions: ["*"] },
+    ],
   });
-
-  if (result.canceled || !result.filePaths?.length) {
-    return undefined;
-  }
-
-  return result.filePaths[0];
+  return filePath?.length ? filePath : undefined;
 }
 
 export type ExportedModsSnapshot = {

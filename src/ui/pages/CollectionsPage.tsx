@@ -17,6 +17,7 @@
 
 import * as React from "react";
 import { util } from "@nexusmods/vortex-api";
+import type { types } from "@nexusmods/vortex-api";
 
 import {
   deleteReceipt,
@@ -523,7 +524,7 @@ function ReceiptDetailModal(props: {
     if (receipt === undefined) return;
     setBusy(true);
     try {
-      const saved = await saveDiagnosticReport(receipt);
+      const saved = await saveDiagnosticReport(api, receipt);
       if (saved) {
         showToast({
           intent: "success",
@@ -889,14 +890,13 @@ interface MinimalElectronModule {
  * Throws on real I/O errors so the caller's reportError can pick
  * them up. Cancellation is NOT an error. */
 async function saveDiagnosticReport(
+  api: types.IExtensionApi,
   receipt: InstallReceipt,
 ): Promise<boolean> {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const electron = require("electron") as MinimalElectronModule;
-  const dialog = electron.remote?.dialog ?? electron.dialog;
-  if (dialog?.showSaveDialog === undefined) {
-    throw new Error("Electron save dialog API is not available");
-  }
+  // Vortex's own picker. `electron.remote` was removed in Electron 14 and
+  // `dialog` is main-process-only, so the previous route could not work in a
+  // renderer — it threw instead of saving, on the button whose entire job is
+  // getting diagnostics to someone who can read them.
 
   const sanitized = receipt.packageName
     .replace(/[<>:"\\/|?*\x00-\x1f]/g, "_")
@@ -908,7 +908,7 @@ async function saveDiagnosticReport(
     .slice(0, 19);
   const defaultName = `event-horizon-diagnostic-${sanitized}-${stamp}.json`;
 
-  const result = await dialog.showSaveDialog({
+  const filePath = await api.saveFile({
     title: "Export Event Horizon diagnostic",
     defaultPath: defaultName,
     filters: [
@@ -916,7 +916,7 @@ async function saveDiagnosticReport(
       { name: "All files", extensions: ["*"] },
     ],
   });
-  if (result.canceled || result.filePath === undefined) return false;
+  if (filePath === undefined || filePath.length === 0) return false;
 
   const payload = {
     schema: "event-horizon.diagnostic/1",
@@ -943,7 +943,7 @@ async function saveDiagnosticReport(
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const fsp = require("fs/promises") as typeof import("fs/promises");
   await fsp.writeFile(
-    result.filePath,
+    filePath,
     JSON.stringify(payload, null, 2),
     { encoding: "utf-8" },
   );

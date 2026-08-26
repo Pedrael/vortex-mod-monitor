@@ -197,6 +197,7 @@ export interface PickStepProps {
 export function PickStep(props: PickStepProps): JSX.Element {
   const reportError = useErrorReporter();
   const showToast = useToast();
+  const api = useApi();
   const [isDragging, setDragging] = React.useState(false);
   // Track nested dragenter/dragleave: child elements fire leave when
   // we cross internal boundaries, which would clear the highlight
@@ -207,7 +208,7 @@ export function PickStep(props: PickStepProps): JSX.Element {
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { pickEhcollFile } = await import("../../../utils/utils");
-      const file = await pickEhcollFile();
+      const file = await pickEhcollFile(api);
       if (file !== undefined) {
         props.onPick(file);
       }
@@ -1259,11 +1260,14 @@ function ConflictRow(props: {
   const decision = resolution.decision;
   const reportError = useErrorReporter();
   const showToast = useToast();
+  // Vortex's own picker, not Electron's — see pickModArchiveFile.
+  const api = useApi();
 
   const handlePickFile = async (): Promise<void> => {
     if (decision.kind !== "external-prompt-user") return;
     try {
       const file = await pickModArchiveFile({
+        api,
         title: `Select archive for "${resolution.name}"`,
         expectedFilename: decision.expectedFilename,
       });

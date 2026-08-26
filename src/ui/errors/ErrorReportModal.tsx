@@ -23,7 +23,10 @@
 
 import * as React from "react";
 
+import type { types } from "@nexusmods/vortex-api";
+
 import { Button, Pill } from "../components";
+import { useApiOptional } from "../state";
 import { Modal } from "../components/Modal";
 import { FormattedError, buildErrorReport } from "./formatError";
 
@@ -35,6 +38,10 @@ export interface ErrorReportModalProps {
 
 export function ErrorReportModal(props: ErrorReportModalProps): JSX.Element {
   const { open, error, onClose } = props;
+  // Optional: this modal renders error states, and one of those is "the
+  // extension tree failed to mount". Throwing here for a missing provider
+  // would replace the error report with a second error.
+  const api = useApiOptional();
 
   const [copyState, setCopyState] = React.useState<"idle" | "ok" | "fail">(
     "idle",
@@ -71,7 +78,8 @@ export function ErrorReportModal(props: ErrorReportModalProps): JSX.Element {
 
   const handleSave = async (): Promise<void> => {
     try {
-      const saved = await saveReportToFile(error.title, reportText);
+      if (api === undefined) throw new Error("No file picker available.");
+      const saved = await saveReportToFile(api, error.title, reportText);
       setSaveState(saved ? "ok" : "idle");
       if (saved) {
         window.setTimeout(() => setSaveState("idle"), 2500);
@@ -300,18 +308,21 @@ async function copyToClipboard(text: string): Promise<void> {
   throw new Error("No clipboard API available");
 }
 
+/**
+ * Save the report through Vortex's own picker, not Electron's.
+ *
+ * `electron.remote` was removed in Electron 14 and `dialog` is a main-process
+ * module a renderer never has — so this threw "Electron dialog API not
+ * available" instead of saving. Which made it useless in precisely the moment
+ * it exists for: a user under Proton hit an error dialog, and the button for
+ * getting that error to somebody who could read it was broken by the same
+ * class of bug the dialog was reporting.
+ */
 async function saveReportToFile(
+  api: types.IExtensionApi,
   title: string,
   text: string,
 ): Promise<boolean> {
-  const electron = tryRequireElectron();
-  if (!electron) {
-    throw new Error("Electron module not available");
-  }
-  const dialog = electron.remote?.dialog ?? electron.dialog;
-  if (!dialog?.showSaveDialog) {
-    throw new Error("Electron dialog API not available");
-  }
 
   const sanitized = title
     .replace(/[<>:"\\/|?*\x00-\x1f]/g, "_")
@@ -323,7 +334,7 @@ async function saveReportToFile(
     .slice(0, 19);
   const defaultPath = `event-horizon-error-${stamp}-${sanitized}.txt`;
 
-  const result = await dialog.showSaveDialog({
+  const filePath = await api.saveFile({
     title: "Save Event Horizon error report",
     defaultPath,
     filters: [
@@ -332,10 +343,10 @@ async function saveReportToFile(
     ],
   });
 
-  if (result.canceled || !result.filePath) return false;
+  if (filePath === undefined || filePath.length === 0) return false;
 
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const fsp = require("fs/promises") as typeof import("fs/promises");
-  await fsp.writeFile(result.filePath, text, { encoding: "utf-8" });
+  await fsp.writeFile(filePath, text, { encoding: "utf-8" });
   return true;
 }
