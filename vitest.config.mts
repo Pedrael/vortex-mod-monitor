@@ -18,6 +18,14 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    // `test/e2e` holds the whole-chain tests: a real staging folder on disk,
+    // real hashing, and a real JSON round-trip through the parser the
+    // installer uses. They live outside src/ so `tsc` never compiles them
+    // into dist/, the same reason the stub does.
+    include: [
+      "src/**/*.test.ts",
+      "src/**/*.test.tsx",
+      "test/e2e/**/*.e2e.test.ts",
+    ],
   },
 });
