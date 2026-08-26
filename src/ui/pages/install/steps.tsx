@@ -289,7 +289,7 @@ export function PickStep(props: PickStepProps): JSX.Element {
             : "1px dashed var(--eh-border-default)",
           borderRadius: "var(--eh-radius-lg)",
           textAlign: "center",
-          transition: "background var(--eh-dur-quick) var(--eh-easing), border-color var(--eh-dur-quick) var(--eh-easing)",
+          transition: "background var(--eh-dur-fast) var(--eh-easing), border-color var(--eh-dur-fast) var(--eh-easing)",
           animation:
             "eh-fade-up var(--eh-dur-deliberate) var(--eh-easing) both",
         }}
@@ -597,6 +597,13 @@ export interface PreviewStepProps {
   onCancel: () => void;
 }
 
+/** Both summary groups lay out the same way; declared once so they cannot drift. */
+const SUMMARY_GRID: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+  gap: "var(--eh-sp-3)",
+};
+
 export function PreviewStep(props: PreviewStepProps): JSX.Element {
   const { bundle, onContinue, onCancel } = props;
   const { plan } = bundle;
@@ -620,38 +627,91 @@ export function PreviewStep(props: PreviewStepProps): JSX.Element {
         "Review the plan Event Horizon would execute. Nothing has been changed yet."
       }
     >
+      {/* The verdict LEADS.
+          It used to sit at the bottom, under six numbers and two cards: a
+          reader had to scroll past everything to learn whether this could be
+          installed at all. That is the one question this screen exists to
+          answer, so it goes first, and the colour carries it before the words
+          are read. "Verdict" as a card title said nothing the headline does
+          not say better. */}
       <div
+        role="status"
         style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-          gap: "var(--eh-sp-4)",
+          display: "flex",
+          gap: "var(--eh-sp-3)",
+          alignItems: "flex-start",
+          padding: "var(--eh-sp-4)",
           marginBottom: "var(--eh-sp-5)",
+          borderLeft: `3px solid ${verdict.color}`,
+          borderRadius: "var(--eh-radius-sm)",
+          background: "var(--eh-bg-raised)",
         }}
       >
-        <SummaryTile label="Total mods" value={summary.totalMods} />
-        <SummaryTile
-          label="Already installed"
-          value={summary.alreadyInstalled}
-        />
-        <SummaryTile
-          label="Will install silently"
-          value={summary.willInstallSilently}
-        />
-        <SummaryTile
-          label="Need confirmation"
-          value={summary.needsUserConfirmation}
-          accent={summary.needsUserConfirmation > 0 ? "warning" : "default"}
-        />
-        <SummaryTile
-          label="Missing"
-          value={summary.missing}
-          accent={summary.missing > 0 ? "danger" : "default"}
-        />
-        <SummaryTile
-          label="Orphans"
-          value={summary.orphans}
-          accent={summary.orphans > 0 ? "warning" : "default"}
-        />
+        <div className="eh-stack eh-stack--sm eh-fill">
+          <strong style={{ color: verdict.color, fontSize: "var(--eh-text-md)" }}>
+            {verdict.headline}
+          </strong>
+          {verdict.lines.length > 0 ? (
+            <ul className="eh-list">
+              {verdict.lines.map((line, idx) => (
+                <li key={idx} className="eh-secondary">
+                  {line}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <span className="eh-note">
+            Checked against your active game install. Nothing has been changed yet.
+          </span>
+        </div>
+      </div>
+
+      {/* Two groups, not six equal numbers.
+          The first three describe what happens if you do nothing but press
+          continue; the last three are the ones that will ask something of you
+          or cannot be done at all. Undifferentiated, a reader gets six figures
+          and no sense of which need them — and the zeroes are worth keeping,
+          because "Missing: 0" says the check ran. */}
+      <div className="eh-stack eh-stack--lg" style={{ marginBottom: "var(--eh-sp-5)" }}>
+        <section className="eh-stack eh-stack--sm">
+          <h3 className="eh-label" style={{ margin: 0 }}>
+            What this collection is
+          </h3>
+          <div style={SUMMARY_GRID}>
+            <SummaryTile label="Total mods" value={summary.totalMods} />
+            <SummaryTile
+              label="Already installed"
+              value={summary.alreadyInstalled}
+            />
+            <SummaryTile
+              label="Will install silently"
+              value={summary.willInstallSilently}
+            />
+          </div>
+        </section>
+
+        <section className="eh-stack eh-stack--sm">
+          <h3 className="eh-label" style={{ margin: 0 }}>
+            What needs you
+          </h3>
+          <div style={SUMMARY_GRID}>
+            <SummaryTile
+              label="Need confirmation"
+              value={summary.needsUserConfirmation}
+              accent={summary.needsUserConfirmation > 0 ? "warning" : "default"}
+            />
+            <SummaryTile
+              label="Missing"
+              value={summary.missing}
+              accent={summary.missing > 0 ? "danger" : "default"}
+            />
+            <SummaryTile
+              label="Orphans"
+              value={summary.orphans}
+              accent={summary.orphans > 0 ? "warning" : "default"}
+            />
+          </div>
+        </section>
       </div>
 
       <RulesScopePreview summary={summary} />
@@ -702,40 +762,6 @@ export function PreviewStep(props: PreviewStepProps): JSX.Element {
         )}
       </Card>
 
-      <div style={{ marginTop: "var(--eh-sp-4)" }}>
-        <Card
-          title="Verdict"
-          footer={
-            <span className="eh-muted">
-              Compatibility checks against your active game install
-            </span>
-          }
-        >
-          <div
-            className="eh-stack eh-stack--sm"
-          >
-            <strong
-              style={{
-                color: verdict.color,
-                fontSize: "var(--eh-text-md)",
-              }}
-            >
-              {verdict.headline}
-            </strong>
-            {verdict.lines.map((line, idx) => (
-              <span
-                key={idx}
-                style={{
-                  color: "var(--eh-text-secondary)",
-                  fontSize: "var(--eh-text-sm)",
-                }}
-              >
-                • {line}
-              </span>
-            ))}
-          </div>
-        </Card>
-      </div>
 
       <div
         className="eh-actions"

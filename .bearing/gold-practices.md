@@ -216,3 +216,17 @@ better does not prevent.
   tile — typecheck passed, 340 tests passed, and the only evidence was a blank label on a
   screen nobody had opened yet.*
 
+
+- **GP-26** — **Where bad input is a silent no-op, enumerate the references and assert each
+  resolves.** Some subsystems have no type system and no error channel: an undefined CSS custom
+  property, a missing env var, an unregistered feature flag, an absent i18n key. They do not throw
+  and do not warn — they evaluate to nothing, and the surrounding construct quietly degrades. CSS is
+  the worst of them, because an unresolved `var()` invalidates the ENTIRE declaration: `border: 1px
+  solid var(--typo)` is not a default-coloured border, it is no border. No compiler, linter, review
+  or unit test sees any of this, because nothing is wrong with the *code*. The test that pays walks
+  the real source, collects every reference, and asserts each one is declared — then proves itself by
+  failing on an injected typo. *Scar: `--eh-accent`, `--eh-accent-soft`, `--eh-border` and
+  `--eh-dur-quick` were never defined anywhere in the theme. Eight call sites across four pages,
+  including the selected-state outline on two toggle controls — so "included" and "not included"
+  rendered identically, with no border in either state. Typecheck was clean and 348 tests passed
+  throughout; the audit that found it took twenty lines.*

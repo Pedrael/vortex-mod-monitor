@@ -1086,7 +1086,7 @@ function FormPanel(props: FormPanelProps): JSX.Element {
           style={{
             padding: "var(--eh-sp-3) var(--eh-sp-4)",
             background: "var(--eh-bg-elevated)",
-            border: "1px solid var(--eh-warning, var(--eh-border))",
+            border: "1px solid var(--eh-warning, var(--eh-border-default))",
             borderRadius: "var(--eh-radius-md)",
             color: "var(--eh-text-primary)",
             fontSize: "var(--eh-text-sm)",
@@ -1409,7 +1409,7 @@ function PrerequisitesCard(props: PrerequisitesCardProps): JSX.Element {
       <div
         style={{
           padding: "var(--eh-sp-3)",
-          border: "1px solid var(--eh-border)",
+          border: "1px solid var(--eh-border-default)",
           borderRadius: "var(--eh-radius-md)",
           marginBottom: "var(--eh-sp-3)",
         }}
@@ -1455,7 +1455,7 @@ function PrerequisitesCard(props: PrerequisitesCardProps): JSX.Element {
                 key={dep.id}
                 style={{
                   padding: "var(--eh-sp-3)",
-                  border: `1px solid ${included ? "var(--eh-accent)" : "var(--eh-border)"}`,
+                  border: `1px solid ${included ? "var(--eh-accent)" : "var(--eh-border-default)"}`,
                   borderRadius: "var(--eh-radius-md)",
                   background: included ? "var(--eh-bg-elevated)" : "transparent",
                 }}
@@ -1543,7 +1543,7 @@ function IntegrityLevelCard(props: IntegrityLevelCardProps): JSX.Element {
           display: "flex",
           gap: "var(--eh-sp-3)",
           padding: "var(--eh-sp-3)",
-          border: `1px solid ${reverify ? "var(--eh-accent)" : "var(--eh-border)"}`,
+          border: `1px solid ${reverify ? "var(--eh-accent)" : "var(--eh-border-default)"}`,
           borderRadius: "var(--eh-radius-md)",
           background: reverify ? "var(--eh-bg-elevated)" : "transparent",
           cursor: "pointer",

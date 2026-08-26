@@ -79,6 +79,14 @@ export const TOKENS_CSS = `
   --eh-cyan-bright: #76e4f7;
   --eh-cyan-dim: #2d8aa9;
 
+  /* Semantic alias for "this one is selected / interactive".
+     Eight call sites across four pages already ask for --eh-accent; they were
+     silently getting nothing, which invalidated the whole "border" shorthand
+     and made selected and unselected states render identically. Pointing it at
+     the lensing cyan keeps one place to retune the accent. */
+  --eh-accent: #4cc9f0;
+  --eh-accent-soft: rgba(76, 201, 240, 0.14);
+
   /* ── Singularity / void ───────────────────────────────────────── */
   --eh-void: #050309;
   --eh-void-edge: rgba(0, 0, 0, 0.95);
