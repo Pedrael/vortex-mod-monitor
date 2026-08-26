@@ -22,6 +22,7 @@
  */
 
 import * as React from "react";
+import * as path from "path";
 
 import {
   Button,
@@ -69,6 +70,10 @@ import {
   sourceProblem,
 } from "./externalSource";
 import type { ExternalSourceKind } from "./externalSource";
+import {
+  configWithOverrides,
+  createOverridePersister,
+} from "./persistOverrides";
 import { ConcurrentOpBanner } from "../../runtime/ConcurrentOpBanner";
 import { nativeNotify } from "../../runtime/nativeNotify";
 import { getActiveGameId } from "../../../core/getModsListForProfile";
@@ -1021,6 +1026,32 @@ function Dot(props: { color: string }): JSX.Element {
 }
 
 function FormPanel(props: FormPanelProps): JSX.Element {
+  // Autosave. Everything below used to live only in the build session, which
+  // is module-scoped — it survived tab switches and a React remount, and was
+  // discarded by a Vortex restart. Fine for a version number; not fine for
+  // thirty-two download links researched one at a time.
+  const persister = React.useMemo(
+    () =>
+      createOverridePersister({
+        write: async (configPath, config) => {
+          const { saveCollectionConfig } = await import(
+            "../../../core/manifest/collectionConfig"
+          );
+          // Split back into the pair the public API takes, rather than
+          // reaching for the private writeConfigFile — this keeps the slug
+          // validation on the path, and the slug IS the filename.
+          await saveCollectionConfig({
+            configDir: path.dirname(configPath),
+            slug: path.basename(configPath, ".json"),
+            config,
+          });
+        },
+        setTimer: (fn, ms) => setTimeout(fn, ms),
+        clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
+      }),
+    [],
+  );
+
   const {
     state,
     title,
@@ -1047,19 +1078,40 @@ function FormPanel(props: FormPanelProps): JSX.Element {
     patch: ExternalDependencyConfigEntry,
   ): void => {
     const existing = ctx.collectionConfig.externalDependencies ?? {};
-    onChange({
-      ctx: {
-        ...ctx,
-        collectionConfig: {
-          ...ctx.collectionConfig,
-          externalDependencies: {
-            ...existing,
-            [id]: { ...existing[id], ...patch },
-          },
-        },
+    const nextConfig = {
+      ...ctx.collectionConfig,
+      externalDependencies: {
+        ...existing,
+        [id]: { ...existing[id], ...patch },
       },
+    };
+    onChange({ ctx: { ...ctx, collectionConfig: nextConfig } });
+    persistNow(overrides, nextConfig);
+  };
+
+  // One place that knows what "the config, as the form currently has it"
+  // means, so the two callers below cannot drift apart.
+  const persistNow = (
+    nextOverrides: typeof overrides,
+    nextConfig: typeof ctx.collectionConfig,
+  ): void => {
+    persister.save({
+      configPath: ctx.configPath,
+      config: configWithOverrides({
+        config: nextConfig,
+        overrides: nextOverrides,
+      }),
     });
   };
+
+  // Write out whatever is still pending when this page unmounts — navigating
+  // away is exactly when an 800ms debounce would otherwise lose the last edit.
+  React.useEffect(
+    () => () => {
+      void persister.flush();
+    },
+    [persister],
+  );
 
   const updateCurator = (patch: Partial<CuratorInput>): void =>
     onChange({ curator: { ...curator, ...patch } });
@@ -1067,13 +1119,14 @@ function FormPanel(props: FormPanelProps): JSX.Element {
   const updateOverride = (
     modId: string,
     patch: Partial<ExternalModConfigEntry>,
-  ): void =>
-    onChange({
-      overrides: {
-        ...overrides,
-        [modId]: { ...overrides[modId], ...patch },
-      },
-    });
+  ): void => {
+    const next = {
+      ...overrides,
+      [modId]: { ...overrides[modId], ...patch },
+    };
+    onChange({ overrides: next });
+    persistNow(next, ctx.collectionConfig);
+  };
 
   return (
     <div
