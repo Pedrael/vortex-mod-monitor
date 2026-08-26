@@ -262,11 +262,19 @@ fi
 
 # And the one that matters: the Windows 7z binary, run through Wine, on the
 # same path Vortex would hand it.
+# Finding a wine to run is most of the battle: umu and Proton ship their own
+# and do NOT put it on PATH, so looking only at PATH means this decisive test
+# silently skips on exactly the setups it exists for.
 WINE_BIN=""
 if [ -n "$EHCOLL" ]; then
 for w in "${WINE:-}" wine wine64 ; do
   [ -n "$w" ] && command -v "$w" >/dev/null 2>&1 && { WINE_BIN="$w"; break; }
 done
+if [ -z "$WINE_BIN" ]; then
+  for w in     "$HOME/.steam/steam/steamapps/common"/Proton*/files/bin/wine     "$HOME/.steam/steam/steamapps/common"/Proton*/dist/bin/wine     "$HOME/.local/share/Steam/steamapps/common"/Proton*/files/bin/wine     "$HOME/.local/share/Steam/steamapps/common"/Proton*/dist/bin/wine     "$HOME/.local/share/umu"/*/files/bin/wine     "$HOME/.local/share/lutris/runners/wine"/*/bin/wine ; do
+    [ -x "$w" ] && { WINE_BIN="$w"; say "   (using bundled wine: $w)"; break; }
+  done
+fi
 
 SEVENZIP_EXE="$(printf '%s\n' "$SEVENZIP_LIST" | grep -i -m1 '7za\?\.exe' | sed 's/^ *[0-9]* bytes  //')"
 
@@ -278,12 +286,37 @@ elif [ -z "$SEVENZIP_EXE" ]; then
   say "-- wine 7z: no 7z .exe located in section 4, nothing to run --"
 else
   say "-- wine 7z: $SEVENZIP_EXE --"
-  WIN_PATH="$EHCOLL"
+  # Handing a Windows 7z.exe a LINUX path makes it fail for a reason that has
+  # nothing to do with the archive -- and that failure is indistinguishable
+  # from the one we are hunting. Convert first; if conversion is impossible,
+  # report the test as inconclusive rather than as a failure we caused.
+  #
+  # winepath is the right tool, and Proton ships it beside wine rather than on
+  # PATH. Failing that, every wine prefix maps Z: to /, so prefixing Z: and
+  # flipping the slashes is a conversion that needs no tooling at all.
+  WIN_PATH=""
+  WINEPATH_BIN=""
   if command -v winepath >/dev/null 2>&1; then
-    WIN_PATH="$(WINEPREFIX="$VORTEX_PREFIX" winepath -w "$EHCOLL" 2>/dev/null || printf '%s' "$EHCOLL")"
+    WINEPATH_BIN=winepath
+  elif [ -x "$(dirname "$WINE_BIN")/winepath" ]; then
+    WINEPATH_BIN="$(dirname "$WINE_BIN")/winepath"
   fi
-  say "   windows path: $WIN_PATH"
-  if WINEPREFIX="$VORTEX_PREFIX" WINEDEBUG=-all \
+  if [ -n "$WINEPATH_BIN" ]; then
+    WIN_PATH="$(WINEPREFIX="$VORTEX_PREFIX" "$WINEPATH_BIN" -w "$EHCOLL" 2>/dev/null)"
+  fi
+  if [ -z "$WIN_PATH" ]; then
+    case "$EHCOLL" in
+      /*)
+        WIN_PATH="Z:$(printf '%s' "$EHCOLL" | tr '/' '\134')"
+        say "   (no winepath -- using the Z: mapping every wine prefix has)"
+        ;;
+    esac
+  fi
+  say "   windows path: ${WIN_PATH:-<could not convert>}"
+  if [ -z "$WIN_PATH" ]; then
+    say "   INCONCLUSIVE -- the path could not be expressed in Windows form,"
+    say "   so this test did not run. It proves nothing either way."
+  elif WINEPREFIX="$VORTEX_PREFIX" WINEDEBUG=-all \
      "$WINE_BIN" "$SEVENZIP_EXE" l "$WIN_PATH" >/dev/null 2>&1; then
     say "   reads OK   <<< 7z is FINE under Wine; the fault is above 7z"
   else
