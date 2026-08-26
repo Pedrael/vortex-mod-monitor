@@ -1436,13 +1436,51 @@ export interface ConfirmStepProps {
  * stage 1–2 GB, but a single high-poly mesh pack can blow past 4. */
 const DISK_SPACE_WARN_THRESHOLD = 5 * 1024 * 1024 * 1024;
 
+/**
+ * The one warning shape this step uses, defined once.
+ *
+ * Both banners here had the same eleven inline properties copied out, down to
+ * a hardcoded rgba(255, 177, 92, 0.08) that existed nowhere else in the app.
+ */
+function WarningPanel(props: {
+  children: React.ReactNode;
+  style?: React.CSSProperties;
+  role?: string;
+}): JSX.Element {
+  return (
+    <div
+      role={props.role}
+      style={{
+        display: "flex",
+        gap: "var(--eh-sp-2)",
+        alignItems: "flex-start",
+        padding: "var(--eh-sp-3) var(--eh-sp-4)",
+        background: "var(--eh-warning-soft)",
+        border: "1px solid var(--eh-warning)",
+        borderRadius: "var(--eh-radius-sm)",
+        color: "var(--eh-text-primary)",
+        fontSize: "var(--eh-text-sm)",
+        lineHeight: "var(--eh-leading-relaxed)",
+        ...props.style,
+      }}
+    >
+      <span aria-hidden="true">⚠</span>
+      <div className="eh-fill">{props.children}</div>
+    </div>
+  );
+}
+
 export function ConfirmStep(props: ConfirmStepProps): JSX.Element {
   const { state, onInstall, onBack } = props;
   const { bundle, decisions } = state;
   const target = bundle.plan.installTarget;
 
-  // Enter = trigger the primary install. Esc = back to decisions.
-  useKeyboardShortcut("Enter", onInstall);
+  // Esc = back to decisions. Enter is deliberately NOT bound here.
+  //
+  // Every other step in this wizard advances on Enter, so binding it to the
+  // install would make the last, irreversible action reachable by the same
+  // reflex that got the user through the reversible ones. The screen says
+  // "Last chance to review"; committing should take a click.
   useKeyboardShortcut("Escape", onBack);
 
   // Best-effort disk-space probe. We swallow probe errors and just
@@ -1484,6 +1522,12 @@ export function ConfirmStep(props: ConfirmStepProps): JSX.Element {
 
   const isFresh = target.kind === "fresh-profile";
 
+  const installCount =
+    bundle.plan.summary.willInstallSilently +
+    Object.values(decisions.conflictChoices ?? {}).filter(
+      (c) => c.kind === "replace-existing" || c.kind === "use-local-file",
+    ).length;
+
   return (
     <StepFrame
       current="confirm"
@@ -1503,13 +1547,7 @@ export function ConfirmStep(props: ConfirmStepProps): JSX.Element {
               : `Current profile: ${target.profileName}`}
           </li>
           <li>
-            <strong>Mods to install:</strong>{" "}
-            {bundle.plan.summary.willInstallSilently +
-              Object.values(decisions.conflictChoices ?? {}).filter(
-                (c) =>
-                  c.kind === "replace-existing" ||
-                  c.kind === "use-local-file",
-              ).length}
+            <strong>Mods to install:</strong> {installCount}
           </li>
           <li>
             <strong>Conflict decisions:</strong> {conflictCount}
@@ -1517,67 +1555,39 @@ export function ConfirmStep(props: ConfirmStepProps): JSX.Element {
           <li>
             <strong>Orphan decisions:</strong> {orphanCount}
           </li>
-          <li>
-            <strong>Mods that will be removed:</strong>{" "}
-            <span
-              style={{
-                color:
-                  removalCount > 0
-                    ? "var(--eh-warning)"
-                    : "var(--eh-text-secondary)",
-              }}
-            >
-              {removalCount}
-            </span>
-          </li>
         </ul>
 
-        {!isFresh && removalCount > 0 && (
-          <p
-            style={{
-              margin: "var(--eh-sp-4) 0 0 0",
-              padding: "var(--eh-sp-3)",
-              background: "rgba(255, 177, 92, 0.08)",
-              border: "1px solid var(--eh-warning)",
-              borderRadius: "var(--eh-radius-sm)",
-              color: "var(--eh-warning)",
-              fontSize: "var(--eh-text-sm)",
-            }}
-          >
-            ⚠ Destructive changes ahead — {removalCount} mod
-            {removalCount === 1 ? "" : "s"} will be uninstalled from your
-            current profile. This is what you asked for, but worth
-            double-checking.
+        {/* Removals used to be the fifth bullet in that list, sitting at the
+            same weight as "Conflict decisions: 3". It is the only line here
+            that describes something being destroyed, so it does not belong
+            in a list of counts. When there is nothing to remove, saying so
+            plainly is the reassurance this screen owes the reader. */}
+        {removalCount === 0 ? (
+          <p className="eh-note" style={{ margin: "var(--eh-sp-4) 0 0 0" }}>
+            Nothing will be uninstalled.
           </p>
+        ) : (
+          <WarningPanel style={{ margin: "var(--eh-sp-4) 0 0 0" }}>
+            <strong>
+              {removalCount} mod{removalCount === 1 ? "" : "s"} will be
+              uninstalled
+              {isFresh ? "" : " from your current profile"}.
+            </strong>{" "}
+            This is what you asked for on the previous screen, but it is the
+            part that cannot be undone by going back.
+          </WarningPanel>
         )}
       </Card>
 
       {diskFreeBytes !== undefined &&
         diskFreeBytes < DISK_SPACE_WARN_THRESHOLD && (
-          <div
-            role="alert"
-            style={{
-              marginTop: "var(--eh-sp-4)",
-              padding: "var(--eh-sp-3) var(--eh-sp-4)",
-              background: "rgba(255, 177, 92, 0.08)",
-              border: "1px solid var(--eh-warning)",
-              borderRadius: "var(--eh-radius-md)",
-              color: "var(--eh-text-primary)",
-              fontSize: "var(--eh-text-sm)",
-              display: "flex",
-              gap: "var(--eh-sp-2)",
-              alignItems: "flex-start",
-            }}
-          >
-            <span aria-hidden="true">⚠</span>
-            <div>
-              <strong>Low disk space on Vortex&apos;s data drive.</strong>{" "}
-              Only {formatBytes(diskFreeBytes)} free where mods get
-              staged. Large collections can easily download tens of
-              gigabytes — installs may fail mid-way if the disk fills.
-              Free up space before continuing if you&apos;re unsure.
-            </div>
-          </div>
+          <WarningPanel role="alert" style={{ marginTop: "var(--eh-sp-4)" }}>
+            <strong>Low disk space on Vortex&apos;s data drive.</strong>{" "}
+            Only {formatBytes(diskFreeBytes)} free where mods get staged.
+            Large collections can easily download tens of gigabytes —
+            installs may fail mid-way if the disk fills. Free up space
+            before continuing if you&apos;re unsure.
+          </WarningPanel>
         )}
 
       <div
@@ -1587,7 +1597,7 @@ export function ConfirmStep(props: ConfirmStepProps): JSX.Element {
           ← Back
         </Button>
         <Button intent="primary" onClick={onInstall}>
-          Install
+          Install {installCount} mod{installCount === 1 ? "" : "s"}
         </Button>
       </div>
     </StepFrame>

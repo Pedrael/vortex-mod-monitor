@@ -86,6 +86,8 @@ export const TOKENS_CSS = `
      the lensing cyan keeps one place to retune the accent. */
   --eh-accent: #4cc9f0;
   --eh-accent-soft: rgba(76, 201, 240, 0.14);
+  /* Tint behind a warning panel. Was hardcoded at two call sites. */
+  --eh-warning-soft: rgba(255, 177, 92, 0.08);
 
   /* ── Singularity / void ───────────────────────────────────────── */
   --eh-void: #050309;
