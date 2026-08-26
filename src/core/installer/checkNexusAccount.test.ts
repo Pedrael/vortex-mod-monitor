@@ -162,10 +162,13 @@ describe("describeNexusAccount", () => {
     expect(describeNexusAccount({ kind: "logged-out" }, 0)).toEqual([]);
   });
 
-  it("tells a free account why Vortex cannot fetch for them", () => {
+  it("states Premium as a requirement, and why it is one", () => {
     const said = describeNexusAccount({ kind: "free" }, 954).join(" ");
     expect(said).toMatch(/954 mods/);
-    expect(said).toMatch(/not Premium/);
+    expect(said).toMatch(/Premium is required/);
+    expect(said).toMatch(/does not have it/);
+    // The requirement is justified, not just asserted — a rule with a
+    // checkable reason survives being argued with.
     expect(said).toMatch(/direct download links/);
     expect(said).toMatch(/browser/);
   });
@@ -173,8 +176,8 @@ describe("describeNexusAccount", () => {
   it("escalates for a big collection but not a small one", () => {
     const many = describeNexusAccount({ kind: "free" }, 954).join(" ");
     const few = describeNexusAccount({ kind: "free" }, 3).join(" ");
-    expect(many).toMatch(/long sitting/);
-    expect(few).not.toMatch(/long sitting/);
+    expect(many).toMatch(/not a realistic way/);
+    expect(few).not.toMatch(/not a realistic way/);
     // And a single mod reads as one, not "1 mods".
     expect(describeNexusAccount({ kind: "free" }, 1).join(" ")).toMatch(
       /1 mod\b/,

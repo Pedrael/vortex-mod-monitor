@@ -343,6 +343,24 @@ export type InstallAborted = {
   /** Profile the driver had created at the time of abort, if any. */
   partialProfileId?: string;
   reason: string;
+  /**
+   * Mods that DID install before the abort. Same contract as
+   * {@link InstallFailed.installedSoFar}, and required for the same reason:
+   * the driver does not roll back, so stopping at mod 600 of 954 leaves 600
+   * real mods in a real profile.
+   *
+   * A user-initiated stop is the case that makes this load-bearing. A crash is
+   * rare and unplanned; cancelling is a thing people do deliberately, expect to
+   * understand, and expect to recover from — and "it stopped" without "and 600
+   * mods are installed, here" is not something you can act on.
+   *
+   * No receipt is written on abort, which is deliberate: a receipt claims the
+   * collection IS installed at that version, and a partial run has not earned
+   * that claim. The mods are still recoverable without one, because re-running
+   * matches them by Nexus ids and archive hash and reports them as already
+   * installed — so a cancelled install resumes rather than restarts.
+   */
+  installedSoFar: string[];
 };
 
 export type InstallFailed = {

@@ -105,6 +105,7 @@ import type {
   ConflictChoice,
   DriverContext,
   DriverPhase,
+  InstallAborted,
   InstallResult,
   InstalledModReportEntry,
   OrphanChoice,
@@ -187,6 +188,38 @@ const RECEIPT_WRITE_RETRY_DELAY_MS = 250;
  * Run the install. The driver is the only part of Event Horizon that
  * mutates Vortex state or the filesystem; everything else is pure.
  */
+/**
+ * Describe an abort, including what it left installed.
+ *
+ * Every abort has to carry `installedSoFar`, because the driver does not roll
+ * back: stopping at mod 600 of 954 leaves 600 real mods in a real profile, and
+ * a result that says only "stopped" is not something a user can act on. Making
+ * the field required found FIVE abort sites beyond the obvious one, which is
+ * why they all route through here — the next one cannot be written without it.
+ *
+ * The interrupted mod is never in the list. One call site fires from a catch
+ * while a mod is mid-install, so "after a completed unit of work" is not true
+ * of all six; what is true is that entries are appended only after an install
+ * succeeds, so a mod caught halfway is absent either way.
+ *
+ * Exported for its tests: inside {@link runInstall} it is a closure over two
+ * mutable locals, which is correct there and unreachable from outside.
+ */
+export function buildAbortedResult(args: {
+  phase: DriverPhase;
+  reason: string;
+  partialProfileId: string | undefined;
+  installedMods: readonly { vortexModId: string }[];
+}): InstallAborted {
+  return {
+    kind: "aborted",
+    phase: args.phase,
+    partialProfileId: args.partialProfileId,
+    reason: args.reason,
+    installedSoFar: args.installedMods.map((m) => m.vortexModId),
+  };
+}
+
 export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
   const { plan, api } = ctx;
   const installedMods: InstalledModReportEntry[] = [];
@@ -230,15 +263,25 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
     ctx.onProgress?.({ phase, currentStep, totalSteps, message });
   };
 
-  const checkAbort = (phase: DriverPhase): InstallResult | undefined => {
-    if (!ctx.abortSignal?.aborted) return undefined;
-    return {
-      kind: "aborted",
+  /**
+   * The one way this driver reports an abort. See {@link buildAbortedResult}.
+   *
+   * `installedMods` and `createdProfileId` are read at the moment of the abort
+   * rather than captured earlier — that is the entire point, and a closure is
+   * how these two mutable locals stay live at six different call sites.
+   */
+  const abortedResult = (phase: DriverPhase, reason: string): InstallAborted =>
+    buildAbortedResult({
       phase,
+      reason,
       partialProfileId: createdProfileId,
-      reason: "User aborted the install.",
-    };
-  };
+      installedMods,
+    });
+
+  const checkAbort = (phase: DriverPhase): InstallResult | undefined =>
+    ctx.abortSignal?.aborted
+      ? abortedResult(phase, "User aborted the install.")
+      : undefined;
 
   try {
     // ── 1. preflight ────────────────────────────────────────────────
@@ -314,12 +357,10 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
           // AbortError anyway (impossible by construction, but
           // belt-and-suspenders for future refactors), treat it as
           // a user-aborted switch.
-          return {
-            kind: "aborted",
-            phase: "switching-profile",
-            partialProfileId: createdProfileId,
-            reason: "Profile switch aborted before completion.",
-          };
+          return abortedResult(
+            "switching-profile",
+            "Profile switch aborted before completion.",
+          );
         }
         throw err;
       }
@@ -426,12 +467,10 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
           (err as Error)?.name === "AbortError" ||
           ctx.abortSignal?.aborted
         ) {
-          return {
-            kind: "aborted",
-            phase: "installing-mods",
-            partialProfileId: createdProfileId,
-            reason: `Install aborted while processing "${resolution.name}".`,
-          };
+          return abortedResult(
+            "installing-mods",
+            `Install aborted while processing "${resolution.name}".`,
+          );
         }
         const phase: DriverPhase = "installing-mods";
         return {
@@ -536,12 +575,10 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
             (err as Error)?.name === "AbortError" ||
             ctx.abortSignal?.aborted
           ) {
-            return {
-              kind: "aborted",
-              phase: "verifying-mods",
-              partialProfileId: createdProfileId,
-              reason: `Install aborted while verifying "${installEntry.name}".`,
-            };
+            return abortedResult(
+              "verifying-mods",
+              `Install aborted while verifying "${installEntry.name}".`,
+            );
           }
           // Non-fatal: record as a skip-with-error so the user can
           // see SOMETHING happened but the install carries on.
@@ -737,12 +774,10 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
           (err as Error)?.name === "AbortError" ||
           ctx.abortSignal?.aborted
         ) {
-          return {
-            kind: "aborted",
-            phase: "applying-mod-rules",
-            partialProfileId: createdProfileId,
-            reason: "Install aborted while applying mod rules.",
-          };
+          return abortedResult(
+              "applying-mod-rules",
+              "Install aborted while applying mod rules.",
+            );
         }
         // Mod-rule failures are non-fatal — they don't block install.
         // We log and continue; the receipt's skippedRules list will
@@ -822,12 +857,10 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
           (err as Error)?.name === "AbortError" ||
           ctx.abortSignal?.aborted
         ) {
-          return {
-            kind: "aborted",
-            phase: "applying-userlist",
-            partialProfileId: createdProfileId,
-            reason: "Install aborted while applying LOOT userlist.",
-          };
+          return abortedResult(
+              "applying-userlist",
+              "Install aborted while applying LOOT userlist.",
+            );
         }
         // Non-fatal — log and continue. Receipt's
         // skippedUserlistEntries surfaces the issue.
@@ -928,12 +961,10 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
           (err as Error)?.name === "AbortError" ||
           ctx.abortSignal?.aborted
         ) {
-          return {
-            kind: "aborted",
-            phase: "applying-load-order",
-            partialProfileId: createdProfileId,
-            reason: "Install aborted while applying load order.",
-          };
+          return abortedResult(
+              "applying-load-order",
+              "Install aborted while applying load order.",
+            );
         }
         // Non-fatal — log and continue to receipt.
         console.warn(

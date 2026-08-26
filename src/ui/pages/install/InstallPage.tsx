@@ -244,7 +244,13 @@ function InstallWizard(props: InstallPageProps): JSX.Element {
       );
 
     case "installing":
-      return <InstallingStep state={state} />;
+      return (
+        <InstallingStep
+          state={state}
+          onCancel={(): void => session.cancelInstall()}
+          cancelPending={session.isCancelPending()}
+        />
+      );
 
     case "done":
       return (

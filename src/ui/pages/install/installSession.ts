@@ -89,6 +89,8 @@ class InstallSession {
    * from a duplicate "Install" click on a remounted component.
    */
   private installInFlight = false;
+  /** Abort handle for the in-flight install; undefined when none is running. */
+  private installController: AbortController | undefined;
 
   getSnapshot(): InstallSessionSnapshot {
     return { state: this.state, errorSeq: this.errorSeq };
@@ -323,15 +325,27 @@ class InstallSession {
   // ── Phase: confirm → installing → done ───────────────────────────
 
   /**
-   * Kick off the install driver. Non-cancellable by design — the
-   * driver mutates Vortex state and aborting partway would leave a
-   * mess. We DO survive a remount: the component that comes back in
-   * just observes the live progress.
+   * Kick off the install driver.
+   *
+   * Cancellable, but only at the seams the driver chooses. Every `checkAbort`
+   * in runInstall sits after a unit of work completes — after a mod is
+   * installed AND enabled, after a phase ends — so a stop lands between mods
+   * and never inside one. That is what makes this safe to expose: the concern
+   * that kept it non-cancellable was a half-written mod, and the driver
+   * structurally cannot produce one.
+   *
+   * What a stop DOES leave is a partial install, which is why the aborted
+   * result carries `installedSoFar`. Nothing is rolled back.
+   *
+   * We also survive a remount: the component that comes back in just observes
+   * the live progress.
    */
   startInstall(api: types.IExtensionApi): void {
     if (this.state.kind !== "confirm") return;
     if (this.installInFlight) return;
     this.installInFlight = true;
+    const controller = new AbortController();
+    this.installController = controller;
     const startState = this.state;
 
     this.dispatch({ type: "start-install" });
@@ -345,6 +359,7 @@ class InstallSession {
           ehcollZipPath: startState.bundle.zipPath,
           appDataPath: startState.bundle.appDataPath,
           decisions: startState.decisions,
+          abortSignal: controller.signal,
           onProgress: (progress): void => {
             // Late progress events from a session that's already
             // moved on (e.g. user clicked "Start over" mid-install,
@@ -354,10 +369,12 @@ class InstallSession {
           },
         });
         this.installInFlight = false;
+        this.installController = undefined;
         if (this.state.kind !== "installing") return;
         this.dispatch({ type: "install-result", result });
       } catch (err) {
         this.installInFlight = false;
+        this.installController = undefined;
         this.failWith(err, {
           title: "Install driver crashed",
           context: {
@@ -367,6 +384,35 @@ class InstallSession {
         });
       }
     })();
+  }
+
+  /**
+   * Ask the running install to stop.
+   *
+   * Takes effect at the driver's next checkpoint, which is after the mod
+   * currently being installed finishes — so this is a request, not an
+   * interruption, and the UI says as much rather than implying the click
+   * stops something mid-flight.
+   *
+   * Idempotent, and a no-op when nothing is running: a second click on a
+   * signal that is already aborted changes nothing, and the driver reaches its
+   * checkpoint when it reaches it.
+   */
+  cancelInstall(): void {
+    const controller = this.installController;
+    if (controller === undefined || controller.signal.aborted) return;
+    controller.abort();
+    // Aborting changes no wizard state, so nothing would re-render and the
+    // click would look like it did nothing — for as long as the current mod
+    // takes to finish, which is exactly when the user needs to see that it
+    // registered. `isCancelPending` reads the controller rather than a copy
+    // in state, so it also survives a remount.
+    this.notify();
+  }
+
+  /** True while a stop has been requested but the driver has not yet stopped. */
+  isCancelPending(): boolean {
+    return this.installController?.signal.aborted ?? false;
   }
 
   // ── Phase: any → reset ───────────────────────────────────────────

@@ -39,7 +39,10 @@ import { ehLog } from "../logging/ehLog";
 export type NexusAccount =
   /** Premium: the API issues direct download links. Everything works. */
   | { kind: "premium" }
-  /** Logged in, not Premium: downloads need a manual click per mod. */
+  /**
+   * Logged in, not Premium. Downloads need a manual click per mod, which is
+   * why Premium is a stated requirement rather than a recommendation.
+   */
   | { kind: "free" }
   /** No Nexus login at all: `nexusDownload` has nothing to authenticate with. */
   | { kind: "logged-out" }
@@ -169,13 +172,18 @@ function nexusSlice(state: unknown): unknown {
 }
 
 /**
- * What to tell the user, sized to what it will actually cost them.
+ * What to tell the user.
  *
- * A free account facing three downloads is a footnote; the same account facing
- * six hundred is the difference between an evening and a weekend, and the
- * message says which one this is. Nothing is said at all when there is nothing
- * to download — an account warning on a collection that needs no network is
- * noise, and Premium is not required to install from archives already on disk.
+ * Premium is a stated REQUIREMENT of this extension, so the message says that
+ * rather than describing the tedium and leaving them to infer it. But it is
+ * still phrased as what will happen, not as a rule for its own sake: "Vortex
+ * cannot fetch these on its own" is checkable and true, where "you must have
+ * Premium" invites the reply "or what?".
+ *
+ * Nothing is said when there is nothing to download. Premium is not needed to
+ * install archives already on disk, and a requirement notice on a collection
+ * that needs no network would be a rule quoted at someone it does not apply
+ * to — which is how a screen loses the reader before the warnings that matter.
  */
 export function describeNexusAccount(
   account: NexusAccount,
@@ -195,16 +203,15 @@ export function describeNexusAccount(
   }
 
   const lines = [
-    `This collection needs to download ${mods} from Nexus Mods, and your ` +
-      `account is not Premium. Nexus only gives mod managers direct download ` +
-      `links to Premium accounts, so Vortex cannot fetch these on its own — ` +
+    `Nexus Premium is required to install this collection, and this account ` +
+      `does not have it. Nexus only gives mod managers direct download links ` +
+      `to Premium accounts, so Vortex cannot fetch the ${mods} this needs — ` +
       `each one opens in your browser for you to start by hand.`,
   ];
   if (downloadCount >= LOT) {
     lines.push(
-      `At ${downloadCount} downloads that is a long sitting. Installing will ` +
-        `work, but plan for it, or upgrade to Premium first and let it run ` +
-        `unattended.`,
+      `At ${downloadCount} downloads, doing that by hand is not a realistic ` +
+        `way to install this. Upgrade to Premium and it runs unattended.`,
     );
   }
   return lines;

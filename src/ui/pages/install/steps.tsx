@@ -1681,8 +1681,19 @@ const PHASE_LABELS: Record<DriverProgress["phase"], string> = {
 
 export function InstallingStep(props: {
   state: Extract<WizardState, { kind: "installing" }>;
+  /** Ask the driver to stop at its next checkpoint. */
+  onCancel: () => void;
+  /** A stop has been asked for and the driver has not reached a checkpoint. */
+  cancelPending: boolean;
 }): JSX.Element {
   const { progress, bundle } = props.state;
+
+  // Stopping a run that has been going for two hours should not be one
+  // stray click away, so the button asks first. It is not a destructive
+  // confirm though — nothing is removed, and the copy says so, because a
+  // scary dialog here would push people toward killing Vortex instead,
+  // which is the genuinely unsafe option.
+  const [confirmingStop, setConfirmingStop] = React.useState(false);
 
   // This screen is up for HOURS on a real collection, and the driver goes
   // quiet for minutes at a time during a large download. A clock that only
@@ -1790,6 +1801,35 @@ export function InstallingStep(props: {
           {quiet}
         </p>
       )}
+
+      {/* The stop control lives below the progress, away from the eye, and
+          never becomes a primary action — the expected thing to do on this
+          screen is wait. */}
+      <div className="eh-actions" style={{ marginTop: "var(--eh-sp-4)" }}>
+        {props.cancelPending ? (
+          <span className="eh-note" role="status">
+            Stopping after the current mod finishes...
+          </span>
+        ) : confirmingStop ? (
+          <>
+            <span className="eh-note eh-fill">
+              Stop after the current mod finishes? Mods already installed stay
+              where they are — nothing is undone, and running this collection
+              again picks up from where it stopped.
+            </span>
+            <Button intent="ghost" onClick={(): void => setConfirmingStop(false)}>
+              Keep going
+            </Button>
+            <Button intent="danger" onClick={props.onCancel}>
+              Stop install
+            </Button>
+          </>
+        ) : (
+          <Button intent="ghost" onClick={(): void => setConfirmingStop(true)}>
+            Stop install
+          </Button>
+        )}
+      </div>
     </StepFrame>
   );
 }
@@ -1834,14 +1874,16 @@ export function DoneStep(props: DoneStepProps): JSX.Element {
       />
     );
   } else if (result.kind === "aborted") {
-    badge = <Pill intent="warning">Aborted</Pill>;
-    headline = "Install aborted";
+    badge = <Pill intent="warning">Stopped</Pill>;
+    headline = "Install stopped";
     accent = "var(--eh-warning)";
     body = (
       <FailureBody
         phase={result.phase}
         partialProfileId={result.partialProfileId}
         message={result.reason}
+        installedSoFar={result.installedSoFar.length}
+        stopped
       />
     );
   } else {
@@ -2440,6 +2482,12 @@ function FailureBody(props: {
   message: string;
   partialProfileId?: string;
   installedSoFar?: number;
+  /**
+   * This was a deliberate stop, not a failure. Same facts, different verb —
+   * telling someone their install "failed" when they stopped it themselves
+   * reads as a bug and sends them looking for one.
+   */
+  stopped?: boolean;
 }): JSX.Element {
   return (
     <div className="eh-stack">
@@ -2454,7 +2502,9 @@ function FailureBody(props: {
           fields rather than a stack of bold-prefixed sentences. */}
       <div className="eh-stack eh-stack--xs">
         <div className="eh-field">
-          <span className="eh-field__label">Failed during</span>
+          <span className="eh-field__label">
+            {props.stopped === true ? "Stopped during" : "Failed during"}
+          </span>
           <span className="eh-fill">{props.phase}</span>
         </div>
         {props.installedSoFar !== undefined && (
@@ -2480,6 +2530,21 @@ function FailureBody(props: {
           before, or stay on this one and inspect what was installed.
         </p>
       )}
+
+      {/* Only for a stop, and only when something landed: after a crash
+          "just run it again" is advice we have not earned, but after a
+          deliberate stop it is the actual next step, and the reason it works
+          is worth stating — the mods are matched by their Nexus ids and
+          archive hashes, so they are recognised rather than re-downloaded. */}
+      {props.stopped === true &&
+        props.installedSoFar !== undefined &&
+        props.installedSoFar > 0 && (
+          <p className="eh-note">
+            Installing this collection again will pick up where it stopped —
+            the {props.installedSoFar} mods already installed are recognised by
+            their archive hashes and will not be downloaded twice.
+          </p>
+        )}
     </div>
   );
 }
