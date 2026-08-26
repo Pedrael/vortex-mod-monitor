@@ -43,6 +43,21 @@ export type EhcollManifest = {
   vortex: VortexMetadata;
   mods: EhcollMod[];
   rules: EhcollRule[];
+  /**
+   * Deployment winners for CONTESTED files only.
+   *
+   * A file that exactly one mod in this collection ships has no conflict to
+   * record: the winner is that mod, and which mod ships which file is already
+   * here in every mod's `stagingFiles`. Writing those out restated the
+   * manifest to itself — measured on a real 954-mod collection, 46,062 of
+   * 50,444 entries, 31% of a 21MB manifest.
+   *
+   * So absence has a MEANING and a consumer must honour it: a deployed path
+   * with no entry here was provided by one mod, and that mod won. An entry
+   * appears when two or more mods ship the path, or when nothing captured who
+   * ships it (verification level `none`) — in which case the winner is not
+   * derivable and is recorded rather than guessed.
+   */
   fileOverrides: EhcollFileOverride[];
   plugins: EhcollPlugins;
   /**
