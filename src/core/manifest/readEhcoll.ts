@@ -48,12 +48,10 @@ import * as path from "path";
 import type { EhcollManifest } from "../../types/ehcoll";
 import { parseManifest, ParseManifestError } from "./parseManifest";
 import {
-  resolveSevenZip,
-  sevenZipExtractFull,
-  sevenZipList,
-  type SevenZipApi,
-  type SevenZipListEntry,
-} from "./sevenZip";
+  extractZipEntryToFile,
+  listZipEntries as readZipCentralDirectory,
+} from "./readZip";
+import type { SevenZipApi, SevenZipListEntry } from "./sevenZip";
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -166,10 +164,8 @@ export async function readEhcoll(
 
   await assertReadableFile(zipPath);
 
-  const sevenZip = options.sevenZip ?? resolveSevenZip();
-
-  // Phase 1 — central-directory listing.
-  const entries = await listZipEntries(zipPath, sevenZip);
+  // Phase 1 — central-directory listing. No 7z: see listZipEntries.
+  const entries = await listZipEntries(zipPath);
 
   const layout = classifyEntries(entries);
 
@@ -188,7 +184,7 @@ export async function readEhcoll(
   let parseWarnings: string[];
 
   try {
-    await extractManifest(zipPath, stagingDir, sevenZip);
+    await extractManifest(zipPath, stagingDir);
 
     const manifestPath = path.join(stagingDir, "manifest.json");
     const raw = await fsp.readFile(manifestPath, "utf8");
@@ -261,49 +257,54 @@ async function assertReadableFile(zipPath: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// 7z list — central directory enumeration
+// Central directory enumeration — read directly, no subprocess
 // ---------------------------------------------------------------------------
 
+/**
+ * Every entry in the package, read by parsing the ZIP ourselves.
+ *
+ * This used to shell out to Vortex's bundled 7z. That is a Windows executable
+ * spawned as a child process, and under Wine/Proton it is the most fragile
+ * step in the whole install — it failed for an alpha tester on a file proven
+ * byte-identical to the curator's, which both `unzip` and a native 7z read
+ * without complaint. node-7z could not even say why: `list` resolves with an
+ * empty spec and discards `{code, errors}`, so "7z never started" and "the
+ * archive is corrupt" arrived here indistinguishable.
+ *
+ * A `.ehcoll` is a plain ZIP, so none of that was ever necessary. See readZip.
+ *
+ * The result is still shaped as a {@link SevenZipListEntry} deliberately —
+ * `classifyEntries` and everything downstream of it keep working unchanged,
+ * which keeps this swap to one function instead of the six symbols that
+ * depend on it.
+ */
 async function listZipEntries(
   zipPath: string,
-  sevenZip: SevenZipApi,
 ): Promise<SevenZipListEntry[]> {
   try {
-    return await sevenZipList(sevenZip, zipPath);
+    const entries = await readZipCentralDirectory(zipPath);
+    return entries.map((entry) => ({
+      name: entry.name,
+      size: entry.uncompressedSize,
+      attr: entry.isDirectory ? "D" : "A",
+      crc: entry.crc32,
+    }));
   } catch (err) {
-    // 7z says "missing, corrupt, password-protected, or not an archive" —
-    // four different problems with four different fixes and no way to tell
-    // which. Everything needed to separate them is in the file's first and
-    // last bytes, and the person who hit this is usually not the person who
-    // can look. See diagnoseArchive.
+    // The reader explains itself for anything that IS a zip — truncated, an
+    // entry that failed its checksum, an index pointing off the end. What it
+    // cannot do is recognise a file that was never a zip at all, and "no
+    // end-of-central-directory" is a poor way to say "this is an HTML error
+    // page" or "this is a RAR". diagnoseArchive names those.
     const { diagnoseArchive, describeArchiveDiagnosis } = await import(
       "./diagnoseArchive"
     );
     const diagnosis = await diagnoseArchive(zipPath);
 
-    // If the file looks structurally complete, the failure is more likely to
-    // be 7z than the file — and node-7z's empty spec cannot tell us which. So
-    // ask 7z to do something that must succeed. Only in that case: when the
-    // file is visibly truncated or is not a ZIP, the answer is already known
-    // and a self-test would be noise.
-    const extra: string[] = [];
-    if (diagnosis.kind === "looks-like-a-zip") {
-      const { sevenZipSelfTest } = await import("./sevenZip");
-      const health = await sevenZipSelfTest(sevenZip);
-      if (!health.ok) {
-        extra.push(
-          `7z is not working on this system, so this is probably not your ` +
-            `file: ${health.why}`,
-        );
-      }
-    }
-
-    throw new ReadEhcollError([
-      ...(extra.length > 0
-        ? extra
-        : describeArchiveDiagnosis(diagnosis, zipPath)),
-      `(7z reported: ${(err as Error).message})`,
-    ]);
+    throw new ReadEhcollError(
+      diagnosis.kind === "looks-like-a-zip"
+        ? [(err as Error).message]
+        : describeArchiveDiagnosis(diagnosis, zipPath),
+    );
   }
 }
 
@@ -518,21 +519,32 @@ function crossCheckBundled(
 // 7z extract — surgical manifest.json pull
 // ---------------------------------------------------------------------------
 
+/**
+ * Pull manifest.json out of the package.
+ *
+ * Also no longer a 7z call. The old one asked 7z to extract a single entry by
+ * passing it as a trailing positional filter, which worked but carried the
+ * whole subprocess failure mode for one small file.
+ *
+ * The read is verified: readZip checks the entry's CRC-32 against what the
+ * archive recorded. That matters more here than anywhere else — a manifest
+ * that decompressed to plausible-looking but wrong bytes would be trusted by
+ * every stage after this one, and a collection is a reproduction contract.
+ */
 async function extractManifest(
   zipPath: string,
   stagingDir: string,
-  sevenZip: SevenZipApi,
 ): Promise<void> {
   try {
-    // `extractFull` (7z `x`), never `extract` (7z `e`) — the latter flattens
-    // the tree. `raw` carries the entry name as a trailing positional filter,
-    // which is how this node-7z cherry-picks.
-    await sevenZipExtractFull(sevenZip, zipPath, stagingDir, {
-      raw: ["manifest.json"],
-    });
+    await extractZipEntryToFile(
+      zipPath,
+      "manifest.json",
+      path.join(stagingDir, "manifest.json"),
+    );
   } catch (err) {
     throw new ReadEhcollError([
-      `7z failed to extract manifest.json from "${zipPath}": ${(err as Error).message}`,
+      `Could not read manifest.json from "${zipPath}": ` +
+        `${(err as Error).message}`,
     ]);
   }
 }
