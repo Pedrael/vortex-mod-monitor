@@ -67,6 +67,23 @@ export function makeFakeVortex(args: {
    * writes nothing, which is the old behaviour.
    */
   installProduces?: (archiveId: string) => Record<string, string> | undefined;
+  /**
+   * The discovered game directory, so `getGameDirectory` resolves.
+   *
+   * Without it the driver cannot find the Data folder and the ESL-flag pass
+   * has nothing to read — it would report "could not locate" and every
+   * assertion about flags would hold vacuously.
+   */
+  gamePath?: string;
+  /**
+   * How the LOOT sort behaves: call back cleanly (default), report a cycle, or
+   * never answer.
+   *
+   * It MUST answer by default. The real extension always calls back, and a
+   * double that stays silent makes every install wait out applyPluginOrder's
+   * ten-minute sort timeout.
+   */
+  sortBehaviour?: "ok" | { error: string } | "never";
 }): FakeVortex {
   const events = new EventEmitter();
   const emits: RecordedEmit[] = [];
@@ -79,7 +96,14 @@ export function makeFakeVortex(args: {
   const state: Record<string, unknown> = {
     settings: {
       profiles: { activeProfileId: "profile-1", activeGameId: args.gameId },
+      ...(args.gamePath !== undefined
+        ? { gameMode: { discovered: { [args.gameId]: { path: args.gamePath } } } }
+        : {}),
     },
+    // The driver reads session.base to tell "Vortex is asking the user
+    // something" from "Vortex is hung". Absent would read as no dialog, which
+    // is what we want by default — but it has to exist for the shape to match.
+    session: { base: { visibleDialog: "", overlayOpen: false } },
     persistent: {
       profiles: { "profile-1": { gameId: args.gameId, modState: {} } },
       mods: { [args.gameId]: {} },
@@ -149,6 +173,19 @@ export function makeFakeVortex(args: {
       complete(rest[0] as string, rest[2] ?? rest[1]);
     } else if (event === "start-install") {
       complete(`from-path:${String(rest[0])}`, rest[1]);
+    } else if (event === "autosort-plugins") {
+      // (force, callback). The real extension always calls back — a double
+      // that stays silent would make every install sit out applyPluginOrder's
+      // ten-minute sort timeout, turning a wiring bug into a slow test.
+      const behaviour = args.sortBehaviour ?? "ok";
+      const cb = rest[1];
+      if (typeof cb === "function" && behaviour !== "never") {
+        setTimeout(() => {
+          (cb as (e: Error | null) => void)(
+            behaviour === "ok" ? null : new Error(behaviour.error),
+          );
+        }, 0);
+      }
     } else if (event === "deploy-mods") {
       // Vortex deploys asynchronously and reports through `did-deploy`; the
       // callback is only for failures. A double that acknowledged neither

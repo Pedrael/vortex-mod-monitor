@@ -19,6 +19,9 @@
  * bytes is a corrupted one; omitting a file is Vortex's lost-file bug.
  */
 
+import * as fs from "fs";
+import * as nodePath from "path";
+
 import { afterEach, describe, expect, it } from "vitest";
 
 import { runInstall } from "../../src/core/installer/runInstall";
@@ -141,6 +144,230 @@ async function install(
   );
   return Promise.race([running, stalled]);
 }
+
+/**
+ * The ESL / "light" flag, curator's disk → package → user's disk.
+ *
+ * The collection this was built for fits 817 plugins under a 254 limit only
+ * because 579 are light. The flag lives INSIDE the plugin file, so the archive
+ * a user installs from does not carry a flag the curator added afterwards —
+ * and nothing else in the pipeline can rescue it: verification sees different
+ * bytes, the archive check finds the user's copy matches the archive exactly,
+ * and it is accepted as curator divergence. Correct for every other
+ * difference; fatal for this one.
+ *
+ * These drive the REAL header reader and writer against real files, because
+ * the whole feature is four bytes at offset 8 and a fixture that only模 the
+ * shape would prove nothing about them.
+ */
+describe("the curator's ESL flags reach the user", () => {
+  const TES4 = (flags: number): Buffer => {
+    const buf = Buffer.alloc(24);
+    buf.write("TES4", 0, "latin1");
+    buf.writeUInt32LE(12, 4);
+    buf.writeUInt32LE(flags, 8);
+    return buf;
+  };
+  const FLAG_LIGHT = 0x200;
+
+  /** A game folder with a Data dir holding the given plugins. */
+  const makeGameDir = (
+    root: string,
+    plugins: Record<string, number>,
+  ): string => {
+    const gameDir = nodePath.join(root, "game");
+    const data = nodePath.join(gameDir, "Data");
+    fs.mkdirSync(data, { recursive: true });
+    for (const [name, flags] of Object.entries(plugins)) {
+      fs.writeFileSync(nodePath.join(data, name), TES4(flags));
+    }
+    return gameDir;
+  };
+
+  it("captures a light flag from the curator's deployed plugin", async () => {
+    // The build half, against a real file rather than a mocked reader.
+    const { capturePluginFlags } = await import(
+      "../../src/core/manifest/capturePluginFlags"
+    );
+    world = makeWorld({ mods: [MOD] });
+    const gameDir = makeGameDir(world.root, {
+      "Light.esp": FLAG_LIGHT,
+      "Regular.esp": 0,
+    });
+
+    const captured = await capturePluginFlags({
+      pluginNames: ["Light.esp", "Regular.esp", "NotThere.esp"],
+      dataDir: nodePath.join(gameDir, "Data"),
+    });
+
+    expect(captured.light).toEqual({ "light.esp": true, "regular.esp": false });
+    expect(captured.lightCount).toBe(1);
+    // Absent, not false — the installer must leave an unreadable plugin alone
+    // rather than clear a flag the user legitimately has.
+    expect(captured.light["notthere.esp"]).toBeUndefined();
+    expect(captured.unreadable).toEqual(["NotThere.esp"]);
+  });
+
+  it("restores the flag on the user's unflagged copy, through the real driver", async () => {
+    // The whole mosaic piece: the curator marked it light, the archive did
+    // not carry that, and the user's copy comes out of the install without it.
+    world = makeWorld({ mods: [MOD] });
+    const gameDir = makeGameDir(world.root, {
+      "Light.esp": 0, // the USER's copy — flag missing, as the archive gave it
+      "Regular.esp": 0,
+    });
+    const dataDir = nodePath.join(gameDir, "Data");
+
+    const manifest = await packageFrom(world);
+    // What the build would have recorded from the curator's machine.
+    (manifest.plugins as { order: unknown[] }).order = [
+      { name: "Light.esp", enabled: true, light: true },
+      { name: "Regular.esp", enabled: true, light: false },
+    ];
+
+    const fake = makeFakeVortex({
+      gameId: world.gameId,
+      stagingRoot: world.stagingRoot,
+      gamePath: gameDir,
+      installProduces: (id) => (id === ARCHIVE_ID ? MOD.files : undefined),
+    });
+
+    const result = (await install(manifest, fake)) as {
+      kind: string;
+      pluginFlagNotice?: string[];
+    };
+    expect(result.kind, why(result)).toBe("success");
+
+    // The four bytes that decide whether this collection can load.
+    expect(fs.readFileSync(nodePath.join(dataDir, "Light.esp")).readUInt32LE(8) & FLAG_LIGHT)
+      .toBe(FLAG_LIGHT);
+    // …and the one the curator left regular is untouched.
+    expect(fs.readFileSync(nodePath.join(dataDir, "Regular.esp")).readUInt32LE(8) & FLAG_LIGHT)
+      .toBe(0);
+
+    expect((result.pluginFlagNotice ?? []).join(" ")).toMatch(/1 plugin/);
+  });
+
+  it("says nothing when every flag already matches", async () => {
+    // The common case — the mod author shipped it light. Announcing "restored
+    // 0 flags" on every install is how a notice teaches people to ignore it.
+    world = makeWorld({ mods: [MOD] });
+    const gameDir = makeGameDir(world.root, { "Light.esp": FLAG_LIGHT });
+
+    const manifest = await packageFrom(world);
+    (manifest.plugins as { order: unknown[] }).order = [
+      { name: "Light.esp", enabled: true, light: true },
+    ];
+
+    const fake = makeFakeVortex({
+      gameId: world.gameId,
+      stagingRoot: world.stagingRoot,
+      gamePath: gameDir,
+      installProduces: (id) => (id === ARCHIVE_ID ? MOD.files : undefined),
+    });
+
+    const result = (await install(manifest, fake)) as {
+      kind: string;
+      pluginFlagNotice?: string[];
+    };
+    expect(result.kind, why(result)).toBe("success");
+    expect(result.pluginFlagNotice).toBeUndefined();
+  });
+
+  it("leaves a plugin alone when the package records no flag for it", async () => {
+    // An older .ehcoll, or a header the build could not read. Absent means
+    // UNKNOWN; clearing the user's flag on that basis is how you break a game
+    // with a package that predates the feature.
+    world = makeWorld({ mods: [MOD] });
+    const gameDir = makeGameDir(world.root, { "Light.esp": FLAG_LIGHT });
+    const dataDir = nodePath.join(gameDir, "Data");
+
+    const manifest = await packageFrom(world);
+    (manifest.plugins as { order: unknown[] }).order = [
+      { name: "Light.esp", enabled: true }, // no `light` key at all
+    ];
+
+    const fake = makeFakeVortex({
+      gameId: world.gameId,
+      stagingRoot: world.stagingRoot,
+      gamePath: gameDir,
+      installProduces: (id) => (id === ARCHIVE_ID ? MOD.files : undefined),
+    });
+    await install(manifest, fake);
+
+    expect(fs.readFileSync(nodePath.join(dataDir, "Light.esp")).readUInt32LE(8) & FLAG_LIGHT)
+      .toBe(FLAG_LIGHT);
+  });
+});
+
+describe("the curator's plugin order is pinned, then sorted", () => {
+  it("emits pin → sort → write through the real driver", async () => {
+    // Unit tests cover the module; this proves runInstall actually calls it,
+    // after deploying, with the manifest's order.
+    world = makeWorld({ mods: [MOD] });
+    const manifest = await packageFrom(world);
+    (manifest.plugins as { order: unknown[] }).order = [
+      { name: "A.esp", enabled: true },
+      { name: "B.esp", enabled: true },
+    ];
+
+    const fake = makeFakeVortex({
+      gameId: world.gameId,
+      stagingRoot: world.stagingRoot,
+      installProduces: (id) => (id === ARCHIVE_ID ? MOD.files : undefined),
+    });
+
+    const result = (await install(manifest, fake)) as { kind: string };
+    expect(result.kind, why(result)).toBe("success");
+
+    const seq = fake.emits.map((e) => e.event);
+    const pin = seq.indexOf("set-plugin-list");
+    const sort = seq.indexOf("autosort-plugins");
+    const write = seq.indexOf("collection-postprocess-complete");
+    expect(pin).toBeGreaterThan(-1);
+    expect(pin).toBeLessThan(sort);
+    expect(sort).toBeLessThan(write);
+
+    // The curator's names, and setEnabled FALSE — true would disable every
+    // plugin the user added themselves.
+    const pinArgs = fake.emits.find((e) => e.event === "set-plugin-list")!.args;
+    expect(pinArgs[0]).toEqual(["A.esp", "B.esp"]);
+    expect(pinArgs[1]).toBe(false);
+
+    // Deployed BEFORE the order was set: Vortex only knows a plugin exists
+    // once its mod is on disk.
+    expect(seq.indexOf("deploy-mods")).toBeLessThan(pin);
+  });
+
+  it("still writes the order when LOOT refuses to sort", async () => {
+    // A rule cycle is the expected failure, and the reason pinning comes
+    // first: the curator's order is already in the hive and still reaches disk.
+    world = makeWorld({ mods: [MOD] });
+    const manifest = await packageFrom(world);
+    (manifest.plugins as { order: unknown[] }).order = [
+      { name: "A.esp", enabled: true },
+    ];
+
+    const fake = makeFakeVortex({
+      gameId: world.gameId,
+      stagingRoot: world.stagingRoot,
+      sortBehaviour: { error: "Cyclic interaction detected" },
+      installProduces: (id) => (id === ARCHIVE_ID ? MOD.files : undefined),
+    });
+
+    const result = (await install(manifest, fake)) as {
+      kind: string;
+      pluginOrderNotApplied?: string[];
+    };
+    expect(result.kind, why(result)).toBe("success");
+    expect(
+      fake.emits.some((e) => e.event === "collection-postprocess-complete"),
+    ).toBe(true);
+    expect((result.pluginOrderNotApplied ?? []).join(" ")).toMatch(
+      /load after the collection/i,
+    );
+  });
+});
 
 describe("the collection's rules are the ONLY rules", () => {
   it("clears the user's own mod rules and LOOT list, through the real driver", async () => {
