@@ -51,6 +51,20 @@ export type CuratorReportInput = {
   attempts: string[];
   /** Why the archive could not settle it, when it could not. */
   archiveNote?: string;
+  /**
+   * Whether the mod's own archive was actually read.
+   *
+   * The report used to state "and they do not match its archive either"
+   * unconditionally, which is a claim about a check that does not always
+   * happen — the archive can be gone, unreadable, or on a machine where 7z
+   * will not run. Asserting it anyway sends a curator to investigate a
+   * comparison nobody made, in a document whose whole worth is that a stranger
+   * can trust it.
+   *
+   * Defaults to false: an omitted flag must not be able to manufacture the
+   * stronger claim.
+   */
+  archiveChecked?: boolean;
 
   /** Host description — "win32 (Wine/Proton)" is load-bearing information. */
   platform?: string;
@@ -96,8 +110,17 @@ export function buildCuratorReport(input: CuratorReportInput): string {
 
   lines.push(`What happened`);
   lines.push(
-    `After installing, this mod's files did not match what the collection ` +
-      `recorded, and they do not match its archive either.`,
+    input.archiveChecked === true
+      ? `After installing, this mod's files did not match what the collection ` +
+          `recorded, and they do not match its archive either.`
+      : // The weaker sentence, because it is the one we can stand behind. The
+        // archive line under "What was already tried" says why it could not be
+        // read; claiming the comparison happened would make this report worth
+        // less than nothing to the person acting on it.
+        `After installing, this mod's files did not match what the collection ` +
+          `recorded. It was not possible to compare them against the mod's own ` +
+          `archive on this machine (see below), so that check is missing rather ` +
+          `than failed.`,
   );
   lines.push(``);
 

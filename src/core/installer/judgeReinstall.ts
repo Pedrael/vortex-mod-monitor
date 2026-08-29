@@ -40,8 +40,17 @@ import {
 } from "../manifest/verifyAgainstArchive";
 
 export type ReinstallJudgement =
-  /** Reinstalling could genuinely change the result. */
-  | { kind: "reinstall"; why: string }
+  /**
+   * Reinstalling could genuinely change the result.
+   *
+   * `archiveConsulted` says whether that verdict came from actually reading
+   * the archive. It often does not: missing files are decided before the
+   * archive is opened at all. The curator's report states "and they do not
+   * match its archive either", and that sentence is only true when this is
+   * true — a report claiming a comparison nobody made is worth less than no
+   * report.
+   */
+  | { kind: "reinstall"; why: string; archiveConsulted: boolean }
   /**
    * The user's files are what the archive contains; the curator's copy is the
    * one that moved. A reinstall would reproduce exactly what is on disk.
@@ -85,11 +94,18 @@ export async function judgeReinstall(
     return {
       kind: "reinstall",
       why: `${input.missingFiles.length} file(s) the curator recorded are absent`,
+      // Decided before the archive is opened — presence is not a content
+      // question, so there is nothing here the archive could add.
+      archiveConsulted: false,
     };
   }
 
   if (input.differingPaths.length === 0) {
-    return { kind: "reinstall", why: "verification failed with no file detail" };
+    return {
+      kind: "reinstall",
+      why: "verification failed with no file detail",
+      archiveConsulted: false,
+    };
   }
 
   if (input.archivePath === undefined) {
@@ -145,6 +161,9 @@ export async function judgeReinstall(
       return {
         kind: "reinstall",
         why: `"${rel}" could not be read back for comparison`,
+        // The archive listing succeeded above; what failed was re-reading the
+        // staged file, so the comparison genuinely was attempted.
+        archiveConsulted: true,
       };
     }
   }
@@ -170,5 +189,8 @@ export async function judgeReinstall(
     why:
       `${result.unexplained + result.sizeOnly} of ${refs.length} differing ` +
       `file(s) are not accounted for by the archive`,
+    // The one verdict that earns the report's "and they do not match its
+    // archive either".
+    archiveConsulted: true,
   };
 }

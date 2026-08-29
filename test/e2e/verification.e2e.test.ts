@@ -249,7 +249,14 @@ describe("the archive is consulted before a reinstall is spent", () => {
       "../../src/core/manifest/storedZip.testutil"
     );
     const pathm = await import("path");
+    const fsm = await import("fs");
     writeStoredZip(pathm.join(w.downloadRoot, "mod.zip"), entries);
+    // The .ehcoll the driver was launched from. It exists during a real
+    // install, and the curator report hashes it to identify the build.
+    fsm.writeFileSync(
+      pathm.join(w.root, "pkg.ehcoll"),
+      "the collection package bytes",
+    );
     return { [ARCHIVE_ID]: "mod.zip" };
   };
 
@@ -322,7 +329,24 @@ describe("the archive is consulted before a reinstall is spent", () => {
     expect(result.verifications?.[0]?.kind).toBe("fail");
     // Survived a reinstall AND the archive check: worth the curator's time.
     expect(result.curatorReports?.length).toBe(1);
-    expect(result.curatorReports?.[0]).toContain("Rock Textures");
+    const report = result.curatorReports![0];
+    expect(report).toContain("Rock Textures");
+
+    // The archive WAS read here, so the report is entitled to say so.
+    expect(report).toMatch(/do not match its archive either/i);
+
+    // And it must carry the package's own hash. `packageSha256` existed on the
+    // report type from the start, documented as the thing that tells a curator
+    // WHICH build they are looking at — and no caller ever passed it, so it
+    // never once appeared in a real report while its unit test, which supplies
+    // it directly, stayed green.
+    const fsm = await import("fs");
+    const crypto = await import("crypto");
+    const expected = crypto
+      .createHash("sha256")
+      .update(fsm.readFileSync(`${world.root}/pkg.ehcoll`))
+      .digest("hex");
+    expect(report).toContain(expected);
   });
 
   it("blames the DOWNLOAD, not the curator, when the archive is damaged", async () => {

@@ -391,6 +391,18 @@ describe("the driver acts on the difference, and the user sees it", () => {
     );
   });
 
+  it("reuses the download scan's hashes instead of re-reading gigabytes", () => {
+    // `cache` is documented on this function precisely so "a mod already
+    // hashed by the download scan is not read twice", and no caller passed
+    // one. That was invisible while archivePathForMod was broken and this
+    // check never ran — and became a full SHA-256 of every failed mod's
+    // archive, on the machine least able to afford it, the moment it started
+    // working. The numbers were already on disk from the scan.
+    const src = read("runInstall.ts");
+    expect(src).toMatch(/loadArchiveHashCache\(ctx\.appDataPath\)/);
+    expect(src).toMatch(/cache: cachedHashes/);
+  });
+
   it("keeps the hand-picked-archive branch exhaustive", () => {
     // This is a scar. Adding `damaged` silently un-warned the user who picks a
     // CORRUPT file by hand: that path tested only for "differs", so the new

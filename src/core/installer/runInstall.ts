@@ -141,6 +141,7 @@ import {
   describeArchiveIdentity,
 } from "./checkArchiveIdentity";
 import { getModArchivePath } from "../archiveHashing";
+import type { ArchiveHashCache } from "../archiveHashCache";
 import {
   applyModRules,
   type ApplyModRulesResult,
@@ -490,6 +491,59 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
    * user can act on themselves.
    */
   const damagedArchives: string[] = [];
+
+  /**
+   * The package's own sha256, hashed at most once and only if asked.
+   *
+   * `buildCuratorReport` has always accepted this and documented why a curator
+   * needs it — two builds can share a version string — and no caller ever
+   * passed it, so the field existed, typechecked, was unit-tested in
+   * isolation, and never once appeared in a real report.
+   *
+   * Lazy because the package is large and almost every install produces no
+   * report at all. Returns an empty object on failure rather than a wrong
+   * hash: an absent line is honest, a fabricated one is not.
+   */
+  /**
+   * The user's archive-hash cache, loaded at most once.
+   *
+   * `checkArchiveIdentity` takes a cache precisely so "a mod already hashed by
+   * the download scan is not read twice", and neither call site passed one —
+   * harmless while `archivePathForMod` was broken and the check never ran at
+   * all, and a real cost the moment it started working: a full SHA-256 of
+   * every failed mod's archive, some of them gigabytes, on the machine least
+   * able to afford it, for numbers already sitting on disk from the scan.
+   *
+   * A miss costs a map lookup, so there is no case where passing it is worse.
+   */
+  let hashCacheLoaded = false;
+  let hashCache: ArchiveHashCache | undefined;
+  const archiveHashCache = async (): Promise<ArchiveHashCache | undefined> => {
+    if (!hashCacheLoaded) {
+      hashCacheLoaded = true;
+      const { loadArchiveHashCache } = await import("../archiveHashCache");
+      hashCache = await loadArchiveHashCache(ctx.appDataPath).catch(
+        () => undefined,
+      );
+    }
+    return hashCache;
+  };
+
+  let packageHashed = false;
+  let packageSha256Cache: string | undefined;
+  const packageIdentity = async (): Promise<{ packageSha256?: string }> => {
+    if (!packageHashed) {
+      packageHashed = true;
+      const { hashFileSha256 } = await import("../archiveHashing");
+      packageSha256Cache = await hashFileSha256(
+        ctx.ehcollZipPath,
+        ctx.abortSignal,
+      ).catch(() => undefined);
+    }
+    return packageSha256Cache !== undefined
+      ? { packageSha256: packageSha256Cache }
+      : {};
+  };
 
   /**
    * Mods whose verification PASSED, and the file list that was proven.
@@ -1074,6 +1128,7 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
         // fetch the same file, and DIFFERENT bytes mean the mod was
         // re-uploaded under the same file id — which is the finding itself,
         // and which downloading again would not change either.
+        const cachedHashes = await archiveHashCache();
         const archiveIdentity = await checkArchiveIdentity({
           archivePath: archivePathForMod(
             ctx.api,
@@ -1081,6 +1136,7 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
             installEntry,
           ),
           expectedSha256: manifestEntry?.source.sha256,
+          ...(cachedHashes !== undefined ? { cache: cachedHashes } : {}),
           ...(ctx.abortSignal !== undefined ? { signal: ctx.abortSignal } : {}),
         });
         ehLog("warn", "install.archive-identity", {
@@ -1125,6 +1181,15 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
               ...verifyResult.hashMismatches.map((m) => m.path),
             ],
             extraFiles: verifyResult.extraFiles,
+            // Proves WHICH build produced this. A curator who rebuilt without
+            // bumping the version has two different packages both calling
+            // themselves v1.0.9, and the answer changes what the report means.
+            // Hashed lazily and once: the package is ~150 MB, and reports are
+            // rare by construction — a mod reaches here only after failing
+            // against the manifest, its archive, AND a reinstall.
+            ...(await packageIdentity()),
+            archiveChecked:
+              judgement.kind === "reinstall" && judgement.archiveConsulted,
             attempts: [
               "Verified against the file list the collection recorded",
               "Reinstalled from the archive and verified again",

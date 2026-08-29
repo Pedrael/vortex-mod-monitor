@@ -29,6 +29,35 @@ const base = (over: Partial<CuratorReportInput> = {}): CuratorReportInput => ({
   ...over,
 });
 
+describe("it never claims a check that did not happen", () => {
+  // The report's whole worth is that a stranger can trust it. It used to state
+  // "and they do not match its archive either" unconditionally — but the
+  // archive can be missing, unreadable, or on a prefix where 7z will not run,
+  // and the verdict for MISSING files is reached before the archive is opened
+  // at all. Asserting the comparison anyway sends a curator to investigate
+  // something nobody did.
+  it("says the archive check is MISSING, not failed, when it did not run", () => {
+    const text = buildCuratorReport(base({ archiveChecked: false }));
+    expect(text).toMatch(/not possible to compare/i);
+    expect(text).toMatch(/missing rather than failed/i);
+    expect(text).not.toMatch(/do not match its archive either/i);
+  });
+
+  it("treats an ABSENT flag as 'not checked'", () => {
+    // The weaker claim must be the default. An omitted field must never be
+    // able to manufacture the stronger one.
+    const input = base();
+    delete (input as { archiveChecked?: boolean }).archiveChecked;
+    expect(buildCuratorReport(input)).toMatch(/not possible to compare/i);
+  });
+
+  it("makes the strong claim only when the archive really was read", () => {
+    const text = buildCuratorReport(base({ archiveChecked: true }));
+    expect(text).toMatch(/do not match its archive either/i);
+    expect(text).not.toMatch(/not possible to compare/i);
+  });
+});
+
 describe("what the curator needs to act", () => {
   it("names which build this is, not just which collection", () => {
     // A curator with two packages in circulation otherwise has to guess, and
