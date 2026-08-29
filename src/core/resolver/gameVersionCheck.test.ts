@@ -52,3 +52,59 @@ describe("game version compatibility", () => {
     expect(report.gameVersion.status).toBe("ok");
   });
 });
+
+/**
+ * The other side of the same gap, and the one an alpha tester reported as a
+ * bug: the CURATOR recorded a version, and the PLAYER's Vortex has none.
+ *
+ * That is the ordinary case under Wine/Proton — Vortex reads the version out
+ * of the game executable at discovery time and it routinely fails in a
+ * prefix. Nothing is wrong, so this must not block, and it must not read like
+ * a fault either.
+ */
+describe("when the PLAYER's game version cannot be detected", () => {
+  it("never blocks the install", () => {
+    // The property that matters. A version we cannot read is not evidence of
+    // an incompatible game, and refusing on it would strand every Proton user
+    // over a detection gap — the same mistake as the curator-side one above,
+    // pointed the other way.
+    const report = resolveCompatibility(manifest("1.10.163.0"), user(undefined));
+    expect(report.errors).toEqual([]);
+    expect(report.gameVersion.status).toBe("unknown");
+  });
+
+  it("does not block under 'minimum' policy either", () => {
+    const report = resolveCompatibility(
+      manifest("1.10.163.0", "minimum"),
+      user(undefined),
+    );
+    expect(report.errors).toEqual([]);
+  });
+
+  it("says the install is unaffected, rather than just 'unknown'", () => {
+    // The bug as reported was that this looked like a failure. The warning has
+    // to carry its own reassurance, because the user reading it has no way to
+    // know an unchecked version is advisory.
+    const report = resolveCompatibility(manifest("1.10.163.0"), user(undefined));
+    const w = report.warnings.join(" ");
+    expect(w).toMatch(/does not block/i);
+    expect(w).toMatch(/Vortex has not recorded a version/i);
+  });
+
+  it("blames Vortex's detection, not the collection", () => {
+    // Sending a player to re-download a package that is fine is the expensive
+    // wrong turn here, exactly as it was for the truncated-archive message.
+    const report = resolveCompatibility(manifest("1.10.163.0"), user(undefined));
+    const w = report.warnings.join(" ");
+    expect(w).toMatch(/nothing is wrong with the collection/i);
+  });
+
+  it("an empty string counts as undetected, not as a version", () => {
+    // Vortex stores "" for a game it discovered but could not version, and a
+    // truthiness bug here would compare "" against the requirement and report
+    // a mismatch for a perfectly good install.
+    const report = resolveCompatibility(manifest("1.10.163.0"), user(""));
+    expect(report.errors).toEqual([]);
+    expect(report.gameVersion.status).toBe("unknown");
+  });
+});

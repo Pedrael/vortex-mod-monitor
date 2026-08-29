@@ -203,6 +203,29 @@ export function resolveCompatibility(
   };
 }
 
+/**
+ * The Wine-specific half of the "no version" explanation, when it applies.
+ *
+ * Split out and returning "" off Wine so the message stays honest on
+ * Windows, where an undetected version really is unusual and pointing at
+ * Proton would be a red herring.
+ */
+function wineVersionNote(): string {
+  try {
+    // Local require keeps the resolver free of a UI/installer import cycle;
+    // this module is otherwise pure.
+    const { looksLikeWine } = require("../installer/checkSevenZipHealth") as {
+      looksLikeWine: () => boolean;
+    };
+    return looksLikeWine()
+      ? "On Wine/Proton this is common — Vortex reads the version out of the " +
+          "game executable and that often fails in a prefix."
+      : "";
+  } catch {
+    return "";
+  }
+}
+
 function checkGameVersion(
   manifest: EhcollManifest,
   userState: UserSideState,
@@ -229,8 +252,27 @@ function checkGameVersion(
   }
 
   if (!installed) {
+    // Vortex is the only source for this: it reads the game executable's
+    // version resource at discovery time and we read what it stored. When it
+    // has nothing, we have nothing.
+    //
+    // Under Wine/Proton that is the ORDINARY case rather than a fault, and a
+    // bare "version unknown" reads like something broke — an alpha tester
+    // reported exactly that as a bug. Nothing IS broken: the check is
+    // advisory, it never blocks, and the install proceeds unchanged. Say so,
+    // and say what would actually fix it, instead of leaving them to guess.
     warnings.push(
-      `Game version unknown — could not verify against required "${required}" (policy: ${policy}).`,
+      [
+        `Could not check your game version against the collection's ` +
+          `"${required}" (policy: ${policy}) — Vortex has not recorded a ` +
+          `version for this game.`,
+        wineVersionNote(),
+        `This does not block the install and nothing is wrong with the ` +
+          `collection; it only means a version mismatch cannot be ruled out ` +
+          `if something misbehaves later.`,
+      ]
+        .filter((s) => s.length > 0)
+        .join(" "),
     );
     return { status: "unknown", required };
   }
