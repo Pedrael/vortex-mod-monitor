@@ -38,6 +38,11 @@ import {
 } from "../../../core/manifest/readEhcoll";
 import { enrichInstalledModsWithStagingSetHashes } from "../../../core/resolver/enrichStagingSetHashes";
 import { resolveInstallPlan } from "../../../core/resolver/resolveInstallPlan";
+// Shared with the Vortex action pipeline in src/actions. It used to live here
+// as a private helper, and the other pipeline kept passing `undefined` — see
+// the module docblock for why one copy is the only fix that cannot be half
+// applied.
+import { scanAvailableDownloads } from "../../../core/resolver/scanAvailableDownloads";
 import {
   buildUserSideState,
   pickInstallTarget,
@@ -367,88 +372,6 @@ export async function runLoadingPipelineWithReceipt(args: {
   const plan = resolveInstallPlan(manifest, userState, installTarget);
 
   return { ehcoll, receipt, plan, appDataPath };
-}
-
-/**
- * Hash Vortex's download folder so the resolver can see what is already here.
- *
- * Until this existed, every call site passed `availableDownloads: undefined`
- * and the resolver's `*-use-local-download` arms were unreachable — so an
- * install always asked Nexus for a file it might already be holding. When it
- * WAS holding it, Vortex had nothing to do, never reported an install, and
- * the driver sat on "downloading" a completed download.
- *
- * Returns `undefined` on any failure, which is not a fallback so much as the
- * status quo: that is precisely the value every call site used to pass, and
- * the resolver's behaviour with it is the behaviour we shipped for months. A
- * download scan that fails must cost a re-download, never an install.
- */
-async function scanAvailableDownloads(args: {
-  api: types.IExtensionApi;
-  gameId: string;
-  appDataPath: string;
-  signal?: AbortSignal;
-  onProgress?: (done: number, total: number, name: string) => void;
-}): Promise<AvailableDownload[] | undefined> {
-  try {
-    const dir = downloadsDirFor(args.api, args.gameId);
-    if (dir === undefined) return undefined;
-
-    const { loadArchiveHashCache, saveArchiveHashCache } = await import(
-      "../../../core/archiveHashCache"
-    );
-    const { collectAvailableDownloads, describeDownloadScan } = await import(
-      "../../../core/resolver/collectAvailableDownloads"
-    );
-    const { ehLog } = await import("../../../core/logging/ehLog");
-
-    const cache = await loadArchiveHashCache(args.appDataPath);
-    const result = await collectAvailableDownloads({
-      state: args.api.getState(),
-      gameId: args.gameId,
-      downloadsDir: dir,
-      cache,
-      ...(args.signal !== undefined ? { signal: args.signal } : {}),
-      ...(args.onProgress !== undefined ? { onProgress: args.onProgress } : {}),
-    });
-    // Saved even on a partial scan: every hash computed is one the next run
-    // does not repeat, and the first run is the expensive one.
-    await saveArchiveHashCache(args.appDataPath, result.cache);
-    ehLog("info", "downloads.scan", {
-      dir,
-      summary: describeDownloadScan(result),
-    });
-    return result.downloads;
-  } catch (err) {
-    const { ehLog } = await import("../../../core/logging/ehLog");
-    ehLog("warn", "downloads.scan.failed", {
-      why: err instanceof Error ? err.message : String(err),
-    });
-    return undefined;
-  }
-}
-
-/**
- * Where Vortex keeps downloads for this game.
- *
- * `downloadPathForGame` is a selector we read defensively rather than import
- * as a typed symbol: @nexusmods/vortex-api is types-only, so a name existing
- * in the .d.ts is not evidence the running Vortex has it.
- */
-function downloadsDirFor(
-  api: types.IExtensionApi,
-  gameId: string,
-): string | undefined {
-  try {
-    const dir = (
-      selectors as unknown as {
-        downloadPathForGame?: (state: unknown, game: string) => unknown;
-      }
-    ).downloadPathForGame?.(api.getState(), gameId);
-    return typeof dir === "string" && dir.length > 0 ? dir : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 /**

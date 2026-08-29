@@ -195,43 +195,75 @@ describe("the install pipelines actually pass it to the resolver", () => {
   //
   // Source assertions because the pipelines need a live Vortex. That is the
   // same reason the gap was invisible.
-  const engine = async (): Promise<string> => {
+  // EVERY file that builds a UserSideState. The first version of this suite
+  // read only engine.ts while its assertions said "neither pipeline" and "both
+  // pipelines" — and the Vortex action registered in index.ts went on passing
+  // `availableDownloads: undefined` for the whole time these tests were green.
+  // A guard that names more than it inspects is worse than no guard: it is
+  // read as coverage.
+  const read = async (...rel: string[]): Promise<string> => {
     const fsm = await import("fs");
     const pathm = await import("path");
-    return fsm.readFileSync(
-      pathm.join(__dirname, "..", "..", "ui", "pages", "install", "engine.ts"),
-      "utf8",
-    );
+    return fsm.readFileSync(pathm.join(__dirname, "..", "..", ...rel), "utf8");
   };
+  const engine = (): Promise<string> =>
+    read("ui", "pages", "install", "engine.ts");
+  const action = (): Promise<string> =>
+    read("actions", "installCollectionAction.ts");
+  const pipelines = async (): Promise<Array<[string, string]>> => [
+    ["engine.ts", await engine()],
+    ["installCollectionAction.ts", await action()],
+  ];
 
-  it("neither pipeline hardcodes it to undefined any more", async () => {
-    const src = await engine();
-    // Comments may mention the old value while explaining it; code must not.
-    const code = src
-      .split("\n")
-      .filter((l) => !/^\s*(\*|\/\/)/.test(l))
-      .join("\n");
-    expect(code).not.toMatch(/availableDownloads:\s*undefined/);
+  it("no pipeline hardcodes it to undefined any more", async () => {
+    for (const [name, src] of await pipelines()) {
+      // Comments may mention the old value while explaining it; code must not.
+      const code = src
+        .split("\n")
+        .filter((l) => !/^\s*(\*|\/\/)/.test(l))
+        .join("\n");
+      expect(code, `${name} still passes availableDownloads: undefined`).not.toMatch(
+        /availableDownloads:\s*undefined/,
+      );
+    }
   });
 
-  it("both pipelines scan before resolving, not after", async () => {
+  it("every pipeline scans before resolving, not after", async () => {
     // A scan that runs after the plan is built is a scan whose results the
     // plan never saw.
-    const src = await engine();
-    const scans = [...src.matchAll(/await scanAvailableDownloads\(/g)];
-    const resolves = [...src.matchAll(/resolveInstallPlan\(manifest/g)];
-    expect(scans.length).toBe(2); // first run AND the stale-receipt resume
-    expect(resolves.length).toBe(2);
-    for (let i = 0; i < 2; i += 1) {
-      expect(scans[i].index).toBeLessThan(resolves[i].index!);
+    for (const [name, src] of await pipelines()) {
+      const scans = [...src.matchAll(/await scanAvailableDownloads\(/g)];
+      const resolves = [...src.matchAll(/resolveInstallPlan\(/g)];
+      expect(scans.length, `${name} never scans`).toBeGreaterThan(0);
+      expect(resolves.length, `${name} never resolves`).toBe(scans.length);
+      for (let i = 0; i < scans.length; i += 1) {
+        expect(
+          scans[i].index,
+          `${name}: scan ${i} runs after its resolve`,
+        ).toBeLessThan(resolves[i].index!);
+      }
     }
+  });
+
+  it("both pipelines use the SAME scanner, not a copy each", async () => {
+    // The duplicate is how the two drifted apart in the first place. One
+    // implementation in core, imported by both, is the only shape of this fix
+    // that cannot be applied to one path and forgotten on the other.
+    for (const [name, src] of await pipelines()) {
+      expect(src, `${name} does not import the shared scanner`).toMatch(
+        /import \{ scanAvailableDownloads \} from ".*core\/resolver\/scanAvailableDownloads"/,
+      );
+    }
+    expect(await read("ui", "pages", "install", "engine.ts")).not.toMatch(
+      /async function scanAvailableDownloads/,
+    );
   });
 
   it("a failed scan degrades to the old behaviour rather than failing the install", async () => {
     // The status quo IS undefined. A download scan that throws must cost a
     // re-download, never an install.
-    const src = await engine();
-    const fn = src.slice(src.indexOf("async function scanAvailableDownloads"));
+    const src = await read("core", "resolver", "scanAvailableDownloads.ts");
+    const fn = src.slice(src.indexOf("export async function scanAvailableDownloads"));
     expect(fn.slice(0, fn.indexOf("\n}\n"))).toMatch(/catch[\s\S]*return undefined/);
   });
 });

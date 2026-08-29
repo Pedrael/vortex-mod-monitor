@@ -66,6 +66,8 @@ import {
   readEhcoll,
 } from "../core/manifest/readEhcoll";
 import { resolveInstallPlan } from "../core/resolver/resolveInstallPlan";
+import { scanAvailableDownloads } from "../core/resolver/scanAvailableDownloads";
+import { getEventHorizonDir } from "../core/paths";
 import {
   buildUserSideState,
   pickInstallTarget,
@@ -112,6 +114,7 @@ export default function createInstallCollectionAction(
 ): () => Promise<void> {
   return async () => {
     const hashingNotificationId = "vortex-event-horizon:install-hashing";
+const downloadScanNotificationId = "vortex-event-horizon:install-download-scan";
     let hashingNotificationShown = false;
     const op = beginOp("install");
 
@@ -220,6 +223,39 @@ export default function createInstallCollectionAction(
       context.api.dismissNotification?.(hashingNotificationId);
       hashingNotificationShown = false;
 
+      // ── 5b. hash the download folder ─────────────────────────────────
+      // Without this the resolver's `*-use-local-download` arms are
+      // unreachable, so the install asks Nexus for archives the user is
+      // already holding — and when Vortex finds nothing to do, the driver
+      // sits forever on "downloading" a download that already finished.
+      //
+      // The install PAGE has done this for a while; this pipeline did not,
+      // and both reach resolveInstallPlan. Same helper for both now.
+      context.api.sendNotification?.({
+        id: downloadScanNotificationId,
+        type: "activity",
+        message: "Checking which mod archives are already downloaded...",
+      });
+      let downloadScanShown = true;
+      const availableDownloads = await scanAvailableDownloads({
+        api: context.api,
+        gameId: activeGameId,
+        appDataPath: getEventHorizonDir(),
+        onProgress: (done, total, name) => {
+          // A first scan hashes every archive in the folder and can run for
+          // minutes on a large collection. Silence there reads as a hang.
+          context.api.sendNotification?.({
+            id: downloadScanNotificationId,
+            type: "activity",
+            message: `Checking downloads (${done}/${total}): ${name}`,
+          });
+        },
+      });
+      if (downloadScanShown) {
+        context.api.dismissNotification?.(downloadScanNotificationId);
+        downloadScanShown = false;
+      }
+
       // ── 6. build UserSideState ───────────────────────────────────────
       const userState = buildUserSideState({
         gameId: activeGameId,
@@ -231,8 +267,7 @@ export default function createInstallCollectionAction(
         activeProfileName,
         installedMods,
         receipt,
-        // Slice 5 leaves these out; future slices may enrich.
-        availableDownloads: undefined,
+        availableDownloads,
         externalDependencyState: undefined,
       });
 
