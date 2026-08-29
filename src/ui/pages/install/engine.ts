@@ -142,6 +142,19 @@ export async function runLoadingPipeline(args: {
     throw new Error(`No profile found for game "${activeGameId}".`);
   }
 
+  // ── 2b. preflight: can VORTEX unpack archives? ───────────────────
+  // Event Horizon no longer needs 7z to read the package, but Vortex needs it
+  // to install every mod inside it, and on a Wine/Proton prefix that is the
+  // component most likely to be broken. Discovering it forty minutes into a
+  // 954-mod install reads as "this collection is broken" rather than "this
+  // prefix is missing a runtime", and sends the curator chasing a package
+  // that was never at fault.
+  //
+  // Placed after the game gate deliberately: by here the package is known to
+  // be real and for the right game, so the warning is worth the interruption.
+  // Warns, never blocks — see checkSevenZipHealth.
+  await warnIfSevenZipBroken(api);
+
   // ── 3. read receipt ──────────────────────────────────────────────
   checkAbort();
   events.onPhase("reading-receipt");
@@ -324,6 +337,61 @@ export async function runLoadingPipelineWithReceipt(args: {
   const plan = resolveInstallPlan(manifest, userState, installTarget);
 
   return { ehcoll, receipt, plan, appDataPath };
+}
+
+/**
+ * Tell the user if Vortex's own extractor is broken, then carry on.
+ *
+ * Every failure here is swallowed on purpose. This runs before an install and
+ * is not a gate: a preflight that throws would turn "your prefix is missing a
+ * runtime" — a warning the user can act on later — into a hard stop with no
+ * way past it. The install can still legitimately succeed for a collection
+ * whose mods are all already downloaded.
+ */
+export async function warnIfSevenZipBroken(
+  api: types.IExtensionApi,
+): Promise<void> {
+  try {
+    const { checkSevenZipHealth, describeSevenZipHealth, looksLikeWine } =
+      await import("../../../core/installer/checkSevenZipHealth");
+    const health = await checkSevenZipHealth();
+    const advice = describeSevenZipHealth(health);
+    if (advice === undefined) return;
+
+    // Logged as well as shown: the tester's log is what we get to read when a
+    // remote install goes wrong, and a notification the user dismissed leaves
+    // no trace at all.
+    const { ehLog } = await import("../../../core/logging/ehLog");
+    ehLog("warn", "sevenzip.preflight", {
+      kind: health.kind,
+      why: health.kind === "ok" ? undefined : health.why,
+      wine: looksLikeWine(),
+    });
+
+    api.sendNotification?.({
+      id: "eh-sevenzip-health",
+      type: health.kind === "indeterminate" ? "info" : "warning",
+      title: "Vortex's archive extractor",
+      message: advice.message,
+      actions: [
+        {
+          title: "What to do",
+          action: () => {
+            api.showDialog?.(
+              "info",
+              "Vortex cannot unpack mod archives",
+              {
+                text: [advice.message, "", ...advice.steps].join("\n"),
+              },
+              [{ label: "Close" }],
+            );
+          },
+        },
+      ],
+    });
+  } catch {
+    // A preflight that fails must not become the failure.
+  }
 }
 
 function profileExistsInState(state: unknown, profileId: string): boolean {
