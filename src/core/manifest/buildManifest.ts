@@ -435,7 +435,16 @@ function buildPackageMetadata(
     createdAt: pkg.createdAt ?? new Date().toISOString(),
     description: pkg.description,
     strictMissingMods: pkg.strictMissingMods ?? false,
-    verificationLevel: pkg.verificationLevel ?? "fast",
+    // A default is what you get when nobody thought about it, so it must be
+    // the strong option. "fast" records names and sizes and reads nothing —
+    // wrong bytes at the right size verify as correct — and it withholds the
+    // stagingSetHash that archive-less external mods need to be identifiable
+    // at all. Nothing new is built with it any more.
+    //
+    // Reading it stays supported forever: packages already in the wild
+    // recorded "fast" or "none", and that is a fact about them, not a setting
+    // to migrate. See parseManifest, which still accepts all three.
+    verificationLevel: pkg.verificationLevel ?? "thorough",
   };
 }
 

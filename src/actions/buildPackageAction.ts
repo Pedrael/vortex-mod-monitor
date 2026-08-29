@@ -157,11 +157,23 @@ export default function createBuildPackageAction(
       context.api.dismissNotification?.(hashingNotificationId);
       hashingNotificationShown = false;
 
-      // Toolbar action defaults to "fast" — file list + sizes per mod
-      // staging folder. The React BuildPage exposes a UI to override
-      // this; the toolbar is the no-prompt happy path.
+      // "thorough" — per-file sha256, not just names and sizes.
+      //
+      // This used to be "fast", which records a file list with sizes and reads
+      // nothing. Under it a file with the right name and the right size but
+      // DIFFERENT BYTES verifies as correct, which is the shape of failure
+      // that looks like success. For a format whose promise is reproducing a
+      // curator's exact state, that is the wrong default at any price.
+      //
+      // It also cascades: without per-file hashes there is no stagingSetHash,
+      // and for an external mod whose archive Vortex did not retain that is
+      // the ONLY identity oracle — buildManifest hard-blocks such a mod
+      // outright and tells the curator to rebuild thorough. Defaulting to it
+      // removes a wall curators were being walked into.
+      //
+      // The cost is the curator's, once per build, and it is CPU.
       mods = await captureStagingFiles(state, gameId, mods, {
-        level: "fast",
+        level: "thorough",
         onWarn: (mod, message) => {
           console.warn(
             `[Vortex Event Horizon] inspect ${mod.name}: ${message}`,
@@ -232,7 +244,11 @@ export default function createBuildPackageAction(
           description:
             curator.description.length > 0 ? curator.description : undefined,
           strictMissingMods: false,
-          verificationLevel: "fast",
+          // Must match the capture level above. Recording a level the capture
+          // did not actually perform would make the manifest lie about its own
+          // evidence, and every consumer downstream trusts this field to know
+          // what it is allowed to check.
+          verificationLevel: "thorough",
         },
         game: {
           version: resolveGameVersion(state, gameId),
