@@ -17,3 +17,7 @@ docs/ARCHITECTURE.gitnexus.md
 .claude/skills/*
 !.claude/skills/gitnexus-area-*/
 # --- end bearing ---
+
+# Backups written by tooling (bearing rewrites .claude/settings.json in place).
+*.bak
+
