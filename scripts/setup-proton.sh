@@ -15,6 +15,14 @@
 #   You do NOT need to install 7-Zip. It is already there. What is missing is
 #   the runtime underneath it.
 #
+# DO YOU EVEN NEED THIS?
+#   Probably not. Event Horizon reads collections without 7-Zip at all now, so
+#   the only thing that still needs it is Vortex unpacking mod archives — and
+#   Event Horizon TESTS that when you load a collection and warns you if it is
+#   broken. If it has not warned you, nothing here needs fixing and --apply
+#   will change your prefix for no reason. Run it without --apply first; that
+#   only looks.
+#
 # SAFETY
 #   By default this only LOOKS and REPORTS. It changes nothing.
 #   Pass --apply to actually install runtimes, and it will still tell you
@@ -112,9 +120,28 @@ say "[2] VORTEX'S BUNDLED 7-ZIP"
 
 # find exits 0 when it matches nothing, so `find ... || echo none` never fires.
 # Capture, then test the capture.
-SEVENZIP="$(find "$PREFIX/drive_c" -maxdepth 12 -iname '7z.exe' -print -quit 2>/dev/null)"
+# List them ALL rather than taking the first hit. A tester's run reported
+# "C:/Program Files/7-Zip/7z.exe" — a standalone 7-Zip that happened to sort
+# first — while the copy Vortex actually loads lives under its own
+# resources/app.asar.unpacked. Naming the wrong binary sends the reader to
+# check something Vortex never touches.
+ALL_SEVENZIP="$(find "$PREFIX/drive_c" -maxdepth 12 -iname '7z.exe' 2>/dev/null)"
+# The one that matters is Vortex's own. Match its BUNDLE LAYOUT, not the word
+# "vortex": the tester's prefix is literally named ~/.vortex-linux, so every
+# path under it contains "vortex" and the standalone 7-Zip was picked as
+# "Vortex's" while Vortex's actual copy was listed as an also-ran. `7z-bin`
+# and `app.asar` are Electron-bundle markers a standalone install never has.
+SEVENZIP="$(printf '%s\n' "$ALL_SEVENZIP" | grep -E '7z-bin|app\.asar' | head -1)"
+[ -z "$SEVENZIP" ] && SEVENZIP="$(printf '%s\n' "$ALL_SEVENZIP" | head -1)"
+
 if [ -n "$SEVENZIP" ]; then
-  say "found:  $SEVENZIP"
+  say "vortex's:  $SEVENZIP"
+  others="$(printf '%s\n' "$ALL_SEVENZIP" | grep -v -F "$SEVENZIP" | grep -v '^$')"
+  if [ -n "$others" ]; then
+    say "others:"
+    printf '%s\n' "$others" | sed 's/^/  /'
+    say "  (a separately installed 7-Zip is not the one Vortex loads)"
+  fi
   say "        So 7-Zip is NOT missing. If extraction fails, the runtime it"
   say "        needs is what's absent — which is what this script installs."
 else
@@ -153,18 +180,75 @@ say "protontricks: $HAVE_PROTONTRICKS"
 say "  (flatpak):  $FLATPAK_PT"
 say "winetricks:   $HAVE_WINETRICKS"
 
+# ── 3b. WHICH wine owns this prefix? ─────────────────────────────────────────
+#
+# This is the step the first version of the script got wrong, and the tester's
+# output showed it plainly:
+#
+#   wine client error:0: version mismatch 856/961.
+#
+# winetricks uses whatever `wine` is on PATH. A prefix created by Proton is
+# owned by PROTON's wine, and the two refuse to talk to each other — so
+# winetricks could not read `%AppData%`, never installed anything, and exited
+# 1. That is not a runtime problem, it is the wrong runtime.
+#
+# winetricks honours $WINE and $WINESERVER, so the fix is to find the wine
+# that lives with the prefix and point it there. Searched nearest-first: the
+# runtime shipped alongside the prefix is the one that made it.
+OWNING_WINE=""
+find_owning_wine() {
+  # 1. A runtime shipped inside the same tree as the prefix (this is the
+  #    ~/.vortex-linux case: it carries its own Proton).
+  root="${PREFIX%/compatdata/*}"
+  [ "$root" = "$PREFIX" ] && root="$(dirname "$PREFIX")"
+  for c in \
+    "$root"/files/bin/wine \
+    "$root"/dist/bin/wine \
+    "$root"/*/files/bin/wine \
+    "$root"/*/dist/bin/wine \
+    "$root"/proton*/files/bin/wine \
+    "$root"/../files/bin/wine ; do
+    [ -x "$c" ] && { OWNING_WINE="$c"; return 0; }
+  done
+  # 2. umu, which is how a lot of non-Steam Proton prefixes are driven.
+  for c in "$HOME/.local/share/umu"/*/files/bin/wine ; do
+    [ -x "$c" ] && { OWNING_WINE="$c"; return 0; }
+  done
+  # 3. A Steam Proton install. Last resort: any of these may be the WRONG
+  #    build for this prefix, which is why it is searched last.
+  for c in \
+    "$HOME/.steam/steam/steamapps/common"/Proton*/files/bin/wine \
+    "$HOME/.local/share/Steam/steamapps/common"/Proton*/files/bin/wine ; do
+    [ -x "$c" ] && { OWNING_WINE="$c"; return 0; }
+  done
+  return 1
+}
+find_owning_wine || true
+
+if [ -n "$OWNING_WINE" ]; then
+  say "prefix's wine: $OWNING_WINE"
+else
+  say "prefix's wine: not found — will use whatever wine is on PATH, which"
+  say "               fails with a 'version mismatch' on a Proton prefix."
+fi
+
 # Decide the command. Reported either way, so you can run it by hand.
 RUNNER=""
 RUNNER_DESC=""
 if [ -n "$APPID" ] && [ "$HAVE_PROTONTRICKS" = yes ]; then
+  # protontricks finds the right Proton for a Steam app itself. Preferred
+  # precisely because it does not have the problem above.
   RUNNER="protontricks $APPID"
   RUNNER_DESC="protontricks, addressing the Steam app by id"
 elif [ -n "$APPID" ] && [ "$FLATPAK_PT" = yes ]; then
   RUNNER="flatpak run com.github.Matoking.protontricks $APPID"
   RUNNER_DESC="protontricks via flatpak"
+elif [ "$HAVE_WINETRICKS" = yes ] && [ -n "$OWNING_WINE" ]; then
+  RUNNER="env WINEPREFIX=$PREFIX WINE=$OWNING_WINE WINESERVER=$(dirname "$OWNING_WINE")/wineserver winetricks"
+  RUNNER_DESC="winetricks driven by the prefix's OWN wine (not the one on PATH)"
 elif [ "$HAVE_WINETRICKS" = yes ]; then
   RUNNER="env WINEPREFIX=$PREFIX winetricks"
-  RUNNER_DESC="winetricks pointed at the prefix directly (not a Steam app)"
+  RUNNER_DESC="winetricks with the system wine — EXPECTED TO FAIL on a Proton prefix"
 fi
 
 # The runtimes worth installing, most likely first. 7-Zip itself is NOT here:
@@ -214,18 +298,51 @@ if [ "$ASSUME_YES" != yes ]; then
 fi
 
 say "running: $RUNNER $VERBS"
+# Captured as well as shown, so the specific failures below can be recognised
+# rather than reported as a bare exit code. `tee` keeps the live output.
+RUN_LOG="$(mktemp 2>/dev/null || printf '/tmp/eh-setup-%s.log' "$$")"
+# The status of a PIPELINE is its LAST command's -- here `tee`, which always
+# succeeds. Testing it directly reported DONE for a run that installed
+# nothing, which is worse than the bare exit code this replaced. PIPESTATUS
+# holds the real one and is clobbered by the very next command, so it must be
+# read on the line immediately after the pipeline and nowhere later.
 # shellcheck disable=SC2086
-if $RUNNER $VERBS; then
-  RC=0
-else
-  RC=$?
-fi
+$RUNNER $VERBS 2>&1 | tee "$RUN_LOG"
+RC="${PIPESTATUS[0]}"
 
 line
 if [ "$RC" = 0 ]; then
   say "DONE. Restart Vortex, then try the install again."
   say "Event Horizon checks the extractor when you load a collection and will"
   say "tell you if it still is not working."
+elif grep -qiE 'version mismatch|wineserver binary was not upgraded' "$RUN_LOG" 2>/dev/null; then
+  # The one failure that is NOT ambiguous, and the one a tester actually hit.
+  # Calling it "not necessarily fatal" wasted their time: nothing was
+  # installed and nothing was going to be.
+  say "NOTHING WAS INSTALLED — wrong wine for this prefix."
+  say ""
+  say "  wine client error: version mismatch"
+  say ""
+  say "The wine that ran is not the one that owns this prefix, so it could not"
+  say "open it at all. This is not a problem with your prefix or with 7-Zip."
+  if [ -z "$OWNING_WINE" ]; then
+    say ""
+    say "This script could not find the wine that Vortex uses. Find it with:"
+    say "  find \"\$HOME/.vortex-linux\" -name wine -type f -perm -u+x 2>/dev/null"
+    say "then re-run pointing at it:"
+    say "  WINE=/path/to/wine WINESERVER=/path/to/wineserver \\"
+    say "    WINEPREFIX=\"$PREFIX\" winetricks vcrun2022"
+  else
+    say ""
+    say "It used: $OWNING_WINE"
+    say "If that is not the runtime Vortex launches with, pass the right one:"
+    say "  WINE=/path/to/wine WINESERVER=/path/to/wineserver \\"
+    say "    WINEPREFIX=\"$PREFIX\" winetricks vcrun2022"
+  fi
+  say ""
+  say "Worth checking first: you may not need this at all. Event Horizon only"
+  say "needs Vortex's 7-Zip for unpacking mods, and it tells you on load if"
+  say "that is broken. If it has not warned you, nothing here needs fixing."
 else
   say "The command exited with status $RC."
   say ""
