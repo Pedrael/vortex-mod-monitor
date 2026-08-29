@@ -36,6 +36,7 @@ import { useToast } from "../../components";
 import { useKeyboardShortcut } from "../../hooks/useKeyboardShortcut";
 import { formatBytes } from "../../../utils/diskSpace";
 import { openExternalUrl } from "../../../core/revealPath";
+import { writeToClipboard } from "../../clipboard";
 import { describeDownload } from "./downloadGuidance";
 import {
   describeElapsed,
@@ -2203,6 +2204,105 @@ function GameIniNotice(props: { lines: readonly string[] }): JSX.Element | null 
   );
 }
 
+/**
+ * Files the user supplied by hand that are not the ones the collection was
+ * built from.
+ *
+ * Info, not warning: nothing failed and the user's choice was honoured. But a
+ * browse-mode dependency that resolved to a different build is the most
+ * invisible way an install stops reproducing the curator's setup, so it is
+ * said once, here, rather than discovered in-game.
+ */
+function ExternalArchiveNotice(props: {
+  lines: readonly string[];
+}): JSX.Element | null {
+  if (props.lines.length === 0) return null;
+  const n = props.lines.length;
+  return (
+    <NoticeCard
+      label="Files you supplied"
+      intent="info"
+      summary={`${n} mod${n === 1 ? "" : "s"} installed from a file that is not the one the collection was built from.`}
+    >
+      <NoticeLines lines={props.lines} />
+    </NoticeCard>
+  );
+}
+
+/**
+ * Mods that could not be reproduced, with the report ready to send.
+ *
+ * Every softer explanation has already been ruled out by the time one of
+ * these exists: it failed against the curator's file list, failed against its
+ * own archive, and survived a reinstall. That is what makes a copy button the
+ * right affordance — the useful next action is not to debug it here, it is to
+ * tell the person who can.
+ */
+function CuratorReportsNotice(props: {
+  reports: readonly string[];
+}): JSX.Element | null {
+  const showToast = useToast();
+  if (props.reports.length === 0) return null;
+  const n = props.reports.length;
+
+  const copy = (text: string, what: string): void => {
+    void writeToClipboard(text).then((ok) => {
+      showToast({
+        intent: ok ? "success" : "warning",
+        title: ok ? "Report copied" : "Couldn't copy",
+        message: ok
+          ? `Paste ${what} wherever you talk to the collection's author.`
+          : "Clipboard isn't available right now.",
+        ttl: 4000,
+      });
+    });
+  };
+
+  return (
+    <NoticeCard
+      label="Could not reproduce"
+      intent="warning"
+      accentBorder="var(--eh-warning)"
+      summary={
+        `${n} mod${n === 1 ? "" : "s"} did not end up matching the collection, ` +
+        `even after reinstalling. This is worth telling the collection's author — ` +
+        `the report below is ready to paste.`
+      }
+    >
+      <div style={{ display: "flex", gap: "var(--eh-sp-2)", marginTop: "var(--eh-sp-2)" }}>
+        <Button
+          intent="primary"
+          onClick={(): void => copy(props.reports.join("\n\n---\n\n"), "them")}
+        >
+          Copy {n === 1 ? "report" : `all ${n} reports`}
+        </Button>
+      </div>
+      {props.reports.map((report, i) => (
+        <details key={i} style={{ marginTop: "var(--eh-sp-3)" }}>
+          <summary className="eh-note" style={{ cursor: "pointer" }}>
+            {/* First line of the report names the mod. */}
+            {report.split("\n").find((l) => l.startsWith("Mod: ")) ??
+              `Report ${i + 1}`}
+          </summary>
+          <div
+            className="eh-mono eh-muted"
+            style={{
+              marginTop: "var(--eh-sp-2)",
+              whiteSpace: "pre-wrap",
+              fontSize: "var(--eh-text-xs)",
+            }}
+          >
+            {report}
+          </div>
+          <Button intent="ghost" onClick={(): void => copy(report, "it")}>
+            Copy this one
+          </Button>
+        </details>
+      ))}
+    </NoticeCard>
+  );
+}
+
 function SuccessBody(props: {
   result: Extract<InstallResult, { kind: "success" }>;
 }): JSX.Element {
@@ -2219,6 +2319,13 @@ function SuccessBody(props: {
       <IniTweakNotice lines={result.iniTweakNotice ?? []} />
       <PluginOrderNotice lines={result.pluginOrderNotice ?? []} />
       <GameIniNotice lines={result.gameIniNotice ?? []} />
+      <ExternalArchiveNotice lines={result.externalArchiveNotice ?? []} />
+      {/*
+        Last, deliberately: it is the only notice here that asks the user to
+        DO something, and an action buried above four informational cards is
+        an action that gets missed.
+      */}
+      <CuratorReportsNotice reports={result.curatorReports ?? []} />
       <div
         style={{
           display: "grid",

@@ -77,6 +77,7 @@ import {
 import { ConcurrentOpBanner } from "../../runtime/ConcurrentOpBanner";
 import { nativeNotify } from "../../runtime/nativeNotify";
 import { getActiveGameId } from "../../../core/getModsListForProfile";
+import { writeToClipboard } from "../../clipboard";
 
 export interface BuildPageProps {
   onNavigate: (route: EventHorizonRoute) => void;
@@ -2461,38 +2462,9 @@ function BuildRulesScopeSummary(props: {
 }
 
 
-/**
- * Best-effort clipboard write. Tries the navigator API first (works
- * inside Electron's renderer when the page is HTTPS-equivalent), then
- * falls back to electron.clipboard. Returns false if both fail.
- */
-async function writeToClipboard(text: string): Promise<boolean> {
-  try {
-    if (
-      typeof navigator !== "undefined" &&
-      navigator.clipboard !== undefined &&
-      typeof navigator.clipboard.writeText === "function"
-    ) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    /* fall through to electron clipboard */
-  }
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const electron = require("electron") as {
-      clipboard?: { writeText?: (s: string) => void };
-    };
-    if (electron.clipboard?.writeText) {
-      electron.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    /* swallow */
-  }
-  return false;
-}
+// writeToClipboard moved to ../../clipboard — the install page needs it for
+// the curator report, and a second copy of a fallback chain is a second thing
+// to keep in step.
 
 /**
  * Tiny hint card that bridges "build finished" → "now what?". Until

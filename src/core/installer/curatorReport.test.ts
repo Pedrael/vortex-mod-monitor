@@ -149,6 +149,32 @@ describe("the driver actually produces one, and only at the end of the ladder", 
     expect(src).toMatch(/function describeHostForReport/);
     expect(src).toMatch(/looksLikeWine\(\)/);
   });
+
+  it("is actually RENDERED, with a way to copy it", async () => {
+    // A report generated into a result field that no screen reads is the same
+    // failure as the classifier nothing called — it exists, it is correct, and
+    // no human will ever see it. The whole point is that the user can send it.
+    const fs = await import("fs");
+    const path = await import("path");
+    const steps = fs.readFileSync(
+      path.join(__dirname, "..", "..", "ui", "pages", "install", "steps.tsx"),
+      "utf8",
+    );
+    expect(steps).toMatch(/<CuratorReportsNotice reports=\{result\.curatorReports/);
+    expect(steps).toMatch(/writeToClipboard/);
+  });
+
+  it("renders the hand-picked-archive notice too", async () => {
+    const fs = await import("fs");
+    const path = await import("path");
+    const steps = fs.readFileSync(
+      path.join(__dirname, "..", "..", "ui", "pages", "install", "steps.tsx"),
+      "utf8",
+    );
+    expect(steps).toMatch(
+      /<ExternalArchiveNotice lines=\{result\.externalArchiveNotice/,
+    );
+  });
 });
 
 describe("degrading gracefully", () => {
