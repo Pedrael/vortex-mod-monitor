@@ -131,6 +131,11 @@ import { clearInstallMarker, writeInstallMarker } from "./installMarker";
 import { ehLog } from "../logging/ehLog";
 import { judgeReinstall } from "./judgeReinstall";
 import { buildCuratorReport } from "./curatorReport";
+import * as path from "path";
+import { selectors } from "@nexusmods/vortex-api";
+import { readReceipt } from "../installLedger";
+import { computeStagingSetHash } from "../manifest/stagingSetHash";
+import type { EhcollStagingFile } from "../../types/ehcoll";
 import {
   checkArchiveIdentity,
   describeArchiveIdentity,
@@ -197,6 +202,115 @@ import { BundledPrefetchPool } from "./bundledPrefetch";
 
 // Mod counting lives in timeBudgets alongside the budgets that consume it —
 // a copy here and another in profile.ts would drift.
+
+/**
+ * Mods that changed on disk since the previous install of this collection.
+ *
+ * Never throws and never blocks: it is an observation about the user's own
+ * files, offered at the end of a run that has already succeeded. Failing an
+ * install because a diagnostic could not read a folder would be an absurd
+ * trade.
+ */
+async function detectDrift(args: {
+  ctx: DriverContext;
+  gameId: string;
+  reportProgress: (
+    phase: DriverPhase,
+    done: number,
+    total: number,
+    detail: string,
+  ) => void;
+}): Promise<string[] | undefined> {
+  const { ctx, gameId } = args;
+  try {
+    const previous = await readReceipt(
+      ctx.appDataPath,
+      ctx.plan.manifest.package.id,
+    );
+    if (previous === undefined) return undefined; // first install: nothing to compare
+
+    const { selectDriftCandidates, findDriftedMods, describeStagingDrift } =
+      await import("./detectStagingDrift");
+
+    const candidates = selectDriftCandidates({
+      receiptMods: previous.mods,
+      manifestMods: ctx.plan.manifest.mods,
+    });
+    if (candidates.length === 0) return undefined;
+
+    const state = ctx.api.getState();
+    const installRoot = selectors.installPathForGame(state, gameId);
+    if (!installRoot) return undefined;
+
+    const found = await findDriftedMods({
+      candidates,
+      cacheDir: ctx.appDataPath,
+      ...(ctx.abortSignal !== undefined ? { signal: ctx.abortSignal } : {}),
+      stagingRootFor: (vortexModId) => {
+        const mod = (
+          state as unknown as {
+            persistent?: { mods?: Record<string, Record<string, unknown>> };
+          }
+        )?.persistent?.mods?.[gameId]?.[vortexModId] as
+          | { installationPath?: string }
+          | undefined;
+        return typeof mod?.installationPath === "string"
+          ? path.join(installRoot, mod.installationPath)
+          : undefined;
+      },
+      onProgress: (done, total, name) => {
+        args.reportProgress(
+          "verifying-mods",
+          done,
+          total,
+          `Checking "${name}" for changes since the last install...`,
+        );
+      },
+    });
+
+    ehLog("info", "install.drift", {
+      candidates: candidates.length,
+      drifted: found.length,
+      names: found.slice(0, 25).map((f) => f.name),
+    });
+    return describeStagingDrift(found);
+  } catch (err) {
+    ehLog("warn", "install.drift.failed", {
+      why: err instanceof Error ? err.message : String(err),
+    });
+    return undefined;
+  }
+}
+
+/**
+ * The `stagingSetHash` field for one receipt entry, or nothing.
+ *
+ * Split out because the condition matters more than the computation: only a
+ * mod whose verification PASSED gets a hash. Verification passing is exactly
+ * the proof that the curator's recorded file list describes this disk, which
+ * is what makes deriving the fingerprint from the manifest legitimate rather
+ * than circular.
+ *
+ * Returns an empty object, not `{ stagingSetHash: undefined }` — the receipt
+ * parser keeps an absent field absent, and writing an explicit `undefined`
+ * would serialise to nothing anyway while reading as though a value had been
+ * considered and rejected.
+ */
+function stagingSetHashFor(
+  mod: InstalledModReportEntry,
+  verifiedOkKeys: ReadonlySet<string>,
+  expectedFilesByCompareKey: ReadonlyMap<string, EhcollStagingFile[]>,
+): { stagingSetHash?: string } {
+  if (!verifiedOkKeys.has(mod.compareKey)) return {};
+  const files = expectedFilesByCompareKey.get(mod.compareKey);
+  if (files === undefined || files.length === 0) return {};
+  // Returns undefined unless every file carries a sha256 — i.e. unless the
+  // collection was built "thorough". A "fast" package simply gets no drift
+  // reference, which is the correct outcome: there is nothing to build one
+  // from.
+  const hash = computeStagingSetHash(files);
+  return hash === undefined ? {} : { stagingSetHash: hash };
+}
 
 /**
  * Host description for a report that gets pasted in public.
@@ -344,6 +458,25 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
    * what the curator had.
    */
   const externalNotices: string[] = [];
+
+  /**
+   * Mods whose verification PASSED, and the file list that was proven.
+   *
+   * Only these get a drift reference in the receipt. A mod that diverged from
+   * the curator (correct, but not matching the manifest) or that failed
+   * outright has no proven description of its disk, and inventing one would
+   * make every future drift check compare against a fiction.
+   */
+  const verifiedOkKeys = new Set<string>();
+  const expectedFilesByCompareKey = new Map<string, EhcollStagingFile[]>();
+  const noteVerifiedOk = (
+    compareKey: string,
+    files: EhcollStagingFile[] | undefined,
+  ): void => {
+    if (files === undefined || files.length === 0) return;
+    verifiedOkKeys.add(compareKey);
+    expectedFilesByCompareKey.set(compareKey, files);
+  };
 
   // Bundled-archive prefetch pool. We extract up to 2 archives ahead
   // of the install loop so Vortex's per-mod install (which is
@@ -793,6 +926,12 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
         }
 
         if (verifyResult.kind === "ok") {
+          // Verification passed, so every file the curator recorded is present
+          // with exactly the recorded bytes: the manifest's file list is now a
+          // PROVEN description of this disk, and can serve as the drift
+          // reference. Recorded here rather than for every installed mod
+          // precisely because that proof is what makes it legitimate.
+          noteVerifiedOk(installEntry.compareKey, expectedFiles);
           verifications.push({
             kind: "ok",
             vortexModId: installEntry.vortexModId,
@@ -872,6 +1011,9 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
         });
 
         if (retried.kind === "recovered") {
+          // Re-verified and passed, so the same proof holds as on the clean
+          // path above.
+          noteVerifiedOk(retried.installEntry.compareKey, expectedFiles);
           // Update installedMods entry with the (potentially new)
           // vortexModId. Vortex assigns fresh ids for each install.
           installedMods[i] = retried.installEntry;
@@ -1382,6 +1524,25 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
     // ── 8. write receipt ────────────────────────────────────────────
     reportProgress("writing-receipt", 0, 1, "Writing install receipt...");
 
+    // ── has anything changed since WE installed it? ──────────────────
+    //
+    // Only meaningful on an UPDATE: it compares against the fingerprint the
+    // PREVIOUS install of this collection left behind, so a first install has
+    // nothing to compare and costs nothing. Scoped to mods whose identity is
+    // unchanged between the two versions — a mod the curator updated is
+    // supposed to differ, and reporting drift on it would fire for every
+    // upgraded mod in the collection.
+    //
+    // Placed after installation rather than before it because these mods are
+    // resolved as already-installed and are therefore NOT touched by this
+    // run: the drift survives it, so telling the user afterwards is telling
+    // them about something still true.
+    const driftNotice = await detectDrift({
+      ctx,
+      gameId: plan.manifest.game.id,
+      reportProgress,
+    });
+
     const receipt = buildReceipt({
       ctx,
       profileId: activeProfileId,
@@ -1392,6 +1553,8 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
       userlistApplication,
       verifications,
       gameIniApplication,
+      verifiedOkKeys,
+      expectedFilesByCompareKey,
     });
 
     let receiptPath: string;
@@ -1440,6 +1603,7 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
       ...(describePluginOrderDrift(pluginOrderDrift).length > 0
         ? { pluginOrderNotice: describePluginOrderDrift(pluginOrderDrift) }
         : {}),
+      ...(driftNotice !== undefined ? { stagingDriftNotice: driftNotice } : {}),
       ...(curatorReports.length > 0 ? { curatorReports } : {}),
       ...(externalNotices.length > 0
         ? { externalArchiveNotice: externalNotices }
@@ -2334,6 +2498,12 @@ function buildReceipt(args: {
   verifications: ModVerificationReceipt[];
   /** Absent when this release had already stated its settings. */
   gameIniApplication?: GameIniApplicationReceipt;
+  /**
+   * Mods whose verification PASSED, and the file list that was proven.
+   * Only these earn a drift reference — see {@link stagingSetHashFor}.
+   */
+  verifiedOkKeys: ReadonlySet<string>;
+  expectedFilesByCompareKey: ReadonlyMap<string, EhcollStagingFile[]>;
 }): InstallReceipt {
   const {
     ctx,
@@ -2344,6 +2514,8 @@ function buildReceipt(args: {
     rulesApplication,
     userlistApplication,
     verifications,
+    verifiedOkKeys,
+    expectedFilesByCompareKey,
   } = args;
   const { manifest } = ctx.plan;
   const now = new Date().toISOString();
@@ -2357,6 +2529,21 @@ function buildReceipt(args: {
       source: m.source,
       name: m.name,
       installedAt: now,
+      // Fingerprint of what we left on disk, for drift detection on a later
+      // update.
+      //
+      // Recorded ONLY for a mod that verified OK, and that is what makes it
+      // honest rather than convenient: verification passing means every file
+      // the curator recorded is present with exactly the recorded bytes, so
+      // the manifest's own file list IS a description of this machine's disk
+      // — proven, not assumed, and free, because the verification just did
+      // the reading.
+      //
+      // A mod that failed verification gets NO hash. Its files are not what
+      // the manifest says, so a hash derived from the manifest would be a
+      // fiction, and one derived from disk would enshrine a broken install as
+      // the reference. Absent means unknown; see InstallReceiptMod.
+      ...stagingSetHashFor(m, verifiedOkKeys, expectedFilesByCompareKey),
     });
   }
 

@@ -2230,6 +2230,25 @@ function ExternalArchiveNotice(props: {
 }
 
 /**
+ * Mods that changed on disk since a previous install of this collection.
+ *
+ * Info, not warning, and the wording matters as much as the detection: we do
+ * not know which of these the user did deliberately. Someone told their own
+ * edit is damage learns to dismiss the notice that finally isn't.
+ */
+function StagingDriftNotice(props: {
+  lines: readonly string[];
+}): JSX.Element | null {
+  if (props.lines.length === 0) return null;
+  const [summary, ...rest] = props.lines;
+  return (
+    <NoticeCard label="Changed since last install" intent="info" summary={summary ?? ""}>
+      <NoticeLines lines={rest} />
+    </NoticeCard>
+  );
+}
+
+/**
  * Mods that could not be reproduced, with the report ready to send.
  *
  * Every softer explanation has already been ruled out by the time one of
@@ -2320,6 +2339,7 @@ function SuccessBody(props: {
       <PluginOrderNotice lines={result.pluginOrderNotice ?? []} />
       <GameIniNotice lines={result.gameIniNotice ?? []} />
       <ExternalArchiveNotice lines={result.externalArchiveNotice ?? []} />
+      <StagingDriftNotice lines={result.stagingDriftNotice ?? []} />
       {/*
         Last, deliberately: it is the only notice here that asks the user to
         DO something, and an action buried above four informational cards is

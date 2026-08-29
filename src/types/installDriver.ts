@@ -311,6 +311,18 @@ export type InstallSuccess = {
    */
   externalArchiveNotice?: string[];
   /**
+   * Mods that changed on disk since a PREVIOUS install of this collection put
+   * them there, and that this version did not update.
+   *
+   * Compared against what the last install left on THIS machine, never
+   * against the curator's staging — theirs diverges from its own archive in
+   * ways nobody notices, so it cannot be an etalon. A finding here means
+   * "this changed since we installed it", which is a fact; it does not mean
+   * "this is wrong", which is why the user is offered both directions rather
+   * than having one chosen for them.
+   */
+  stagingDriftNotice?: string[];
+  /**
    * How the user's resulting plugin order differs from the curator's.
    *
    * Applying the curator's LOOT rules is not the same as reproducing their
