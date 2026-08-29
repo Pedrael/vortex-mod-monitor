@@ -127,6 +127,7 @@ import type {
 import type { SupportedGameId } from "../../types/ehcoll";
 import { looksLikeWine } from "./checkSevenZipHealth";
 import { countMods, deployBudgetMs } from "./timeBudgets";
+import { clearInstallMarker, writeInstallMarker } from "./installMarker";
 import {
   applyModRules,
   type ApplyModRulesResult,
@@ -433,6 +434,29 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
 
     // ── 5. install each mod sequentially ────────────────────────────
     const total = plan.modResolutions.length;
+
+    // Record that a run is in flight, so a CRASH leaves a trace.
+    //
+    // A receipt is written only on completion and that stays true — it
+    // asserts the collection IS installed, which a half-finished run has not
+    // earned. But the consequence was that a force-quit left nothing at all
+    // on disk: a tester killed Vortex here, reopened it, and Event Horizon
+    // had no idea anything had been running or which of the profiles in his
+    // list we had made.
+    //
+    // Written HERE rather than at the top of the function because this is
+    // where the long, interruptible part begins and where the profile is
+    // finally known. Nothing reads it to decide what to install — that stays
+    // with the resolver's re-match, which is evidence-based. It only lets the
+    // next launch explain itself.
+    await writeInstallMarker(ctx.appDataPath, {
+      packageId: plan.manifest.package.id,
+      packageName: plan.manifest.package.name,
+      startedAt: new Date().toISOString(),
+      profileId: activeProfileId,
+      gameId: plan.manifest.game.id,
+      totalMods: total,
+    });
     for (let i = 0; i < total; i++) {
       const resolution = plan.modResolutions[i];
       const manifestEntry = manifestByCompareKey.get(resolution.compareKey);
@@ -1172,6 +1196,17 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
         : {}),
     };
   } finally {
+    // The run ENDED — success, failure or abort alike — so the in-flight
+    // marker must go. It exists to say "Vortex died mid-install"; one that
+    // outlives a run which finished would warn about an interruption that
+    // never happened, and a false warning teaches people to ignore the true
+    // one.
+    //
+    // In the `finally` deliberately: runInstall has THIRTEEN return paths,
+    // and clearing at each of them is a guarantee that lasts exactly until
+    // someone adds a fourteenth.
+    await clearInstallMarker(ctx.appDataPath, plan.manifest.package.id);
+
     // Cleanup of bundled-extract temp dirs is fire-and-forget. Each
     // entry is the **directory** returned by extractBundledFromEhcoll
     // (one per successful bundled install). Failures here don't
