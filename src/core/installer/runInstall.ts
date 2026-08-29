@@ -334,6 +334,16 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
    * on the result instead, where the UI can offer them.
    */
   const curatorReports: string[] = [];
+  /**
+   * Notes about hand-supplied archives that are not the curator's.
+   *
+   * Separate from curatorReports: nothing FAILED here. The user picked a file
+   * we could not match to the collection and we installed it as asked — they
+   * simply ought to know, because a browse-mode dependency that resolves to a
+   * different build is the most invisible way an install stops reproducing
+   * what the curator had.
+   */
+  const externalNotices: string[] = [];
 
   // Bundled-archive prefetch pool. We extract up to 2 archives ahead
   // of the install loop so Vortex's per-mod install (which is
@@ -605,6 +615,7 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
           onTempArchive: (p) => tempArchivesToCleanup.push(p),
           onSkip: (entry) => skippedMods.push(entry),
           onCarry: (entry) => carriedMods.push(entry),
+          onNotice: (line) => externalNotices.push(line),
           bundledPool,
         });
         ehLog("info", "install.mod.done", {
@@ -1430,6 +1441,9 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
         ? { pluginOrderNotice: describePluginOrderDrift(pluginOrderDrift) }
         : {}),
       ...(curatorReports.length > 0 ? { curatorReports } : {}),
+      ...(externalNotices.length > 0
+        ? { externalArchiveNotice: externalNotices }
+        : {}),
     };
   } finally {
     // The run ENDED — success, failure or abort alike — so the in-flight
@@ -1498,6 +1512,8 @@ async function executeDecision(args: {
   onTempArchive: (p: string) => void;
   onSkip: (entry: SkippedModReportEntry) => void;
   onCarry: (entry: CarriedModReportEntry) => void;
+  /** Something the user should read, that is not a failure. */
+  onNotice: (line: string) => void;
   /**
    * Optional bundled prefetch pool. When supplied, bundled-archive
    * decisions will consume pre-extracted results from the pool
@@ -1507,8 +1523,17 @@ async function executeDecision(args: {
    */
   bundledPool?: BundledPrefetchPool;
 }): Promise<InstalledModReportEntry | undefined> {
-  const { ctx, resolution, manifestEntry, profileId, onTempArchive, onSkip, onCarry, bundledPool } =
-    args;
+  const {
+    ctx,
+    resolution,
+    manifestEntry,
+    profileId,
+    onTempArchive,
+    onSkip,
+    onCarry,
+    onNotice,
+    bundledPool,
+  } = args;
   const { manifest } = ctx.plan;
   const decision = resolution.decision;
   const compareKey = resolution.compareKey;
@@ -1633,6 +1658,7 @@ async function executeDecision(args: {
         manifestEntry,
         choice,
         onSkip,
+        onNotice,
       });
     }
 
@@ -1774,8 +1800,10 @@ async function executePromptUserChoice(args: {
   manifestEntry: EhcollMod;
   choice: ConflictChoice;
   onSkip: (entry: SkippedModReportEntry) => void;
+  /** Something the user should read, that is not a failure. */
+  onNotice: (line: string) => void;
 }): Promise<InstalledModReportEntry | undefined> {
-  const { ctx, resolution, manifestEntry, choice, onSkip } = args;
+  const { ctx, resolution, manifestEntry, choice, onSkip, onNotice } = args;
   const compareKey = resolution.compareKey;
 
   if (choice.kind === "skip") {
@@ -1791,6 +1819,43 @@ async function executePromptUserChoice(args: {
     throw new Error(
       `Choice "${choice.kind}" is not valid for external-prompt-user ` +
         `("${resolution.name}"). Expected use-local-file or skip.`,
+    );
+  }
+
+  // Is this the file the curator had?
+  //
+  // This is the ONE path where the bytes arrive by hand: the user browsed to
+  // a website, downloaded something, and pointed us at it. Until now it was
+  // installed unexamined — wrong version, wrong mod, half-finished download,
+  // all indistinguishable from the right file, and all recorded afterwards as
+  // the collection's mod.
+  //
+  // The build hard-blocks any external mod lacking `sha256` or
+  // `stagingSetHash`, so a manifest always carries an oracle for these; where
+  // it is the sha256 we can simply ask.
+  //
+  // Warned, never blocked. A browse-mode dependency legitimately resolves to
+  // a different-but-equivalent file — a mirror, a repack, a newer build the
+  // author replaced the page with — and the user made a deliberate choice we
+  // have no standing to overrule. What they should not do is make it
+  // UNKNOWINGLY.
+  const picked = await checkArchiveIdentity({
+    archivePath: choice.localPath,
+    expectedSha256: manifestEntry.source.sha256,
+    ...(ctx.abortSignal !== undefined ? { signal: ctx.abortSignal } : {}),
+  });
+  ehLog(picked.kind === "differs" ? "warn" : "info", "install.picked-archive", {
+    name: resolution.name,
+    verdict: picked.kind,
+    ...(picked.kind === "differs"
+      ? { expected: picked.expected, actual: picked.actual }
+      : {}),
+  });
+  if (picked.kind === "differs") {
+    onNotice(
+      `"${resolution.name}": the file you picked is not the one the ` +
+        `collection was built from. ${describeArchiveIdentity(picked)} It was ` +
+        `installed as you chose — this is a note, not a refusal.`,
     );
   }
 
@@ -2898,6 +2963,10 @@ async function tryRecoverFailedMod(args: {
       resolution,
       manifestEntry,
       profileId: activeProfileId,
+      // A notice from a RETRY would duplicate the one the first attempt
+      // already produced — same mod, same picked file, same mismatch — and a
+      // user told twice about one thing reasonably assumes it happened twice.
+      onNotice: () => undefined,
       onTempArchive: (p) => {
         // Best-effort re-thread; if the driver caller exposed
         // tempArchivesToCleanup we'd pipe it here, but the closure

@@ -91,9 +91,12 @@ export type UserConfirmedDecisions = {
  *    the manifest's version. Valid for any `*-diverged` decision.
  *  - `use-local-file`: install from a local archive path the user
  *    picked. Valid for `external-prompt-user` decisions only. The
- *    driver does NOT verify the SHA matches `expectedSha256` before
- *    installing — it trusts the user-supplied file. (A future slice
- *    may add re-prompt-on-mismatch; v1 trusts the picker.)
+ *    driver now HASHES that file and compares it against the manifest's
+ *    recorded sha256, but still installs whatever the user chose — a
+ *    browse-mode dependency legitimately resolves to a different-but-
+ *    equivalent build, and the choice is theirs. A mismatch is reported
+ *    through {@link InstallSuccess.externalArchiveNotice} so it is not
+ *    made unknowingly.
  *  - `skip`: do not install. Records a `SkippedModReportEntry`.
  *    Valid for `external-prompt-user` decisions only (a diverged mod
  *    "skip" would be ambiguous between "skip new install" and
@@ -296,6 +299,17 @@ export type InstallSuccess = {
    * it without composing anything.
    */
   curatorReports?: string[];
+  /**
+   * Hand-supplied archives that are not the ones the collection was built from.
+   *
+   * Distinct from `curatorReports`: nothing failed. The user browsed to a
+   * website, picked a file, and it installed exactly as they asked — but its
+   * bytes are not the curator's. A browse-mode dependency resolving to a
+   * different build is the most invisible way an install stops reproducing
+   * what the curator had, so it is said out loud rather than left for the user
+   * to discover in-game.
+   */
+  externalArchiveNotice?: string[];
   /**
    * How the user's resulting plugin order differs from the curator's.
    *

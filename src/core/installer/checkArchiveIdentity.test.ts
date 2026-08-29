@@ -188,6 +188,42 @@ describe("the driver actually asks, and tells the curator the answer", () => {
     expect(src).toMatch(/"install\.archive-identity"/);
     expect(src).toMatch(/expected: archiveIdentity\.expected/);
   });
+
+  it("also checks the file the USER picked by hand", async () => {
+    // The one path where bytes arrive by hand: browsed to a website,
+    // downloaded something, pointed us at it. It was installed unexamined —
+    // wrong version, wrong mod, half-finished download, all indistinguishable
+    // from the right file and all recorded afterwards as the collection's mod.
+    const src = await driver();
+    const fn = src.slice(src.indexOf("function executePromptUserChoice"));
+    const body = fn.slice(0, fn.indexOf("\n}\n"));
+    expect(body).toMatch(/checkArchiveIdentity\(/);
+    expect(body).toMatch(/archivePath: choice\.localPath/);
+  });
+
+  it("installs the picked file anyway — a note, not a refusal", async () => {
+    // A browse-mode dependency legitimately resolves to a different-but-
+    // equivalent build: a mirror, a repack, a page the author replaced. The
+    // user made a deliberate choice we have no standing to overrule. What
+    // they should not do is make it unknowingly.
+    const src = await driver();
+    const fn = src.slice(src.indexOf("function executePromptUserChoice"));
+    const body = fn.slice(0, fn.indexOf("\n}\n"));
+    const mismatch = body.indexOf('picked.kind === "differs"');
+    const install = body.indexOf("await installFromLocalArchive(");
+    expect(mismatch).toBeGreaterThan(-1);
+    expect(install).toBeGreaterThan(-1);
+    // The check happens FIRST, and the install still happens after it.
+    expect(mismatch).toBeLessThan(install);
+    expect(body).not.toMatch(/throw new Error\([^)]*picked/);
+  });
+
+  it("does not repeat the notice on a retry", async () => {
+    // Telling a user twice about one thing invites the reasonable conclusion
+    // that it happened twice.
+    const src = await driver();
+    expect(src).toMatch(/onNotice: \(\) => undefined/);
+  });
 });
 
 describe("what the curator is told", () => {
