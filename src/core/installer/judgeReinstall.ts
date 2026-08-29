@@ -32,7 +32,7 @@
 
 import * as path from "path";
 
-import { listArchiveContents } from "../manifest/archiveContents";
+import { listArchiveNativeFirst } from "../manifest/listArchive";
 import { crc32File } from "../manifest/readZip";
 import {
   verifyStagingAgainstArchive,
@@ -99,25 +99,22 @@ export async function judgeReinstall(
     };
   }
 
-  // Listing needs 7z, because a mod archive is as often .7z or .rar as .zip.
-  // On a prefix where 7z will not run that resolve throws — which is exactly
-  // the machine this whole investigation started on. Undecidable then, which
-  // reinstalls: no worse than before this check existed.
-  let listing;
-  try {
-    const { resolveSevenZip } = await import("../manifest/sevenZip");
-    const sevenZip = input.sevenZip ?? resolveSevenZip();
-    listing = await listArchiveContents(sevenZip, input.archivePath, {
-      ...(input.signal !== undefined ? { signal: input.signal } : {}),
-    });
-  } catch (err) {
+  // ZIP natively first, 7z only as the fallback — see listArchive.ts. This
+  // check exists to stop ~11% of a collection being reinstalled for nothing,
+  // and routing it solely through 7z meant it went silent on exactly the
+  // prefix where 7z does not run.
+  const attempt = await listArchiveNativeFirst({
+    archivePath: input.archivePath,
+    ...(input.sevenZip !== undefined ? { sevenZip: input.sevenZip } : {}),
+    ...(input.signal !== undefined ? { signal: input.signal } : {}),
+  });
+  if (attempt.kind === "unreadable") {
     return {
       kind: "undecidable",
-      why: `the archive could not be listed: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
+      why: `the archive could not be listed: ${attempt.why}`,
     };
   }
+  const listing = attempt.listing;
 
   // An archive whose listing carries no CRCs can only be matched on size,
   // which is weak enough that calling a mod "fine" on its basis would be

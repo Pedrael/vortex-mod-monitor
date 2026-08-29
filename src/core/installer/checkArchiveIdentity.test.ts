@@ -22,6 +22,8 @@ import {
   describeArchiveIdentity,
 } from "./checkArchiveIdentity";
 import { archiveFileCacheKey, emptyArchiveHashCache } from "../archiveHashCache";
+import { buildStoredZip, writeStoredZip } from "../manifest/storedZip.testutil";
+import type { SevenZipApi } from "../manifest/sevenZip";
 
 let dir: string;
 beforeEach(() => {
@@ -254,5 +256,137 @@ describe("what the curator is told", () => {
     });
     expect(text).toContain("aaaaaaaaaaaaaaaa...");
     expect(text).not.toContain("a".repeat(64));
+  });
+});
+
+/**
+ * MICROSCOPE PASS 1 — a hash mismatch has TWO causes and the first version
+ * named only one of them.
+ *
+ * "Bytes differ" is produced both by a re-upload under the same file id and by
+ * a truncated download. The original wording told the user (and the curator)
+ * that a re-upload was "the most likely cause" in both cases — a diagnostic
+ * naming one cause out of two it could not distinguish, which is the failure
+ * this project treats as worse than saying nothing, because it reads as
+ * evidence. It also sent a curator report for a file the curator never touched.
+ *
+ * Only one of the two is fixed by downloading again, so the two must be told
+ * apart before anyone is told what to do. Parsing the header does it.
+ */
+describe("a different archive is not the same thing as a broken one", () => {
+  const brokenSevenZip = (): SevenZipApi =>
+    ({
+      list: () => {
+        throw new Error("7z: cannot execute binary in this prefix");
+      },
+      add: async () => ({ code: 0 }),
+      extractFull: async () => ({ code: 0 }),
+    }) as unknown as SevenZipApi;
+
+  it("says DIFFERS for an intact archive whose bytes are not the curator's", async () => {
+    // A real, readable ZIP — just not the one the collection was built from.
+    // This is the re-upload shape, and re-downloading genuinely cannot help.
+    const p = path.join(dir, "mod.zip");
+    writeStoredZip(p, [{ name: "Data/thing.esp", body: "a newer build" }]);
+
+    const check = await checkArchiveIdentity({
+      archivePath: p,
+      expectedSha256: sha("what the curator had"),
+      sevenZip: brokenSevenZip(),
+    });
+
+    expect(check.kind).toBe("differs");
+  });
+
+  it("says DAMAGED when no reader can open it", async () => {
+    // A truncated download: the bytes differ AND the file is not parseable.
+    // collectAvailableDownloads already skips incomplete downloads by size,
+    // which is why we know partial files really occur here.
+    const full = buildStoredZip([
+      { name: "Data/thing.esp", body: "the real contents of this mod" },
+    ]);
+    const p = path.join(dir, "half.zip");
+    fs.writeFileSync(p, full.subarray(0, Math.floor(full.length / 2)));
+
+    const check = await checkArchiveIdentity({
+      archivePath: p,
+      expectedSha256: sha("what the curator had"),
+      sevenZip: brokenSevenZip(),
+    });
+
+    expect(check.kind).toBe("damaged");
+  });
+
+  it("does not probe at all when the bytes match", async () => {
+    // The probe exists to explain a mismatch. A matching archive is already
+    // answered, and a broken 7z must not turn a clean result into a scary one.
+    const body = "exactly what the curator had";
+    const p = write("good.zip", body);
+
+    const check = await checkArchiveIdentity({
+      archivePath: p,
+      expectedSha256: sha(body),
+      sevenZip: brokenSevenZip(),
+    });
+
+    expect(check.kind).toBe("matches");
+  });
+
+  it("tells the user to re-download, and does NOT blame a re-upload", async () => {
+    // The whole point of splitting the case. This text is what the user acts
+    // on, so it must point at their download rather than the curator's mod.
+    const text = describeArchiveIdentity({
+      kind: "damaged",
+      expected: "a".repeat(64),
+      actual: "b".repeat(64),
+      why: "no end of central directory record",
+    });
+    expect(text).toMatch(/damaged/i);
+    expect(text).toMatch(/incomplete|corrupted/i);
+    expect(text).not.toMatch(/re-uploaded/i);
+  });
+});
+
+describe("the driver acts on the difference, and the user sees it", () => {
+  // Both halves must exist or the split is inert, and each is invisible
+  // without the other: a verdict nothing branches on, or a notice nothing
+  // renders. Both typecheck. Five features in this codebase shipped exactly
+  // that way before anyone noticed.
+  const read = (rel: string): string =>
+    fs.readFileSync(path.join(__dirname, rel), "utf8");
+
+  it("routes a damaged archive AWAY from the curator report", async () => {
+    // The finding itself: a truncated download is not the curator's problem,
+    // and sending it to them asks them to hunt a mod they never changed.
+    const src = read("runInstall.ts");
+    const damaged = src.indexOf('archiveIdentity.kind === "damaged"');
+    const report = src.indexOf("curatorReports.push(");
+    expect(damaged).toBeGreaterThan(-1);
+    expect(damaged).toBeLessThan(report);
+    // …and it must SHORT-CIRCUIT, not merely run first.
+    expect(src.slice(damaged, report)).toContain("continue;");
+  });
+
+  it("surfaces it as its own notice rather than logging it into the void", () => {
+    expect(read("runInstall.ts")).toMatch(
+      /damagedArchiveNotice: damagedArchives/,
+    );
+    const steps = fs.readFileSync(
+      path.join(__dirname, "..", "..", "ui", "pages", "install", "steps.tsx"),
+      "utf8",
+    );
+    expect(steps).toMatch(
+      /<DamagedArchiveNotice lines=\{result\.damagedArchiveNotice/,
+    );
+  });
+
+  it("keeps the hand-picked-archive branch exhaustive", () => {
+    // This is a scar. Adding `damaged` silently un-warned the user who picks a
+    // CORRUPT file by hand: that path tested only for "differs", so the new
+    // variant fell through to no notice at all, and tsc was happy. The `never`
+    // arm makes the next added variant a build error instead of a silence.
+    const src = read("runInstall.ts");
+    const branch = src.slice(src.indexOf("const pickedIsNotable"));
+    expect(branch.slice(0, 2000)).toContain("const exhaustive: never = picked");
   });
 });

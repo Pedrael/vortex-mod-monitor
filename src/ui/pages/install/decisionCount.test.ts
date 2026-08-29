@@ -15,7 +15,7 @@ import {
   countUndecidedConflicts,
 } from "./state";
 import type { PreviewBundle } from "./state";
-import type { ConflictChoice } from "../../../types/installPlan";
+import type { ConflictChoice } from "../../../types/installDriver";
 
 /**
  * `external-prompt-user` is the arm with NO default — the user must pick a

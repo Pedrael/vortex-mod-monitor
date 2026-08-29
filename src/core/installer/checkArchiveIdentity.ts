@@ -25,12 +25,27 @@
  *   - bytes MATCH the manifest  → the archive is the curator's. Downloading it
  *     again fetches the same bytes, so it cannot help; the fault is
  *     downstream, in extraction or in what happened after.
- *   - bytes DIFFER              → the archive is not what the collection was
- *     built from. That is the finding, and re-downloading will not change it
- *     either: Nexus will serve the same new bytes again.
+ *   - bytes DIFFER, archive READABLE → the archive is a different, intact
+ *     file. Re-downloading will not change that: Nexus serves the same new
+ *     bytes again. The likely cause is a re-upload under the same file id.
+ *   - bytes DIFFER, archive UNREADABLE → the file on disk is damaged, and
+ *     re-downloading is the ONE thing that fixes it.
  *
- * So it does not merely order the ladder, it usually ends it — with an answer
- * rather than another attempt.
+ * ─── WHY THAT LAST CASE IS SPLIT OUT ───────────────────────────────────
+ * A hash mismatch alone cannot tell a re-upload from a half-finished
+ * download, and the first version of this file collapsed both into "probably
+ * re-uploaded". That is the failure this project treats as worse than saying
+ * nothing: naming one cause out of two it cannot distinguish, in a diagnostic,
+ * where it reads as evidence. It sent the user to ask the curator about a
+ * re-upload when their own download had been truncated, and it sent the
+ * curator hunting a mod they never changed.
+ *
+ * A truncated archive is not a hypothetical here — `collectAvailableDownloads`
+ * already skips incomplete downloads by comparing bytes on disk against the
+ * recorded size, which exists because partial files genuinely occur.
+ *
+ * Parsing the header separates them for the cost of a header read: a truncated
+ * or corrupt archive has no readable central directory, an intact one does.
  * ──────────────────────────────────────────────────────────────────────
  */
 
@@ -41,15 +56,24 @@ import {
   archiveFileCacheKey,
   type ArchiveHashCache,
 } from "../archiveHashCache";
+import { listArchiveNativeFirst } from "../manifest/listArchive";
+import type { SevenZipApi } from "../manifest/sevenZip";
 
 export type ArchiveIdentityCheck =
   /** The archive on disk is byte-identical to what the curator built from. */
   | { kind: "matches"; sha256: string }
   /**
-   * Different bytes under the same identity. Usually a re-upload; possibly a
-   * damaged file. Either way the collection was not built from this.
+   * Different bytes under the same identity, in a file that still parses as
+   * an archive. The collection was not built from this, and downloading it
+   * again would fetch the same thing.
    */
   | { kind: "differs"; expected: string; actual: string }
+  /**
+   * Different bytes AND no reader can open it — a truncated or corrupted
+   * download. This is the one case where downloading again actually helps,
+   * and it is the user's problem rather than the curator's.
+   */
+  | { kind: "damaged"; expected: string; actual: string; why: string }
   /** No archive, or no recorded hash. States why rather than implying either. */
   | { kind: "unknown"; why: string };
 
@@ -63,6 +87,8 @@ export async function checkArchiveIdentity(args: {
   expectedSha256: string | undefined;
   /** Reused so a mod already hashed by the download scan is not read twice. */
   cache?: ArchiveHashCache;
+  /** Injection point for tests; defaults to Vortex's own SevenZip. */
+  sevenZip?: SevenZipApi;
   signal?: AbortSignal;
 }): Promise<ArchiveIdentityCheck> {
   if (args.expectedSha256 === undefined || args.expectedSha256.length === 0) {
@@ -94,9 +120,23 @@ export async function checkArchiveIdentity(args: {
       cached?.sha256 ?? (await hashFileSha256(args.archivePath, args.signal));
 
     const expected = args.expectedSha256.toLowerCase();
-    return actual.toLowerCase() === expected
-      ? { kind: "matches", sha256: actual }
-      : { kind: "differs", expected, actual };
+    if (actual.toLowerCase() === expected) {
+      return { kind: "matches", sha256: actual };
+    }
+
+    // Different bytes. Now the question that decides who should act: is this a
+    // DIFFERENT archive, or a BROKEN one? Only the second is fixed by
+    // downloading again, and only the first is worth the curator's time.
+    // Header read, and only on a path we already know has failed twice.
+    const attempt = await listArchiveNativeFirst({
+      archivePath: args.archivePath,
+      ...(args.sevenZip !== undefined ? { sevenZip: args.sevenZip } : {}),
+      ...(args.signal !== undefined ? { signal: args.signal } : {}),
+    });
+    if (attempt.kind === "unreadable") {
+      return { kind: "damaged", expected, actual, why: attempt.why };
+    }
+    return { kind: "differs", expected, actual };
   } catch (err) {
     return {
       kind: "unknown",
@@ -126,9 +166,17 @@ export function describeArchiveIdentity(check: ArchiveIdentityCheck): string {
       return (
         `The archive on this machine is NOT the one the collection was built ` +
         `from (expected ${check.expected.slice(0, 16)}..., got ` +
-        `${check.actual.slice(0, 16)}...). The most likely cause is that the ` +
-        `mod was re-uploaded under the same file id since the collection was ` +
-        `built, so the download now serves different bytes.`
+        `${check.actual.slice(0, 16)}...), but it is an intact archive. The ` +
+        `most likely cause is that the mod was re-uploaded under the same ` +
+        `file id since the collection was built, so the download now serves ` +
+        `different bytes.`
+      );
+    case "damaged":
+      return (
+        `The archive on this machine is damaged — no reader can open it ` +
+        `(${check.why}), and its bytes do not match what the collection was ` +
+        `built from. This is a corrupted or incomplete download rather than ` +
+        `anything wrong with the collection.`
       );
     case "unknown":
       return `The archive could not be compared: ${check.why}.`;

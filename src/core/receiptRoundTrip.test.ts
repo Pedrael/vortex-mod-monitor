@@ -39,10 +39,17 @@ const throughDisk = (r: InstallReceipt): InstallReceipt =>
 
 describe("install receipt round-trip", () => {
   it("keeps gameIniApplication, which the apply-once guard depends on", () => {
+    // The REAL GameIniApplicationReceipt shape. The previous fixture invented
+    // one (`packageVersion` / `appliedAt` / `files`) that the type does not
+    // have, which made the test unfalsifiable for the thing it claims to
+    // check: `gameIniApplication` is parsed by `passthroughObject`, so an
+    // arbitrary object survives the round trip whether or not the real fields
+    // do. It went unnoticed because tests were never typechecked.
     const gameIniApplication = {
-      packageVersion: "1.0.0",
-      appliedAt: "1970-01-01T00:00:00.000Z",
-      files: [{ fileName: "Fallout4.ini", applied: 310, skipped: 0 }],
+      appliedCount: 310,
+      alreadyMatchedCount: 12,
+      changes: ["Fallout4.ini: bInvalidateOlderFiles 0 -> 1"],
+      failed: [],
     };
     const out = throughDisk({ ...base(), gameIniApplication } as InstallReceipt);
     expect(out.gameIniApplication).toEqual(gameIniApplication);

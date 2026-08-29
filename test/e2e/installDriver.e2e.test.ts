@@ -72,6 +72,11 @@ const userState = (): UserSideState =>
     enabledExtensions: [],
     installedMods: [],
     availableDownloads: [],
+    // REQUIRED on UserSideState, and previously absent — the cast hid it, and
+    // tests were never typechecked so nothing objected. An end-to-end fixture
+    // missing required fields is not the state the driver actually receives.
+    activeProfileId: "profile-e2e",
+    activeProfileName: "E2E Profile",
   }) as UserSideState;
 
 /**

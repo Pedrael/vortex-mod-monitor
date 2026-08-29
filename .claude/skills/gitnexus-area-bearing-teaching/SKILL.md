@@ -50,8 +50,6 @@ Start here when exploring this area:
 |------|------|-------|
 | `Main → Sub` | cross_community | 5 |
 | `Main → GateCommentKey` | cross_community | 5 |
-| `AllManagedScriptKeys → Sub` | intra_community | 3 |
-| `AllManagedScriptKeys → GateCommentKey` | intra_community | 3 |
 
 ## How to Explore
 

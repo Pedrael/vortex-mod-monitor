@@ -1,9 +1,9 @@
 ---
-name: gitnexus-area-cluster-100
-description: "Skill for the Cluster_100 area of vortex-mod-monitor. 4 symbols across 1 files."
+name: gitnexus-area-cluster-214
+description: "Skill for the Cluster_214 area of vortex-mod-monitor. 4 symbols across 1 files."
 ---
 
-# Cluster_100
+# Cluster_214
 
 4 symbols | 1 files | Cohesion: 80%
 
@@ -11,7 +11,7 @@ description: "Skill for the Cluster_100 area of vortex-mod-monitor. 4 symbols ac
 
 - Working with code in `src/`
 - Understanding how captureUserlist work
-- Modifying cluster_100-related functionality
+- Modifying cluster_214-related functionality
 
 ## Key Files
 
@@ -37,6 +37,6 @@ Start here when exploring this area:
 ## How to Explore
 
 1. `context({name: "captureUserlist"})` — see callers and callees
-2. `query({search_query: "cluster_100"})` — find related execution flows
+2. `query({search_query: "cluster_214"})` — find related execution flows
 3. Read key files listed above for implementation details
 4. `explain({target: "<file or symbol>"})` — persisted taint findings (source→sink data flows), when indexed with `--pdg`

@@ -2230,6 +2230,31 @@ function ExternalArchiveNotice(props: {
 }
 
 /**
+ * Archives that are damaged on THIS machine.
+ *
+ * A warning rather than info, and separate from the curator reports on
+ * purpose: this is the one failure in the ladder with a fix the user can
+ * perform themselves, and the action is concrete — delete the download, fetch
+ * it again, install again. Sending it to the curator instead would ask them to
+ * investigate a mod they never changed.
+ */
+function DamagedArchiveNotice(props: {
+  lines: readonly string[];
+}): JSX.Element | null {
+  if (props.lines.length === 0) return null;
+  const n = props.lines.length;
+  return (
+    <NoticeCard
+      label="Damaged downloads"
+      intent="warning"
+      summary={`${n} mod${n === 1 ? "" : "s"} could not be installed because the downloaded file on this machine is corrupted. Downloading ${n === 1 ? "it" : "them"} again should fix ${n === 1 ? "it" : "them"}.`}
+    >
+      <NoticeLines lines={props.lines} />
+    </NoticeCard>
+  );
+}
+
+/**
  * Mods that changed on disk since a previous install of this collection.
  *
  * Info, not warning, and the wording matters as much as the detection: we do
@@ -2341,10 +2366,13 @@ function SuccessBody(props: {
       <ExternalArchiveNotice lines={result.externalArchiveNotice ?? []} />
       <StagingDriftNotice lines={result.stagingDriftNotice ?? []} />
       {/*
-        Last, deliberately: it is the only notice here that asks the user to
-        DO something, and an action buried above four informational cards is
-        an action that gets missed.
+        The two action cards last, deliberately: everything above is
+        informational, and an action buried among notes is an action that gets
+        missed. Damaged downloads come first of the two because the user can
+        fix those themselves right now, where a curator report is something
+        they can only send and then wait on.
       */}
+      <DamagedArchiveNotice lines={result.damagedArchiveNotice ?? []} />
       <CuratorReportsNotice reports={result.curatorReports ?? []} />
       <div
         style={{

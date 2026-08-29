@@ -67,8 +67,20 @@ export type SevenZipListEntry = {
   /** Path inside the archive. Backslash-separated on Windows. */
   name: string;
   size?: number;
-  /** DOS attribute string. Directories start with `"D"`; files are e.g. `"A"`. */
+  /**
+   * DOS attribute string. Contains `"D"` for a directory — NOT necessarily
+   * first: a real .7z reports directories as `"RD"` (read-only + directory).
+   */
   attr?: string;
+  /**
+   * The `Folder = +` column, which some 7z versions emit instead of a `D`
+   * attribute.
+   *
+   * Declared rather than reached through a cast because `isDirectoryEntry`
+   * genuinely depends on it, and a field the production code reads but the
+   * type denies is one nobody can see when they change this shape.
+   */
+  folder?: string;
   crc?: string | number;
   date?: Date;
 };

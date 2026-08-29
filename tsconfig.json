@@ -23,5 +23,13 @@
     "lib": ["ES2019", "DOM", "DOM.Iterable"]
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
+  // `.testutil.ts` holds fixtures and builders used only by tests. Excluded for
+  // the same reason as the tests themselves: it is dead weight in the shipped
+  // plugin, and a helper that writes deliberately malformed archives has no
+  // business inside a user's Vortex install.
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/*.testutil.ts"
+  ]
 }

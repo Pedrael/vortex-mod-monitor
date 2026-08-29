@@ -1,16 +1,16 @@
 ---
 name: gitnexus-area-scripts
-description: "Skill for the Scripts area of vortex-mod-monitor. 48 symbols across 5 files."
+description: "Skill for the Scripts area of vortex-mod-monitor. 49 symbols across 5 files."
 ---
 
 # Scripts
 
-48 symbols | 5 files | Cohesion: 90%
+49 symbols | 5 files | Cohesion: 90%
 
 ## When to Use
 
 - Working with code in `scripts/`
-- Understanding how verifyInstall, isEnospcError, withProjectTmpEnv work
+- Understanding how verifyInstall, answered, isEnospcError work
 - Modifying scripts-related functionality
 
 ## Key Files
@@ -19,8 +19,8 @@ description: "Skill for the Scripts area of vortex-mod-monitor. 48 symbols acros
 |------|---------|
 | `scripts/bearing-verify.mjs` | checkFile, checkHookExecutable, checkHooksJson, checkManifest, checkModuleDelivery (+16) |
 | `scripts/bearing-ci.mjs` | blastRadius, collectDiff, detectChanges, num, git (+7) |
+| `scripts/bearing-token-benchmark.mjs` | answered, classicalCost, cypher, gn, graphCost (+2) |
 | `scripts/bearing-agent.mjs` | loadStaleness, markRefreshOutcome, run, runAllowFail, currentBranch (+2) |
-| `scripts/bearing-token-benchmark.mjs` | classicalCost, cypher, gn, graphCost, pickTargets (+1) |
 | `scripts/lib/project-tmp.mjs` | isEnospcError, withProjectTmpEnv |
 
 ## Entry Points
@@ -28,6 +28,7 @@ description: "Skill for the Scripts area of vortex-mod-monitor. 48 symbols acros
 Start here when exploring this area:
 
 - **`verifyInstall`** (Function) — `scripts/bearing-verify.mjs:395`
+- **`answered`** (Function) — `scripts/bearing-token-benchmark.mjs:163`
 - **`isEnospcError`** (Function) — `scripts/lib/project-tmp.mjs:95`
 - **`withProjectTmpEnv`** (Function) — `scripts/lib/project-tmp.mjs:25`
 
@@ -36,6 +37,7 @@ Start here when exploring this area:
 | Symbol | Type | File | Line |
 |--------|------|------|------|
 | `verifyInstall` | Function | `scripts/bearing-verify.mjs` | 395 |
+| `answered` | Function | `scripts/bearing-token-benchmark.mjs` | 163 |
 | `isEnospcError` | Function | `scripts/lib/project-tmp.mjs` | 95 |
 | `withProjectTmpEnv` | Function | `scripts/lib/project-tmp.mjs` | 25 |
 | `checkFile` | Function | `scripts/bearing-verify.mjs` | 108 |
@@ -50,11 +52,10 @@ Start here when exploring this area:
 | `checkZed` | Function | `scripts/bearing-verify.mjs` | 330 |
 | `readRuntime` | Function | `scripts/bearing-verify.mjs` | 56 |
 | `readStealth` | Function | `scripts/bearing-verify.mjs` | 43 |
-| `blastRadius` | Function | `scripts/bearing-ci.mjs` | 100 |
-| `collectDiff` | Function | `scripts/bearing-ci.mjs` | 69 |
-| `detectChanges` | Function | `scripts/bearing-ci.mjs` | 83 |
-| `num` | Function | `scripts/bearing-ci.mjs` | 86 |
-| `git` | Function | `scripts/bearing-ci.mjs` | 40 |
+| `blastRadius` | Function | `scripts/bearing-ci.mjs` | 105 |
+| `collectDiff` | Function | `scripts/bearing-ci.mjs` | 74 |
+| `detectChanges` | Function | `scripts/bearing-ci.mjs` | 88 |
+| `num` | Function | `scripts/bearing-ci.mjs` | 91 |
 
 ## Execution Flows
 

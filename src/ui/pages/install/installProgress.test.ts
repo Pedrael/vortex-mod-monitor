@@ -51,7 +51,9 @@ describe("trackPhase", () => {
     // The step counters reset at every transition. Carrying the old baseline
     // would divide the new phase's small step count by the whole run's elapsed
     // time — an estimate that is wrong in the reassuring direction.
-    const during = trackPhase(undefined, { phase: "downloading", currentStep: 40 }, 1_000);
+    // Real phases: "downloading" is not one of them, and a fixture that names
+    // a phase the driver cannot emit is testing a transition that never occurs.
+    const during = trackPhase(undefined, { phase: "removing-mods", currentStep: 40 }, 1_000);
     const after = trackPhase(during, { phase: "installing-mods", currentStep: 1 }, 60_000);
     expect(after.startedAtMs).toBe(60_000);
     expect(after.step).toBe(1);

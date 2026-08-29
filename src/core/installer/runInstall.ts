@@ -242,8 +242,17 @@ async function detectDrift(args: {
     const installRoot = selectors.installPathForGame(state, gameId);
     if (!installRoot) return undefined;
 
+    // The manifest's list for each mod, which is what the recorded hash was
+    // built from. Candidates were selected for having an UNCHANGED compareKey,
+    // so this version's list for them is the same list the previous install
+    // recorded — which is what makes both sides describe one file set.
+    const stagingFilesByKey = new Map(
+      ctx.plan.manifest.mods.map((m) => [m.compareKey, m.state.stagingFiles]),
+    );
+
     const found = await findDriftedMods({
       candidates,
+      manifestFilesFor: (compareKey) => stagingFilesByKey.get(compareKey),
       cacheDir: ctx.appDataPath,
       ...(ctx.abortSignal !== undefined ? { signal: ctx.abortSignal } : {}),
       stagingRootFor: (vortexModId) => {
@@ -458,6 +467,16 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
    * what the curator had.
    */
   const externalNotices: string[] = [];
+  /**
+   * Mods whose archive on this machine is damaged rather than different.
+   *
+   * Kept out of `curatorReports` on purpose. A hash mismatch alone cannot tell
+   * a re-upload from a truncated download; sending the second to the curator
+   * asks them to hunt a mod they never touched, and at scale that is how the
+   * report channel stops being read. This is the one rung of the ladder the
+   * user can act on themselves.
+   */
+  const damagedArchives: string[] = [];
 
   /**
    * Mods whose verification PASSED, and the file list that was proven.
@@ -1059,6 +1078,25 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
             : {}),
         });
 
+        if (archiveIdentity.kind === "damaged") {
+          // The archive itself is broken on this machine, so nothing about the
+          // collection is in question and the curator has nothing to fix.
+          // Downloading it again is the actual repair, and it is the user's to
+          // make — so say that instead of handing them a report to send.
+          damagedArchives.push(
+            `"${installEntry.name}" — ${describeArchiveIdentity(archiveIdentity)}`,
+          );
+          verifications.push(
+            buildFailReceipt({
+              installEntry,
+              verifyResult,
+              level: declaredLevel === "thorough" ? "thorough" : "fast",
+              retryAttempted: retried.kind === "retry-failed",
+            }),
+          );
+          continue;
+        }
+
         curatorReports.push(
           buildCuratorReport({
             packageName: plan.manifest.package.name,
@@ -1608,6 +1646,9 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
       ...(externalNotices.length > 0
         ? { externalArchiveNotice: externalNotices }
         : {}),
+      ...(damagedArchives.length > 0
+        ? { damagedArchiveNotice: damagedArchives }
+        : {}),
     };
   } finally {
     // The run ENDED — success, failure or abort alike — so the in-flight
@@ -2008,19 +2049,43 @@ async function executePromptUserChoice(args: {
     expectedSha256: manifestEntry.source.sha256,
     ...(ctx.abortSignal !== undefined ? { signal: ctx.abortSignal } : {}),
   });
-  ehLog(picked.kind === "differs" ? "warn" : "info", "install.picked-archive", {
+  const pickedIsNotable = picked.kind === "differs" || picked.kind === "damaged";
+  ehLog(pickedIsNotable ? "warn" : "info", "install.picked-archive", {
     name: resolution.name,
     verdict: picked.kind,
-    ...(picked.kind === "differs"
+    ...(pickedIsNotable
       ? { expected: picked.expected, actual: picked.actual }
       : {}),
   });
-  if (picked.kind === "differs") {
-    onNotice(
-      `"${resolution.name}": the file you picked is not the one the ` +
-        `collection was built from. ${describeArchiveIdentity(picked)} It was ` +
-        `installed as you chose — this is a note, not a refusal.`,
-    );
+  // Exhaustive on purpose. The first version tested only for "differs", so
+  // when `damaged` was added the corrupt-file case silently stopped warning
+  // anyone — it typechecked, and the notice simply stopped appearing. A
+  // switch with a `never` arm turns the next added variant into a build error
+  // instead of a missing sentence.
+  switch (picked.kind) {
+    case "differs":
+      onNotice(
+        `"${resolution.name}": the file you picked is not the one the ` +
+          `collection was built from. ${describeArchiveIdentity(picked)} It was ` +
+          `installed as you chose — this is a note, not a refusal.`,
+      );
+      break;
+    case "damaged":
+      onNotice(
+        `"${resolution.name}": the file you picked appears to be damaged — ` +
+          `${describeArchiveIdentity(picked)} It was installed as you chose, ` +
+          `but downloading it again is very likely what fixes it.`,
+      );
+      break;
+    case "matches":
+    case "unknown":
+      // Nothing to say: either it is exactly right, or we had no oracle and
+      // inventing a warning from an absent check would be noise.
+      break;
+    default: {
+      const exhaustive: never = picked;
+      void exhaustive;
+    }
   }
 
   // The curator's installer answers apply here exactly as they do to a mod

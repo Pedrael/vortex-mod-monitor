@@ -311,6 +311,18 @@ export type InstallSuccess = {
    */
   externalArchiveNotice?: string[];
   /**
+   * Mods whose archive on THIS machine is damaged — no reader can open it, and
+   * its bytes are not the ones the collection was built from.
+   *
+   * Deliberately NOT in `curatorReports`. A hash mismatch alone cannot tell a
+   * re-upload from a half-finished download, and sending the second to a
+   * curator asks them to investigate a mod they never changed. Only this case
+   * is fixed by downloading again, and it is fixed by the user, so it is the
+   * one branch of the ladder that ends with an action they can take rather
+   * than a message they should send.
+   */
+  damagedArchiveNotice?: string[];
+  /**
    * Mods that changed on disk since a PREVIOUS install of this collection put
    * them there, and that this version did not update.
    *

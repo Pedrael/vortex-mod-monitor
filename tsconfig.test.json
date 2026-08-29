@@ -1,0 +1,18 @@
+{
+  // The main tsconfig EXCLUDES tests, because they must not be emitted into the
+  // shipped plugin. The side effect was that no test file was ever typechecked:
+  // `npm run typecheck` skipped them, and vitest strips types with esbuild
+  // without checking them. A test could name a field that does not exist and
+  // still report green.
+  //
+  // This config typechecks them and emits nothing. `npm run typecheck:test`.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // Nothing is emitted here, so the src-only rootDir would only serve to
+    // reject test/e2e/** for living outside it.
+    "rootDir": "."
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts"],
+  "exclude": []
+}

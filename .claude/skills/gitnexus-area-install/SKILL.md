@@ -1,78 +1,82 @@
 ---
 name: gitnexus-area-install
-description: "Skill for the Install area of vortex-mod-monitor. 48 symbols across 6 files."
+description: "Skill for the Install area of vortex-mod-monitor. 63 symbols across 10 files."
 ---
 
 # Install
 
-48 symbols | 6 files | Cohesion: 74%
+63 symbols | 10 files | Cohesion: 69%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how wizardReducer, canProceedFromDecisions, defaultConflictChoice work
+- Understanding how wizardReducer, canProceedFromDecisions, countUndecidedConflicts work
 - Modifying install-related functionality
 
 ## Key Files
 
 | File | Symbols |
 |------|---------|
+| `src/ui/pages/install/steps.tsx` | DecisionsStep, OrphanRow, RadioOption, SectionHeader, InstallingStep (+17) |
 | `src/ui/pages/install/installSession.ts` | onHashProgress, onPhase, onHashProgress, onPhase, onProgress (+16) |
-| `src/ui/pages/install/steps.tsx` | DecisionsStep, ConflictRow, handlePickFile, OrphanRow, RadioOption (+9) |
-| `src/ui/pages/install/state.ts` | wizardReducer, canProceedFromDecisions, defaultConflictChoice, defaultOrphanChoice, fillDefaultConflictChoices (+2) |
-| `src/core/installLedger.ts` | InstallLedgerError, deleteReceipt, getReceiptPath, isUuid |
-| `src/utils/utils.ts` | pickModArchiveFile |
+| `src/ui/pages/install/state.ts` | wizardReducer, canProceedFromDecisions, countUndecidedConflicts, defaultConflictChoice, defaultOrphanChoice (+3) |
+| `src/ui/pages/install/installProgress.ts` | describeElapsed, describeQuiet, estimateRemainingMs, formatDuration, trackPhase |
+| `src/core/revealPath.ts` | loadShell, openExternalUrl |
+| `src/core/revealPath.test.ts` | openExternal |
+| `src/ui/pages/install/downloadGuidance.ts` | describeDownload |
+| `src/ui/hooks/useKeyboardShortcut.ts` | useKeyboardShortcut |
+| `src/utils/diskSpace.ts` | formatBytes |
 | `src/ui/pages/install/InstallPage.tsx` | session |
 
 ## Entry Points
 
 Start here when exploring this area:
 
-- **`wizardReducer`** (Function) — `src/ui/pages/install/state.ts:176`
-- **`canProceedFromDecisions`** (Function) — `src/ui/pages/install/state.ts:366`
-- **`defaultConflictChoice`** (Function) — `src/ui/pages/install/state.ts:325`
-- **`defaultOrphanChoice`** (Function) — `src/ui/pages/install/state.ts:343`
-- **`fillDefaultConflictChoices`** (Function) — `src/ui/pages/install/state.ts:383`
+- **`wizardReducer`** (Function) — `src/ui/pages/install/state.ts:177`
+- **`canProceedFromDecisions`** (Function) — `src/ui/pages/install/state.ts:373`
+- **`countUndecidedConflicts`** (Function) — `src/ui/pages/install/state.ts:400`
+- **`defaultConflictChoice`** (Function) — `src/ui/pages/install/state.ts:332`
+- **`defaultOrphanChoice`** (Function) — `src/ui/pages/install/state.ts:350`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `InstallLedgerError` | Class | `src/core/installLedger.ts` | 70 |
-| `wizardReducer` | Function | `src/ui/pages/install/state.ts` | 176 |
-| `canProceedFromDecisions` | Function | `src/ui/pages/install/state.ts` | 366 |
-| `defaultConflictChoice` | Function | `src/ui/pages/install/state.ts` | 325 |
-| `defaultOrphanChoice` | Function | `src/ui/pages/install/state.ts` | 343 |
-| `fillDefaultConflictChoices` | Function | `src/ui/pages/install/state.ts` | 383 |
-| `fillDefaultOrphanChoices` | Function | `src/ui/pages/install/state.ts` | 399 |
-| `selectConflictResolutions` | Function | `src/ui/pages/install/state.ts` | 311 |
-| `DecisionsStep` | Function | `src/ui/pages/install/steps.tsx` | 990 |
-| `pickModArchiveFile` | Function | `src/utils/utils.ts` | 91 |
-| `deleteReceipt` | Function | `src/core/installLedger.ts` | 382 |
-| `getReceiptPath` | Function | `src/core/installLedger.ts` | 124 |
-| `handleDelete` | Function | `src/ui/pages/install/steps.tsx` | 453 |
-| `isAbortError` | Function | `src/ui/pages/install/installSession.ts` | 460 |
-| `getInstallSession` | Function | `src/ui/pages/install/installSession.ts` | 447 |
-| `InstallSession` | Class | `src/ui/pages/install/installSession.ts` | 79 |
-| `onHashProgress` | Function | `src/ui/pages/install/installSession.ts` | 132 |
-| `onPhase` | Function | `src/ui/pages/install/installSession.ts` | 128 |
-| `onHashProgress` | Function | `src/ui/pages/install/installSession.ts` | 228 |
-| `onPhase` | Function | `src/ui/pages/install/installSession.ts` | 224 |
+| `wizardReducer` | Function | `src/ui/pages/install/state.ts` | 177 |
+| `canProceedFromDecisions` | Function | `src/ui/pages/install/state.ts` | 373 |
+| `countUndecidedConflicts` | Function | `src/ui/pages/install/state.ts` | 400 |
+| `defaultConflictChoice` | Function | `src/ui/pages/install/state.ts` | 332 |
+| `defaultOrphanChoice` | Function | `src/ui/pages/install/state.ts` | 350 |
+| `fillDefaultConflictChoices` | Function | `src/ui/pages/install/state.ts` | 416 |
+| `fillDefaultOrphanChoices` | Function | `src/ui/pages/install/state.ts` | 432 |
+| `selectConflictResolutions` | Function | `src/ui/pages/install/state.ts` | 318 |
+| `DecisionsStep` | Function | `src/ui/pages/install/steps.tsx` | 1050 |
+| `describeElapsed` | Function | `src/ui/pages/install/installProgress.ts` | 147 |
+| `describeQuiet` | Function | `src/ui/pages/install/installProgress.ts` | 114 |
+| `estimateRemainingMs` | Function | `src/ui/pages/install/installProgress.ts` | 89 |
+| `formatDuration` | Function | `src/ui/pages/install/installProgress.ts` | 132 |
+| `trackPhase` | Function | `src/ui/pages/install/installProgress.ts` | 66 |
+| `InstallingStep` | Function | `src/ui/pages/install/steps.tsx` | 1788 |
+| `openExternalUrl` | Function | `src/core/revealPath.ts` | 139 |
+| `describeDownload` | Function | `src/ui/pages/install/downloadGuidance.ts` | 44 |
+| `isAbortError` | Function | `src/ui/pages/install/installSession.ts` | 506 |
+| `useKeyboardShortcut` | Function | `src/ui/hooks/useKeyboardShortcut.ts` | 35 |
+| `ConfirmStep` | Function | `src/ui/pages/install/steps.tsx` | 1633 |
 
 ## Execution Flows
 
 | Flow | Type | Steps |
 |------|------|-------|
-| `RouteOutlet → InstallLedgerError` | cross_community | 8 |
-| `RouteOutlet → IsUuid` | cross_community | 7 |
 | `StartInstall → EHRuntime` | cross_community | 6 |
 | `StartInstall → Notify` | cross_community | 6 |
-| `Dashboard → IsUuid` | cross_community | 6 |
+| `DoneStep → Pill` | cross_community | 5 |
 | `StartInstall → GetSnapshot` | cross_community | 5 |
 | `OnHashProgress → EHRuntime` | cross_community | 5 |
 | `OnHashProgress → Notify` | cross_community | 5 |
 | `OnPhase → EHRuntime` | cross_community | 5 |
 | `OnPhase → Notify` | cross_community | 5 |
+| `OnHashProgress → EHRuntime` | cross_community | 5 |
+| `OnHashProgress → Notify` | cross_community | 5 |
 
 ## How to Explore
 

@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-runtime
-description: "Skill for the Runtime area of vortex-mod-monitor. 8 symbols across 3 files."
+description: "Skill for the Runtime area of vortex-mod-monitor. 9 symbols across 3 files."
 ---
 
 # Runtime
 
-8 symbols | 3 files | Cohesion: 82%
+9 symbols | 3 files | Cohesion: 84%
 
 ## When to Use
 
@@ -18,7 +18,7 @@ description: "Skill for the Runtime area of vortex-mod-monitor. 8 symbols across
 | File | Symbols |
 |------|---------|
 | `src/ui/runtime/ehRuntime.ts` | EHRuntime, getEHRuntime, notify, setBuildBusy, setInstallBusy |
-| `src/ui/pages/install/installSession.ts` | getSnapshot, notify |
+| `src/ui/pages/install/installSession.ts` | cancelInstall, getSnapshot, notify |
 | `src/ui/runtime/useEHRuntime.ts` | runtime |
 
 ## Entry Points
@@ -35,8 +35,9 @@ Start here when exploring this area:
 | `getEHRuntime` | Function | `src/ui/runtime/ehRuntime.ts` | 79 |
 | `runtime` | Function | `src/ui/runtime/useEHRuntime.ts` | 14 |
 | `EHRuntime` | Class | `src/ui/runtime/ehRuntime.ts` | 38 |
-| `getSnapshot` | Method | `src/ui/pages/install/installSession.ts` | 92 |
-| `notify` | Method | `src/ui/pages/install/installSession.ts` | 421 |
+| `cancelInstall` | Method | `src/ui/pages/install/installSession.ts` | 400 |
+| `getSnapshot` | Method | `src/ui/pages/install/installSession.ts` | 94 |
+| `notify` | Method | `src/ui/pages/install/installSession.ts` | 467 |
 | `notify` | Method | `src/ui/runtime/ehRuntime.ts` | 65 |
 | `setBuildBusy` | Method | `src/ui/runtime/ehRuntime.ts` | 53 |
 | `setInstallBusy` | Method | `src/ui/runtime/ehRuntime.ts` | 59 |

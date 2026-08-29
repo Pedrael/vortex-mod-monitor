@@ -20,6 +20,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { judgeReinstall } from "./judgeReinstall";
 import { crc32 } from "../manifest/readZip";
+import { writeStoredZip } from "../manifest/storedZip.testutil";
 import type { SevenZipApi } from "../manifest/sevenZip";
 
 let dir: string;
@@ -282,5 +283,128 @@ describe("when it cannot tell, it says so and reinstalls", () => {
         sevenZip: listing([]),
       }),
     ).resolves.toBeDefined();
+  });
+});
+
+/**
+ * MICROSCOPE PASS 1 — this check was reachable only through 7z.
+ *
+ * The whole point of judging is to stop ~11% of a collection being reinstalled
+ * for nothing. Routing it exclusively through 7z meant that on a prefix where
+ * 7z will not run — the platform this entire investigation started on — every
+ * mismatch fell to "undecidable", which reinstalls. The saving evaporated
+ * precisely where it was needed most, and nothing would have reported it.
+ *
+ * A large share of mod archives are ZIPs and we own a reader for those.
+ */
+describe("a ZIP archive is read natively, with no 7z at all", () => {
+  /** A 7z that cannot run — what a broken Wine prefix actually looks like. */
+  const brokenSevenZip = (): SevenZipApi =>
+    ({
+      list: () => {
+        throw new Error("7z: cannot execute binary in this prefix");
+      },
+      add: async () => ({ code: 0 }),
+      extractFull: async () => ({ code: 0 }),
+    }) as unknown as SevenZipApi;
+
+  it("explains a divergence from a .zip when 7z is completely dead", async () => {
+    // Before this, the same input answered "undecidable" — and undecidable
+    // reinstalls, which is the waste the module exists to prevent.
+    stage("Textures/rock.dds", "the bytes a clean install produces");
+    const zip = path.join(dir, "mod.zip");
+    writeStoredZip(zip, [
+      { name: "Textures/rock.dds", body: "the bytes a clean install produces" },
+    ]);
+
+    const judgement = await judgeReinstall({
+      missingFiles: [],
+      differingPaths: ["Textures/rock.dds"],
+      stagingRoot: staging,
+      archivePath: zip,
+      sevenZip: brokenSevenZip(),
+    });
+
+    expect(judgement.kind).toBe("curator-diverged");
+    if (judgement.kind === "curator-diverged") {
+      expect(judgement.explained).toBe(1);
+    }
+  });
+
+  it("still says reinstall when the zip does not contain those bytes", async () => {
+    // The native path must not become a rubber stamp: a real defect still has
+    // to survive it, or the fix would have replaced waste with silence.
+    stage("Textures/rock.dds", "corrupted on the way in");
+    const zip = path.join(dir, "mod.zip");
+    writeStoredZip(zip, [
+      { name: "Textures/rock.dds", body: "what the archive actually holds" },
+    ]);
+
+    const judgement = await judgeReinstall({
+      missingFiles: [],
+      differingPaths: ["Textures/rock.dds"],
+      stagingRoot: staging,
+      archivePath: zip,
+      sevenZip: brokenSevenZip(),
+    });
+
+    expect(judgement.kind).toBe("reinstall");
+  });
+
+  it("reads the zip itself even when a working 7z disagrees", async () => {
+    // Precedence, proven by making the two sources answer differently: 7z is
+    // handed a listing that explains nothing, the zip on disk explains
+    // everything. A "curator-diverged" here can only have come from the zip.
+    stage("Meshes/thing.nif", "identical to the archive");
+    const zip = path.join(dir, "mod.zip");
+    writeStoredZip(zip, [
+      { name: "Meshes/thing.nif", body: "identical to the archive" },
+    ]);
+
+    const judgement = await judgeReinstall({
+      missingFiles: [],
+      differingPaths: ["Meshes/thing.nif"],
+      stagingRoot: staging,
+      archivePath: zip,
+      sevenZip: listing([{ path: "Meshes/thing.nif", size: 1, crc: "deadbeef" }]),
+    });
+
+    expect(judgement.kind).toBe("curator-diverged");
+  });
+
+  it("falls back to 7z for a .7z, which the native reader cannot parse", async () => {
+    // The other half of the split: .7z and .rar remain 7z's job. The fallback
+    // has to actually fire, not just exist.
+    const f = stage("Data/thing.esp", "curator repacked this");
+    const notAZip = path.join(dir, "mod.7z");
+    fs.writeFileSync(notAZip, Buffer.from("7z\xbc\xaf\x27\x1c not a zip at all"));
+
+    const judgement = await judgeReinstall({
+      missingFiles: [],
+      differingPaths: ["Data/thing.esp"],
+      stagingRoot: staging,
+      archivePath: notAZip,
+      sevenZip: listing([{ path: "Data/thing.esp", size: f.size, crc: f.crc }]),
+    });
+
+    expect(judgement.kind).toBe("curator-diverged");
+  });
+
+  it("is undecidable when the archive is neither a zip nor readable by 7z", async () => {
+    // Both routes gone. Undecidable reinstalls — the behaviour that existed
+    // before any of this, which is the right floor.
+    stage("Data/thing.esp", "whatever");
+    const notAZip = path.join(dir, "mod.rar");
+    fs.writeFileSync(notAZip, Buffer.from("Rar! not really"));
+
+    const judgement = await judgeReinstall({
+      missingFiles: [],
+      differingPaths: ["Data/thing.esp"],
+      stagingRoot: staging,
+      archivePath: notAZip,
+      sevenZip: brokenSevenZip(),
+    });
+
+    expect(judgement.kind).toBe("undecidable");
   });
 });

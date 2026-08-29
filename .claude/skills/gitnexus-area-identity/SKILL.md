@@ -28,7 +28,7 @@ Start here when exploring this area:
 - **`normalizeVersion`** (Function) — `src/core/identity/modIdentity.ts:113`
 - **`normalizeModName`** (Function) — `src/core/identity/modIdentity.ts:164`
 - **`matchSnapshots`** (Function) — `src/core/identity/modIdentity.ts:249`
-- **`compareSnapshots`** (Function) — `src/utils/utils.ts:373`
+- **`compareSnapshots`** (Function) — `src/utils/utils.ts:378`
 
 ## Key Symbols
 
@@ -38,8 +38,8 @@ Start here when exploring this area:
 | `normalizeVersion` | Function | `src/core/identity/modIdentity.ts` | 113 |
 | `normalizeModName` | Function | `src/core/identity/modIdentity.ts` | 164 |
 | `matchSnapshots` | Function | `src/core/identity/modIdentity.ts` | 249 |
-| `compareSnapshots` | Function | `src/utils/utils.ts` | 373 |
-| `getModCompareKey` | Function | `src/utils/utils.ts` | 283 |
+| `compareSnapshots` | Function | `src/utils/utils.ts` | 378 |
+| `getModCompareKey` | Function | `src/utils/utils.ts` | 288 |
 | `archiveShaKey` | Function | `src/core/identity/modIdentity.ts` | 214 |
 | `nameVersionKey` | Function | `src/core/identity/modIdentity.ts` | 230 |
 | `nexusFileKey` | Function | `src/core/identity/modIdentity.ts` | 207 |

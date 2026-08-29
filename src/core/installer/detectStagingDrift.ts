@@ -30,7 +30,7 @@
  */
 
 import type { InstallReceiptMod } from "../../types/installLedger";
-import type { EhcollMod } from "../../types/ehcoll";
+import type { EhcollMod, EhcollStagingFile } from "../../types/ehcoll";
 
 export type DriftCandidate = {
   compareKey: string;
@@ -108,14 +108,33 @@ export async function findDriftedMods(args: {
   candidates: readonly DriftCandidate[];
   /** Resolves a Vortex mod id to its absolute staging folder. */
   stagingRootFor: (vortexModId: string) => string | undefined;
+  /**
+   * The file list the recorded hash was built from.
+   *
+   * REQUIRED, and the reason is the whole correctness of this function. The
+   * reference in the receipt is a hash of the MANIFEST'S file list. Measuring
+   * by walking the folder instead would hash every file present — including
+   * ones the manifest never listed — so the two sides would describe
+   * different sets and differ by construction.
+   *
+   * verifyModInstall documents extra files as normal ("they happen
+   * legitimately when the user picks different FOMOD options than the curator
+   * did"), and Vortex leaves its own bookkeeping in staging folders, so that
+   * mismatch would have fired on a large share of untouched mods. Hashing
+   * exactly the recorded paths makes both sides describe the same set — and
+   * costs less than the walk it replaces.
+   *
+   * Safe for a drift candidate specifically: they were selected for having an
+   * UNCHANGED compareKey, so the current manifest's list for that mod is the
+   * same list the previous install recorded.
+   */
+  manifestFilesFor: (compareKey: string) => readonly EhcollStagingFile[] | undefined;
   /** Where the user's hash cache lives. Omit to hash everything afresh. */
   cacheDir?: string;
   signal?: AbortSignal;
   onProgress?: (done: number, total: number, name: string) => void;
 }): Promise<DriftFinding[]> {
-  const { walkStagingFolder, hashStagingFiles } = await import(
-    "../manifest/stagingFileWalker"
-  );
+  const { hashStagingFiles } = await import("../manifest/stagingFileWalker");
   const { computeStagingSetHash } = await import("../manifest/stagingSetHash");
   const { loadArchiveHashCache, saveArchiveHashCache, makeHashLookup } =
     await import("../archiveHashCache");
@@ -152,12 +171,32 @@ export async function findDriftedMods(args: {
 
     const root = args.stagingRootFor(candidate.vortexModId);
     if (root === undefined) continue;
+    const tracked = args.manifestFilesFor(candidate.compareKey);
+    if (tracked === undefined || tracked.length === 0) continue;
 
     try {
-      const walked = await walkStagingFolder(root, args.signal);
+      // Stat exactly the files the reference was built from — no walk. A file
+      // the manifest lists that is now ABSENT is left out of `present`, which
+      // shortens the set and therefore changes the hash: a deletion reads as
+      // drift, which is what it is.
+      const fsp = await import("fs/promises");
+      const nodePath = await import("path");
+      const present = [];
+      for (const file of tracked) {
+        const absolutePath = nodePath.join(root, ...file.path.split("/"));
+        const stat = await fsp.stat(absolutePath).catch(() => undefined);
+        if (stat === undefined || !stat.isFile()) continue;
+        present.push({
+          relativePath: file.path,
+          absolutePath,
+          size: stat.size,
+          mtimeMs: stat.mtimeMs,
+        });
+      }
+
       const hashed = await hashStagingFiles(
         root,
-        walked,
+        present,
         "thorough",
         undefined,
         args.signal,

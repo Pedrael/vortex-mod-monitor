@@ -89,8 +89,7 @@ function isDirectoryEntry(entry: SevenZipListEntry): boolean {
   // flag wherever it sits. No regular file carries `D` in its attributes.
   if (attr.includes("D")) return true;
   // node-7z surfaces the `Folder = +` column on some versions.
-  const folder = (entry as unknown as { folder?: string }).folder;
-  if (folder === "+") return true;
+  if (entry.folder === "+") return true;
   // Belt and braces: 7z emits trailing separators for some directory entries.
   return entry.name.endsWith("/") || entry.name.endsWith("\\");
 }

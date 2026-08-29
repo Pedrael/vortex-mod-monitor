@@ -31,7 +31,7 @@ Start here when exploring this area:
 - **`ToastProvider`** (Function) — `src/ui/components/Toast.tsx:74`
 - **`ErrorProvider`** (Function) — `src/ui/errors/ErrorContext.tsx:84`
 - **`ApiProvider`** (Function) — `src/ui/state/ApiContext.tsx:25`
-- **`EventHorizonStyles`** (Function) — `src/ui/theme/EventHorizonStyles.tsx:37`
+- **`EventHorizonStyles`** (Function) — `src/ui/theme/EventHorizonStyles.tsx:41`
 
 ## Key Symbols
 
@@ -41,7 +41,7 @@ Start here when exploring this area:
 | `ToastProvider` | Function | `src/ui/components/Toast.tsx` | 74 |
 | `ErrorProvider` | Function | `src/ui/errors/ErrorContext.tsx` | 84 |
 | `ApiProvider` | Function | `src/ui/state/ApiContext.tsx` | 25 |
-| `EventHorizonStyles` | Function | `src/ui/theme/EventHorizonStyles.tsx` | 37 |
+| `EventHorizonStyles` | Function | `src/ui/theme/EventHorizonStyles.tsx` | 41 |
 | `show` | Function | `src/ui/components/Toast.tsx` | 89 |
 | `dismiss` | Function | `src/ui/components/Toast.tsx` | 79 |
 | `handle` | Function | `src/ui/components/Toast.tsx` | 135 |
@@ -59,8 +59,8 @@ Start here when exploring this area:
 | `EventHorizonMainPage → ToastCard` | intra_community | 4 |
 | `EventHorizonMainPage → Button` | cross_community | 4 |
 | `EventHorizonMainPage → Modal` | cross_community | 4 |
-| `EventHorizonMainPage → Pill` | cross_community | 4 |
 | `EventHorizonMainPage → BuildErrorReport` | cross_community | 4 |
+| `EventHorizonMainPage → UseApiOptional` | cross_community | 4 |
 | `Show → NodeToText` | intra_community | 3 |
 
 ## How to Explore
