@@ -355,9 +355,22 @@ function archivePathForMod(
       state as unknown as {
         persistent?: { mods?: Record<string, Record<string, unknown>> };
       }
-    )?.persistent?.mods?.[gameId]?.[entry.vortexModId];
+    )?.persistent?.mods?.[gameId]?.[entry.vortexModId] as
+      | { archiveId?: string }
+      | undefined;
     if (mod === undefined) return undefined;
-    return getModArchivePath(state, gameId, mod as never) ?? undefined;
+    // (state, archiveId, gameId) — the order every other caller uses. This
+    // read `getModArchivePath(state, gameId, mod as never)`, which handed the
+    // gameId in as the archive id and the mod OBJECT in as the game, so the
+    // download lookup was `downloads["fallout4"]` and the function returned
+    // undefined every single time. `as never` is assignable to anything, so it
+    // silenced the one check that would have caught it.
+    //
+    // Nothing failed loudly: judgeReinstall read the missing path as "cannot
+    // consult the archive" → undecidable → reinstall, and checkArchiveIdentity
+    // read it as "unknown". Both features were dead in production while their
+    // unit tests — which pass the path in directly — stayed green.
+    return getModArchivePath(state, mod.archiveId, gameId) ?? undefined;
   } catch {
     return undefined;
   }

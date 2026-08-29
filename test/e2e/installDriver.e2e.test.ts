@@ -112,8 +112,11 @@ async function install(
     api: fake.api,
     plan,
     ehcoll: { manifest, bundledArchives: [], warnings: [] } as never,
-    ehcollZipPath: "C:/nowhere/pkg.ehcoll",
-    appDataPath: "C:/nowhere/appdata",
+    // Per-world, not a shared absolute path: the old `C:/nowhere/appdata` was
+    // real, written to the drive root, and shared by every e2e file — which
+    // made parallel runs race on one receipt path. See World.appDataPath.
+    ehcollZipPath: `${world!.root}/pkg.ehcoll`,
+    appDataPath: world!.appDataPath,
     decisions,
   } as never);
 
@@ -227,7 +230,15 @@ describe("install driver, end to end", () => {
         },
       ],
     });
-    const fake = makeFakeVortex({ gameId: "fallout4" });
+    // The install must actually put the mod's files on disk, or verification
+    // fails and the driver correctly spends a reinstall — which would make the
+    // count below 2 for a reason that has nothing to do with the one-step path
+    // this test is about.
+    const fake = makeFakeVortex({
+      gameId: "fallout4",
+      stagingRoot: world.stagingRoot,
+      installProduces: () => ({ "Data/plain.esp": "plain" }),
+    });
 
     await install(await packageFrom(world), fake);
 

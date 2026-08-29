@@ -50,6 +50,18 @@ export type World = {
   root: string;
   stagingRoot: string;
   downloadRoot: string;
+  /**
+   * Where the driver writes receipts and caches, per world.
+   *
+   * These tests used a hardcoded `C:/nowhere/appdata`, which was neither
+   * nowhere nor harmless: the driver creates its directories, so the suite
+   * wrote real files to the DRIVE ROOT. Worse, every e2e file shares one
+   * package id, so parallel test files raced on the same
+   * `<packageId>.json.tmp` → rename. Whichever renamed second got ENOENT and
+   * the install reported `failed` at `writing-receipt` — a flake that looked
+   * like a driver bug and was pure test collision.
+   */
+  appDataPath: string;
   gameId: string;
   profileId: string;
   mods: AuditorMod[];
@@ -74,8 +86,10 @@ export function makeWorld(args: {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "eh-e2e-"));
   const stagingRoot = path.join(root, "staging");
   const downloadRoot = path.join(root, "downloads");
+  const appDataPath = path.join(root, "appdata");
   fs.mkdirSync(stagingRoot, { recursive: true });
   fs.mkdirSync(downloadRoot, { recursive: true });
+  fs.mkdirSync(appDataPath, { recursive: true });
 
   const previous = { ...__testPaths };
   __testPaths.installPath = stagingRoot;
@@ -142,6 +156,7 @@ export function makeWorld(args: {
     root,
     stagingRoot,
     downloadRoot,
+    appDataPath,
     gameId,
     profileId,
     mods,

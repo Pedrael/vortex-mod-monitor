@@ -1,0 +1,378 @@
+/**
+ * The verification chain, end to end: curator's profile → manifest → plan →
+ * the real driver → what the user is actually told.
+ *
+ * ─── WHY THIS FILE EXISTS ──────────────────────────────────────────────
+ * Every part of this subsystem had a green unit suite and six of them were
+ * still wrong, because the unit tests each proved a primitive while the bug
+ * lived in the wiring: a verdict nothing branched on, a notice nothing
+ * rendered, a scanner wired into one of two pipelines. The level below the one
+ * where it broke.
+ *
+ * These drive `runInstall` itself and assert on the RESULT the UI receives —
+ * `curatorReports`, `damagedArchiveNotice`, `stagingDriftNotice` — because
+ * that is the first place where "the code is correct" and "the user is told
+ * the right thing" stop being the same claim.
+ *
+ * The knob is `installProduces`: what the install actually puts on disk.
+ * Returning the curator's exact bytes is a clean install; returning different
+ * bytes is a corrupted one; omitting a file is Vortex's lost-file bug.
+ */
+
+import { afterEach, describe, expect, it } from "vitest";
+
+import { runInstall } from "../../src/core/installer/runInstall";
+import { resolveInstallPlan } from "../../src/core/resolver/resolveInstallPlan";
+import { parseManifest } from "../../src/core/manifest/parseManifest";
+import { buildManifest } from "../../src/core/manifest/buildManifest";
+import { captureStagingFiles } from "../../src/core/manifest/captureStagingFiles";
+import { scopeCollectionMods } from "../../src/core/manifest/collectionScope";
+import { makeFakeVortex } from "./fakeVortex";
+import { makeWorld, type World, type WorldMod } from "./world";
+import type { EhcollManifest } from "../../src/types/ehcoll";
+import type { UserSideState } from "../../src/types/installPlan";
+
+let world: World | undefined;
+afterEach(() => {
+  world?.cleanup();
+  world = undefined;
+});
+
+/** One Nexus mod with real bytes on the curator's disk. */
+const MOD: WorldMod = {
+  id: "rock-textures",
+  name: "Rock Textures",
+  nexus: { modId: 100, fileId: 200 },
+  archiveSha256: "a".repeat(64),
+  files: {
+    "Textures/rock.dds": "the bytes the curator shipped",
+    "Data/rock.esp": "a plugin",
+  },
+};
+
+/** The archiveId the fake hands back for {@link MOD}. */
+const ARCHIVE_ID = "dl-100-200";
+
+async function packageFrom(w: World): Promise<EhcollManifest> {
+  const scope = scopeCollectionMods(w.mods);
+  const enriched = await captureStagingFiles(
+    w.state as never,
+    w.gameId,
+    scope.included,
+    { level: "thorough" },
+  );
+  const { manifest } = buildManifest({
+    snapshot: { gameId: w.gameId, mods: enriched } as never,
+    package: {
+      id: "00000000-0000-4000-8000-000000000000",
+      name: "Verification E2E",
+      version: "1.0.0",
+      author: "curator",
+      verificationLevel: "thorough",
+    },
+    game: { version: "1.10.163.0", versionPolicy: "exact" },
+    vortex: { version: "2.6.0", deploymentMethod: "hardlink" },
+  } as never);
+  return parseManifest(JSON.stringify(manifest)).manifest;
+}
+
+const userState = (): UserSideState =>
+  ({
+    gameId: "fallout4",
+    gameVersion: "1.10.163.0",
+    vortexVersion: "2.6.0",
+    deploymentMethod: "hardlink",
+    enabledExtensions: [],
+    installedMods: [],
+    availableDownloads: [],
+    activeProfileId: "profile-e2e",
+    activeProfileName: "E2E Profile",
+  }) as UserSideState;
+
+/**
+ * Why a driver run was not a success.
+ *
+ * `expect(result.kind).toBe("success")` on a failure prints `'failed'`, which
+ * names neither the phase nor the reason — and the driver's own failure result
+ * carries both. Without this a flaky e2e failure is unactionable.
+ */
+function why(result: unknown): string {
+  const r = result as {
+    kind?: string;
+    phase?: string;
+    error?: unknown;
+    message?: string;
+    errors?: unknown[];
+  };
+  if (r?.kind === "success") return "";
+  return JSON.stringify(
+    { kind: r?.kind, phase: r?.phase, message: r?.message, error: r?.error, errors: r?.errors },
+  ).slice(0, 900);
+}
+
+async function install(
+  manifest: EhcollManifest,
+  fake: ReturnType<typeof makeFakeVortex>,
+) {
+  const plan = resolveInstallPlan(manifest, userState(), {
+    kind: "fresh-profile",
+    profileName: "E2E Profile",
+  } as never);
+  const running = runInstall({
+    api: fake.api,
+    plan,
+    ehcoll: { manifest, bundledArchives: [], warnings: [] } as never,
+    // Per-world, not a shared absolute path. See World.appDataPath.
+    ehcollZipPath: `${world!.root}/pkg.ehcoll`,
+    appDataPath: world!.appDataPath,
+    decisions: {},
+  } as never);
+
+  const stalled = new Promise<never>((_r, reject) =>
+    setTimeout(
+      () =>
+        reject(
+          new Error(
+            `driver stalled. emits=[${fake.emits.map((e) => e.event).join(" | ")}]`,
+          ),
+        ),
+      5000,
+    ),
+  );
+  return Promise.race([running, stalled]);
+}
+
+describe("verification is reachable end to end", () => {
+  it("a clean install passes verification and records what it left", async () => {
+    // The foundational check. Until the fake registered a mod record and wrote
+    // bytes, `verifyModInstall` could not resolve a staging folder and every
+    // assertion below would have held for a driver that verified NOTHING.
+    world = makeWorld({ mods: [MOD] });
+    const manifest = await packageFrom(world);
+    const fake = makeFakeVortex({
+      gameId: world.gameId,
+      stagingRoot: world.stagingRoot,
+      installProduces: (id) => (id === ARCHIVE_ID ? MOD.files : undefined),
+    });
+
+    const result = (await install(manifest, fake)) as {
+      kind: string;
+      verifications?: Array<{ kind: string; verifiedFileCount?: number }>;
+      curatorReports?: string[];
+      damagedArchiveNotice?: string[];
+    };
+
+    expect(result.kind, why(result)).toBe("success");
+    const verifications = result.verifications ?? [];
+    expect(verifications).toHaveLength(1);
+    expect(verifications[0].kind).toBe("ok");
+    // Both files, actually read and hashed — not a verification that resolved
+    // an empty folder and called it agreement.
+    expect(verifications[0].verifiedFileCount).toBe(2);
+    expect(result.curatorReports).toBeUndefined();
+    expect(result.damagedArchiveNotice).toBeUndefined();
+  });
+
+  it("a MISSING file is caught — the bug this project exists for", async () => {
+    // Vortex silently drops files during bulk installs. A verification that
+    // cannot see that is the whole promise failing quietly, so this is the one
+    // case that must never be explained away by any later refinement.
+    world = makeWorld({ mods: [MOD] });
+    const manifest = await packageFrom(world);
+    const fake = makeFakeVortex({
+      gameId: world.gameId,
+      stagingRoot: world.stagingRoot,
+      installProduces: (id) =>
+        id === ARCHIVE_ID
+          ? { "Textures/rock.dds": MOD.files["Textures/rock.dds"] } // .esp lost
+          : undefined,
+    });
+
+    const result = (await install(manifest, fake)) as {
+      kind: string;
+      verifications?: Array<{
+        kind: string;
+        missingFileCount?: number;
+        retryAttempted?: boolean;
+        examples?: Array<{ bucket: string; path: string }>;
+      }>;
+    };
+
+    expect(result.kind, why(result)).toBe("success");
+    const failed = (result.verifications ?? []).filter((v) => v.kind === "fail");
+    expect(failed).toHaveLength(1);
+    expect(failed[0].missingFileCount).toBe(1);
+    // Named, not merely counted: "1 file missing" is not a bug report.
+    expect(failed[0].examples).toContainEqual({
+      bucket: "missing",
+      path: "Data/rock.esp",
+    });
+    // A missing file ALWAYS earns a reinstall attempt — judgeReinstall refuses
+    // to explain absence away, because content mutation cannot remove a file.
+    expect(failed[0].retryAttempted).toBe(true);
+  });
+});
+
+/**
+ * The ~11% case, end to end.
+ *
+ * On a real 993-mod profile about eleven percent of mods have staged files
+ * that legitimately differ from the archive they came from — BA2 repacking,
+ * plugin cleaning, runtime-generated config. The curator ships those
+ * post-processed bytes as the reference, so every user's correct install
+ * "fails" against them, gets uninstalled, reinstalled from the archive,
+ * compared against the same reference, fails again, and is recorded broken.
+ *
+ * The archive is the one reference no one's extraction can corrupt. These
+ * tests put a REAL archive on disk and check the driver actually consults it.
+ */
+describe("the archive is consulted before a reinstall is spent", () => {
+  /** What a clean extract of the archive produces. */
+  const ARCHIVE_BYTES = "the original bytes as shipped by the mod author";
+  /** What the curator has on disk after their own post-processing. */
+  const CURATOR_BYTES = "the same file after the curator repacked it";
+
+  const divergedMod: WorldMod = {
+    ...MOD,
+    files: {
+      "Textures/rock.dds": CURATOR_BYTES,
+      "Data/rock.esp": "a plugin",
+    },
+  };
+
+  /** Put a real ZIP in the download folder and tell Vortex about it. */
+  const withArchive = async (
+    w: World,
+    entries: Array<{ name: string; body: string }>,
+  ): Promise<Record<string, string>> => {
+    const { writeStoredZip } = await import(
+      "../../src/core/manifest/storedZip.testutil"
+    );
+    const pathm = await import("path");
+    writeStoredZip(pathm.join(w.downloadRoot, "mod.zip"), entries);
+    return { [ARCHIVE_ID]: "mod.zip" };
+  };
+
+  it("does NOT reinstall when the user's files match the archive", async () => {
+    // The user installed correctly. Their bytes differ from the CURATOR's
+    // because the curator post-processed theirs — so a reinstall would
+    // reproduce exactly what is already on disk. Pure cost, twice.
+    world = makeWorld({ mods: [divergedMod] });
+    const manifest = await packageFrom(world);
+    const downloads = await withArchive(world, [
+      { name: "Textures/rock.dds", body: ARCHIVE_BYTES },
+      { name: "Data/rock.esp", body: "a plugin" },
+    ]);
+    const fake = makeFakeVortex({
+      gameId: world.gameId,
+      downloads,
+      stagingRoot: world.stagingRoot,
+      installProduces: (id) =>
+        id === ARCHIVE_ID
+          ? { "Textures/rock.dds": ARCHIVE_BYTES, "Data/rock.esp": "a plugin" }
+          : undefined,
+    });
+
+    const result = (await install(manifest, fake)) as {
+      kind: string;
+      verifications?: Array<{ kind: string; retryAttempted?: boolean }>;
+      curatorReports?: string[];
+    };
+
+    expect(result.kind, why(result)).toBe("success");
+    // THE assertion: exactly one install. A second entry means the driver
+    // spent a reinstall on files that were already right.
+    expect(fake.installed).toHaveLength(1);
+    expect(result.verifications?.[0]?.kind).toBe("ok");
+    expect(result.verifications?.[0]?.retryAttempted).toBeFalsy();
+    // Nothing to tell the curator: their staging diverging from their own
+    // archive is normal and not this user's problem.
+    expect(result.curatorReports).toBeUndefined();
+  });
+
+  it("DOES reinstall when the user's files match neither side", async () => {
+    // The other half. If "consult the archive" degenerated into "never
+    // reinstall", it would suppress the real corruption this project exists to
+    // catch — so a mod whose bytes are in neither the manifest nor the archive
+    // must still be retried.
+    world = makeWorld({ mods: [divergedMod] });
+    const manifest = await packageFrom(world);
+    const downloads = await withArchive(world, [
+      { name: "Textures/rock.dds", body: ARCHIVE_BYTES },
+      { name: "Data/rock.esp", body: "a plugin" },
+    ]);
+    const fake = makeFakeVortex({
+      gameId: world.gameId,
+      downloads,
+      stagingRoot: world.stagingRoot,
+      installProduces: () => ({
+        "Textures/rock.dds": "corrupted on the way to disk",
+        "Data/rock.esp": "a plugin",
+      }),
+    });
+
+    const result = (await install(manifest, fake)) as {
+      kind: string;
+      verifications?: Array<{ kind: string; retryAttempted?: boolean }>;
+      curatorReports?: string[];
+    };
+
+    expect(result.kind, why(result)).toBe("success");
+    expect(fake.installed.length).toBeGreaterThan(1); // it tried again
+    expect(result.verifications?.[0]?.kind).toBe("fail");
+    // Survived a reinstall AND the archive check: worth the curator's time.
+    expect(result.curatorReports?.length).toBe(1);
+    expect(result.curatorReports?.[0]).toContain("Rock Textures");
+  });
+
+  it("blames the DOWNLOAD, not the curator, when the archive is damaged", async () => {
+    // A hash mismatch has two causes: the mod was re-uploaded under the same
+    // file id, or this user's download is truncated. Only the second is fixed
+    // by downloading again, and only the first is worth a curator's time.
+    // Reporting a corrupt download to the curator sends them hunting a mod
+    // they never changed — and at scale it is how the report channel stops
+    // being read.
+    world = makeWorld({ mods: [divergedMod] });
+    const manifest = await packageFrom(world);
+
+    const { buildStoredZip } = await import(
+      "../../src/core/manifest/storedZip.testutil"
+    );
+    const fsm = await import("fs");
+    const pathm = await import("path");
+    const whole = buildStoredZip([
+      { name: "Textures/rock.dds", body: ARCHIVE_BYTES },
+    ]);
+    // Half a zip: no end-of-central-directory, so no reader can open it. This
+    // is what an interrupted download leaves behind.
+    fsm.writeFileSync(
+      pathm.join(world.downloadRoot, "mod.zip"),
+      whole.subarray(0, Math.floor(whole.length / 2)),
+    );
+
+    const fake = makeFakeVortex({
+      gameId: world.gameId,
+      downloads: { [ARCHIVE_ID]: "mod.zip" },
+      stagingRoot: world.stagingRoot,
+      installProduces: () => ({
+        "Textures/rock.dds": "whatever a broken archive yields",
+        "Data/rock.esp": "a plugin",
+      }),
+    });
+
+    const result = (await install(manifest, fake)) as {
+      kind: string;
+      curatorReports?: string[];
+      damagedArchiveNotice?: string[];
+    };
+
+    expect(result.kind, why(result)).toBe("success");
+    // The whole point of the split.
+    expect(result.damagedArchiveNotice?.length).toBe(1);
+    expect(result.damagedArchiveNotice?.[0]).toContain("Rock Textures");
+    expect(result.damagedArchiveNotice?.[0]).toMatch(/damaged/i);
+    // …and NOT a message accusing the curator of a re-upload.
+    expect(result.curatorReports).toBeUndefined();
+    expect(result.damagedArchiveNotice?.[0]).not.toMatch(/re-uploaded/i);
+  });
+});

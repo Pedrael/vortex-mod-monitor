@@ -22,6 +22,8 @@
  */
 
 import { EventEmitter } from "events";
+import * as fs from "fs";
+import * as path from "path";
 
 import type { types } from "@nexusmods/vortex-api";
 
@@ -44,6 +46,27 @@ export function makeFakeVortex(args: {
   gameId: string;
   /** Downloads Vortex already knows about: archiveId → local path. */
   downloads?: Record<string, string>;
+  /**
+   * Where installed mods land. Pass the world's `stagingRoot`.
+   *
+   * Without this the fake acknowledged installs but left no mod record and no
+   * bytes, so `verifyModInstall` and `findDriftedMods` could not resolve a
+   * staging folder and quietly did nothing. Every verification path — the
+   * curator-diverged case, the damaged archive, drift on update — was
+   * therefore unreachable end to end, which is precisely the layer this
+   * project's bugs live at.
+   */
+  stagingRoot?: string;
+  /**
+   * What an install actually PUTS ON DISK, by archiveId (`dl-<modId>-<fileId>`
+   * for a Nexus mod, `from-path:<path>` for a local archive).
+   *
+   * This is the knob the interesting tests turn. Returning the manifest's exact
+   * bytes models a clean install; returning different bytes models a corrupted
+   * one; omitting a file models Vortex's lost-file bug. Returning `undefined`
+   * writes nothing, which is the old behaviour.
+   */
+  installProduces?: (archiveId: string) => Record<string, string> | undefined;
 }): FakeVortex {
   const events = new EventEmitter();
   const emits: RecordedEmit[] = [];
@@ -84,6 +107,34 @@ export function makeFakeVortex(args: {
       }
       const vortexModId = `installed-${++modSeq}`;
       installed.push({ vortexModId, archiveId });
+
+      // Vortex registers the mod and writes its files BEFORE announcing the
+      // install. Anything that reads staging off the back of `did-install-mod`
+      // — verification, drift, the staging-set hash — depends on that order,
+      // so a double that emits first would let a driver reading too early pass.
+      const files = args.installProduces?.(archiveId);
+      if (args.stagingRoot !== undefined && files !== undefined) {
+        const dir = path.join(args.stagingRoot, vortexModId);
+        for (const [rel, contents] of Object.entries(files)) {
+          const full = path.join(dir, ...rel.split("/"));
+          fs.mkdirSync(path.dirname(full), { recursive: true });
+          fs.writeFileSync(full, contents);
+        }
+      }
+      const mods = (state.persistent as { mods: Record<string, Record<string, unknown>> })
+        .mods[args.gameId];
+      mods[vortexModId] = {
+        id: vortexModId,
+        installationPath: vortexModId,
+        type: "",
+        // Vortex records which download a mod came from, and it is the ONLY
+        // route back to the archive on disk. Without it every archive-based
+        // check — the reinstall judge, the identity check — degrades to "no
+        // archive" and silently reinstalls instead.
+        archiveId,
+        attributes: { name: vortexModId, version: "1.0.0" },
+      };
+
       realEmit("did-install-mod", args.gameId, archiveId, vortexModId);
     }, 0);
   };

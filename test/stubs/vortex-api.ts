@@ -76,11 +76,45 @@ export const selectors = {
 function SevenZipStub(this: unknown): void {
   /* node-7z's constructor is empty too */
 }
-SevenZipStub.prototype.list = async (archive: string): Promise<unknown> => ({
-  path: archive,
-  type: "zip",
-  physicalSize: "0",
-});
+/**
+ * Can a real archiver open this file at all?
+ *
+ * The stub used to answer "yes" for every path, including ones that did not
+ * exist and files that were half a download. That made it impossible to test
+ * the case where an archive is DAMAGED rather than merely different — the
+ * distinction that decides whether a user re-downloads or a curator gets a bug
+ * report — because the double always said the archive was fine.
+ *
+ * A ZIP is identified by its end-of-central-directory record, which lives at
+ * the END. That is the first thing any archiver looks for and the first thing a
+ * truncated download loses, so checking for it is both cheap and faithful. 7z
+ * and RAR are recognised by their leading magic and otherwise taken on trust —
+ * this stub cannot parse them, and pretending to would be its own lie.
+ */
+function looksOpenable(archive: string): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const fsm = require("fs") as typeof import("fs");
+  let buf: Buffer;
+  try {
+    buf = fsm.readFileSync(archive);
+  } catch {
+    return false; // not on disk: a real 7z cannot list it either
+  }
+  if (buf.length >= 6 && buf.subarray(0, 6).equals(Buffer.from("377abcaf271c", "hex"))) {
+    return true; // 7z
+  }
+  if (buf.length >= 4 && buf.subarray(0, 4).toString("latin1") === "Rar!") {
+    return true; // rar
+  }
+  return buf.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06])) !== -1;
+}
+
+SevenZipStub.prototype.list = async (archive: string): Promise<unknown> => {
+  if (!looksOpenable(archive)) {
+    throw new Error(`Cannot open the file as an archive: ${archive}`);
+  }
+  return { path: archive, type: "zip", physicalSize: "0" };
+};
 SevenZipStub.prototype.add = async (): Promise<unknown> => ({ code: 0, errors: [] });
 SevenZipStub.prototype.extractFull = async (): Promise<unknown> => ({
   code: 0,

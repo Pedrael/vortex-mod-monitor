@@ -55,14 +55,25 @@ describe("the check the docblock promised", () => {
   it("catches a re-upload — same file id, different bytes", async () => {
     // The failure this exists for. Without it the collection installs a mod
     // the curator never tested and nothing says so.
-    const p = write("mod.7z", "what nexus serves TODAY");
+    //
+    // A REAL archive, because a re-upload is an intact file with different
+    // contents. The fixture used to be a text file, which is now correctly
+    // read as `damaged` — a truncated download rather than a re-upload — so
+    // the convenient fixture was testing the wrong verdict.
+    const p = path.join(dir, "mod.zip");
+    writeStoredZip(p, [{ name: "Data/thing.esp", body: "what nexus serves TODAY" }]);
+    const actual = crypto
+      .createHash("sha256")
+      .update(fs.readFileSync(p))
+      .digest("hex");
+
     const check = await checkArchiveIdentity({
       archivePath: p,
       expectedSha256: sha("what nexus served the curator"),
     });
     expect(check.kind).toBe("differs");
     if (check.kind === "differs") {
-      expect(check.actual).toBe(sha("what nexus serves TODAY"));
+      expect(check.actual).toBe(actual);
     }
   });
 
