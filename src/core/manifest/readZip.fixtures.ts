@@ -93,3 +93,35 @@ export const SEVENZIP_MANIFEST_CRC_OFFSET = 2217;
 
 /** Byte offset of stored.bin's CRC-32 inside SEVENZIP_WITH_LOCAL_EXTRA. */
 export const SEVENZIP_STORED_CRC_OFFSET = 2312;
+
+/**
+ * A .ehcoll-SHAPED package, written by 7-Zip: manifest.json plus a real
+ * bundled/<sha256>.zip whose name is the actual SHA-256 of its bytes, exactly
+ * as a built package names them. It also carries a DIRECTORY entry, which a
+ * reader must skip rather than try to extract.
+ *
+ * This exists because extractBundledFromEhcoll had no tests: removing its
+ * extraction entirely, and pointing it at the wrong entry, both left the suite
+ * green.
+ */
+export const EHCOLL_WITH_BUNDLED =
+  "UEsDBBQAAAAAAFOOHV0AAAAAAAAAAAAAAAAIAAAAYnVuZGxlZC9QSwMEFAAAAAgAU44dXR+/svR/" +
+  "AAAAsAAAAEwAAABidW5kbGVkLzkwNTYxNTZjMzVhYTU1MWRjYzk1MGY5MzIyYTNkN2QyZmU0NmU1" +
+  "N2JkZTIwM2RhY2NhNzczYjVlNjY5Mzg5YWEuemlwdYw9CoNAEIVn81eYNkWawBap06YSO5tFWLC2" +
+  "EUcRRRddC/EK4plsbL2Bd3FXbRT8hjczPGYeZ9ebARq3+3hjE9KX2rWeSk4e2HGKPyyFKFBiFlCR" +
+  "VlGcUb+WWHJGLhacvX9hheq2DzM2k8AbZJv0w38icICz+2O5UeWpaS7uDFBLAwQUAAAACABTjh1d" +
+  "CLU71D4AAAC7CAAADQAAAG1hbmlmZXN0Lmpzb27txjEKwCAQRcG7vNom7V4lpJAYSCBisRaC7N29" +
+  "hsWfaiZ+v0/N2JGorTh2Tr6CMYikqqqqqqq6Q//snbhiAVBLAQI/ABQAAAAAAFOOHV0AAAAAAAAA" +
+  "AAAAAAAIACQAAAAAAAAAEAAAAAAAAABidW5kbGVkLwoAIAAAAAAAAQAYANRzdMDFN90BAAAAAAAA" +
+  "AADUc3TAxTfdAVBLAQI/ABQAAAAIAFOOHV0fv7L0fwAAALAAAABMACQAAAAAAAAAIAAAACYAAABi" +
+  "dW5kbGVkLzkwNTYxNTZjMzVhYTU1MWRjYzk1MGY5MzIyYTNkN2QyZmU0NmU1N2JkZTIwM2RhY2Nh" +
+  "NzczYjVlNjY5Mzg5YWEuemlwCgAgAAAAAAABABgAvAhwwMU33QEAAAAAAAAAAE7+dMDFN90BUEsB" +
+  "Aj8AFAAAAAgAU44dXQi1O9Q+AAAAuwgAAA0AJAAAAAAAAAAgAAAADwEAAG1hbmlmZXN0Lmpzb24K" +
+  "ACAAAAAAAAEAGADjmnTAxTfdAQAAAAAAAAAA45p0wMU33QFQSwUGAAAAAAMAAwBXAQAAeAEAAAAA";
+
+/** SHA-256 of the inner archive, and its entry path inside the package. */
+export const BUNDLED_SHA = "9056156c35aa551dcc950f9322a3d7d2fe46e57bde203dacca773b5e669389aa";
+export const BUNDLED_ENTRY = `bundled/${BUNDLED_SHA}.zip`;
+
+/** The inner archive is a real zip of 176 bytes; content is compared, not just length. */
+export const INNER_ZIP_BYTES = 176;

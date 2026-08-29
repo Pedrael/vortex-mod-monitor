@@ -54,11 +54,7 @@ import {
   type VortexInstallerChoices,
 } from "./installerChoices";
 
-import {
-  type SevenZipApi,
-  resolveSevenZip,
-  sevenZipExtractFull,
-} from "../manifest/sevenZip";
+import { extractZipEntryToFile } from "../manifest/readZip";
 
 /**
  * Install completion is policed by **two** timers, not one:
@@ -398,7 +394,6 @@ export async function installFromBundledArchive(
     gameId: string;
     ehcollZipPath: string;
     bundledZipEntry: string; // e.g. "bundled/abc...123.zip"
-    sevenZip?: SevenZipApi;
     /** Optional cancellation token; see {@link installNexusViaApi}. */
     signal?: AbortSignal;
     /**
@@ -433,19 +428,17 @@ export async function installFromBundledArchive(
   extractedPath: string;
   tempDir: string;
 }> {
-  const sevenZip = args.sevenZip ?? resolveSevenZip();
-
+  // No `resolveSevenZip()` here any more, and that is the point: it THROWS
+  // when `util.SevenZip` is missing, so merely reaching this line used to be
+  // enough to fail an install on a prefix where 7z is unavailable — before
+  // anything had tried to read a single byte.
   if (args.signal?.aborted) {
     throw makeAbortErrorLocal("install from bundled archive");
   }
 
   const { extractedPath, tempDir } =
     args.preExtracted ??
-    (await extractBundledFromEhcoll(
-      args.ehcollZipPath,
-      args.bundledZipEntry,
-      sevenZip,
-    ));
+    (await extractBundledFromEhcoll(args.ehcollZipPath, args.bundledZipEntry));
 
   try {
     if (args.signal?.aborted) {
@@ -894,36 +887,47 @@ function waitForInstallCompletion(
  * 6-char random suffix makes it unique even within the same ms) so
  * two concurrent extractions can't trample each other.
  *
- * On 7z failure or post-extract sanity-check failure the temp dir is
- * removed before the error propagates — extraction owns its own
+ * On extraction failure or post-extract sanity-check failure the temp
+ * dir is removed before the error propagates — extraction owns its own
  * cleanup until it successfully returns.
+ *
+ * ─── WHY THIS NO LONGER SPAWNS 7z ──────────────────────────────────────
+ * Pulling an entry out of a `.ehcoll` is a ZIP read of OUR OWN FORMAT, and
+ * it used to go through Vortex's bundled 7z — a Windows executable spawned
+ * as a child process. Under Wine/Proton that spawn is the fragile step: an
+ * alpha tester could not open a package proven byte-identical to the
+ * curator's, and node-7z could not say why (`list` resolves with an empty
+ * spec and discards `{code, errors}`).
+ *
+ * `readEhcoll` was moved off 7z first; this was the OTHER half, and leaving
+ * it behind meant an install would clear the manifest and then die on the
+ * first bundled mod with the identical error.
+ *
+ * 7z keeps the job it actually earns: the extracted file may be a `.7z` or
+ * `.rar`, and unpacking THAT is Vortex's installer's work, through Vortex's
+ * own 7z. We just hand it the archive.
  */
 export async function extractBundledFromEhcoll(
   ehcollZipPath: string,
   bundledZipEntry: string,
-  sevenZip: SevenZipApi,
 ): Promise<{ extractedPath: string; tempDir: string }> {
   const tempDir = await fsp.mkdtemp(
     path.join(os.tmpdir(), "event-horizon-install-"),
   );
 
   try {
+    // The entry's path is preserved inside `tempDir`, matching what 7z's
+    // `extractFull` did — callers and cleanup both depend on that shape.
+    const extractedPath = path.join(tempDir, ...bundledZipEntry.split("/"));
+
     try {
-      // MUST be `extractFull` (7z `x`). `extract` maps to 7z `e`, which
-      // flattens the tree — it would drop every bundled archive's directory
-      // structure into one folder and collide same-named files.
-      await sevenZipExtractFull(sevenZip, ehcollZipPath, tempDir, {
-        raw: [bundledZipEntry],
-      });
+      await extractZipEntryToFile(ehcollZipPath, bundledZipEntry, extractedPath);
     } catch (err) {
       throw new Error(
-        `7z failed to extract "${bundledZipEntry}" from "${ehcollZipPath}": ` +
+        `Could not extract "${bundledZipEntry}" from "${ehcollZipPath}": ` +
           `${(err as Error).message}`,
       );
     }
-
-    // The cherry-pick preserves the entry's path inside `tempDir`.
-    const extractedPath = path.join(tempDir, ...bundledZipEntry.split("/"));
 
     // Sanity-check: confirm the file actually landed.
     await fsp.access(extractedPath);

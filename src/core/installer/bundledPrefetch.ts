@@ -53,10 +53,11 @@
  */
 
 import { AbortError } from "../../utils/abortError";
-import {
-  type SevenZipApi,
-  resolveSevenZip,
-} from "../manifest/sevenZip";
+// No 7z import. Extraction from a .ehcoll is a ZIP read of our own format and
+// is done natively — see extractBundledFromEhcoll. This pool used to call
+// resolveSevenZip() in its CONSTRUCTOR, which throws when util.SevenZip is
+// unavailable, so building the pool failed on a Proton prefix before a single
+// byte had been read.
 import {
   extractBundledFromEhcoll,
   safeRmTempDir,
@@ -69,7 +70,6 @@ export type PrefetchedBundle = {
 
 export type BundledPrefetchPoolOptions = {
   ehcollZipPath: string;
-  sevenZip?: SevenZipApi;
   /**
    * Maximum concurrent extractions. Defaults to 2 (see module
    * header for the rationale). Clamped to >= 1.
@@ -101,7 +101,6 @@ type Slot =
 
 export class BundledPrefetchPool {
   private readonly ehcollZipPath: string;
-  private readonly sevenZip: SevenZipApi;
   private readonly concurrency: number;
   private readonly signal: AbortSignal | undefined;
   private readonly onExtracted: ((zipEntry: string, ms: number) => void) | undefined;
@@ -135,7 +134,6 @@ export class BundledPrefetchPool {
 
   constructor(opts: BundledPrefetchPoolOptions) {
     this.ehcollZipPath = opts.ehcollZipPath;
-    this.sevenZip = opts.sevenZip ?? resolveSevenZip();
     this.concurrency = Math.max(1, opts.concurrency ?? 2);
     this.signal = opts.signal;
     this.onExtracted = opts.onExtracted;
@@ -306,7 +304,6 @@ export class BundledPrefetchPool {
       const result = await extractBundledFromEhcoll(
         this.ehcollZipPath,
         zipEntry,
-        this.sevenZip,
       );
       const elapsed = Date.now() - startedAt;
       this.onExtracted?.(zipEntry, elapsed);
