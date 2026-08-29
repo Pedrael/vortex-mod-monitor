@@ -149,6 +149,10 @@ import {
   type UserRuleSnapshot,
 } from "./purgeUserRules";
 import {
+  applyPluginOrder,
+  describePluginOrderApplication,
+} from "./applyPluginOrder";
+import {
   applyModRules,
   type ApplyModRulesResult,
   type ExistingRule,
@@ -1628,14 +1632,49 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
       ),
     };
 
+    // ── 7b0. put the curator's plugin order on disk ────────────────────
+    //
+    // This used to be "detect, don't pin", on the premise that plugins.txt
+    // cannot be written because Vortex and LOOT regenerate it. The premise was
+    // wrong: the old writer wrote the FILE, which Vortex owns, while the
+    // supported route is to write the STATE and let Vortex persist it —
+    // `PluginPersistor.syncFromState` exists for exactly this and its error
+    // string names collection installs.
+    //
+    // Pin first, then sort. LOOT is fed the current order as its tiebreak, so
+    // pinning makes the curator's order the baseline and the sort then lifts
+    // the user's own plugins into their correct places instead of leaving them
+    // stranded at the end. And if the sort fails — a rule cycle is the
+    // expected way — the pinned order still stands and still gets written,
+    // which is what makes this safe to attempt at all.
+    reportProgress(
+      "applying-load-order",
+      0,
+      1,
+      `Applying the collection's plugin order (${plan.manifest.plugins.order.length})...`,
+    );
+    const pluginOrderApplication = await applyPluginOrder({
+      api,
+      gameId: plan.manifest.game.id,
+      collectionId: plan.manifest.package.id,
+      order: plan.manifest.plugins.order,
+      ...(ctx.abortSignal !== undefined ? { signal: ctx.abortSignal } : {}),
+    });
+    ehLog("info", "plugins.order-applied", {
+      pinned: pluginOrderApplication.pinned,
+      sorted: pluginOrderApplication.sorted,
+      written: pluginOrderApplication.written,
+      enabledCorrections: pluginOrderApplication.enabledCorrections,
+      notes: pluginOrderApplication.notes,
+    });
+
     // ── 7b1. did the load order actually come out like the curator's? ──
     //
-    // Applying the curator's LOOT rules is not the same as reproducing their
-    // order: many orders satisfy the same rules, and which one LOOT picks
-    // depends on the user's masterlist version and their own plugins. For a
-    // Bethesda game that difference decides which mod's records win, so this
-    // reads what the user actually ended up with and reports how it differs.
-    // It changes nothing — the order is Vortex's and LOOT's to own.
+    // Still measured, and now it means more than it did: with the order pinned
+    // and LOOT re-sorted on top, a remaining difference is LOOT actively
+    // disagreeing with the curator — a master-order violation, or a masterlist
+    // newer than theirs — rather than nobody having tried. Read from disk
+    // AFTER the write above, so it reports what the game will actually load.
     let pluginOrderDrift = emptyPluginOrderDrift();
     try {
       const actual = await readUserPluginsTxt(plan.manifest.game.id);
@@ -1805,6 +1844,15 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
         : {}),
       ...(rulesPurgeNotice !== undefined
         ? { rulesPurgeNotice }
+        : {}),
+      // Only present when something about setting the order did NOT work.
+      // Success here is the expected outcome and says nothing.
+      ...(describePluginOrderApplication(pluginOrderApplication) !== undefined
+        ? {
+            pluginOrderNotApplied: describePluginOrderApplication(
+              pluginOrderApplication,
+            )!,
+          }
         : {}),
     };
   } finally {

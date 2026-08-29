@@ -334,6 +334,18 @@ export type InstallSuccess = {
    */
   rulesPurgeNotice?: string[];
   /**
+   * Present only when applying the curator's plugin order did not fully work.
+   *
+   * The install pins the curator's order, asks LOOT to sort the user's own
+   * plugins into it, and has Vortex flush the result to plugins.txt. Each step
+   * can fail independently — a rule cycle stops the sort, an older Vortex may
+   * not know the events — and each failure leaves the load order in a
+   * different, describable state. Absent on success: "your load order is
+   * correct" is the expected outcome and would only compete for attention with
+   * the notices that need reading.
+   */
+  pluginOrderNotApplied?: string[];
+  /**
    * Mods that changed on disk since a PREVIOUS install of this collection put
    * them there, and that this version did not update.
    *

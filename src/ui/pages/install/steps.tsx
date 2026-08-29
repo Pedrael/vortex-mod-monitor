@@ -2268,6 +2268,31 @@ function ExternalArchiveNotice(props: {
 }
 
 /**
+ * The curator's plugin order could not be fully applied.
+ *
+ * Appears only on failure. Load order decides which mod's records win, so a
+ * collection that installed perfectly and did not get its order is a
+ * collection that will play wrong — and that is invisible from the file list,
+ * which is exactly why it needs saying.
+ */
+function PluginOrderNotAppliedNotice(props: {
+  lines: readonly string[];
+}): JSX.Element | null {
+  if (props.lines.length === 0) return null;
+  const [summary, ...rest] = props.lines;
+  return (
+    <NoticeCard
+      label="Load order"
+      intent="warning"
+      summary={summary ?? ""}
+      accentBorder="var(--eh-warning)"
+    >
+      <NoticeLines lines={rest} moreLabel="Why" />
+    </NoticeCard>
+  );
+}
+
+/**
  * The user's own rules, replaced by the collection's.
  *
  * Not folded into the notes: this is the one card describing something Event
@@ -2508,6 +2533,13 @@ function SuccessBody(props: {
         — and the only one whose remedy (the backup file) is useless if unread.
       */}
       <RulesPurgeNotice lines={result.rulesPurgeNotice ?? []} />
+      {/*
+        Above the drift report, which describes a difference; this one
+        describes the attempt to remove it having failed.
+      */}
+      <PluginOrderNotAppliedNotice
+        lines={result.pluginOrderNotApplied ?? []}
+      />
       <ModTypeNotice lines={result.modTypeNotice ?? []} />
       <PluginOrderNotice lines={result.pluginOrderNotice ?? []} />
       <StagingDriftNotice lines={result.stagingDriftNotice ?? []} />
