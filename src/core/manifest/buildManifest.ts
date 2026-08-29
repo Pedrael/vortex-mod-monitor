@@ -339,16 +339,39 @@ export function buildManifest(input: BuildManifestInput): BuildManifestResult {
   // Detecting a difference it cannot prevent is exactly the shape of failure
   // this project exists to remove, so the curator hears about it up front,
   // while they can still write an instruction for it.
+  // Replay EXISTS now. This warning used to say "the installer cannot replay
+  // them yet — whoever installs this collection gets the FOMOD dialog and
+  // picks for themselves", and it went on saying it after `choicesFor` started
+  // reading this exact field and `runInstall` started passing the result to
+  // both install paths. Measured on the real 963-mod build: 112 of 115 replay
+  // automatically, and the warning claimed none did.
+  //
+  // A stale warning is not harmless. This one sent the curator to write
+  // instructions for 115 mods that need none, and set the wrong expectation
+  // for what their tester would see.
+  //
+  // What is still worth saying is the residue: `choicesFor` returns undefined
+  // when no group in any step has a selected option, because sending that
+  // would claim a choice the curator never made. Those mods do fall back to
+  // asking the user, and they are the only ones a curator can act on.
   const withChoices = mods.filter(
     (m) => (m.install?.fomodSelections ?? []).length > 0,
   );
-  if (withChoices.length > 0) {
+  const unreplayable = withChoices.filter(
+    (m) =>
+      !(m.install?.fomodSelections ?? []).some((step) =>
+        step.groups.some((group) => group.choices.length > 0),
+      ),
+  );
+  if (unreplayable.length > 0) {
+    const replayed = withChoices.length - unreplayable.length;
     warnings.push(
-      `${withChoices.length} mod(s) were installed with FOMOD options you ` +
-        `chose (e.g. "${withChoices[0]!.name}"). Those choices are recorded ` +
-        `here, but the installer cannot replay them yet — whoever installs ` +
-        `this collection gets the FOMOD dialog and picks for themselves. If ` +
-        `a mod only works with specific options, say so in its instructions.`,
+      `${unreplayable.length} mod(s) recorded FOMOD steps with no option ` +
+        `selected (e.g. "${unreplayable[0]!.name}"), so there is nothing to ` +
+        `replay for them — whoever installs this collection is asked to choose ` +
+        `for those. If they only work with specific options, say so in their ` +
+        `instructions. The other ${replayed} mod(s) with recorded options are ` +
+        `replayed automatically.`,
     );
   }
 

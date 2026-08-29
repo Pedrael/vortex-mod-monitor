@@ -51,7 +51,7 @@ const iniWarnings = (warnings: string[]): string[] =>
   warnings.filter((w) => w.includes("INI tweak"));
 
 const fomodWarnings = (warnings: string[]): string[] =>
-  warnings.filter((w) => w.includes("FOMOD options"));
+  warnings.filter((w) => w.includes("FOMOD"));
 
 describe("enabled INI tweaks", () => {
   it("warns that they are recorded but will not be applied", () => {
@@ -92,11 +92,21 @@ describe("enabled INI tweaks", () => {
 });
 
 describe("recorded FOMOD choices", () => {
-  // Measured on the real collection: 114 of 954 mods carry choices the
-  // curator made ("AFT Plus Ivy Patch", "Kinky Animation Support"). On
-  // install, each archive goes to Vortex's `start-install`, which runs the
-  // FOMOD UI — so the user picks, and the curator's selections reach nobody.
-  const withSelections = (id: string, count: number): AuditorMod =>
+  // REPLAY EXISTS. `choicesFor` reads `install.fomodSelections` and
+  // `runInstall` passes the result to both install paths, so the curator's
+  // answers are sent to Vortex instead of the user being asked.
+  //
+  // These tests previously asserted the opposite — that the options "will not
+  // be replayed" — and stayed green for the whole life of the replay feature,
+  // because they pinned the MESSAGE rather than the behaviour. Measured on the
+  // real 963-mod build: 112 of 115 replay, and the warning told the curator
+  // that none did, sending them to write instructions for 115 mods that need
+  // none.
+  //
+  // A step whose groups are all empty is the one genuine exception:
+  // `choicesFor` returns undefined there rather than claim a choice the
+  // curator never made, so those mods really do fall back to asking.
+  const unanswered = (id: string, count: number): AuditorMod =>
     mod({
       id,
       archiveSha256: id.padEnd(64, "0"),
@@ -106,23 +116,53 @@ describe("recorded FOMOD choices", () => {
       })) as never,
     });
 
-  it("warns that the curator's options will not be replayed", () => {
-    const { warnings } = build([withSelections("aft", 2)]);
+  const answered = (id: string): AuditorMod =>
+    mod({
+      id,
+      archiveSha256: id.padEnd(64, "0"),
+      fomodSelections: [
+        {
+          name: "Choose Options",
+          groups: [
+            { name: "Patches", choices: [{ name: "AFT Plus Ivy Patch", idx: 2 }] },
+          ],
+        },
+      ] as never,
+    });
+
+  it("says NOTHING about mods whose choices will be replayed", () => {
+    // The case that matters most, and the one the old tests could not express.
+    // A curator told to write instructions for a mod that already replays
+    // correctly is being sent to do pointless work.
+    const { warnings } = build([answered("aft")]);
+    expect(fomodWarnings(warnings)).toEqual([]);
+  });
+
+  it("warns only about steps with no option selected", () => {
+    const { warnings } = build([unanswered("aft", 2)]);
     const line = fomodWarnings(warnings).join(" ");
-    expect(line).toMatch(/1 mod\(s\) were installed with FOMOD options you chose/);
-    expect(line).toMatch(/cannot replay them yet/);
-    // The actionable part: instructions are the workaround that exists today.
-    expect(line).toMatch(/say so in its instructions/);
+    expect(line).toMatch(/1 mod\(s\) recorded FOMOD steps with no option selected/);
+    expect(line).toMatch(/say so in their instructions/);
+    // And it must NOT resurrect the old claim.
+    expect(line).not.toMatch(/cannot replay/i);
+  });
+
+  it("tells the curator how many DID replay, so the warning is not alarming", () => {
+    // "3 mods need attention" reads very differently from "your FOMOD answers
+    // are lost", and only one of them is true.
+    const { warnings } = build([unanswered("a", 1), answered("b"), answered("c")]);
+    const line = fomodWarnings(warnings).join(" ");
+    expect(line).toMatch(/1 mod\(s\) recorded FOMOD steps/);
+    expect(line).toMatch(/other 2 mod\(s\).*replayed automatically/);
   });
 
   it("counts mods, not selections — one dialog per mod is what a user faces", () => {
-    const { warnings } = build([withSelections("a", 8), withSelections("b", 1)]);
+    const { warnings } = build([unanswered("a", 8), unanswered("b", 1)]);
     expect(fomodWarnings(warnings).join(" ")).toMatch(/2 mod\(s\)/);
   });
 
   it("stays quiet for a collection with no recorded choices", () => {
-    // Most mods report installerType "fomod" without a script or a choice;
-    // warning on those would bury the 114 that matter.
+    // Most mods report installerType "fomod" without a script or a choice.
     const { warnings } = build([mod({ id: "plain", fomodSelections: [] })]);
     expect(fomodWarnings(warnings)).toEqual([]);
   });
