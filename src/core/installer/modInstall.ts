@@ -55,19 +55,26 @@ import {
 } from "./installerChoices";
 
 import { extractZipEntryToFile } from "../manifest/readZip";
+import { looksLikeWine } from "./checkSevenZipHealth";
+import { stallBudgetMs, type StallPhase } from "./timeBudgets";
 
 /**
  * Install completion is policed by **two** timers, not one:
  *
- *  1. {@link INSTALL_STALL_WATCHDOG_MS} — the **stall watchdog**. We
- *     reset it every time we observe a relevant progress signal (a
- *     download chunk landed, the entry's state transitioned, the mod
- *     count for our gameId mutated, etc.). If Vortex makes zero
- *     observable progress for this long we conclude the pipeline is
- *     hung and reject. This is the timer that actually matters for
- *     real-world UX — most installs reset it dozens of times per
- *     second during the download phase, so it never trips on a
- *     healthy install no matter how big the archive is.
+ *  1. {@link stallBudgetMs} — the **stall watchdog**. We reset it every
+ *     time we observe a relevant progress signal (a download chunk
+ *     landed, the entry's state transitioned, the mod count for our
+ *     gameId mutated, etc.). If Vortex makes zero observable progress
+ *     for this long we conclude the pipeline is hung and reject.
+ *
+ *     The claim that "it never trips on a healthy install no matter how
+ *     big the archive is" was FALSE, and this is where it broke: the
+ *     signals above all move during DOWNLOAD, and none of them moves
+ *     while Vortex unpacks the archive. The download entry has stopped
+ *     changing and the mod record does not exist yet, so a large mod on
+ *     a slow prefix is silent for the whole extraction — and a flat 90s
+ *     called that a hang. The window is now sized per phase, and during
+ *     extraction it is proportional to the archive.
  *
  *  2. {@link INSTALL_ABSOLUTE_CAP_MS} — the **absolute cap**. Pure
  *     safety net for the pathological case where Vortex is reporting
@@ -82,7 +89,9 @@ import { extractZipEntryToFile } from "../manifest/readZip";
  * The two-timer design solves both: hangs surface in 90s; legitimate
  * long-running installs are bounded only by the 60 min absolute cap.
  */
-const INSTALL_STALL_WATCHDOG_MS = 90_000; // 90s of zero progress = hung
+// The stall window is no longer a constant — see stallBudgetMs, which sizes
+// it from the phase and the archive. The absolute cap stays flat and stays
+// per-mod: it is a livelock backstop, not a performance budget.
 const INSTALL_ABSOLUTE_CAP_MS = 60 * 60_000; // 60 min hard ceiling
 
 /**
@@ -556,6 +565,16 @@ function waitForInstallCompletion(
      */
     matchArchiveId: string | undefined;
     /**
+     * Size of the archive being installed, when the caller knows it.
+     *
+     * Only used to size the stall watchdog's silence window during the
+     * extraction phase, where nothing observable moves and the right amount
+     * of quiet is proportional to how much there is to unpack. Omitting it
+     * costs a more generous default, never a shorter one — the bundled path
+     * knows the size, the Nexus path learns it from the download entry.
+     */
+    archiveBytes?: number;
+    /**
      * When true, the listener resolves on the FIRST `did-install-mod`
      * for `opts.gameId` regardless of archiveId. Cannot be combined
      * with `matchArchiveId`.
@@ -640,8 +659,38 @@ function waitForInstallCompletion(
    */
   let lastModCount = -1;
 
+  // Probed once: looksLikeWine touches the filesystem, and the watchdog
+  // re-arms on every progress signal.
+  const budgetEnv = { wine: looksLikeWine() };
+
+  /**
+   * Which phase the install is in, for sizing the silence window.
+   *
+   * This matters because the two phases are observably different. While bytes
+   * are arriving we see `received` move on every chunk, so silence really is
+   * suspicious. Once the archive is complete, Vortex unpacks it and NOTHING
+   * we watch moves — the download entry has stopped changing and the mod
+   * record does not exist until the install finishes. A flat window declares
+   * that legitimate work a hang, which is what a 90s constant did to a large
+   * mod under Wine.
+   */
+  const currentStallPhase = (): StallPhase => {
+    const snap = lastDownloadSnapshot;
+    if (snap !== undefined && snap.size > 0) {
+      return snap.received >= snap.size
+        ? { phase: "extracting", bytes: snap.size }
+        : { phase: "downloading" };
+    }
+    // No usable download entry: the bundled path, or a Nexus download that
+    // has not started yet. Size unknown, so take the generous window — it is
+    // still never shorter than the constant this replaced.
+    return { phase: "extracting", bytes: opts.archiveBytes };
+  };
+
   const armStallWatchdog = (): void => {
     if (stallTimer !== undefined) clearTimeout(stallTimer);
+    const phase = currentStallPhase();
+    const budgetMs = stallBudgetMs(phase, budgetEnv);
     stallTimer = setTimeout(() => {
       if (settled) return;
       settled = true;
@@ -650,12 +699,12 @@ function waitForInstallCompletion(
       rejectFn(
         new Error(
           `Mod install stalled — Vortex made no observable progress for ` +
-            `${idleSec}s. The install pipeline may be waiting on a stuck ` +
-            `dialog (FOMOD prompt, error notification) or be hung. Check ` +
-            `Vortex's notification panel and try again.`,
+            `${idleSec}s while ${phase.phase}. The install pipeline may be ` +
+            `waiting on a stuck dialog (FOMOD prompt, error notification) or ` +
+            `be hung. Check Vortex's notification panel and try again.`,
         ),
       );
-    }, INSTALL_STALL_WATCHDOG_MS);
+    }, budgetMs);
   };
 
   const noteProgress = (): void => {

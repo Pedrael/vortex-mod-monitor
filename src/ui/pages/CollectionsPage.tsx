@@ -926,8 +926,11 @@ async function saveDiagnosticReport(
       version: EXTENSION_VERSION,
     },
     host: {
-      platform:
-        typeof process !== "undefined" ? process.platform : "unknown",
+      // `process.platform` reports "win32" under Proton, because Vortex there
+      // IS a Windows process. That made every Linux tester's report claim
+      // Windows — the most misleading field a remote diagnosis can carry, and
+      // it cost days on the 7z investigation before anyone thought to ask.
+      platform: describeHostPlatform(),
       nodeVersion:
         typeof process !== "undefined" ? process.version : "unknown",
       // Trim user-agent to avoid leaking arbitrary auth state, just
@@ -948,4 +951,26 @@ async function saveDiagnosticReport(
     { encoding: "utf-8" },
   );
   return true;
+}
+
+/**
+ * The host OS as a human would describe it.
+ *
+ * Never throws: this feeds an ERROR REPORT, and a diagnostic that fails while
+ * describing a failure leaves the reader with nothing.
+ */
+function describeHostPlatform(): string {
+  if (typeof process === "undefined") return "unknown";
+  const base = process.platform;
+  try {
+    // Cheap synchronous probe; see looksLikeWine for why process.platform
+    // cannot answer this on its own.
+    const fs = require("fs") as typeof import("fs");
+    for (const p of ["Z:\\usr", "Z:\\home", "C:\\windows\\system32\\winemenubuilder.exe"]) {
+      if (fs.existsSync(p)) return `${base} (Wine/Proton)`;
+    }
+  } catch {
+    // Probe unavailable — report the plain platform rather than nothing.
+  }
+  return base;
 }

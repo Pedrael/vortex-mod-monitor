@@ -27,7 +27,8 @@
 import { randomBytes, randomUUID } from "crypto";
 import { actions, types } from "@nexusmods/vortex-api";
 
-const PROFILE_SWITCH_TIMEOUT_MS = 30_000;
+import { looksLikeWine } from "./checkSevenZipHealth";
+import { countMods, profileSwitchBudgetMs } from "./timeBudgets";
 
 /**
  * Create a brand-new, empty Vortex profile and dispatch it into the
@@ -65,7 +66,7 @@ export function createFreshProfile(
  * Cancellation:
  *  - If `signal` aborts before Vortex emits `profile-did-change`,
  *    the promise rejects with an `AbortError` immediately rather
- *    than waiting for the 30s timeout. Vortex's setNextProfile
+ *    than waiting out the switch budget. Vortex's setNextProfile
  *    dispatch has already been issued at that point and we cannot
  *    cancel the underlying switch — but we *can* stop blocking the
  *    install driver, which is the part the user pays attention to.
@@ -74,7 +75,7 @@ export function createFreshProfile(
  *    switch is reconciled with whatever profile state actually exists.
  *
  * @throws if the switch doesn't complete within
- *   `PROFILE_SWITCH_TIMEOUT_MS` ms (usually means Vortex hit a
+ *   {@link profileSwitchBudgetMs} (usually means Vortex hit a
  *   deployment lock the user must resolve manually) or if `signal`
  *   aborts.
  */
@@ -95,6 +96,14 @@ export async function switchToProfile(
   if (signal?.aborted) {
     throw makeAbortError("profile switch");
   }
+
+  // A profile carries every mod's enabled state, so the switch scales with
+  // the collection; under Wine it scales again. Like the deploy ceiling this
+  // is a race against `profile-did-change`, so a larger budget costs nothing
+  // when the switch is quick — it only delays giving up on a stuck one.
+  const budgetMs = profileSwitchBudgetMs(countMods(state), {
+    wine: looksLikeWine(),
+  });
 
   await new Promise<void>((resolve, reject) => {
     let settled = false;
@@ -134,11 +143,11 @@ export async function switchToProfile(
       reject(
         new Error(
           `Profile switch to "${profileId}" did not complete within ` +
-            `${PROFILE_SWITCH_TIMEOUT_MS}ms. Check Vortex's notifications for ` +
+            `${Math.round(budgetMs / 1000)}s. Check Vortex's notifications for ` +
             `a stuck deployment.`,
         ),
       );
-    }, PROFILE_SWITCH_TIMEOUT_MS);
+    }, budgetMs);
 
     const onChange = (newProfileId: string): void => {
       if (newProfileId !== profileId || settled) return;

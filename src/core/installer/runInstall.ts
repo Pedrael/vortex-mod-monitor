@@ -125,6 +125,8 @@ import type {
   OrphanedModDecision,
 } from "../../types/installPlan";
 import type { SupportedGameId } from "../../types/ehcoll";
+import { looksLikeWine } from "./checkSevenZipHealth";
+import { countMods, deployBudgetMs } from "./timeBudgets";
 import {
   applyModRules,
   type ApplyModRulesResult,
@@ -184,7 +186,8 @@ import { BundledPrefetchPool } from "./bundledPrefetch";
 // gamebryo-plugin-management + LOOT auto-sort produce plugins.txt
 // during deploy from the mod rules + userlist we apply above.
 
-const DEPLOY_TIMEOUT_MS = 5 * 60_000;
+// Mod counting lives in timeBudgets alongside the budgets that consume it —
+// a copy here and another in profile.ts would drift.
 
 /**
  * Number of attempts to write the install receipt. The receipt is the
@@ -1913,6 +1916,18 @@ async function deployAndWait(api: types.IExtensionApi): Promise<void> {
     throw new Error("No active profile to deploy.");
   }
 
+  // Deployment links or copies every file of every mod, so a flat five
+  // minutes was a 954-mod collection's problem — and it fires at the very END
+  // of the install, turning a slow-but-working deploy into a failed one after
+  // everything else succeeded.
+  //
+  // Raising this costs nothing when deployment is fast: the timer loses the
+  // race to `did-deploy` and is cleared. It only ever changes how long a
+  // genuinely stuck deploy takes to give up.
+  const budgetMs = deployBudgetMs(countMods(state), {
+    wine: looksLikeWine(),
+  });
+
   await new Promise<void>((resolve, reject) => {
     let settled = false;
 
@@ -1922,10 +1937,10 @@ async function deployAndWait(api: types.IExtensionApi): Promise<void> {
       api.events.removeListener("did-deploy", onDidDeploy);
       reject(
         new Error(
-          `Deployment did not complete within ${DEPLOY_TIMEOUT_MS / 1000}s.`,
+          `Deployment did not complete within ${Math.round(budgetMs / 1000)}s.`,
         ),
       );
-    }, DEPLOY_TIMEOUT_MS);
+    }, budgetMs);
 
     const onDidDeploy = (deployedProfileId: string): void => {
       if (settled) return;
