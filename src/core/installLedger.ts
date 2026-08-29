@@ -488,6 +488,33 @@ function validateModEntries(
       );
     }
 
+    // OPTIONAL, and registered HERE on purpose. `serializeReceipt` validates
+    // THROUGH this parser before writing, so a field the parser does not know
+    // about is not merely dropped on read — it is destroyed on write and
+    // never reaches disk at all. That is exactly how gameIniApplication was
+    // lost; see the note beside it above.
+    //
+    // Optional because receipts written before this existed carry no hash,
+    // and a "fast"-level install has no per-file sha256 to build one from.
+    // Absent means "we do not know what this looked like" — which is a
+    // different thing from "it has not changed", and must never be read as
+    // the latter.
+    const stagingSetHash =
+      entry.stagingSetHash === undefined
+        ? undefined
+        : expectString(
+            entry,
+            "stagingSetHash",
+            `${where}.stagingSetHash`,
+            localErrs,
+          );
+    if (stagingSetHash !== undefined && !/^[0-9a-f]{64}$/.test(stagingSetHash)) {
+      localErrs.push(
+        `${where}.stagingSetHash must be 64 lowercase hex characters. ` +
+          `Got ${JSON.stringify(stagingSetHash)}.`,
+      );
+    }
+
     if (localErrs.length > 0) {
       errors.push(...localErrs);
       return;
@@ -499,6 +526,7 @@ function validateModEntries(
       source: source as "nexus" | "external",
       name: name as string,
       installedAt: installedAt as string,
+      ...(stagingSetHash !== undefined ? { stagingSetHash } : {}),
     });
   });
   return out;

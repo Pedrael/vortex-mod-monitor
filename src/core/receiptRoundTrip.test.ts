@@ -72,6 +72,65 @@ describe("install receipt round-trip", () => {
     expect(out.installTargetMode).toBe("fresh-profile");
   });
 
+  it("keeps a mod's stagingSetHash — the drift reference", () => {
+    // The whole point of recording it: an UPDATE re-reads this receipt and
+    // compares the hash against the files on disk. Destroyed at write, the
+    // comparison silently has nothing to compare and every mod looks
+    // unexamined — the same failure shape as gameIniApplication, where the
+    // absent field made a guard that could never fire.
+    const hash = "a".repeat(64);
+    const mods = [
+      {
+        vortexModId: "mod-1",
+        compareKey: "nexus:1:2",
+        source: "nexus",
+        name: "A Mod",
+        installedAt: "1970-01-01T00:00:00.000Z",
+        stagingSetHash: hash,
+      },
+    ];
+    const out = throughDisk({ ...base(), mods } as unknown as InstallReceipt);
+    expect(out.mods[0].stagingSetHash).toBe(hash);
+  });
+
+  it("keeps a mod with NO stagingSetHash absent, not empty", () => {
+    // Absent means "we do not know what this looked like", which is a
+    // different claim from "it has not changed". Coercing it to "" would make
+    // an unknown compare unequal to everything and warn about every mod on
+    // every update.
+    const mods = [
+      {
+        vortexModId: "mod-1",
+        compareKey: "nexus:1:2",
+        source: "nexus",
+        name: "A Mod",
+        installedAt: "1970-01-01T00:00:00.000Z",
+      },
+    ];
+    const out = throughDisk({ ...base(), mods } as unknown as InstallReceipt);
+    expect(out.mods[0].stagingSetHash).toBeUndefined();
+    expect("stagingSetHash" in out.mods[0]).toBe(false);
+  });
+
+  it("rejects a stagingSetHash that is not a sha256", () => {
+    // It is compared for equality against a freshly computed hash. A
+    // truncated or uppercase value would never match and would report drift
+    // on a mod nobody touched.
+    const mods = [
+      {
+        vortexModId: "mod-1",
+        compareKey: "nexus:1:2",
+        source: "nexus",
+        name: "A Mod",
+        installedAt: "1970-01-01T00:00:00.000Z",
+        stagingSetHash: "NOTAHASH",
+      },
+    ];
+    expect(() =>
+      throughDisk({ ...base(), mods } as unknown as InstallReceipt),
+    ).toThrow(/stagingSetHash/);
+  });
+
   it("round-trips through parseReceipt unchanged a second time", () => {
     // Serialize is idempotent only if nothing is being dropped each pass. A
     // field that survives one trip and dies on the next is the same bug with

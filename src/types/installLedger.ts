@@ -399,6 +399,25 @@ export type InstallReceiptMod = {
   name: string;
   /** ISO-8601 UTC of when this specific mod was installed. */
   installedAt: string;
+  /**
+   * Fingerprint of this mod's staged files AS WE LEFT THEM.
+   *
+   * The reference for drift detection on a later update — and deliberately a
+   * reference to OUR OWN work on THIS machine, never to the curator's disk.
+   * A curator's staging can diverge from its archive in ways nobody notices
+   * (post-install tooling, a file Vortex silently lost during their install),
+   * so using it as the etalon would promote their accident to truth. This
+   * hash makes only one claim, and it is one we can stand behind: this is
+   * what the collection put here.
+   *
+   * A later mismatch therefore means "this changed since we installed it",
+   * which is a fact — never "this is wrong", which would not be.
+   *
+   * Optional: absent on receipts written before it existed, and on a
+   * "fast"-level install with no per-file sha256 to build one from. Absent
+   * means UNKNOWN, and must never be read as "unchanged".
+   */
+  stagingSetHash?: string;
 };
 
 /** What the install wrote into the user's INI files, and what it left. */
