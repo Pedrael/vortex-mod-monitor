@@ -39,7 +39,7 @@ import * as fsp from "fs/promises";
 import * as os from "os";
 import * as path from "path";
 
-import { AbortError } from "../archiveHashing";
+import { AbortError, hashFileSha256 } from "../archiveHashing";
 import type { EhcollManifest } from "../../types/ehcoll";
 import { sortDeep } from "../../utils/utils";
 import { resolveSevenZip, sevenZipAdd, type SevenZipApi } from "./sevenZip";
@@ -99,6 +99,14 @@ export type PackageEhcollInput = {
 export type PackageEhcollResult = {
   outputPath: string;
   outputBytes: number;
+  /**
+   * SHA-256 of the finished `.ehcoll`.
+   *
+   * A package cannot contain its own hash, so this is how a curator gets one
+   * to publish alongside it — and how a recipient's "is my copy intact?"
+   * stops being a conversation.
+   */
+  outputSha256: string;
   bundledCount: number;
   /** Non-fatal issues (e.g. README too short, unusual file extensions). */
   warnings: string[];
@@ -178,9 +186,23 @@ export async function packageEhcoll(
       await safeRmDir(stagingDir);
     }
 
+    // The package's own identity.
+    //
+    // Nothing recorded this before, and its absence cost real hours: when an
+    // alpha tester could not open a collection, the only way to establish that
+    // his copy was intact was for two people to run sha256sum by hand and read
+    // hex to each other over a chat client. A package that states its own hash
+    // turns that into a glance.
+    //
+    // Computed from the FINISHED FILE rather than accumulated while writing:
+    // what matters is the bytes that actually landed on disk, because those
+    // are the bytes a recipient will hash.
+    const outputSha256 = await hashFileSha256(input.outputPath, signal);
+
     return {
       outputPath: input.outputPath,
       outputBytes: stat.size,
+      outputSha256,
       bundledCount: input.bundledArchives.length,
       warnings,
     };

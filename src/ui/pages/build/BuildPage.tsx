@@ -2103,6 +2103,19 @@ function DonePanel(props: {
   const { result } = props;
   const showToast = useToast();
 
+  const handleCopyHash = React.useCallback((): void => {
+    void writeToClipboard(result.outputSha256).then((ok) => {
+      showToast({
+        intent: ok ? "success" : "warning",
+        title: ok ? "Checksum copied" : "Couldn't copy checksum",
+        message: ok
+          ? "Publish it next to the package so people can check their copy."
+          : "Clipboard isn't available right now.",
+        ttl: 3500,
+      });
+    });
+  }, [result.outputSha256, showToast]);
+
   const handleCopyPath = React.useCallback((): void => {
     void writeToClipboard(result.outputPath).then((ok) => {
       showToast({
@@ -2162,6 +2175,50 @@ function DonePanel(props: {
           }}
         >
           {result.outputPath}
+        </div>
+        {/*
+          The package's checksum, next to its path.
+
+          Publish this wherever the collection is shared. When someone cannot
+          open it, the first question is always whether their copy is intact,
+          and until this existed the only way to answer it was for two people
+          to run sha256sum by hand and read hex to each other over chat — which
+          is exactly how an alpha tester's afternoon went.
+        */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            gap: "var(--eh-sp-2)",
+            padding: "var(--eh-sp-3)",
+            background: "var(--eh-bg-base)",
+            border: "1px solid var(--eh-border-subtle)",
+            borderRadius: "var(--eh-radius-sm)",
+            fontSize: "var(--eh-text-xs)",
+            wordBreak: "break-all",
+          }}
+        >
+          <span
+            style={{
+              color: "var(--eh-text-muted)",
+              textTransform: "uppercase",
+              letterSpacing: "var(--eh-tracking-widest)",
+              flexShrink: 0,
+            }}
+          >
+            sha256
+          </span>
+          <code
+            style={{
+              fontFamily: "var(--eh-font-mono)",
+              color: "var(--eh-text-secondary)",
+            }}
+          >
+            {result.outputSha256}
+          </code>
+          <Button intent="ghost" onClick={handleCopyHash}>
+            Copy
+          </Button>
         </div>
         <DistributionHint />
         {result.warnings.length > 0 && (

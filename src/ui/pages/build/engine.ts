@@ -237,6 +237,13 @@ export interface BuildProgress {
 export interface BuildPipelineResult {
   outputPath: string;
   outputBytes: number;
+  /**
+   * SHA-256 of the finished package, for the curator to publish beside it.
+   *
+   * A recipient asking "is my copy intact?" was previously answered by two
+   * people running sha256sum and reading hex to each other over chat.
+   */
+  outputSha256: string;
   bundledCount: number;
   modCount: number;
   warnings: string[];
@@ -1285,6 +1292,9 @@ export async function runBuildPipeline(
   op.ok({
     outputPath,
     outputBytes: result.outputBytes,
+    // In the log too, not only the UI: when a package is questioned later,
+    // the curator's own log is the record of what was actually produced.
+    outputSha256: result.outputSha256,
     bundled: result.bundledCount,
     mods: manifest.mods.length,
     rules: manifest.rules.length,
@@ -1306,6 +1316,7 @@ export async function runBuildPipeline(
   return {
     outputPath,
     outputBytes: result.outputBytes,
+    outputSha256: result.outputSha256,
     bundledCount: result.bundledCount,
     modCount: manifest.mods.length,
     warnings: [
