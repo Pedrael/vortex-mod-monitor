@@ -33,7 +33,8 @@
 #   bash setup-proton.sh                 # report only  (safe, default)
 #   bash setup-proton.sh --apply         # install, with confirmation
 #   bash setup-proton.sh --apply --yes   # install, no prompt (for scripts)
-#   bash setup-proton.sh --prefix /path/to/pfx    # skip auto-detection
+#   bash setup-proton.sh --prefix /path/to/pfx    # skip prefix auto-detection
+#   bash setup-proton.sh --wine /path/to/wine    # skip the runtime prompt
 # =============================================================================
 
 set -u
@@ -41,12 +42,14 @@ set -u
 APPLY=no
 ASSUME_YES=no
 PREFIX_ARG=""
+WINE_ARG=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --apply) APPLY=yes ;;
     --yes|-y) ASSUME_YES=yes ;;
     --prefix) shift; PREFIX_ARG="${1:-}" ;;
+    --wine) shift; WINE_ARG="${1:-}" ;;
     -h|--help) sed -n '2,31p' "$0"; exit 0 ;;
     *) printf 'Unknown option: %s (try --help)\n' "$1" >&2; exit 2 ;;
   esac
@@ -234,67 +237,140 @@ EOF
   find_owning_wine_by_location
 }
 
-find_owning_wine_by_location() {
-  # 1. A runtime shipped inside the same tree as the prefix (this is the
-  #    ~/.vortex-linux case: it carries its own Proton).
+# Every wine on the system, not just Steam's.
+#
+# The first version searched Steam's steamapps/common and little else, which
+# is wrong for most of the people this script is for: Proton-GE lives in
+# compatibilitytools.d, Lutris keeps its own runners, umu has its own tree,
+# and a Vortex-on-Linux installer may ship a runtime beside the prefix. Picking
+# "the first Proton I happened to find" out of that lot is a coin flip, and the
+# only party who knows which runtime Vortex actually launches with is the
+# person running the script.
+#
+# So: enumerate them all, say where each came from, and ASK.
+ALL_WINES=""
+find_all_wines() {
   root="${PREFIX%/compatdata/*}"
   [ "$root" = "$PREFIX" ] && root="$(dirname "$PREFIX")"
-  for c in \
-    "$root"/files/bin/wine \
-    "$root"/dist/bin/wine \
-    "$root"/*/files/bin/wine \
-    "$root"/*/dist/bin/wine \
-    "$root"/proton*/files/bin/wine \
-    "$root"/../files/bin/wine ; do
-    [ -x "$c" ] && {
-      OWNING_WINE="$c"
-      OWNING_WINE_HOW="ships alongside the prefix"
+
+  {
+    # Beside the prefix — a runtime shipped with the Vortex install itself.
+    for c in "$root"/files/bin/wine "$root"/dist/bin/wine \
+             "$root"/*/files/bin/wine "$root"/*/dist/bin/wine \
+             "$root"/../files/bin/wine ; do
+      [ -x "$c" ] && printf '%s\tbeside the prefix\n' "$c"
+    done
+    # Proton-GE and other custom builds. THE gap in the first version: this is
+    # where most non-stock Proton lives, and it was not searched at all.
+    for base in "$HOME/.steam/root/compatibilitytools.d" \
+                "$HOME/.steam/steam/compatibilitytools.d" \
+                "$HOME/.local/share/Steam/compatibilitytools.d" \
+                "$HOME/.var/app/com.valvesoftware.Steam/.local/share/Steam/compatibilitytools.d" ; do
+      for c in "$base"/*/files/bin/wine "$base"/*/dist/bin/wine ; do
+        [ -x "$c" ] && printf '%s\tcustom Proton (compatibilitytools.d)\n' "$c"
+      done
+    done
+    # Stock Steam Proton.
+    for base in "$HOME/.steam/steam/steamapps/common" \
+                "$HOME/.local/share/Steam/steamapps/common" \
+                "$HOME/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common" ; do
+      for c in "$base"/Proton*/files/bin/wine "$base"/Proton*/dist/bin/wine ; do
+        [ -x "$c" ] && printf '%s\tSteam Proton\n' "$c"
+      done
+    done
+    # umu.
+    for c in "$HOME/.local/share/umu"/*/files/bin/wine ; do
+      [ -x "$c" ] && printf '%s\tumu runtime\n' "$c"
+    done
+    # Lutris runners.
+    for c in "$HOME/.local/share/lutris/runners/wine"/*/bin/wine \
+             "$HOME/.local/share/lutris/runners/proton"/*/files/bin/wine ; do
+      [ -x "$c" ] && printf '%s\tLutris runner\n' "$c"
+    done
+    # Whatever is on PATH, named so nobody picks it by accident: it is the one
+    # that produced "version mismatch" on the tester's Proton prefix.
+    w="$(command -v wine 2>/dev/null || true)"
+    [ -n "$w" ] && printf '%s\tsystem wine (usually WRONG for a Proton prefix)\n' "$w"
+  } | awk '!seen[$0]++'
+}
+
+find_owning_wine_by_location() {
+  # Preference order when we are NOT asking: beside the prefix beats a custom
+  # build beats Steam's. Only used for the default in the prompt, and for
+  # --yes runs where there is nobody to ask.
+  for want in "beside the prefix" "custom Proton" "umu runtime" "Steam Proton" "Lutris runner"; do
+    hit="$(printf '%s\n' "$ALL_WINES" | grep -F "	$want" | head -1)"
+    if [ -n "$hit" ]; then
+      OWNING_WINE="${hit%%	*}"
+      OWNING_WINE_HOW="${hit#*	}"
+      case "$want" in
+        "beside the prefix") ;;
+        *) OWNING_WINE_HOW="$OWNING_WINE_HOW — NOT verified against this prefix" ;;
+      esac
       return 0
-    }
-  done
-  # 2. umu, which is how a lot of non-Steam Proton prefixes are driven.
-  for c in "$HOME/.local/share/umu"/*/files/bin/wine ; do
-    [ -x "$c" ] && {
-      OWNING_WINE="$c"
-      OWNING_WINE_HOW="umu runtime"
-      return 0
-    }
-  done
-  # 3. A Steam Proton install. Last resort: any of these may be the WRONG
-  #    build for this prefix, which is why it is searched last — and why it
-  #    is reported as a guess rather than in the same tone as the branches
-  #    above. The tester's run landed here and said nothing about it.
-  for c in \
-    "$HOME/.steam/steam/steamapps/common"/Proton*/files/bin/wine \
-    "$HOME/.local/share/Steam/steamapps/common"/Proton*/files/bin/wine ; do
-    [ -x "$c" ] && {
-      OWNING_WINE="$c"
-      OWNING_WINE_HOW="A GUESS — first Proton on the system, not verified against this prefix"
-      return 0
-    }
+    fi
   done
   return 1
 }
-find_owning_wine || true
+ALL_WINES="$(find_all_wines)"
+[ -n "$PROTON_BUILD" ] && say "prefix records: $PROTON_BUILD"
 
-if [ -n "$OWNING_WINE" ]; then
-  say "prefix's wine: $OWNING_WINE"
-  say "               ($OWNING_WINE_HOW)"
-  [ -n "$PROTON_BUILD" ] && say "prefix records: $PROTON_BUILD"
-  case "$OWNING_WINE_HOW" in
-    A\ GUESS*)
-      say ""
-      say "  NOTE: that was a guess. If it is the wrong build you will get"
-      say "  'version mismatch' again and nothing will be installed. The"
-      say "  runtime Vortex launches with is the right one — if you know"
-      say "  where it is, pass it by hand:"
-      say "    WINE=/path/to/wine WINESERVER=/path/to/wineserver \\"
-      say "      WINEPREFIX=\"$PREFIX\" winetricks vcrun2022"
-      ;;
-  esac
+if [ -z "$ALL_WINES" ]; then
+  say "wine runtimes: NONE found on this system."
+  say "               Without one, winetricks cannot touch a Proton prefix."
+elif [ -n "$WINE_ARG" ]; then
+  # Explicit beats everything. The user knows which runtime Vortex uses; we
+  # only ever guess because we have not asked.
+  OWNING_WINE="$WINE_ARG"
+  OWNING_WINE_HOW="you passed --wine"
+  say "wine:          $OWNING_WINE  (--wine)"
 else
-  say "prefix's wine: not found — will use whatever wine is on PATH, which"
-  say "               fails with a 'version mismatch' on a Proton prefix."
+  find_owning_wine || true
+
+  say "wine runtimes found on this system:"
+  i=0
+  printf '%s\n' "$ALL_WINES" | while IFS="	" read -r wpath wsrc; do
+    i=$((i + 1))
+    mark=" "
+    [ "$wpath" = "$OWNING_WINE" ] && mark="*"
+    printf '  %s %d) %s\n      %s\n' "$mark" "$i" "$wpath" "$wsrc"
+  done
+  say "  (* = default if you just press Enter)"
+
+  COUNT="$(printf '%s\n' "$ALL_WINES" | grep -c .)"
+  # Only ASK when there is a person there and a real choice to make. --yes and
+  # a single candidate both make the prompt noise.
+  if [ "$ASSUME_YES" != yes ] && [ "$COUNT" -gt 1 ] && [ -t 0 ]; then
+    say ""
+    say "Which one does Vortex actually launch with? This script cannot tell:"
+    say "the prefix does not record it reliably, and picking the wrong build"
+    say "gives 'version mismatch' and installs nothing."
+    printf 'Number, or Enter for the default: '
+    read -r pick || pick=""
+    if [ -n "$pick" ]; then
+      chosen="$(printf '%s\n' "$ALL_WINES" | sed -n "${pick}p")"
+      if [ -n "$chosen" ]; then
+        OWNING_WINE="${chosen%%	*}"
+        OWNING_WINE_HOW="you chose it (${chosen#*	})"
+      else
+        say "  '$pick' is not one of the numbers above — keeping the default."
+      fi
+    fi
+  fi
+
+  if [ -n "$OWNING_WINE" ]; then
+    say ""
+    say "using wine:    $OWNING_WINE"
+    say "               ($OWNING_WINE_HOW)"
+    case "$OWNING_WINE_HOW" in
+      *NOT\ verified*)
+        say ""
+        say "  This was NOT verified against your prefix. If it is the wrong"
+        say "  build you get 'version mismatch' and nothing is installed."
+        say "  Re-run with the right one:  bash setup-proton.sh --wine /path/to/wine"
+        ;;
+    esac
+  fi
 fi
 
 # Decide the command.
