@@ -172,6 +172,16 @@ export type BuildManifestInput = {
    * `plugins.order` is emitted as `[]`.
    */
   pluginsTxtContent?: string;
+  /**
+   * ESL/light flags per LOWERCASED plugin name, read from the deployed plugin
+   * headers by `capturePluginFlags`.
+   *
+   * Passed in rather than read here so this stays synchronous and pure — the
+   * flag is a property of a file on disk, and this function has no business
+   * touching the filesystem. Omitted entirely when the game folder is unknown,
+   * in which case no plugin records a flag and the installer changes none.
+   */
+  pluginLightFlags?: Record<string, boolean>;
 
   /** Per-AuditorMod.id overrides for external (non-Nexus) mods. */
   externalMods?: Record<string, ExternalModSpec>;
@@ -303,7 +313,10 @@ export function buildManifest(input: BuildManifestInput): BuildManifestResult {
     input.snapshot.mods,
   );
 
-  const pluginsOrder = buildPluginsOrder(input.pluginsTxtContent);
+  const pluginsOrder = buildPluginsOrder(
+    input.pluginsTxtContent,
+    input.pluginLightFlags,
+  );
 
   const loadOrder = buildLoadOrder(
     input.snapshot.loadOrder ?? [],
@@ -926,14 +939,27 @@ function toPosixPath(p: string): string {
 // Plugins
 // ---------------------------------------------------------------------------
 
-function buildPluginsOrder(content: string | undefined): EhcollPluginEntry[] {
+/**
+ * @param lightByName ESL/light flags keyed by LOWERCASED plugin name, read
+ * from the deployed plugin headers before the build ran. A name absent from
+ * the map records no flag at all — absent means "unknown", and the installer
+ * leaves an unknown plugin's flag alone rather than clearing it on a guess.
+ */
+function buildPluginsOrder(
+  content: string | undefined,
+  lightByName: Record<string, boolean> | undefined,
+): EhcollPluginEntry[] {
   if (content === undefined) return [];
 
   const parsed = parsePluginsTxt(content);
-  return parsed.map((entry) => ({
-    name: entry.name,
-    enabled: entry.enabled,
-  }));
+  return parsed.map((entry) => {
+    const light = lightByName?.[entry.name.toLowerCase()];
+    return {
+      name: entry.name,
+      enabled: entry.enabled,
+      ...(light !== undefined ? { light } : {}),
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------

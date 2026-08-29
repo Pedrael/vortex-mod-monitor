@@ -346,6 +346,19 @@ export type InstallSuccess = {
    */
   pluginOrderNotApplied?: string[];
   /**
+   * ESL / "light" flags restored, or a plugin count that will not load.
+   *
+   * Regular plugins are addressed with one byte, so 254 can load; light ones
+   * share the `FE` index for free. A collection of this size fits only because
+   * most of its plugins are light, so a handful of lost flags is the
+   * difference between a working profile and a game that will not start.
+   *
+   * Absent when every flag already matched, which is the common case — the mod
+   * author usually ships the plugin light. Present when flags had to be
+   * rewritten, when a write failed, or when the profile is over the limit.
+   */
+  pluginFlagNotice?: string[];
+  /**
    * Mods that changed on disk since a PREVIOUS install of this collection put
    * them there, and that this version did not update.
    *

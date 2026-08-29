@@ -1114,6 +1114,41 @@ export async function runBuildPipeline(
   onProgress?.({ phase: "reading-plugins-txt" });
   const pluginsTxtContent = await readPluginsTxtIfPresent(gameId);
 
+  // ESL/light flags, read from the DEPLOYED plugin headers.
+  //
+  // Load-bearing rather than cosmetic: only 254 regular plugins can load, and
+  // light ones share the FE index for free — a collection of this size fits
+  // only because most of its plugins are light. The flag lives INSIDE the
+  // plugin file, so one the curator marked light after installing is a staged
+  // file the archive does not contain; the user installs from that archive and
+  // silently gets the unflagged copy, which nothing downstream can catch.
+  checkAbort();
+  const { capturePluginFlags, describePluginFlagCapture } = await import(
+    "../../../core/manifest/capturePluginFlags"
+  );
+  const { REGULAR_PLUGIN_LIMIT } = await import(
+    "../../../core/manifest/pluginFlags"
+  );
+  const { parsePluginsTxt } = await import("../../../core/comparePlugins");
+  const { getGameDirectory } = await import(
+    "../../../core/manifest/externalDependencies"
+  );
+  const flagGameDir = getGameDirectory(state, gameId);
+  const flagPluginNames =
+    pluginsTxtContent !== undefined
+      ? parsePluginsTxt(pluginsTxtContent).map((p) => p.name)
+      : [];
+  const capturedFlags = await capturePluginFlags({
+    pluginNames: flagPluginNames,
+    dataDir:
+      flagGameDir === undefined ? undefined : path.join(flagGameDir, "Data"),
+  });
+  const flagWarning = describePluginFlagCapture(
+    capturedFlags,
+    flagPluginNames.length,
+    REGULAR_PLUGIN_LIMIT,
+  );
+
   // ── 3. Build the manifest ──────────────────────────────────────────────
   checkAbort();
   onProgress?.({ phase: "building-manifest" });
@@ -1191,6 +1226,7 @@ export async function runBuildPipeline(
       deploymentMethod: resolveDeploymentMethod(state, gameId),
     },
     pluginsTxtContent,
+    pluginLightFlags: capturedFlags.light,
     externalMods: toBuildManifestExternalMods(collectionConfig, externalHints),
     // Mods whose archive we just built from staging. Their identity must not
     // be the repacked archive's hash — it encodes file mtimes, so an
@@ -1310,6 +1346,9 @@ export async function runBuildPipeline(
       ...manifestWarnings,
       ...result.warnings,
       ...selfCheckWarnings,
+      // The only warning here that can mean the collection will not load on
+      // ANY machine, the curator's included.
+      ...(flagWarning !== undefined ? [flagWarning] : []),
     ],
   });
 
@@ -1325,6 +1364,9 @@ export async function runBuildPipeline(
       ...manifestWarnings,
       ...result.warnings,
       ...selfCheckWarnings,
+      // The only warning here that can mean the collection will not load on
+      // ANY machine, the curator's included.
+      ...(flagWarning !== undefined ? [flagWarning] : []),
     ],
     ruleCount: manifest.rules.length,
     loadOrderCount: manifest.loadOrder.length,

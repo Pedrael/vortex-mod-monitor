@@ -535,17 +535,20 @@ export type EhcollPlugins = {
   /**
    * Plugin entries in the curator's `plugins.txt` order.
    *
-   * NOT written to the user's plugins.txt. That was the original plan and the
-   * sentence describing it outlived the code: the driver's
-   * `writing-plugins-txt` phase was deliberately removed in favour of the
-   * rules-only strategy, where the curator's LOOT userlist rules are applied
-   * and Vortex + LOOT compute the user's order from them at deploy.
+   * This IS an instruction now, and reaches the user's plugins.txt.
    *
-   * So this is a BASELINE, not an instruction. It records what the curator's
-   * order was, which is the only way to tell later whether the rules actually
-   * reproduced it. It is copied into the install receipt as
-   * `baselinePluginOrder` — and, today, nothing reads it back. See that
-   * field's note.
+   * It was a baseline for a long time, under the rules-only strategy: the old
+   * `pluginsTxt.ts` writer had been removed because Vortex and LOOT regenerate
+   * that file, so the order was applied indirectly through LOOT rules and only
+   * compared afterwards. The premise was half right — the FILE is Vortex's to
+   * own, but the STATE is not. `PluginPersistor.syncFromState` exists to flush
+   * the load-order hive to plugins.txt after a collection install.
+   *
+   * So `applyPluginOrder` now pins this order, asks LOOT to sort the user's own
+   * plugins into it, and has Vortex write the result. It is still copied into
+   * the receipt as `baselinePluginOrder`, and the drift check still runs — but
+   * a difference there now means LOOT actively disagreed with the curator,
+   * rather than nobody having tried.
    */
   order: EhcollPluginEntry[];
 };
@@ -554,6 +557,26 @@ export type EhcollPluginEntry = {
   /** Plugin filename, e.g. `"Skyrim.esm"`. Original casing preserved. */
   name: string;
   enabled: boolean;
+  /**
+   * Whether the curator's copy carries the ESL / "light" header flag.
+   *
+   * Not cosmetic. Regular plugins are addressed with one byte, so only 254 can
+   * load; light plugins share the `FE` index and do not consume one. Measured
+   * on the profile this was built for: 817 plugins, 573 of them light, leaving
+   * 244 regular against a limit of 254. Eleven lost flags and the game will
+   * not start.
+   *
+   * Recorded explicitly because the flag lives INSIDE the plugin file, so a
+   * curator who marks a plugin light after installing it has a staged file the
+   * archive does not contain — and the user, who installs from that archive,
+   * silently gets the unflagged version. File comparison cannot rescue this:
+   * it correctly concludes the user's bytes match the archive and accepts them.
+   *
+   * `undefined` on packages built before this was captured, and for a plugin
+   * whose header could not be read. Absent means "unknown", never "not light":
+   * treating it as false would clear flags the user legitimately has.
+   */
+  light?: boolean;
 };
 
 // ---------------------------------------------------------------------------

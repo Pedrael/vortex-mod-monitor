@@ -2268,6 +2268,34 @@ function ExternalArchiveNotice(props: {
 }
 
 /**
+ * ESL / light flags — restored, or a plugin count that will not load.
+ *
+ * The only notice on this screen that can mean "the game will not start". A
+ * collection this size fits under the 254-plugin limit only because most of
+ * its plugins are light, and the flag lives inside the file rather than in any
+ * list, so losing it is invisible everywhere else.
+ */
+function PluginFlagNotice(props: {
+  lines: readonly string[];
+}): JSX.Element | null {
+  if (props.lines.length === 0) return null;
+  const [summary, ...rest] = props.lines;
+  // `danger` only when the profile is genuinely unloadable; restoring flags
+  // successfully is good news and must not look like a failure.
+  const broken = /will not start/i.test(summary ?? "");
+  return (
+    <NoticeCard
+      label={broken ? "Too many plugins" : "Plugin flags"}
+      intent={broken ? "danger" : "info"}
+      summary={summary ?? ""}
+      accentBorder={broken ? "var(--eh-danger)" : undefined}
+    >
+      <NoticeLines lines={rest} moreLabel="Details" />
+    </NoticeCard>
+  );
+}
+
+/**
  * The curator's plugin order could not be fully applied.
  *
  * Appears only on failure. Load order decides which mod's records win, so a
@@ -2527,6 +2555,11 @@ function SuccessBody(props: {
         5. a report to send, which is the only one whose payoff is someone
            else's, and so the one that waits
       */}
+      {/*
+        First of everything. This is the only card that can mean the game will
+        not launch at all; a broken download is recoverable by comparison.
+      */}
+      <PluginFlagNotice lines={result.pluginFlagNotice ?? []} />
       <DamagedArchiveNotice lines={result.damagedArchiveNotice ?? []} />
       {/*
         High, because it is the only card here describing something we DELETED

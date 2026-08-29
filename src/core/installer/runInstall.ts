@@ -153,6 +153,11 @@ import {
   describePluginOrderApplication,
 } from "./applyPluginOrder";
 import {
+  applyPluginLightFlags,
+  describePluginFlagRepair,
+} from "./applyPluginLightFlags";
+import { getGameDirectory } from "../manifest/externalDependencies";
+import {
   applyModRules,
   type ApplyModRulesResult,
   type ExistingRule,
@@ -381,6 +386,25 @@ async function writeRuleBackup(
   await fsp.writeFile(tmp, JSON.stringify(snapshot, null, 2), "utf8");
   await fsp.rename(tmp, file);
   return file;
+}
+
+/**
+ * The game's Data folder, where the plugins the game actually loads live.
+ *
+ * Deployed rather than staged on purpose: two mods can stage a plugin of the
+ * same name and only one wins deployment, so a staged copy may be a file that
+ * never runs.
+ */
+function gameDataDirFor(
+  api: types.IExtensionApi,
+  gameId: string,
+): string | undefined {
+  try {
+    const dir = getGameDirectory(api.getState() as never, gameId);
+    return dir === undefined ? undefined : path.join(dir, "Data");
+  } catch {
+    return undefined;
+  }
 }
 
 function archivePathForMod(
@@ -1681,6 +1705,45 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
       notes: pluginOrderApplication.notes,
     });
 
+    // ── 7b0b. restore the curator's ESL / light flags ──────────────────
+    //
+    // Load-bearing, not cosmetic: regular plugins are addressed with one byte,
+    // so 254 can load, and light ones share the FE index for free. The
+    // profile this was built for fits 817 plugins only because 573 are light —
+    // 244 regular against a limit of 254. Eleven missing flags and the game
+    // does not start.
+    //
+    // The flag lives inside the plugin file, so a curator who marks one light
+    // after installing has a staged file the archive does not contain. Nothing
+    // downstream catches that: verification sees different bytes, the archive
+    // check finds the user's copy matches the archive exactly, and it is
+    // accepted as curator divergence — correct for every other difference, and
+    // fatal for this one. Hence carried explicitly.
+    //
+    // After the order is applied, because both write files the game reads and
+    // this one must land on the deployed copy.
+    const pluginFlagRepair = await applyPluginLightFlags({
+      order: plan.manifest.plugins.order,
+      dataDir: gameDataDirFor(api, plan.manifest.game.id),
+      ...(ctx.abortSignal !== undefined ? { signal: ctx.abortSignal } : {}),
+      onProgress: (done, total) => {
+        reportProgress(
+          "applying-load-order",
+          done,
+          total,
+          `Checking plugin ESL flags (${done}/${total})...`,
+        );
+      },
+    });
+    ehLog("info", "plugins.light-flags", {
+      corrected: pluginFlagRepair.corrected,
+      alreadyCorrect: pluginFlagRepair.alreadyCorrect,
+      unknown: pluginFlagRepair.unknown,
+      missing: pluginFlagRepair.missing,
+      regularAfter: pluginFlagRepair.regularAfter,
+      failures: pluginFlagRepair.failures.length,
+    });
+
     // ── 7b1. did the load order actually come out like the curator's? ──
     //
     // Still measured, and now it means more than it did: with the order pinned
@@ -1857,6 +1920,9 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
         : {}),
       ...(rulesPurgeNotice !== undefined
         ? { rulesPurgeNotice }
+        : {}),
+      ...(describePluginFlagRepair(pluginFlagRepair) !== undefined
+        ? { pluginFlagNotice: describePluginFlagRepair(pluginFlagRepair)! }
         : {}),
       // Only present when something about setting the order did NOT work.
       // Success here is the expected outcome and says nothing.
