@@ -146,8 +146,23 @@ export async function applyPluginOrder(
   // `setEnabled: false` above means our plugins keep whatever state they had,
   // so a plugin the curator deliberately turned OFF would still load here.
   // One such plugin is enough to change what the game does.
+  //
+  // Only where it actually DIFFERS. Dispatching all 817 unconditionally was
+  // 817 synchronous Redux actions — every one waking subscribers and the
+  // plugin list's React tree — to change about one of them. It also made
+  // `enabledCorrections` count dispatches rather than corrections, which is
+  // the kind of number that reads as a finding and is really just a loop
+  // bound.
+  const currentEnabled = readEnabledState(input.api);
   for (const plugin of input.order) {
     if (input.signal?.aborted === true) break;
+    const id = toPluginId(plugin.name);
+    // `undefined` means Vortex has no entry for this plugin — it is not
+    // deployed here, most likely because its mod failed to install. Setting a
+    // state for it would invent an entry; the persistor writes only deployed
+    // plugins anyway, so there is nothing to correct.
+    if (currentEnabled[id] === undefined) continue;
+    if (currentEnabled[id] === plugin.enabled) continue;
     try {
       dispatchRaw(input.api, ACTION_SET_PLUGIN_ENABLED, {
         pluginName: plugin.name,
@@ -236,6 +251,35 @@ function runLootSort(
       );
     }
   });
+}
+
+/**
+ * Vortex's plugin id: lowercased, with a `.ghost` suffix stripped.
+ *
+ * Mirrors the extension's own `toPluginId`, which every one of its reducers
+ * keys on. Comparing against a raw filename would miss every entry and make
+ * the diff below think nothing matches — i.e. silently restore the
+ * dispatch-everything behaviour this replaces.
+ */
+function toPluginId(name: string): string {
+  const lower = name.toLowerCase();
+  return lower.endsWith(".ghost") ? lower.slice(0, -".ghost".length) : lower;
+}
+
+/** Current enabled state per plugin id, or `{}` when unreadable. */
+function readEnabledState(api: types.IExtensionApi): Record<string, boolean> {
+  try {
+    const state = api.getState() as unknown as {
+      loadOrder?: Record<string, { enabled?: boolean }>;
+    };
+    const out: Record<string, boolean> = {};
+    for (const [id, entry] of Object.entries(state?.loadOrder ?? {})) {
+      if (typeof entry?.enabled === "boolean") out[id] = entry.enabled;
+    }
+    return out;
+  } catch {
+    return {};
+  }
 }
 
 /**

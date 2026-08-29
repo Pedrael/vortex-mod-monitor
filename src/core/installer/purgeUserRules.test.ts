@@ -191,6 +191,20 @@ describe("what the user is told", () => {
     expect(out!.join(" ")).toMatch(/what the curator tested/i);
   });
 
+  it("does not claim the rules it cleared were the USER's", () => {
+    // On every install after the first, what gets cleared is the rules THIS
+    // collection applied last time. "We replaced your own rules" is then both
+    // false and alarming — it reports our own bookkeeping as the user's loss,
+    // on every single update.
+    const out = describePurge(
+      { modRulesRemoved: 291, modsTouched: 140, userlistCleared: true, failures: [] },
+      snap(29),
+      "C:/b.json",
+    );
+    expect(out!.join(" ")).not.toMatch(/your own/i);
+    expect(out!.join(" ")).toMatch(/only ones in place/i);
+  });
+
   it("does not claim LOOT rules were cleared when there were none", () => {
     const out = describePurge(
       { modRulesRemoved: 4, modsTouched: 2, userlistCleared: true, failures: [] },

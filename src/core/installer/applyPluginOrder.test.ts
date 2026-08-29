@@ -31,8 +31,22 @@ const ORDER: EhcollPluginEntry[] = [
  * `sort` decides what the autosort handler does: call back cleanly, call back
  * with an error (LOOT's cycle case), or never call back at all.
  */
+/**
+ * What Vortex currently thinks, keyed by plugin id (lowercased).
+ *
+ * Default: every plugin in ORDER is deployed and ENABLED. That makes the one
+ * plugin the curator disabled the single genuine correction, which is the real
+ * shape of this collection — 816 of 817 already agree.
+ */
+const DEPLOYED_ALL_ENABLED: Record<string, { enabled: boolean }> = {
+  "unofficial fallout 4 patch.esp": { enabled: true },
+  "bakaframework.esm": { enabled: true },
+  "lod fixes and additons.esp": { enabled: true },
+};
+
 const fakeApi = (
   sort: "ok" | { error: string } | "never",
+  loadOrder: Record<string, { enabled: boolean }> = DEPLOYED_ALL_ENABLED,
 ): {
   api: types.IExtensionApi;
   emits: Emit[];
@@ -41,6 +55,7 @@ const fakeApi = (
   const emits: Emit[] = [];
   const dispatched: Array<{ type: string; payload?: unknown }> = [];
   const api = {
+    getState: () => ({ loadOrder }),
     events: {
       emit: (event: string, ...args: unknown[]): void => {
         emits.push({ event, args });
@@ -111,23 +126,56 @@ describe("pinning the curator's order", () => {
     );
   });
 
-  it("restores the curator's enabled state, which the pin does not carry", async () => {
+  it("corrects ONLY the plugin whose enabled state actually differs", async () => {
     // `setEnabled: false` above means our plugins keep whatever state they had
     // — so a plugin the curator deliberately turned OFF would still load. One
     // is enough to change what the game does; this collection ships exactly
     // one.
+    //
+    // And only that one gets a dispatch. Firing all 817 unconditionally was
+    // 817 synchronous Redux actions, each waking the plugin list's React tree,
+    // to change about one — and it made the reported count a loop bound
+    // dressed up as a finding.
     const { api, dispatched } = fakeApi("ok");
     const result = await run(api);
 
-    expect(result.enabledCorrections).toBe(3);
-    const off = dispatched.filter(
-      (d) =>
-        d.type === "SET_PLUGIN_ENABLED" &&
-        (d.payload as { enabled?: boolean })?.enabled === false,
-    );
-    expect(off).toHaveLength(1);
-    expect((off[0].payload as { pluginName: string }).pluginName).toBe(
-      "LOD Fixes and Additons.esp",
+    const sets = dispatched.filter((d) => d.type === "SET_PLUGIN_ENABLED");
+    expect(sets).toHaveLength(1);
+    expect(result.enabledCorrections).toBe(1);
+    expect(sets[0].payload).toMatchObject({
+      pluginName: "LOD Fixes and Additons.esp",
+      enabled: false,
+    });
+  });
+
+  it("says nothing about plugins Vortex has never heard of", async () => {
+    // A plugin in the manifest with no entry here did not deploy — most often
+    // its mod failed to install. Setting a state for it would invent an entry
+    // for a file that is not on disk, and the persistor writes only deployed
+    // plugins regardless.
+    const { api, dispatched } = fakeApi("ok", {});
+    const result = await run(api);
+
+    expect(dispatched.filter((d) => d.type === "SET_PLUGIN_ENABLED")).toEqual([]);
+    expect(result.enabledCorrections).toBe(0);
+    expect(result.pinned).toBe(true); // the ORDER is still pinned
+  });
+
+  it("matches Vortex's plugin ids, not raw filenames", async () => {
+    // The extension keys everything on toPluginId — lowercased, .ghost
+    // stripped. Comparing raw names would match nothing, silently restoring
+    // the dispatch-everything behaviour this replaced.
+    const { api, dispatched } = fakeApi("ok", {
+      "unofficial fallout 4 patch.esp": { enabled: false }, // differs
+      "bakaframework.esm": { enabled: true },
+      "lod fixes and additons.esp": { enabled: false }, // already correct
+    });
+    await run(api);
+
+    const sets = dispatched.filter((d) => d.type === "SET_PLUGIN_ENABLED");
+    expect(sets).toHaveLength(1);
+    expect((sets[0].payload as { pluginName: string }).pluginName).toBe(
+      "Unofficial Fallout 4 Patch.esp",
     );
   });
 

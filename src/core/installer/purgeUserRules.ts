@@ -211,9 +211,13 @@ export function describePurge(
       : undefined;
   }
 
+  // Deliberately NOT "replaced your own". On every install after the first,
+  // what gets cleared is the rules THIS collection applied last time — saying
+  // "your own" there tells the user we deleted their work when we deleted our
+  // own, which is both false and alarming. This wording is true either way.
   const lines: string[] = [
-    `This collection's conflict and load-order rules replaced your own, so ` +
-      `what loads is exactly what the curator tested. ` +
+    `The collection's conflict and load-order rules are now the only ones in ` +
+      `place, so what loads is exactly what the curator tested. ` +
       `${result.modRulesRemoved} mod rule(s) across ${result.modsTouched} ` +
       `mod(s) were removed${
         result.userlistCleared && hadUserlist

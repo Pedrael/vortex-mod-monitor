@@ -1335,9 +1335,20 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
     // be something we can show them and undo.
     reportProgress("applying-mod-rules", 0, 1, "Clearing existing rules...");
     const ruleSnapshot = captureUserRuleState(api, plan.manifest.game.id);
+    // Nothing of theirs to remove: no backup file, no CLEAR dispatch, no
+    // notice. A fresh Vortex has no rules at all, and writing an empty JSON
+    // on every install would leave a folder of files that restore nothing.
+    const hasRulesToClear =
+      ruleSnapshot.modRules.length > 0 ||
+      (Array.isArray(ruleSnapshot.userlist.plugins) &&
+        ruleSnapshot.userlist.plugins.length > 0) ||
+      (Array.isArray(ruleSnapshot.userlist.groups) &&
+        ruleSnapshot.userlist.groups.length > 0);
     let ruleBackupPath: string | undefined;
     try {
-      ruleBackupPath = await writeRuleBackup(ctx.appDataPath, ruleSnapshot);
+      if (hasRulesToClear) {
+        ruleBackupPath = await writeRuleBackup(ctx.appDataPath, ruleSnapshot);
+      }
     } catch (err) {
       // A backup we could not write is a reason to keep the user's rules, not
       // a reason to delete them without one.
@@ -1357,8 +1368,10 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
       const notice = describePurge(purge, ruleSnapshot, ruleBackupPath);
       if (notice !== undefined) rulesPurgeNotice = notice;
     } else {
-      ehLog("warn", "rules.purge-skipped", {
-        why: "no backup could be written, so existing rules were left in place",
+      ehLog(hasRulesToClear ? "warn" : "info", "rules.purge-skipped", {
+        why: hasRulesToClear
+          ? "no backup could be written, so existing rules were left in place"
+          : "the user had no rules of their own to clear",
       });
     }
 

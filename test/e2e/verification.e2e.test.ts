@@ -189,7 +189,7 @@ describe("the collection's rules are the ONLY rules", () => {
 
     // And the user is TOLD, with somewhere to recover from.
     const notice = (result.rulesPurgeNotice ?? []).join(" ");
-    expect(notice).toMatch(/replaced your own/i);
+    expect(notice).toMatch(/only ones in place/i);
     expect(notice).toMatch(/rule-backups/);
   });
 
