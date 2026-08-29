@@ -57,6 +57,7 @@ import {
 import { extractZipEntryToFile } from "../manifest/readZip";
 import { looksLikeWine } from "./checkSevenZipHealth";
 import { stallBudgetMs, type StallPhase } from "./timeBudgets";
+import { ehLog } from "../logging/ehLog";
 
 /**
  * Install completion is policed by **two** timers, not one:
@@ -696,6 +697,20 @@ function waitForInstallCompletion(
       settled = true;
       cleanup();
       const idleSec = Math.round((Date.now() - lastProgressAt) / 1000);
+      // A timeout the user reports is useless without the numbers behind it:
+      // which phase we thought we were in, what budget was in force, and how
+      // that budget was arrived at. Without this, "it timed out" cannot be
+      // told from "the budget was too small", which is the distinction that
+      // decides whether to fix the code or the collection.
+      ehLog("warn", "install.stalled", {
+        phase: phase.phase,
+        archiveBytes: phase.phase === "extracting" ? phase.bytes : undefined,
+        budgetMs,
+        idleSec,
+        wine: budgetEnv.wine,
+        gameId: opts.gameId,
+        archiveId: expectedArchiveId,
+      });
       rejectFn(
         new Error(
           `Mod install stalled — Vortex made no observable progress for ` +

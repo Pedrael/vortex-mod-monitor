@@ -128,6 +128,7 @@ import type { SupportedGameId } from "../../types/ehcoll";
 import { looksLikeWine } from "./checkSevenZipHealth";
 import { countMods, deployBudgetMs } from "./timeBudgets";
 import { clearInstallMarker, writeInstallMarker } from "./installMarker";
+import { ehLog } from "../logging/ehLog";
 import {
   applyModRules,
   type ApplyModRulesResult,
@@ -189,6 +190,25 @@ import { BundledPrefetchPool } from "./bundledPrefetch";
 
 // Mod counting lives in timeBudgets alongside the budgets that consume it —
 // a copy here and another in profile.ts would drift.
+
+/**
+ * How the plan breaks down by decision kind, for the log header.
+ *
+ * A resumed install and a first install produce very different shapes — the
+ * second run of an interrupted collection is mostly `*-already-installed` —
+ * and knowing which one you are reading changes what "stopped at mod 38"
+ * means.
+ */
+function countByDecision(
+  resolutions: readonly ModResolution[],
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const r of resolutions) {
+    const k = r.decision.kind;
+    out[k] = (out[k] ?? 0) + 1;
+  }
+  return out;
+}
 
 /**
  * Number of attempts to write the install receipt. The receipt is the
@@ -457,6 +477,20 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
       gameId: plan.manifest.game.id,
       totalMods: total,
     });
+
+    // The header a remote log needs to be readable at all: what was being
+    // installed, how much of it, into what, and — since a resumed run looks
+    // very different from a first one — how the plan breaks down by decision.
+    // A log that starts mid-way through mod 400 with no context is a list of
+    // names.
+    ehLog("info", "install.start", {
+      package: plan.manifest.package.name,
+      packageId: plan.manifest.package.id,
+      gameId: plan.manifest.game.id,
+      profileId: activeProfileId,
+      totalMods: total,
+      decisions: countByDecision(plan.modResolutions),
+    });
     for (let i = 0; i < total; i++) {
       const resolution = plan.modResolutions[i];
       const manifestEntry = manifestByCompareKey.get(resolution.compareKey);
@@ -484,6 +518,25 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
         )}`,
       );
 
+      // Logged BEFORE the work, not after.
+      //
+      // This is the whole diagnostic value: when an install hangs there is no
+      // "after". A completion-only log ends with the last mod that SUCCEEDED
+      // and says nothing about the one still running, which is the only one
+      // anybody wants to know about. Written this way, the final line of the
+      // log names the mod it stopped on, and its timestamp says for how long.
+      //
+      // A tester's install sat and we had no idea where, because the driver
+      // logged nothing at all.
+      const modStartedAt = Date.now();
+      ehLog("info", "install.mod.start", {
+        i: i + 1,
+        total,
+        name: resolution.name,
+        decision: resolution.decision.kind,
+        compareKey: resolution.compareKey,
+      });
+
       let installEntry: InstalledModReportEntry | undefined;
       try {
         installEntry = await executeDecision({
@@ -496,6 +549,12 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
           onCarry: (entry) => carriedMods.push(entry),
           bundledPool,
         });
+        ehLog("info", "install.mod.done", {
+          i: i + 1,
+          total,
+          name: resolution.name,
+          ms: Date.now() - modStartedAt,
+        });
       } catch (err) {
         // Honor user aborts even if they bubbled out of a primitive
         // before checkAbort had a chance to catch them. The signal is
@@ -505,12 +564,30 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
           (err as Error)?.name === "AbortError" ||
           ctx.abortSignal?.aborted
         ) {
+          ehLog("info", "install.aborted", {
+            i: i + 1,
+            total,
+            name: resolution.name,
+            ms: Date.now() - modStartedAt,
+          });
           return abortedResult(
             "installing-mods",
             `Install aborted while processing "${resolution.name}".`,
           );
         }
         const phase: DriverPhase = "installing-mods";
+        // The error text reaches the user; this reaches us. Same failure,
+        // but with the index, the decision kind and how long it ran — which
+        // is what separates "this mod is broken" from "everything after mod
+        // 400 is slow".
+        ehLog("error", "install.mod.failed", {
+          i: i + 1,
+          total,
+          name: resolution.name,
+          decision: resolution.decision.kind,
+          ms: Date.now() - modStartedAt,
+          error: formatError(err),
+        });
         return {
           kind: "failed",
           phase,
