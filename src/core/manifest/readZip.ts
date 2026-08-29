@@ -574,6 +574,50 @@ export function crc32(buf: Buffer): number {
 }
 
 /**
+ * CRC-32 of a file on disk, streamed.
+ *
+ * A ZIP's central directory records CRC-32, so this is the only hash that can
+ * ask "do these bytes appear in that archive?" — sha256 cannot answer it, and
+ * the archive is the reference that no one's extraction can corrupt.
+ *
+ * Streamed rather than read whole: a texture pack's BA2 runs to hundreds of
+ * megabytes and this is called per suspect file.
+ */
+export async function crc32File(
+  filePath: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  return await new Promise<string>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new Error("aborted"));
+      return;
+    }
+    let c = 0xffffffff;
+    const stream = fs.createReadStream(filePath);
+    const onAbort = (): void => {
+      stream.destroy(new Error("aborted"));
+    };
+    signal?.addEventListener("abort", onAbort);
+
+    stream.on("data", (chunk: string | Buffer) => {
+      const buf = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+      for (let i = 0; i < buf.length; i += 1) {
+        c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+      }
+    });
+    stream.on("error", (err) => {
+      signal?.removeEventListener("abort", onAbort);
+      reject(err);
+    });
+    stream.on("close", () => {
+      signal?.removeEventListener("abort", onAbort);
+      // Lowercase hex, 8 digits — the form an archive listing reports.
+      resolve((((c ^ 0xffffffff) >>> 0) >>> 0).toString(16).padStart(8, "0"));
+    });
+  });
+}
+
+/**
  * Checking the CRC is the whole point of having one.
  *
  * A collection is a reproduction contract: a manifest that inflated to

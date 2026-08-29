@@ -129,6 +129,15 @@ export type VerifyFail = {
    * calculations like "23 of 1234 missing".
    */
   expectedCount: number;
+  /**
+   * Absolute path of the user's staging folder for this mod.
+   *
+   * Carried so the caller can re-read the differing files WITHOUT recomputing
+   * where they live. The driver needs their CRC-32 to ask the archive whether
+   * the curator's copy is the one that moved — see judgeReinstall — and a
+   * second derivation of this path is a second thing to get wrong.
+   */
+  stagingRoot: string;
 };
 
 /**
@@ -269,6 +278,7 @@ export async function verifyModInstall(
       hashMismatches,
       extraFiles,
       expectedCount: expectedFiles.length,
+      stagingRoot,
     };
   }
 

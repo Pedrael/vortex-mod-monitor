@@ -129,6 +129,8 @@ import { looksLikeWine } from "./checkSevenZipHealth";
 import { countMods, deployBudgetMs } from "./timeBudgets";
 import { clearInstallMarker, writeInstallMarker } from "./installMarker";
 import { ehLog } from "../logging/ehLog";
+import { judgeReinstall } from "./judgeReinstall";
+import { getModArchivePath } from "../archiveHashing";
 import {
   applyModRules,
   type ApplyModRulesResult,
@@ -190,6 +192,32 @@ import { BundledPrefetchPool } from "./bundledPrefetch";
 
 // Mod counting lives in timeBudgets alongside the budgets that consume it —
 // a copy here and another in profile.ts would drift.
+
+/**
+ * The archive a mod was installed from, if Vortex still has it.
+ *
+ * Best-effort and defensive: this only decides whether a second opinion is
+ * available. `undefined` means the judgement degrades to "undecidable", which
+ * reinstalls — the behaviour that existed before the check.
+ */
+function archivePathForMod(
+  api: types.IExtensionApi,
+  gameId: string,
+  entry: InstalledModReportEntry,
+): string | undefined {
+  try {
+    const state = api.getState();
+    const mod = (
+      state as unknown as {
+        persistent?: { mods?: Record<string, Record<string, unknown>> };
+      }
+    )?.persistent?.mods?.[gameId]?.[entry.vortexModId];
+    if (mod === undefined) return undefined;
+    return getModArchivePath(state, gameId, mod as never) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * How the plan breaks down by decision kind, for the log header.
@@ -736,7 +764,51 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
           continue;
         }
 
-        // verifyResult.kind === "fail" — try ONE recovery cycle.
+        // verifyResult.kind === "fail".
+        //
+        // Before spending a reinstall, ask the ARCHIVE — the one reference no
+        // one's extraction can corrupt. verifyModInstall compared two disks
+        // and cannot distinguish "this install went wrong" from "the CURATOR's
+        // staging was modified after extraction", and the second is ~11% of
+        // mods on a real profile (BA2 repacking, plugin cleaning). Every one
+        // of those was being uninstalled, reinstalled from the archive,
+        // compared against the same post-processed reference, failing again,
+        // and recorded as broken — twice the work for files that were correct.
+        const judgement = await judgeReinstall({
+          missingFiles: verifyResult.missingFiles,
+          differingPaths: [
+            ...verifyResult.sizeMismatches.map((m) => m.path),
+            ...verifyResult.hashMismatches.map((m) => m.path),
+          ],
+          stagingRoot: verifyResult.stagingRoot,
+          archivePath: archivePathForMod(ctx.api, plan.manifest.game.id, installEntry),
+          ...(ctx.abortSignal !== undefined ? { signal: ctx.abortSignal } : {}),
+        });
+
+        ehLog("info", "verify.judged", {
+          name: installEntry.name,
+          judgement: judgement.kind,
+          why: judgement.why,
+        });
+
+        if (judgement.kind === "curator-diverged") {
+          // The user's files ARE the archive's. Reinstalling would reproduce
+          // exactly what is on disk, so it is pure cost. Recorded as ok, with
+          // the divergence noted rather than hidden — the curator wants to
+          // know their staging has drifted from what they ship.
+          verifications.push({
+            kind: "ok",
+            vortexModId: installEntry.vortexModId,
+            compareKey: installEntry.compareKey,
+            name: installEntry.name,
+            level: declaredLevel === "thorough" ? "thorough" : "fast",
+            verifiedFileCount: verifyResult.expectedCount,
+            extraFileCount: verifyResult.extraFiles.length,
+          });
+          continue;
+        }
+
+        // Reinstall warranted, or we could not tell — try ONE recovery cycle.
         const failSummary = summarizeVerifyFail(verifyResult);
         console.warn(
           `[Vortex Event Horizon] integrity check failed for ` +
