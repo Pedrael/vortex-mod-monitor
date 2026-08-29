@@ -85,15 +85,62 @@ import { ehLog } from "../logging/ehLog";
  * Why not a single fixed deadline? The previous design used a 10 min
  * fixed deadline, which was simultaneously too short for slow
  * connections (a 4 GB download on 10 Mbps is ~55 min, all of it
- * Vortex working fine) and too long for diagnosing real hangs (a
- * stuck FOMOD dialog had to sit for 10 min before we'd error out).
+ * Vortex working fine) and too long for diagnosing real hangs.
  * The two-timer design solves both: hangs surface in 90s; legitimate
  * long-running installs are bounded only by the 60 min absolute cap.
+ *
+ * ─── BOTH TIMERS PAUSE WHILE VORTEX IS ASKING THE USER SOMETHING ───────
+ * They did not, and it cost a real install. A tester left the machine while
+ * a FOMOD dialog was waiting for him; nothing dispatched, no progress signal
+ * moved, and the watchdog concluded the pipeline was hung and aborted a
+ * perfectly healthy install.
+ *
+ * An earlier version of this very docblock named "a stuck FOMOD dialog" as a
+ * thing to catch FASTER. That was the mistake in one sentence: a dialog
+ * waiting for a human is not a stall, it is the system working and waiting.
+ * It cannot be told apart from a hang by watching for progress, because
+ * neither one makes any — the difference is not in the timing, it is in
+ * whether Vortex is currently blocked on input, and Vortex publishes that in
+ * `session.base.visibleDialog`.
+ *
+ * So both timers now re-arm rather than fire while a dialog is up. The
+ * absolute cap has to pause too: capping at 60 minutes would only have moved
+ * the same failure to the user who goes to bed mid-install. What still fires
+ * is silence with NO dialog on screen, which is the actual hang.
  */
 // The stall window is no longer a constant — see stallBudgetMs, which sizes
 // it from the phase and the archive. The absolute cap stays flat and stays
 // per-mod: it is a livelock backstop, not a performance budget.
 const INSTALL_ABSOLUTE_CAP_MS = 60 * 60_000; // 60 min hard ceiling
+
+/**
+ * Is Vortex currently blocked on the user rather than working?
+ *
+ * `session.base.visibleDialog` holds the id of the dialog on screen, and
+ * `overlayOpen` covers the overlay surface — both mean a human has to act
+ * before anything else happens. This is the one thing that separates "the
+ * pipeline is hung" from "the pipeline is fine and nobody is at the keyboard",
+ * because neither produces progress.
+ *
+ * Deliberately fails to FALSE. If the shape ever changes, the watchdog goes
+ * back to its old behaviour — occasionally impatient — rather than never
+ * firing at all, which would turn a real hang into an install that waits
+ * forever.
+ */
+export function isAwaitingUserInput(api: types.IExtensionApi): boolean {
+  try {
+    const session = (
+      api.getState() as unknown as {
+        session?: { base?: { visibleDialog?: unknown; overlayOpen?: unknown } };
+      }
+    )?.session?.base;
+    const dialog = session?.visibleDialog;
+    if (typeof dialog === "string" && dialog.length > 0) return true;
+    return session?.overlayOpen === true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Install a Nexus mod by triggering Vortex's typed `nexusDownload`
@@ -640,6 +687,8 @@ function waitForInstallCompletion(
   let absoluteCapTimer: ReturnType<typeof setTimeout> | undefined;
   let storeUnsubscribe: (() => void) | undefined;
   let lastProgressAt = Date.now();
+  /** Time spent with a dialog on screen, for the log. Not a deadline. */
+  let blockedOnUserMs = 0;
 
   /**
    * Snapshot of the download entry under
@@ -694,6 +743,23 @@ function waitForInstallCompletion(
     const budgetMs = stallBudgetMs(phase, budgetEnv);
     stallTimer = setTimeout(() => {
       if (settled) return;
+
+      // Vortex is showing a dialog: a FOMOD page, a confirmation, an error
+      // notification. It is not hung, it is waiting for a person — and a
+      // person who has walked away produces exactly the same silence as a
+      // hang. Re-arm and keep waiting; the dialog is its own prompt.
+      if (isAwaitingUserInput(api)) {
+        blockedOnUserMs += budgetMs;
+        ehLog("info", "install.waiting-on-user", {
+          totalBlockedSec: Math.round(blockedOnUserMs / 1000),
+          gameId: opts.gameId,
+          archiveId: expectedArchiveId,
+        });
+        lastProgressAt = Date.now();
+        armStallWatchdog();
+        return;
+      }
+
       settled = true;
       cleanup();
       const idleSec = Math.round((Date.now() - lastProgressAt) / 1000);
@@ -857,19 +923,37 @@ function waitForInstallCompletion(
 
   // Arm both timers.
   armStallWatchdog();
-  absoluteCapTimer = setTimeout(() => {
-    if (settled) return;
-    settled = true;
-    cleanup();
-    rejectFn(
-      new Error(
-        `Mod install exceeded the absolute time cap of ` +
-          `${INSTALL_ABSOLUTE_CAP_MS / 60_000} min. Vortex was reporting ` +
-          `progress but never completed — assuming the pipeline is ` +
-          `livelocked.`,
-      ),
-    );
-  }, INSTALL_ABSOLUTE_CAP_MS);
+  const armAbsoluteCap = (): void => {
+    if (absoluteCapTimer !== undefined) clearTimeout(absoluteCapTimer);
+    absoluteCapTimer = setTimeout(() => {
+      if (settled) return;
+
+      // Same reasoning as the stall watchdog, and it matters more here: an
+      // hour is exactly the scale of "went to make dinner". Capping a
+      // dialog-blocked install would just move the lost install from the
+      // tester who stepped out to the one who went to bed.
+      if (isAwaitingUserInput(api)) {
+        ehLog("info", "install.cap-deferred-waiting-on-user", {
+          totalBlockedSec: Math.round(blockedOnUserMs / 1000),
+          gameId: opts.gameId,
+        });
+        armAbsoluteCap();
+        return;
+      }
+
+      settled = true;
+      cleanup();
+      rejectFn(
+        new Error(
+          `Mod install exceeded the absolute time cap of ` +
+            `${INSTALL_ABSOLUTE_CAP_MS / 60_000} min. Vortex was reporting ` +
+            `progress but never completed — assuming the pipeline is ` +
+            `livelocked.`,
+        ),
+      );
+    }, INSTALL_ABSOLUTE_CAP_MS);
+  };
+  armAbsoluteCap();
 
   // Wire abort. If the signal is already aborted, settle synchronously
   // — but defer the rejection a microtask so cleanup runs on a fully-
