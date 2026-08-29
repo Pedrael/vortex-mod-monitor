@@ -438,10 +438,22 @@ function formatPlanText(
     lines.push(
       "── Ready to install ──────────────────────────────────────────",
     );
+    // NOT "write plugins.txt". That writer was deleted when the rules-only
+    // strategy became the locked design — Vortex and LOOT regenerate
+    // plugins.txt, so writing it is undone. This text went on promising it,
+    // in the last thing the user reads before committing to a 963-mod
+    // install, and the one thing they most want to know is exactly what
+    // happens to their load order.
     if (plan.installTarget.kind === "fresh-profile") {
       lines.push(
         "Clicking Install will create a new Vortex profile, install all mods " +
-          "into Vortex's global pool, write plugins.txt, and deploy.",
+          "into Vortex's global pool, apply the collection's mod conflict and " +
+          "LOOT rules, and deploy.",
+      );
+      lines.push(
+        "Plugin order is set by those rules plus your own LOOT sort, not " +
+          "written directly. Any remaining difference from the curator's order " +
+          "is reported at the end.",
       );
       lines.push(
         "Your existing profile is NOT modified. You can switch back at any time.",
@@ -450,7 +462,13 @@ function formatPlanText(
       lines.push(
         "Clicking Install will install/update mods into your CURRENT profile " +
           `("${plan.installTarget.profileName}"), apply your conflict and ` +
-          "orphan choices, write plugins.txt, and deploy.",
+          "orphan choices, apply the collection's mod conflict and LOOT " +
+          "rules, and deploy.",
+      );
+      lines.push(
+        "Plugin order is set by those rules plus your own LOOT sort, not " +
+          "written directly. Any remaining difference from the curator's order " +
+          "is reported at the end.",
       );
     }
     if (plan.summary.needsUserConfirmation > 0 || plan.orphanedMods.length > 0) {
