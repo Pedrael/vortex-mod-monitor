@@ -42,6 +42,52 @@ export type RunSelfChecksOptions = {
   onProgress?: (done: number, total: number, modName: string) => void;
 };
 
+/**
+ * Mods whose staged files DIVERGE from their archive.
+ *
+ * The mirror image of the omission warnings: those say "you are missing files
+ * the archive has", this says "you have files the archive does not" — which is
+ * what post-install tooling produces. BA2 repacking, plugin cleaning, a mod
+ * writing its own config the first time the game runs.
+ *
+ * ONE aggregate line, never one per mod. Measured at roughly a ninth of a real
+ * 993-mod profile, so per-mod warnings would bury the omission findings under
+ * a hundred entries the curator can do nothing about — and being buried is how
+ * a real warning gets ignored.
+ *
+ * Phrased as information rather than fault. These files are usually exactly
+ * what the curator intended. What matters is that they are now KNOWN: a user
+ * installing this collection cannot check them against the archive, so the
+ * installer accepts whatever a clean install produces rather than trying to
+ * reproduce the curator's copy — which it would fail at, twice, per mod.
+ *
+ * Pure, so the policy can be tested without running a build.
+ */
+export function describeDivergedMods(
+  reports: readonly SelfCheckReport[],
+): string | undefined {
+  const diverged = reports
+    .filter((r) => r.unexplained > 0)
+    .sort((a, b) => b.unexplained - a.unexplained);
+  if (diverged.length === 0) return undefined;
+
+  const files = diverged.reduce((n, r) => n + r.unexplained, 0);
+  const examples = diverged
+    .slice(0, 3)
+    .map((r) => `"${r.modName}" (${r.unexplained})`)
+    .join(", ");
+
+  return (
+    `${diverged.length} mod(s) have ${files} staged file(s) that differ from ` +
+    `their archives — most often ${examples}. This is normal if you repack ` +
+    `BA2s, clean plugins, or run the game before building: those files are ` +
+    `yours, not the archive's. It is recorded because a user installing this ` +
+    `collection cannot check them against the archive, so Event Horizon will ` +
+    `accept whatever a clean install produces for them rather than trying to ` +
+    `reproduce your copy.`
+  );
+}
+
 export type SelfCheckRunResult = {
   reports: SelfCheckReport[];
   summary: ReturnType<typeof summarizeSelfChecks>;
@@ -188,6 +234,9 @@ export async function runSelfChecks(
         `event-horizon log for the full list.`,
     );
   }
+
+  const divergedWarning = describeDivergedMods(reports);
+  if (divergedWarning !== undefined) warnings.push(divergedWarning);
 
   if (summary.skipped > 0) {
     warnings.push(
