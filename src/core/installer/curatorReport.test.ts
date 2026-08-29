@@ -171,8 +171,13 @@ describe("the driver actually produces one, and only at the end of the ladder", 
       path.join(__dirname, "..", "..", "ui", "pages", "install", "steps.tsx"),
       "utf8",
     );
+    // Formatting-tolerant on purpose: the claim is "this notice is rendered
+    // with this field", not "these two tokens are adjacent". The strict
+    // version broke the moment the element gained a `key` and wrapped across
+    // lines — a false failure that says nothing about whether the notice
+    // reaches the screen.
     expect(steps).toMatch(
-      /<ExternalArchiveNotice lines=\{result\.externalArchiveNotice/,
+      /<ExternalArchiveNotice[\s\S]{0,160}result\.externalArchiveNotice/,
     );
   });
 });

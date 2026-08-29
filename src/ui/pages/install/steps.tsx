@@ -2108,13 +2108,51 @@ function NoticeCard(props: {
   );
 }
 
-/** Lines under a notice head, shown inline. */
-function NoticeLines(props: { lines: readonly string[] }): JSX.Element | null {
+/**
+ * How many detail lines a notice shows before it folds them away.
+ *
+ * Three is what fits beside a summary without the card becoming a wall. Above
+ * that the summary alone carries the meaning — "12 mods changed since we
+ * installed them" — and the list is reference material the user opens when
+ * they want the names.
+ */
+const INLINE_LINE_LIMIT = 3;
+
+/**
+ * Lines under a notice head.
+ *
+ * Long ones collapse. A drifted-mod list runs to eleven lines and a curator
+ * report to a paragraph, and several of those stacked turn the Done screen
+ * into a scroll where the things needing action look exactly like the things
+ * that do not. The summary above stays visible either way, so nothing is
+ * hidden — only folded.
+ */
+function NoticeLines(props: {
+  lines: readonly string[];
+  /** What the disclosure offers, when there are enough lines to fold. */
+  moreLabel?: string;
+}): JSX.Element | null {
   if (props.lines.length === 0) return null;
-  return (
+  const body = (
     <div className="eh-note" style={{ marginTop: "var(--eh-sp-2)", whiteSpace: "pre-line" }}>
       {props.lines.join("\n")}
     </div>
+  );
+  if (props.lines.length <= INLINE_LINE_LIMIT) return body;
+  return (
+    <details>
+      <summary
+        style={{
+          color: "var(--eh-text-muted)",
+          cursor: "pointer",
+          fontSize: "var(--eh-text-sm)",
+          marginTop: "var(--eh-sp-2)",
+        }}
+      >
+        {props.moreLabel ?? "Show details"} ({props.lines.length})
+      </summary>
+      {body}
+    </details>
   );
 }
 
@@ -2347,6 +2385,70 @@ function CuratorReportsNotice(props: {
   );
 }
 
+/**
+ * The notices that state a fact and ask nothing.
+ *
+ * Folded behind one line, but the line NAMES each of them — "3 notes: INI
+ * tweaks, game settings, files you supplied". A disclosure that says only
+ * "3 notes" makes the user open it to find out whether it matters, which is
+ * the cost the fold was supposed to save.
+ *
+ * Renders nothing at all when there is nothing to say, so a clean install
+ * gets no empty scaffolding.
+ */
+function InstallNotes(props: {
+  result: Extract<InstallResult, { kind: "success" }>;
+}): JSX.Element | null {
+  const { result } = props;
+  const present: Array<{ label: string; node: JSX.Element }> = [];
+  if ((result.iniTweakNotice?.length ?? 0) > 0) {
+    present.push({
+      label: "INI tweaks",
+      node: <IniTweakNotice key="ini" lines={result.iniTweakNotice ?? []} />,
+    });
+  }
+  if ((result.gameIniNotice?.length ?? 0) > 0) {
+    present.push({
+      label: "game settings",
+      node: <GameIniNotice key="game" lines={result.gameIniNotice ?? []} />,
+    });
+  }
+  if ((result.externalArchiveNotice?.length ?? 0) > 0) {
+    present.push({
+      label: "files you supplied",
+      node: (
+        <ExternalArchiveNotice
+          key="external"
+          lines={result.externalArchiveNotice ?? []}
+        />
+      ),
+    });
+  }
+  if (present.length === 0) return null;
+
+  const n = present.length;
+  return (
+    <details>
+      <summary
+        style={{
+          color: "var(--eh-text-muted)",
+          cursor: "pointer",
+          fontSize: "var(--eh-text-sm)",
+        }}
+      >
+        {n} note{n === 1 ? "" : "s"} about this install —{" "}
+        {present.map((p) => p.label).join(", ")}
+      </summary>
+      <div
+        className="eh-stack"
+        style={{ marginTop: "var(--eh-sp-3)" }}
+      >
+        {present.map((p) => p.node)}
+      </div>
+    </details>
+  );
+}
+
 function SuccessBody(props: {
   result: Extract<InstallResult, { kind: "success" }>;
 }): JSX.Element {
@@ -2359,20 +2461,26 @@ function SuccessBody(props: {
   );
   return (
     <div className="eh-stack eh-stack--lg">
-      <ModTypeNotice lines={result.modTypeNotice ?? []} />
-      <IniTweakNotice lines={result.iniTweakNotice ?? []} />
-      <PluginOrderNotice lines={result.pluginOrderNotice ?? []} />
-      <GameIniNotice lines={result.gameIniNotice ?? []} />
-      <ExternalArchiveNotice lines={result.externalArchiveNotice ?? []} />
-      <StagingDriftNotice lines={result.stagingDriftNotice ?? []} />
       {/*
-        The two action cards last, deliberately: everything above is
-        informational, and an action buried among notes is an action that gets
-        missed. Damaged downloads come first of the two because the user can
-        fix those themselves right now, where a curator report is something
-        they can only send and then wait on.
+        ─── THINGS THAT NEED THE USER ───────────────────────────────────
+        Ordered by consequence, not by the order the driver happens to
+        produce them. These used to sit in a flat stack of eight identical
+        cards with the purely informational ones FIRST, so "your download is
+        corrupted" looked exactly like "the collection wrote your INI
+        settings" and arrived after it. Eight equal cards is eight cards
+        nobody triages.
+
+        1. a broken download the user can replace right now
+        2. files in the wrong folder — installed correctly, may not load
+        3. load order, which is the whole promise of this project
+        4. mods that changed since we installed them: a decision, not a fault
+        5. a report to send, which is the only one whose payoff is someone
+           else's, and so the one that waits
       */}
       <DamagedArchiveNotice lines={result.damagedArchiveNotice ?? []} />
+      <ModTypeNotice lines={result.modTypeNotice ?? []} />
+      <PluginOrderNotice lines={result.pluginOrderNotice ?? []} />
+      <StagingDriftNotice lines={result.stagingDriftNotice ?? []} />
       <CuratorReportsNotice reports={result.curatorReports ?? []} />
       <div
         style={{
@@ -2417,6 +2525,17 @@ function SuccessBody(props: {
           value={String(result.skippedMods.length)}
         />
       </div>
+
+      {/*
+        ─── THINGS THAT ARE MERELY TRUE ─────────────────────────────────
+        Nothing here asks anything of the user: the INI tweaks that could not
+        be turned on, the settings the collection wrote, the files they chose
+        by hand. Worth saying once, not worth competing with a corrupted
+        download for the same attention — so they fold, with every one of them
+        NAMED in the summary. Folded is not hidden; the user can see what is
+        in there without opening it.
+      */}
+      <InstallNotes result={result} />
 
       {installedBuckets.length > 0 && (
         <BucketList title="Install breakdown" buckets={installedBuckets} />
