@@ -196,7 +196,45 @@ say "winetricks:   $HAVE_WINETRICKS"
 # that lives with the prefix and point it there. Searched nearest-first: the
 # runtime shipped alongside the prefix is the one that made it.
 OWNING_WINE=""
+OWNING_WINE_HOW=""
+
+# Proton records which build created a prefix, next to the prefix itself.
+# Reading it turns "some Proton I found" into "the build this prefix says made
+# it" — and where it cannot be read, saying so is better than presenting a
+# guess as a fact. The tester's run picked a wine from the LAST-RESORT branch
+# and reported it in the same tone as a certainty.
+PREFIX_PARENT="$(dirname "$PREFIX")"
+PROTON_BUILD=""
+for vf in "$PREFIX_PARENT/version" "$PREFIX_PARENT/config_info"; do
+  if [ -r "$vf" ]; then
+    PROTON_BUILD="$(head -1 "$vf" 2>/dev/null | tr -d '\r')"
+    [ -n "$PROTON_BUILD" ] && break
+  fi
+done
+
 find_owning_wine() {
+  # 0. The build the prefix NAMES, if it named one and it is installed. This
+  #    is the only branch that is evidence rather than proximity.
+  if [ -n "$PROTON_BUILD" ]; then
+    for base in \
+      "$HOME/.steam/steam/steamapps/common" \
+      "$HOME/.local/share/Steam/steamapps/common" ; do
+      [ -d "$base" ] || continue
+      while IFS= read -r d; do
+        [ -x "$d/files/bin/wine" ] && {
+          OWNING_WINE="$d/files/bin/wine"
+          OWNING_WINE_HOW="matches the build this prefix records ($PROTON_BUILD)"
+          return 0
+        }
+      done <<EOF
+$(find "$base" -maxdepth 1 -type d -name "*${PROTON_BUILD}*" 2>/dev/null)
+EOF
+    done
+  fi
+  find_owning_wine_by_location
+}
+
+find_owning_wine_by_location() {
   # 1. A runtime shipped inside the same tree as the prefix (this is the
   #    ~/.vortex-linux case: it carries its own Proton).
   root="${PREFIX%/compatdata/*}"
@@ -208,18 +246,32 @@ find_owning_wine() {
     "$root"/*/dist/bin/wine \
     "$root"/proton*/files/bin/wine \
     "$root"/../files/bin/wine ; do
-    [ -x "$c" ] && { OWNING_WINE="$c"; return 0; }
+    [ -x "$c" ] && {
+      OWNING_WINE="$c"
+      OWNING_WINE_HOW="ships alongside the prefix"
+      return 0
+    }
   done
   # 2. umu, which is how a lot of non-Steam Proton prefixes are driven.
   for c in "$HOME/.local/share/umu"/*/files/bin/wine ; do
-    [ -x "$c" ] && { OWNING_WINE="$c"; return 0; }
+    [ -x "$c" ] && {
+      OWNING_WINE="$c"
+      OWNING_WINE_HOW="umu runtime"
+      return 0
+    }
   done
   # 3. A Steam Proton install. Last resort: any of these may be the WRONG
-  #    build for this prefix, which is why it is searched last.
+  #    build for this prefix, which is why it is searched last — and why it
+  #    is reported as a guess rather than in the same tone as the branches
+  #    above. The tester's run landed here and said nothing about it.
   for c in \
     "$HOME/.steam/steam/steamapps/common"/Proton*/files/bin/wine \
     "$HOME/.local/share/Steam/steamapps/common"/Proton*/files/bin/wine ; do
-    [ -x "$c" ] && { OWNING_WINE="$c"; return 0; }
+    [ -x "$c" ] && {
+      OWNING_WINE="$c"
+      OWNING_WINE_HOW="A GUESS — first Proton on the system, not verified against this prefix"
+      return 0
+    }
   done
   return 1
 }
@@ -227,36 +279,67 @@ find_owning_wine || true
 
 if [ -n "$OWNING_WINE" ]; then
   say "prefix's wine: $OWNING_WINE"
+  say "               ($OWNING_WINE_HOW)"
+  [ -n "$PROTON_BUILD" ] && say "prefix records: $PROTON_BUILD"
+  case "$OWNING_WINE_HOW" in
+    A\ GUESS*)
+      say ""
+      say "  NOTE: that was a guess. If it is the wrong build you will get"
+      say "  'version mismatch' again and nothing will be installed. The"
+      say "  runtime Vortex launches with is the right one — if you know"
+      say "  where it is, pass it by hand:"
+      say "    WINE=/path/to/wine WINESERVER=/path/to/wineserver \\"
+      say "      WINEPREFIX=\"$PREFIX\" winetricks vcrun2022"
+      ;;
+  esac
 else
   say "prefix's wine: not found — will use whatever wine is on PATH, which"
   say "               fails with a 'version mismatch' on a Proton prefix."
 fi
 
-# Decide the command. Reported either way, so you can run it by hand.
-RUNNER=""
+# Decide the command.
+#
+# An ARRAY, not a string. The runtime that turned up on the tester's machine
+# was ".../Proton - Experimental/files/bin/wine", and a string runner is
+# word-split on execution: that path becomes "WINE=.../Proton", a bare "-",
+# and "Experimental/...", which fails in a way that looks like anything but a
+# quoting bug. Spaces in Proton build names are the norm, not the exception.
+RUNNER_CMD=()
 RUNNER_DESC=""
 if [ -n "$APPID" ] && [ "$HAVE_PROTONTRICKS" = yes ]; then
   # protontricks finds the right Proton for a Steam app itself. Preferred
   # precisely because it does not have the problem above.
-  RUNNER="protontricks $APPID"
+  RUNNER_CMD=(protontricks "$APPID")
   RUNNER_DESC="protontricks, addressing the Steam app by id"
 elif [ -n "$APPID" ] && [ "$FLATPAK_PT" = yes ]; then
-  RUNNER="flatpak run com.github.Matoking.protontricks $APPID"
+  RUNNER_CMD=(flatpak run com.github.Matoking.protontricks "$APPID")
   RUNNER_DESC="protontricks via flatpak"
 elif [ "$HAVE_WINETRICKS" = yes ] && [ -n "$OWNING_WINE" ]; then
-  RUNNER="env WINEPREFIX=$PREFIX WINE=$OWNING_WINE WINESERVER=$(dirname "$OWNING_WINE")/wineserver winetricks"
+  RUNNER_CMD=(env "WINEPREFIX=$PREFIX" "WINE=$OWNING_WINE" \
+    "WINESERVER=$(dirname "$OWNING_WINE")/wineserver" winetricks)
   RUNNER_DESC="winetricks driven by the prefix's OWN wine (not the one on PATH)"
 elif [ "$HAVE_WINETRICKS" = yes ]; then
-  RUNNER="env WINEPREFIX=$PREFIX winetricks"
+  RUNNER_CMD=(env "WINEPREFIX=$PREFIX" winetricks)
   RUNNER_DESC="winetricks with the system wine — EXPECTED TO FAIL on a Proton prefix"
 fi
+
+# Shell-quote for DISPLAY. The printed command is copy-pasted by hand at least
+# as often as --apply is used, so an unquoted one is the same bug twice.
+shq() {
+  for a in "$@"; do
+    case "$a" in
+      *[!A-Za-z0-9=/._-]*) printf "'%s' " "$(printf '%s' "$a" | sed "s/'/'\\\\''/g")" ;;
+      *) printf '%s ' "$a" ;;
+    esac
+  done
+}
 
 # The runtimes worth installing, most likely first. 7-Zip itself is NOT here:
 # Vortex ships it, and installing another copy would not change which binary
 # Vortex loads.
 VERBS="vcrun2022"
 
-if [ -z "$RUNNER" ]; then
+if [ ${#RUNNER_CMD[@]} -eq 0 ]; then
   line
   say "NOTHING TO RUN: neither protontricks nor winetricks is installed."
   say ""
@@ -272,7 +355,7 @@ fi
 line
 say "[4] PLAN"
 say "using:   $RUNNER_DESC"
-say "command: $RUNNER $VERBS"
+say "command: $(shq "${RUNNER_CMD[@]}" $VERBS)"
 say ""
 say "This installs the Visual C++ runtime into the Vortex prefix only."
 say "It does not touch your games, your mods, or anything outside that prefix."
@@ -297,7 +380,7 @@ if [ "$ASSUME_YES" != yes ]; then
   esac
 fi
 
-say "running: $RUNNER $VERBS"
+say "running: $(shq "${RUNNER_CMD[@]}" $VERBS)"
 # Captured as well as shown, so the specific failures below can be recognised
 # rather than reported as a bare exit code. `tee` keeps the live output.
 RUN_LOG="$(mktemp 2>/dev/null || printf '/tmp/eh-setup-%s.log' "$$")"
@@ -307,7 +390,7 @@ RUN_LOG="$(mktemp 2>/dev/null || printf '/tmp/eh-setup-%s.log' "$$")"
 # holds the real one and is clobbered by the very next command, so it must be
 # read on the line immediately after the pipeline and nowhere later.
 # shellcheck disable=SC2086
-$RUNNER $VERBS 2>&1 | tee "$RUN_LOG"
+"${RUNNER_CMD[@]}" $VERBS 2>&1 | tee "$RUN_LOG"
 RC="${PIPESTATUS[0]}"
 
 line
