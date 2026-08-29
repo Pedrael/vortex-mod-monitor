@@ -131,6 +131,10 @@ import { clearInstallMarker, writeInstallMarker } from "./installMarker";
 import { ehLog } from "../logging/ehLog";
 import { judgeReinstall } from "./judgeReinstall";
 import { buildCuratorReport } from "./curatorReport";
+import {
+  checkArchiveIdentity,
+  describeArchiveIdentity,
+} from "./checkArchiveIdentity";
 import { getModArchivePath } from "../archiveHashing";
 import {
   applyModRules,
@@ -879,6 +883,29 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
         // the ~11% that merely look like one, and it is worth the curator's
         // attention. Write the report they can send, so the user does not
         // have to compose one.
+        // Before suggesting a re-download, ask whether one could possibly
+        // help. The archive's own hash answers it for the cost of a hash
+        // instead of a download: identical bytes mean the same request would
+        // fetch the same file, and DIFFERENT bytes mean the mod was
+        // re-uploaded under the same file id — which is the finding itself,
+        // and which downloading again would not change either.
+        const archiveIdentity = await checkArchiveIdentity({
+          archivePath: archivePathForMod(
+            ctx.api,
+            plan.manifest.game.id,
+            installEntry,
+          ),
+          expectedSha256: manifestEntry?.source.sha256,
+          ...(ctx.abortSignal !== undefined ? { signal: ctx.abortSignal } : {}),
+        });
+        ehLog("warn", "install.archive-identity", {
+          name: installEntry.name,
+          verdict: archiveIdentity.kind,
+          ...(archiveIdentity.kind === "differs"
+            ? { expected: archiveIdentity.expected, actual: archiveIdentity.actual }
+            : {}),
+        });
+
         curatorReports.push(
           buildCuratorReport({
             packageName: plan.manifest.package.name,
@@ -897,6 +924,7 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
             attempts: [
               "Verified against the file list the collection recorded",
               "Reinstalled from the archive and verified again",
+              describeArchiveIdentity(archiveIdentity),
             ],
             archiveNote:
               judgement.kind === "reinstall"
