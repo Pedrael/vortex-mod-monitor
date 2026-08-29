@@ -130,6 +130,7 @@ import { countMods, deployBudgetMs } from "./timeBudgets";
 import { clearInstallMarker, writeInstallMarker } from "./installMarker";
 import { ehLog } from "../logging/ehLog";
 import { judgeReinstall } from "./judgeReinstall";
+import { buildCuratorReport } from "./curatorReport";
 import { getModArchivePath } from "../archiveHashing";
 import {
   applyModRules,
@@ -192,6 +193,22 @@ import { BundledPrefetchPool } from "./bundledPrefetch";
 
 // Mod counting lives in timeBudgets alongside the budgets that consume it —
 // a copy here and another in profile.ts would drift.
+
+/**
+ * Host description for a report that gets pasted in public.
+ *
+ * `process.platform` says "win32" under Proton, which is the single most
+ * misleading line a curator can be handed: it sends them to reason about a
+ * Windows install that is nothing of the sort.
+ */
+function describeHostForReport(): string {
+  const base = typeof process !== "undefined" ? process.platform : "unknown";
+  try {
+    return looksLikeWine() ? `${base} (Wine/Proton)` : base;
+  } catch {
+    return base;
+  }
+}
 
 /**
  * The archive a mod was installed from, if Vortex still has it.
@@ -304,6 +321,15 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
   let userlistApplication: UserlistApplicationReceipt =
     emptyUserlistApplication();
   const verifications: ModVerificationReceipt[] = [];
+  /**
+   * Pasteable reports for mods that survived the whole escalation.
+   *
+   * Kept out of the receipt on purpose: `serializeReceipt` validates THROUGH
+   * `parseReceipt`, so a field the parser does not know about is silently
+   * destroyed at write — a bug this codebase has already had once. These ride
+   * on the result instead, where the UI can offer them.
+   */
+  const curatorReports: string[] = [];
 
   // Bundled-archive prefetch pool. We extract up to 2 archives ahead
   // of the install loop so Vortex's per-mod install (which is
@@ -847,8 +873,40 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
           continue;
         }
 
-        // Retry didn't help (or wasn't possible). Keep the original
-        // mod entry and record the failure.
+        // Retry didn't help (or wasn't possible). This mod has now failed
+        // against the curator's staging, failed against its ARCHIVE, and
+        // survived a reinstall — so it is a real anomaly rather than one of
+        // the ~11% that merely look like one, and it is worth the curator's
+        // attention. Write the report they can send, so the user does not
+        // have to compose one.
+        curatorReports.push(
+          buildCuratorReport({
+            packageName: plan.manifest.package.name,
+            packageVersion: plan.manifest.package.version,
+            modName: installEntry.name,
+            modCompareKey: installEntry.compareKey,
+            ...(manifestEntry?.version !== undefined
+              ? { modVersion: manifestEntry.version }
+              : {}),
+            missingFiles: verifyResult.missingFiles,
+            differingFiles: [
+              ...verifyResult.sizeMismatches.map((m) => m.path),
+              ...verifyResult.hashMismatches.map((m) => m.path),
+            ],
+            extraFiles: verifyResult.extraFiles,
+            attempts: [
+              "Verified against the file list the collection recorded",
+              "Reinstalled from the archive and verified again",
+            ],
+            archiveNote:
+              judgement.kind === "reinstall"
+                ? `Checked against the mod's own archive: ${judgement.why}`
+                : `Could not consult the mod's archive: ${judgement.why}`,
+            platform: describeHostForReport(),
+          }),
+        );
+
+        // Keep the original mod entry and record the failure.
         verifications.push(
           buildFailReceipt({
             installEntry,
@@ -1343,6 +1401,7 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
       ...(describePluginOrderDrift(pluginOrderDrift).length > 0
         ? { pluginOrderNotice: describePluginOrderDrift(pluginOrderDrift) }
         : {}),
+      ...(curatorReports.length > 0 ? { curatorReports } : {}),
     };
   } finally {
     // The run ENDED — success, failure or abort alike — so the in-flight

@@ -283,6 +283,20 @@ export type InstallSuccess = {
    */
   iniTweakNotice?: string[];
   /**
+   * Ready-to-send reports for mods that could not be reproduced.
+   *
+   * One per mod that failed against the curator's staging, failed against its
+   * ARCHIVE, and survived a reinstall. Everything softer is settled earlier —
+   * a mod whose curator-side files were merely post-processed never reaches
+   * this list — so an entry here is a genuine anomaly rather than one of the
+   * ~11% of false alarms that used to look identical.
+   *
+   * Present as TEXT rather than structured data on purpose: its destination is
+   * a Discord message or a Nexus comment, and the user should be able to send
+   * it without composing anything.
+   */
+  curatorReports?: string[];
+  /**
    * How the user's resulting plugin order differs from the curator's.
    *
    * Applying the curator's LOOT rules is not the same as reproducing their
