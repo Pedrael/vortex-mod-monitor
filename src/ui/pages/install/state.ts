@@ -45,6 +45,7 @@ export type LoadingPhase =
   | "checking-game"
   | "hashing-mods"
   | "hashing-staging"
+  | "scanning-downloads"
   | "resolving-plan";
 
 export interface PreviewBundle {
@@ -188,7 +189,13 @@ export function wizardReducer(
     case "loading-phase": {
       if (state.kind !== "loading") return state;
       const isHashingPhase =
-        action.phase === "hashing-mods" || action.phase === "hashing-staging";
+        action.phase === "hashing-mods" ||
+    action.phase === "hashing-staging" ||
+    // Scanning the download folder is hashing too, and it is the slowest of
+    // the three on a first run — it reads every archive Vortex has kept.
+    // Leaving it out means the counter freezes exactly where the wait is
+    // longest, which reads as a hang.
+    action.phase === "scanning-downloads";
       // The two hashing phases share a UI card with a live counter.
       // Reset progress on every phase transition (incl. mods → staging)
       // so the counter doesn't show stale numbers from the previous
