@@ -2268,6 +2268,31 @@ function ExternalArchiveNotice(props: {
 }
 
 /**
+ * The user's own rules, replaced by the collection's.
+ *
+ * Not folded into the notes: this is the one card describing something Event
+ * Horizon DELETED. A tool that removes your work and mentions it quietly is
+ * how it earns a reputation, and the backup path is only reassuring if the
+ * person reads it.
+ */
+function RulesPurgeNotice(props: {
+  lines: readonly string[];
+}): JSX.Element | null {
+  if (props.lines.length === 0) return null;
+  const [summary, ...rest] = props.lines;
+  return (
+    <NoticeCard
+      label="Rules replaced"
+      intent="warning"
+      summary={summary ?? ""}
+      accentBorder="var(--eh-warning)"
+    >
+      <NoticeLines lines={rest} moreLabel="What was removed" />
+    </NoticeCard>
+  );
+}
+
+/**
  * Archives that are damaged on THIS machine.
  *
  * A warning rather than info, and separate from the curator reports on
@@ -2478,6 +2503,11 @@ function SuccessBody(props: {
            else's, and so the one that waits
       */}
       <DamagedArchiveNotice lines={result.damagedArchiveNotice ?? []} />
+      {/*
+        High, because it is the only card here describing something we DELETED
+        — and the only one whose remedy (the backup file) is useless if unread.
+      */}
+      <RulesPurgeNotice lines={result.rulesPurgeNotice ?? []} />
       <ModTypeNotice lines={result.modTypeNotice ?? []} />
       <PluginOrderNotice lines={result.pluginOrderNotice ?? []} />
       <StagingDriftNotice lines={result.stagingDriftNotice ?? []} />

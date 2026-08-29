@@ -323,6 +323,17 @@ export type InstallSuccess = {
    */
   damagedArchiveNotice?: string[];
   /**
+   * What clearing the user's own conflict and LOOT rules removed.
+   *
+   * The collection's rules replace the user's rather than merging with them:
+   * a merged rule set exists on nobody's machine but theirs and changes what
+   * the game loads without failing anything. Since Vortex stores neither mod
+   * rules nor the LOOT userlist per-profile, this also removes rules for mods
+   * outside the collection and for the user's other profiles — so it is said
+   * out loud, with the path to the backup taken beforehand.
+   */
+  rulesPurgeNotice?: string[];
+  /**
    * Mods that changed on disk since a PREVIOUS install of this collection put
    * them there, and that this version did not update.
    *

@@ -142,6 +142,87 @@ async function install(
   return Promise.race([running, stalled]);
 }
 
+describe("the collection's rules are the ONLY rules", () => {
+  it("clears the user's own mod rules and LOOT list, through the real driver", async () => {
+    // A merged rule set exists on nobody's machine but this user's, and it
+    // changes what the game loads while failing nothing — every file verifies
+    // and the game still behaves differently from the curator's. So the
+    // collection's rules replace rather than join.
+    world = makeWorld({ mods: [MOD] });
+    const manifest = await packageFrom(world);
+    const fake = makeFakeVortex({
+      gameId: world.gameId,
+      stagingRoot: world.stagingRoot,
+      installProduces: (id) => (id === ARCHIVE_ID ? MOD.files : undefined),
+    });
+
+    // The user's own opinions, of the kind this feature exists to overrule.
+    const persistent = (fake.state as { persistent: Record<string, unknown> })
+      .persistent as { mods: Record<string, Record<string, unknown>> };
+    persistent.mods[world.gameId]["their-old-mod"] = {
+      id: "their-old-mod",
+      rules: [{ type: "after", reference: { id: "something-else" } }],
+    };
+    (fake.state as Record<string, unknown>).userlist = {
+      plugins: [{ name: "TheirTweak.esp", group: "Late Loaders" }],
+      groups: [],
+    };
+
+    const result = (await install(manifest, fake)) as {
+      kind: string;
+      rulesPurgeNotice?: string[];
+    };
+
+    expect(result.kind, why(result)).toBe("success");
+
+    // Their mod rule was removed...
+    const removals = fake.dispatched.filter(
+      (d) => (d as { type?: string })?.type === "STUB_REMOVE_MOD_RULE",
+    );
+    expect(removals.length).toBeGreaterThan(0);
+    // ...and the LOOT userlist was cleared with Vortex's own action.
+    expect(
+      fake.dispatched.some(
+        (d) => (d as { type?: string })?.type === "CLEAR_USERLIST",
+      ),
+    ).toBe(true);
+
+    // And the user is TOLD, with somewhere to recover from.
+    const notice = (result.rulesPurgeNotice ?? []).join(" ");
+    expect(notice).toMatch(/replaced your own/i);
+    expect(notice).toMatch(/rule-backups/);
+  });
+
+  it("leaves a backup file on disk before deleting anything", async () => {
+    world = makeWorld({ mods: [MOD] });
+    const manifest = await packageFrom(world);
+    const fake = makeFakeVortex({
+      gameId: world.gameId,
+      stagingRoot: world.stagingRoot,
+      installProduces: (id) => (id === ARCHIVE_ID ? MOD.files : undefined),
+    });
+    const persistent = (fake.state as { persistent: Record<string, unknown> })
+      .persistent as { mods: Record<string, Record<string, unknown>> };
+    persistent.mods[world.gameId]["their-old-mod"] = {
+      id: "their-old-mod",
+      rules: [{ type: "after", reference: { id: "something-else" } }],
+    };
+
+    await install(manifest, fake);
+
+    const fsm = await import("fs");
+    const pathm = await import("path");
+    const dir = pathm.join(world.appDataPath, "event-horizon", "rule-backups");
+    const files = fsm.readdirSync(dir);
+    expect(files).toHaveLength(1);
+    const saved = JSON.parse(
+      fsm.readFileSync(pathm.join(dir, files[0]), "utf8"),
+    ) as { modRules: Array<{ modId: string }> };
+    // The backup has to contain the thing that was deleted, or it is theatre.
+    expect(saved.modRules.map((r) => r.modId)).toContain("their-old-mod");
+  });
+});
+
 describe("verification is reachable end to end", () => {
   it("a clean install passes verification and records what it left", async () => {
     // The foundational check. Until the fake registered a mod record and wrote

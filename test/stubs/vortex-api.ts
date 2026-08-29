@@ -159,8 +159,18 @@ export const actions = {
     payload: { id, game, localPath, fileSize },
   }),
   setLoadOrder: () => ({ type: "STUB_SET_LOAD_ORDER" }),
-  addModRule: () => ({ type: "STUB_ADD_MOD_RULE" }),
-  removeModRule: () => ({ type: "STUB_REMOVE_MOD_RULE" }),
+  // These carry their payloads for the same reason the ones below do: a rule
+  // purge is only testable if the double records WHICH rule was removed, and
+  // an action that forgets its arguments makes "we deleted exactly what we
+  // captured" an unprovable claim.
+  addModRule: (gameId: string, modId: string, rule: unknown) => ({
+    type: "STUB_ADD_MOD_RULE",
+    payload: { gameId, modId, rule },
+  }),
+  removeModRule: (gameId: string, modId: string, rule: unknown) => ({
+    type: "STUB_REMOVE_MOD_RULE",
+    payload: { gameId, modId, rule },
+  }),
   // Payloads are carried, not dropped: a test double has to be able to react
   // to what the code asked for (switching to profile X emits X's did-change),
   // and an action that forgets its argument makes that impossible.

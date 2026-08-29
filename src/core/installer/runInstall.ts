@@ -143,6 +143,12 @@ import {
 import { getModArchivePath } from "../archiveHashing";
 import type { ArchiveHashCache } from "../archiveHashCache";
 import {
+  captureUserRuleState,
+  describePurge,
+  purgeUserRuleState,
+  type UserRuleSnapshot,
+} from "./purgeUserRules";
+import {
   applyModRules,
   type ApplyModRulesResult,
   type ExistingRule,
@@ -345,6 +351,34 @@ function describeHostForReport(): string {
  * available. `undefined` means the judgement degrades to "undecidable", which
  * reinstalls — the behaviour that existed before the check.
  */
+/**
+ * Save the user's rules before we delete them, and return where.
+ *
+ * Rejects rather than returning undefined on failure, because the caller's
+ * whole decision hinges on it: no backup means the purge does not run. A
+ * silent "" here would delete someone's rules with nothing to restore from.
+ *
+ * Timestamped rather than overwritten — a second install must not destroy the
+ * backup taken by the first, which is the one holding their original rules.
+ */
+async function writeRuleBackup(
+  appDataPath: string,
+  snapshot: UserRuleSnapshot,
+): Promise<string> {
+  const fsp = await import("fs/promises");
+  const nodePath = await import("path");
+  const dir = nodePath.join(appDataPath, "event-horizon", "rule-backups");
+  await fsp.mkdir(dir, { recursive: true });
+  const stamp = snapshot.capturedAt.replace(/[:.]/g, "-");
+  const file = nodePath.join(dir, `rules-${snapshot.gameId}-${stamp}.json`);
+  // Write-then-rename: a half-written backup that looks complete is worse than
+  // none, because the purge would proceed on the strength of it.
+  const tmp = `${file}.tmp`;
+  await fsp.writeFile(tmp, JSON.stringify(snapshot, null, 2), "utf8");
+  await fsp.rename(tmp, file);
+  return file;
+}
+
 function archivePathForMod(
   api: types.IExtensionApi,
   gameId: string,
@@ -491,6 +525,8 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
    * user can act on themselves.
    */
   const damagedArchives: string[] = [];
+  /** What clearing the user's own rules removed, when it removed anything. */
+  let rulesPurgeNotice: string[] | undefined;
 
   /**
    * The package's own sha256, hashed at most once and only if asked.
@@ -1282,6 +1318,46 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
       manifestMods: plan.manifest.mods,
     });
 
+    // ── 6a. the user's own rules go first ───────────────────────────
+    // Merging the collection's rules into whatever the user already had
+    // produces an ordering that exists on nobody's machine but theirs, and
+    // does it silently: every file verifies, and the game still loads
+    // differently from the curator's. The collection's rule set has to BE the
+    // rule set.
+    //
+    // Snapshotted to a file beside the receipt first. This removes rules on
+    // mods outside the collection and rules belonging to the user's other
+    // profiles of this game — Vortex stores neither per-profile — so it must
+    // be something we can show them and undo.
+    reportProgress("applying-mod-rules", 0, 1, "Clearing existing rules...");
+    const ruleSnapshot = captureUserRuleState(api, plan.manifest.game.id);
+    let ruleBackupPath: string | undefined;
+    try {
+      ruleBackupPath = await writeRuleBackup(ctx.appDataPath, ruleSnapshot);
+    } catch (err) {
+      // A backup we could not write is a reason to keep the user's rules, not
+      // a reason to delete them without one.
+      ehLog("warn", "rules.backup-failed", {
+        why: err instanceof Error ? err.message : String(err),
+      });
+    }
+    if (ruleBackupPath !== undefined) {
+      const purge = purgeUserRuleState(api, plan.manifest.game.id, ruleSnapshot);
+      ehLog("info", "rules.purged", {
+        modRulesRemoved: purge.modRulesRemoved,
+        modsTouched: purge.modsTouched,
+        userlistCleared: purge.userlistCleared,
+        failures: purge.failures.length,
+        backup: ruleBackupPath,
+      });
+      const notice = describePurge(purge, ruleSnapshot, ruleBackupPath);
+      if (notice !== undefined) rulesPurgeNotice = notice;
+    } else {
+      ehLog("warn", "rules.purge-skipped", {
+        why: "no backup could be written, so existing rules were left in place",
+      });
+    }
+
     if (plan.manifest.rules.length > 0) {
       reportProgress(
         "applying-mod-rules",
@@ -1726,6 +1802,9 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
         : {}),
       ...(damagedArchives.length > 0
         ? { damagedArchiveNotice: damagedArchives }
+        : {}),
+      ...(rulesPurgeNotice !== undefined
+        ? { rulesPurgeNotice }
         : {}),
     };
   } finally {
