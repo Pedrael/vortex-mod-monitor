@@ -108,3 +108,37 @@ export function warningTone(text: string): WarningTone {
   }
   return "note";
 }
+
+/** Most severe first. */
+const TONE_RANK: Record<WarningTone, number> = {
+  blocking: 0,
+  attention: 1,
+  note: 2,
+};
+
+/**
+ * Warnings ordered by severity, ties left in the order the pipeline produced
+ * them.
+ *
+ * The build emits warnings in whatever order its stages run, which on the real
+ * 963-mod collection put "is missing 7 file(s) ... worth opening before
+ * shipping" eighth of ten, below four pieces of bookkeeping. The severity was
+ * already known — every row's dot is coloured from it — and simply unused for
+ * ordering.
+ *
+ * STABLE on purpose: a sort that reshuffled equal-severity lines would make
+ * two builds of the same collection produce differently-ordered reports, and
+ * a curator comparing them would be reading noise.
+ */
+export function sortWarningsBySeverity(
+  warnings: readonly string[],
+): readonly string[] {
+  return warnings
+    .map((text, index) => ({ text, index }))
+    .sort(
+      (a, b) =>
+        TONE_RANK[warningTone(a.text)] - TONE_RANK[warningTone(b.text)] ||
+        a.index - b.index,
+    )
+    .map((w) => w.text);
+}

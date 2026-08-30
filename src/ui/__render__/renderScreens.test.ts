@@ -41,6 +41,8 @@ import {
   PreviewStep,
 } from "../pages/install/steps";
 import { ApiProvider } from "../state/ApiContext";
+import { ToastProvider } from "../components/Toast";
+import { DonePanel } from "../pages/build/BuildPage";
 
 const OUT = path.join(
   "C:",
@@ -188,6 +190,44 @@ const USERLIST = {
 
 describe("render", () => {
   const on = process.env.EH_RENDER === "1";
+
+  it.skipIf(!on)("build done — the real v1.0.10 result and its 10 warnings", () => {
+    // Verbatim from the actual build log: same counts, same sha256, same
+    // warnings in the same order. This is the screen a curator reads after 28
+    // minutes, and the only place those warnings are ever shown.
+    const result = {
+      outputPath:
+        "C:/Users/x/AppData/Roaming/Vortex/event-horizon/collections/ivy-2-1.0.10.ehcoll",
+      outputBytes: 157_837_710,
+      outputSha256:
+        "409721827a4c0097de4f2d33e2c45a789f7bdbdcf48df019423cc315b66dc276",
+      bundledCount: 4,
+      modCount: 963,
+      warnings: [
+        '"Liberty Wasteland Redux" is a Vortex collection installed in this profile, not a mod, so it was left out. Its staging folder holds copies of other mods\' files, which would have shipped them twice — and any INI tweaks it carries are not included either. The mods it installed are still in this collection in their own right.',
+        "5 mods have no source archive and no Nexus source to fetch one from. They still ship — they are identified by the SHA-256 of their deployed files instead — but that identity is weaker: a user whose copy differs even slightly will not match it, and will be asked to supply the mod themselves. Re-importing their archives into Vortex would give them a real identity.",
+        '2 external mods no longer match the archive they came from — files have been added or removed in the staging folder since. Right now the collection ships the ARCHIVE, so whoever installs it gets the original, not your version. Tick "bundle" on them to pack your actual files into the .ehcoll instead.\n  • "CC_enclave_textures": 766 staged file(s) are not in the archive (e.g. cc_enclave_textures.7z).\n  • "PorcOverlays_esl_02b": 1 staged file(s) are not in the archive.',
+        "21 INI setting(s) describe your machine rather than this collection and were NOT shipped: bBorderless, bEnableAudio, bFull Screen, bMaximizeWindow, bTopMostWindow, fDefault1stPersonFOV, fDefaultWorldFOV, iAdapter, and 11 more.",
+        '106 mod rule(s) reference 66 mod(s) that are not in this collection, so those rules were dropped: "1Optional - M1Garand", "2.1.0 CBBE BODY AND BODYSLIDES", and 60 more. This is normal on a profile that has been curated for a while.',
+        "4382 contested file(s) recorded; 46205 file(s) are shipped by exactly one mod, so their deployment winner is that mod and was not written out.",
+        '115 mod(s) were installed with FOMOD options you chose (e.g. "Weapon Mod Fixes"). Those choices are recorded here and replayed on install.',
+        '"Ivy\'sPantiesSettings" is missing 7 file(s) that its archive contains and its own folders suggest should be there (e.g. F4SE/Plugins/BakaMaxPapyrusOps.toml). 13 of 21 files in "F4SE/Plugins" are installed (62%) — a partially extracted folder is what a lost write looks like. Worth opening before shipping.',
+        '13 mod(s) have 885 staged file(s) that differ from their archives — most often "CC_enclave_textures" (766). This is normal if you repack BA2s, clean plugins, or run the game before building.',
+        "9 mod(s) could not be checked against their archive (archive missing from disk, or unreadable).",
+      ],
+    } as never;
+
+    write(
+      "build-done",
+      React.createElement(ToastProvider, {
+        children: React.createElement(DonePanel, {
+          result,
+          onBuildAnother: () => undefined,
+          onGoHome: () => undefined,
+        } as never),
+      } as never),
+    );
+  });
 
   it.skipIf(!on)("preview — what the plan will do", () => {
     write(

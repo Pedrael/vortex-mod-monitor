@@ -58,7 +58,11 @@ import {
   type BuildSessionState,
 } from "./buildSession";
 import { getBuildSessionRegistry } from "./buildSessionRegistry";
-import { splitWarning, warningTone } from "./warningText";
+import {
+  splitWarning,
+  sortWarningsBySeverity,
+  warningTone,
+} from "./warningText";
 import { BuildDashboard } from "./BuildDashboard";
 import { revealInFileManager } from "../../../core/revealPath";
 import type { ExternalHint } from "../../../core/manifest/externalHints";
@@ -2096,7 +2100,16 @@ function BuildingPanel(props: {
 // Done
 // ===========================================================================
 
-function DonePanel(props: {
+/**
+ * Exported for the render harness only — nothing else imports it.
+ *
+ * This is the screen a curator reads after a 28-minute build, and the one that
+ * carries every warning the pipeline produced. Reaching it through BuildWizard
+ * would mean driving a whole build session into its terminal state; rendering
+ * the panel directly with a real result is the same picture for none of that
+ * machinery.
+ */
+export function DonePanel(props: {
   result: BuildPipelineResult;
   onBuildAnother: () => void;
   onGoHome: () => void;
@@ -2222,8 +2235,21 @@ function DonePanel(props: {
           </Button>
         </div>
         <DistributionHint />
+        {/*
+          OPEN by default. These are warnings about a package the curator is
+          about to hand to strangers, and they were behind a disclosure that
+          said only "10 warnings" — so the one reading "this mod is missing 7
+          files its archive contains, worth opening before shipping" was one
+          click away and indistinguishable from "4382 contested files
+          recorded", which is pure bookkeeping.
+
+          A curator who has read them can collapse the section; a curator who
+          has not should not have to discover it exists. The install side
+          already shows its notices this way.
+        */}
         {result.warnings.length > 0 && (
           <details
+            open
             style={{
               padding: "var(--eh-sp-3)",
               background: "rgba(255, 198, 99, 0.06)",
@@ -2233,11 +2259,24 @@ function DonePanel(props: {
             }}
           >
             <summary style={{ cursor: "pointer" }}>
-              {result.warnings.length} warning{result.warnings.length === 1 ? "" : "s"}
+              {result.warnings.length} thing{result.warnings.length === 1 ? "" : "s"}{" "}
+              worth reading before you share this
             </summary>
             <div className="eh-stack eh-stack--sm" style={{ marginTop: "var(--eh-sp-2)" }}>
-              {result.warnings.map((w, i) => (
-                <WarningRow key={i} text={w} />
+              {/*
+                Ordered by severity, not by which part of the pipeline happened
+                to emit them. warningTone already classifies every line and the
+                dot colour already shows it — but the list was in production
+                order, so on the real build the one reading "is missing 7
+                file(s) ... worth opening before shipping" sat EIGHTH, below
+                four pieces of bookkeeping. Sorting costs nothing and puts what
+                needs doing where it is read.
+
+                Stable within a tone, so the pipeline's own ordering still
+                decides ties and the list does not reshuffle between builds.
+              */}
+              {sortWarningsBySeverity(result.warnings).map((w, i) => (
+                <WarningRow key={`${i}-${w.slice(0, 24)}`} text={w} />
               ))}
             </div>
           </details>

@@ -5,6 +5,45 @@
  */
 import { describe, expect, it } from "vitest";
 
+import { sortWarningsBySeverity } from "./warningText";
+
+describe("ordering warnings by what needs doing", () => {
+  // On the real 963-mod build the pipeline emitted ten warnings, and the one
+  // reading "is missing 7 file(s) ... worth opening before shipping" came
+  // EIGHTH — below four pieces of bookkeeping. The severity was already known
+  // from the words, and simply unused for ordering.
+  const note = "4382 contested file(s) recorded; nothing is lost.";
+  const attention = '"Ivy\'sPantiesSettings" is missing 7 file(s).';
+  const blocking = "9 mod(s) could not be checked against their archive.";
+
+  it("puts what needs action above bookkeeping", () => {
+    expect(sortWarningsBySeverity([note, attention, blocking])).toEqual([
+      blocking,
+      attention,
+      note,
+    ]);
+  });
+
+  it("keeps the pipeline's own order within a severity", () => {
+    // Two builds of the same collection must produce comparably-ordered
+    // reports; a curator diffing them should not be reading shuffle noise.
+    const a = "3 mod(s) could not be checked.";
+    const b = "7 other mod(s) could not be read.";
+    expect(sortWarningsBySeverity([a, b])).toEqual([a, b]);
+    expect(sortWarningsBySeverity([b, a])).toEqual([b, a]);
+  });
+
+  it("does not lose or duplicate anything", () => {
+    const all = [note, attention, blocking, "another note"];
+    expect(sortWarningsBySeverity(all)).toHaveLength(all.length);
+    expect([...sortWarningsBySeverity(all)].sort()).toEqual([...all].sort());
+  });
+
+  it("handles an empty list", () => {
+    expect(sortWarningsBySeverity([])).toEqual([]);
+  });
+});
+
 import { splitWarning, warningTone } from "./warningText";
 
 describe("splitWarning", () => {
