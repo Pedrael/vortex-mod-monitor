@@ -33,7 +33,14 @@ import { KEYFRAMES_CSS } from "../theme/keyframes";
 import { LOGO_CSS } from "../theme/logo";
 import { TOKENS_CSS } from "../theme/tokens";
 import { UTILITIES_CSS } from "../theme/utilities";
-import { DoneStep, InstallingStep } from "../pages/install/steps";
+import {
+  ConfirmStep,
+  DecisionsStep,
+  DoneStep,
+  InstallingStep,
+  PreviewStep,
+} from "../pages/install/steps";
+import { ApiProvider } from "../state/ApiContext";
 
 const OUT = path.join(
   "C:",
@@ -118,10 +125,23 @@ const manifest = {
   rules: Array.from({ length: 291 }, () => ({})),
 };
 
+/**
+ * The full PreviewBundle shape, not a convenient subset.
+ *
+ * Built from the type rather than by adding fields until the render stopped
+ * throwing: a partial mock renders a screen that is missing whatever the
+ * missing field drives, and that absence looks like a UI finding rather than a
+ * hole in the fixture.
+ */
 const bundle = {
+  zipPath:
+    "C:/Users/x/AppData/Roaming/Vortex/event-horizon/collections/ivy-2-1.0.10.ehcoll",
+  appDataPath: "C:/Users/x/AppData/Roaming/Vortex",
+  ehcoll: { manifest, bundledArchives: [], warnings: [], errors: [] },
+  receipt: undefined,
   plan: {
     manifest,
-    installTarget: { kind: "fresh-profile", profileName: "Ivy 2 v1.0.10" },
+    installTarget: { kind: "fresh-profile", suggestedProfileName: "Ivy 2 v1.0.10" },
     summary: {
       totalMods: 963,
       alreadyInstalled: 0,
@@ -129,11 +149,22 @@ const bundle = {
       needsUserConfirmation: 27,
       missing: 5,
       orphans: 0,
+      canProceed: true,
+      ruleCount: 291,
+      // Zero for Fallout 4 by design — the case that reads as failure.
+      loadOrderCount: 0,
+      pluginOrderCount: 817,
+      userlistPluginCount: 29,
+      userlistGroupCount: 0,
     },
-    resolutions: [],
+    modResolutions: [],
     orphanedMods: [],
+    externalDependencies: [],
+    rulePlan: [],
+    pluginOrder: { entries: [], warnings: [] },
+    compatibility: { errors: [], warnings: [], canProceed: true },
+    previousInstall: undefined,
   },
-  sourcePath: "C:/Users/x/AppData/Roaming/Vortex/event-horizon/collections/ivy-2-1.0.10.ehcoll",
 } as never;
 
 /** Full shapes — DoneStep reads these fields unguarded. */
@@ -157,6 +188,78 @@ const USERLIST = {
 
 describe("render", () => {
   const on = process.env.EH_RENDER === "1";
+
+  it.skipIf(!on)("preview — what the plan will do", () => {
+    write(
+      "preview",
+      React.createElement(PreviewStep, {
+        bundle,
+        onContinue: () => undefined,
+        onCancel: () => undefined,
+      } as never),
+    );
+  });
+
+  it.skipIf(!on)("decisions — the mods needing a human answer", () => {
+    // 27 of them on the real plan. This is the screen where a user with no
+    // context has to make choices about mods they have never heard of.
+    const base = bundle as unknown as { plan: Record<string, unknown> };
+    const conflictBundle = {
+      ...(bundle as unknown as Record<string, unknown>),
+      plan: {
+        ...base.plan,
+        modResolutions: Array.from({ length: 27 }, (_, i) => ({
+          compareKey: `ext:${i}`,
+          name: `External Mod ${i}`,
+          decision: {
+            kind: "external-prompt-user",
+            reason: "no bundled archive and no download link",
+            fileName: `ExternalMod${i}.7z`,
+          },
+        })),
+      },
+    } as never;
+
+    // DecisionsStep uses useApi() (not the optional variant), because picking
+    // a local file needs a real Vortex to open a dialog. A minimal provider is
+    // enough for a static render.
+    write(
+      "decisions",
+      // `children` goes in the props object rather than as createElement's
+      // third argument: ApiProvider declares it required, and the positional
+      // form does not satisfy that.
+      React.createElement(ApiProvider, {
+        api: { getState: () => ({}) } as never,
+        children: React.createElement(DecisionsStep, {
+          state: {
+            kind: "decisions",
+            bundle: conflictBundle,
+            conflictChoices: {},
+            orphanChoices: {},
+          },
+          dispatch: () => undefined,
+          onContinue: () => undefined,
+        } as never),
+      }),
+    );
+  });
+
+  it.skipIf(!on)("confirm — the last screen before an hour of work", () => {
+    write(
+      "confirm",
+      React.createElement(ConfirmStep, {
+        state: {
+          kind: "confirm",
+          bundle,
+          decisions: {} as never,
+          conflictChoices: {},
+          orphanChoices: {},
+        },
+        onInstall: () => undefined,
+        onBack: () => undefined,
+      } as never),
+    );
+  });
 
   it.skipIf(!on)("installing — mid-run", () => {
     write(
@@ -316,4 +419,5 @@ describe("render", () => {
     );
   });
 });
+
 

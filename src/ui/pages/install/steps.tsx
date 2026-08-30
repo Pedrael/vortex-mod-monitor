@@ -930,10 +930,20 @@ function RulesScopePreview(props: {
           lineHeight: "var(--eh-leading-relaxed)",
         }}
       >
-        Mod rules and LOOT plugin rules will be applied to your Vortex setup.
-        The collection&apos;s rules win over any conflicting rules you may
-        already have. Pre-existing rules unrelated to this collection are
-        left alone.
+        {/*
+          This used to end "Pre-existing rules unrelated to this collection are
+          left alone", which stopped being true the day the rule purge landed:
+          the collection's rules REPLACE yours, and because Vortex stores mod
+          rules on the mod and the LOOT userlist per game — neither per profile
+          — that reaches rules for mods outside this collection and for your
+          other profiles too. Saying otherwise on the screen shown before the
+          user commits is the worst place in the app to be out of date.
+        */}
+        This collection&apos;s mod rules and LOOT plugin rules become the ONLY
+        ones for this game, so what loads is exactly what the curator tested.
+        Your existing rules — including any for mods outside this collection,
+        and for your other profiles of this game — are cleared first. They are
+        saved to a backup file, and the install tells you where.
       </p>
     </div>
   );
@@ -1085,6 +1095,32 @@ export function DecisionsStep(props: DecisionsStepProps): JSX.Element {
             title="Mod conflicts"
             description="The collection's version differs from what's installed on your machine."
           />
+          {/*
+            How far through they are. A real plan puts 27 near-identical cards
+            on this page, each about a mod the user has never heard of, and the
+            only feedback for answering one was that its radio filled in. With
+            no denominator visible while scrolling, there is no way to tell
+            whether you are nearly done or have twenty to go — and the
+            Continue button silently stays disabled until the last one.
+          */}
+          {conflicts.length > 1 && (
+            <p
+              className="eh-note"
+              role="status"
+              style={{ margin: "0 0 var(--eh-sp-3) 0" }}
+            >
+              {(() => {
+                const decided = conflicts.filter(
+                  (r) =>
+                    (state.conflictChoices[r.compareKey] ??
+                      defaultConflictChoice(r)) !== undefined,
+                ).length;
+                return decided >= conflicts.length
+                  ? `All ${conflicts.length} answered.`
+                  : `${decided} of ${conflicts.length} answered — the rest need a choice before you can continue.`;
+              })()}
+            </p>
+          )}
           <div
             className="eh-stack"
           >
@@ -1723,8 +1759,23 @@ export function ConfirmStep(props: ConfirmStepProps): JSX.Element {
             that describes something being destroyed, so it does not belong
             in a list of counts. When there is nothing to remove, saying so
             plainly is the reassurance this screen owes the reader. */}
+        {/*
+          "Nothing will be uninstalled" was the only claim this screen made
+          about the user's existing setup, and it left the reader to conclude
+          that nothing else of theirs changes. Since the rule purge that is no
+          longer true: their conflict and LOOT rules are cleared for the whole
+          game. It is reversible from the backup, but it is not nothing, and
+          the last screen before an hour of work is where it has to be said.
+        */}
+        <p className="eh-note" style={{ margin: "var(--eh-sp-4) 0 0 0" }}>
+          Your own mod-conflict and LOOT rules for this game will be replaced
+          by the collection&apos;s, so the load order matches what the curator
+          tested. They are backed up to a file first, and the summary at the
+          end tells you where.
+        </p>
+
         {removalCount === 0 ? (
-          <p className="eh-note" style={{ margin: "var(--eh-sp-4) 0 0 0" }}>
+          <p className="eh-note" style={{ margin: "var(--eh-sp-2) 0 0 0" }}>
             Nothing will be uninstalled.
           </p>
         ) : (
