@@ -50,6 +50,7 @@ import {
   fillDefaultOrphanChoices,
   initialWizardState,
   wizardReducer,
+  type PreviewBundle,
   type WizardAction,
   type WizardState,
 } from "./state";
@@ -332,6 +333,138 @@ class InstallSession {
     this.dispatch({ type: "back-from-confirm" });
   }
 
+  /**
+   * The blocked dialog, with an offer to actually fix it.
+   *
+   * Telling a user their extractor is broken and leaving them to find
+   * protontricks is the failure this whole feature exists to avoid. Most
+   * people running a 900-mod collection did not sign up to debug a DLL search
+   * path, so the dialog offers to install the runtimes itself.
+   *
+   * It never claims success from an exit code: the repair re-runs the 7-Zip
+   * self-test afterwards and reports what THAT said. "Installed, and it works
+   * now" and "installed, and it still does not" are different sentences, and
+   * the second one is the useful one because it redirects to the Proton build.
+   */
+  private async offerRuntimeRepair(
+    api: types.IExtensionApi,
+    blocked: NonNullable<PreviewBundle["extractorBlocked"]>,
+  ): Promise<void> {
+    const NL = String.fromCharCode(10);
+    const body = [
+      blocked.message,
+      "",
+      `${blocked.toUnpack} of this collection's mods still have to be ` +
+        `unpacked, and every one of them would fail. Nothing is lost by ` +
+        `stopping now.`,
+      "",
+      "Event Horizon can download and install the Microsoft runtimes this " +
+        "usually needs, then re-test the extractor and tell you whether it " +
+        "actually helped.",
+      "",
+      ...blocked.steps,
+    ].join(NL);
+
+    const choice = await api.showDialog?.(
+      "error",
+      "Vortex cannot unpack mod archives",
+      { text: body },
+      [{ label: "Close" }, { label: "Install runtimes" }],
+    );
+    if (choice?.action !== "Install runtimes") return;
+
+    try {
+      const [{ installPrerequisites, summarisePrereqResults }, { nodePrereqDeps }, prereqs, health] =
+        await Promise.all([
+          import("../../../core/runtime/installPrerequisites"),
+          import("../../../core/runtime/nodePrereqDeps"),
+          import("../../../core/runtime/prerequisites"),
+          import("../../../core/installer/checkSevenZipHealth"),
+        ]);
+
+      const onWine = health.looksLikeWine();
+      const plan = prereqs
+        .planPrerequisites({ onWine, aggressive: true })
+        .filter((p) => p.preselected);
+
+      api.sendNotification?.({
+        id: "eh-prereq-repair",
+        type: "activity",
+        title: "Installing runtimes",
+        message: "Downloading…",
+      });
+
+      const results = await installPrerequisites(
+        plan,
+        // The verify is the whole point: re-probe the actual thing we are
+        // trying to fix rather than trusting the installer's exit code.
+        nodePrereqDeps(async () => (await health.checkSevenZipHealth()).kind === "ok"),
+        {
+          onStep: (step) => {
+            api.sendNotification?.({
+              id: "eh-prereq-repair",
+              type: "activity",
+              title: "Installing runtimes",
+              message:
+                step.phase === "downloading"
+                  ? `Downloading ${step.id}…`
+                  : step.phase === "installing"
+                    ? `Installing ${step.id}…`
+                    : step.phase === "verifying"
+                      ? "Re-testing the extractor…"
+                      : `${step.id} done`,
+            });
+          },
+        },
+      );
+
+      api.dismissNotification?.("eh-prereq-repair");
+      const summary = summarisePrereqResults(results);
+
+      const { ehLog } = await import("../../../core/logging/ehLog");
+      ehLog(summary.fixed ? "info" : "warn", "prereq.repair", {
+        onWine,
+        attempted: results.map((r) => r.id),
+        verdicts: results.map((r) => r.verdict.kind),
+        verified: results.map((r) => r.verified),
+      });
+
+      void api.showDialog?.(
+        summary.fixed ? "info" : "error",
+        summary.fixed ? "Runtimes installed" : "Still not working",
+        {
+          text: [
+            summary.message,
+            "",
+            ...results.map(
+              (r) =>
+                `${r.name}: ${r.verdict.kind}` +
+                (r.verdict.kind === "failed" ? ` — ${r.verdict.why}` : ""),
+            ),
+            ...(summary.fixed
+              ? []
+              : ["", ...blocked.steps]),
+          ].join(NL),
+        },
+        [{ label: "Close" }],
+      );
+    } catch (err) {
+      api.dismissNotification?.("eh-prereq-repair");
+      void api.showDialog?.(
+        "error",
+        "Could not install the runtimes",
+        {
+          text: [
+            err instanceof Error ? err.message : String(err),
+            "",
+            ...blocked.steps,
+          ].join(NL),
+        },
+        [{ label: "Close" }],
+      );
+    }
+  }
+
   // ── Phase: confirm → installing → done ───────────────────────────
 
   /**
@@ -365,22 +498,7 @@ class InstallSession {
     // extraction at all, so it is still allowed through.
     const blocked = this.state.bundle.extractorBlocked;
     if (blocked !== undefined && blocked.toUnpack > 0) {
-      void api.showDialog?.(
-        "error",
-        "Vortex cannot unpack mod archives",
-        {
-          text: [
-            blocked.message,
-            "",
-            `${blocked.toUnpack} of this collection's mods still have to be ` +
-              `unpacked, and every one of them would fail. Fix the extractor ` +
-              `first — nothing here is lost by stopping now.`,
-            "",
-            ...blocked.steps,
-          ].join(String.fromCharCode(10)),
-        },
-        [{ label: "Close" }],
-      );
+      void this.offerRuntimeRepair(api, blocked);
       return;
     }
 
