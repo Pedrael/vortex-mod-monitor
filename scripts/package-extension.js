@@ -3,7 +3,7 @@
  *
  * ─── WHY A SCRIPT AND NOT "JUST ZIP THE FOLDER" ────────────────────────
  * Vortex reads `info.json` from the ARCHIVE ROOT. Zipping the project folder
- * produces `vortex-mod-monitor/info.json` one level down, and Vortex then
+ * produces `Event-Horizon/info.json` one level down, and Vortex then
  * refuses the extension with a message about a missing manifest — the single
  * most common way this upload goes wrong, and it costs a review round trip to
  * find out. This script writes the four things the extension actually consists
