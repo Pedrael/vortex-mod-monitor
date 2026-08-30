@@ -43,7 +43,7 @@ export type SevenZipHealth =
   /** Vortex did not expose SevenZip at all — we never got a handle to test. */
   | { kind: "unavailable"; why: string }
   /** 7z is there and cannot do its job. This is the Proton case. */
-  | { kind: "broken"; why: string }
+  | { kind: "broken"; why: string; fatal: boolean }
   /**
    * The check itself failed, which says nothing about 7z either way.
    *
@@ -81,7 +81,10 @@ export async function checkSevenZipHealth(
   try {
     const health = await sevenZipSelfTest(api);
     if (health.ok) return { kind: "ok" };
-    return { kind: "broken", why: health.why };
+    // fatal === false means extraction works and only listing is broken, which
+    // is survivable: every listing path of ours is native-first. Only a failed
+    // EXTRACT means no mod can be installed.
+    return { kind: "broken", why: health.why, fatal: health.fatal };
   } catch (err) {
     return {
       kind: "indeterminate",
@@ -175,12 +178,18 @@ export function describeSevenZipHealth(
       // inside its own app directory, so this is virtually never a missing
       // 7-Zip: it is a missing runtime that 7z.exe needs, or a Proton build
       // that cannot run it.
+      // Order matters, and so does NOT leading with vcrun. If 7z managed to
+      // create an archive, its process started and ran — which rules a missing
+      // Visual C++ runtime out, because a missing DLL means the exe never
+      // launches. Leading with vcrun2022 sent at least one tester after a
+      // runtime that was already installed.
       "Run scripts/setup-proton.sh from the Event Horizon repo on the LINUX " +
-        "side — it finds your Vortex prefix and installs the runtimes 7-Zip needs.",
-      "Or, by hand: protontricks <appid> vcrun2022 (Vortex bundles 7-Zip; it " +
-        "is the Visual C++ runtime that is usually missing, not 7-Zip itself).",
-      "Try a different Proton version for the Vortex prefix — Proton " +
-        "Experimental and GE builds differ in what they can run.",
+        "side — it finds your Vortex prefix and sets up what Vortex needs.",
+      "Try a different Proton version for the Vortex prefix first — Proton " +
+        "Experimental and GE builds differ in what they can run, and this is " +
+        "the most common cause when 7-Zip runs but misbehaves.",
+      "If 7-Zip does not start at all (rather than starting and failing), " +
+        "then a runtime IS missing: protontricks <appid> vcrun2022.",
       `Detail: ${health.why}`,
     ],
   };

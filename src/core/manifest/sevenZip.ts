@@ -219,9 +219,11 @@ function assertOk(result: SevenZipResult | undefined, what: string): void {
  * Cheap: a few hundred bytes in a temp directory, run only when something has
  * already gone wrong.
  */
+const PROBE_CONTENT = "event-horizon 7z self-test";
+
 export async function sevenZipSelfTest(
   api: SevenZipApi,
-): Promise<{ ok: true } | { ok: false; why: string }> {
+): Promise<{ ok: true } | { ok: false; fatal: boolean; why: string }> {
   const fsp = await import("fs/promises");
   const os = await import("os");
   const path = await import("path");
@@ -231,23 +233,68 @@ export async function sevenZipSelfTest(
     dir = await fsp.mkdtemp(path.join(os.tmpdir(), "eh-7z-selftest-"));
     const source = path.join(dir, "probe.txt");
     const archive = path.join(dir, "probe.zip");
-    await fsp.writeFile(source, "event-horizon 7z self-test", "utf8");
+    await fsp.writeFile(source, PROBE_CONTENT, "utf8");
 
     await sevenZipAdd(api, archive, [source], { raw: ["-tzip"] });
 
-    const spec = await api.list(archive, {}, () => undefined);
-    if (typeof spec?.type !== "string") {
+    // EXTRACT is the operation that decides whether mods can install, so it is
+    // the one that decides whether a failure is fatal.
+    //
+    // The previous version tested `list` alone and called any failure "7z is
+    // not working on this system". That conflated two very different states.
+    // `list` is the operation we ALREADY know misbehaves under Wine - it is
+    // why readZip exists and why listArchive.ts is native-first with 7z only
+    // as a fallback - and node-7z resolves it with a spec even when the
+    // underlying call failed. A tester's log showed exactly this shape: the
+    // archive was created successfully, so 7z.exe had started and done real
+    // work, and only the listing came back unusable. Reporting that as a dead
+    // extractor sent the diagnosis at a missing Visual C++ runtime, which a
+    // successful create had already ruled out.
+    const extractDir = path.join(dir, "out");
+    try {
+      await sevenZipExtractFull(api, archive, extractDir);
+      const roundTripped = await fsp.readFile(
+        path.join(extractDir, "probe.txt"),
+        "utf8",
+      );
+      if (roundTripped !== PROBE_CONTENT) {
+        return {
+          ok: false,
+          fatal: true,
+          why:
+            "7z extracted an archive but the contents did not survive the " +
+            "round trip. Vortex cannot unpack mods on this system.",
+        };
+      }
+    } catch (err) {
       return {
         ok: false,
+        fatal: true,
         why:
-          "7z created an archive but could not read it back. The 7z bundled " +
-          "with Vortex is not working on this system.",
+          "7z created an archive but could not extract it back: " +
+          `${err instanceof Error ? err.message : String(err)}. ` +
+          "Vortex cannot unpack mods on this system.",
+      };
+    }
+
+    const spec = await api.list(archive, {}, () => undefined);
+    if (typeof spec?.type !== "string") {
+      // Not fatal: extraction works, so mods install. Only listing is broken,
+      // and every path of ours that needs a listing is native-first already.
+      return {
+        ok: false,
+        fatal: false,
+        why:
+          "7z can create and extract archives but cannot list them. This is a " +
+          "known node-7z failure under Wine/Proton. Event Horizon reads " +
+          "archives natively, so installs are unaffected.",
       };
     }
     return { ok: true };
   } catch (err) {
     return {
       ok: false,
+      fatal: true,
       why: `7z could not run: ${err instanceof Error ? err.message : String(err)}`,
     };
   } finally {

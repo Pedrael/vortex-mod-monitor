@@ -13,6 +13,9 @@
  * `extractFull` and `add` had always run their results through assertOk. Only
  * `list` did not.
  */
+import * as fsp from "fs/promises";
+import * as path from "path";
+
 import { describe, expect, it } from "vitest";
 
 import { sevenZipList, sevenZipSelfTest } from "./sevenZip";
@@ -109,21 +112,63 @@ describe("sevenZipSelfTest", () => {
     expect(health.why).toMatch(/ENOENT|could not run/);
   });
 
-  it("reports 7z as broken when it writes an archive it cannot read back", async () => {
+  it("grades a list-only failure NON-fatal, because extraction still works", async () => {
+    // The shape a real Proton prefix produced: create and extract both work,
+    // only `list` comes back unusable. That used to be reported as a dead
+    // extractor, which pointed the diagnosis at a missing Visual C++ runtime -
+    // something the successful `add` had already ruled out, since a missing
+    // DLL means the exe never starts. Listing is also the one operation we
+    // route around natively, so it cannot justify blocking an install.
     const api = {
       add: async () => ({ code: 0 }),
       list: async () => ({}),
+      extractFull: async (_a: string, dest: string) => {
+        await fsp.mkdir(dest, { recursive: true });
+        await fsp.writeFile(
+          path.join(dest, "probe.txt"),
+          "event-horizon 7z self-test",
+          "utf8",
+        );
+        return { code: 0 };
+      },
     } as unknown as SevenZipApi;
     const health = await sevenZipSelfTest(api);
     expect(health.ok).toBe(false);
     if (health.ok) throw new Error("unreachable");
-    expect(health.why).toMatch(/could not read it back/);
+    expect(health.fatal).toBe(false);
+    expect(health.why).toMatch(/cannot list/i);
   });
 
-  it("passes when 7z round-trips", async () => {
+  it("grades a failed extraction FATAL, because no mod can be unpacked", async () => {
     const api = {
       add: async () => ({ code: 0 }),
       list: async () => ({ type: "zip" }),
+      extractFull: async () => {
+        throw new Error("extract blew up");
+      },
+    } as unknown as SevenZipApi;
+    const health = await sevenZipSelfTest(api);
+    expect(health.ok).toBe(false);
+    if (health.ok) throw new Error("unreachable");
+    expect(health.fatal).toBe(true);
+  });
+
+  it("passes only when the archive survives a real extract round trip", async () => {
+    // extractFull writes the probe back for real. A double that resolved
+    // without producing a file would be a 7z that silently extracts nothing -
+    // which is the worst failure shape there is, and now fails this test.
+    const api = {
+      add: async () => ({ code: 0 }),
+      list: async () => ({ type: "zip" }),
+      extractFull: async (_a: string, dest: string) => {
+        await fsp.mkdir(dest, { recursive: true });
+        await fsp.writeFile(
+          path.join(dest, "probe.txt"),
+          "event-horizon 7z self-test",
+          "utf8",
+        );
+        return { code: 0 };
+      },
     } as unknown as SevenZipApi;
     expect(await sevenZipSelfTest(api)).toEqual({ ok: true });
   });
