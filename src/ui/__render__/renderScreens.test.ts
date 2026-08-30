@@ -45,6 +45,7 @@ import { ApiProvider } from "../state/ApiContext";
 import { ToastProvider } from "../components/Toast";
 import { DonePanel } from "../pages/build/BuildPage";
 import { DraftCard, PublishedCard } from "../pages/build/BuildDashboard";
+import { DashboardBody, Hero } from "../pages/HomePage";
 
 /**
  * Where the rendered screens land.
@@ -82,6 +83,11 @@ const page = (title: string, body: string): string => `<!doctype html>
   html,body{margin:0;background:var(--eh-bg-void, #0b0e14);}
   /* Animations would capture mid-flight and make every screenshot differ. */
   *,*::before,*::after{animation:none !important;transition:none !important;}
+  /* .eh-stagger > * starts at opacity:0 and is revealed BY its animation.
+     Killing animations above left every staggered child invisible - which
+     photographed as a large empty band where the quick-action cards are, and
+     read as a missing UI section rather than a harness artefact. */
+  .eh-stagger > *{opacity:1 !important;}
 
   /* The shell is position:absolute + inset:0 + overflow:hidden because Vortex
      renders it into a positioned pane, and eh-app__main scrolls inside it.
@@ -189,8 +195,86 @@ const USERLIST = {
   skippedUserlistEntries: [],
 } as never;
 
+/**
+ * DashboardData with EVERY field the panels actually read, enumerated from the
+ * component source rather than added until the render stopped throwing. A
+ * partial fixture renders a screen missing whatever the absent field drives,
+ * and that absence reads as a UI defect instead of a hole in the mock.
+ */
+const dashboardData = {
+  status: {
+    gameId: "fallout4",
+    gameIsSupported: true,
+    gameLabel: "Fallout 4",
+    profileId: "S1xCt4Cbj1x",
+    profileName: "Ivy 2 v1.0.10",
+    vortexVersion: "2.6.0",
+    appDataPath: "C:/Users/DuduPhudu/AppData/Roaming/Vortex",
+  },
+  receipts: [
+    {
+      packageId: "0f6b1a2c-1d3e-4f50-9a1b-2c3d4e5f6071",
+      packageName: "Ivy 2",
+      packageVersion: "1.0.10",
+      gameId: "fallout4",
+      installedAt: Date.parse("2026-08-29T21:14:00Z"),
+      installTargetMode: "fresh-profile",
+      mods: Array.from({ length: 963 }, () => ({})),
+    },
+    {
+      packageId: "1a7c2b3d-2e4f-5061-ab2c-3d4e5f607182",
+      packageName: "Ivy 2",
+      packageVersion: "1.0.9",
+      gameId: "fallout4",
+      installedAt: Date.parse("2026-08-24T18:02:00Z"),
+      installTargetMode: "current-profile",
+      mods: Array.from({ length: 954 }, () => ({})),
+    },
+  ],
+  receiptErrors: [],
+  curatorConfigs: [
+    {
+      slug: "ivy-2",
+      configPath: "C:/Users/DuduPhudu/AppData/Roaming/Vortex/event-horizon/collections/ivy-2.json",
+      modifiedAt: Date.parse("2026-08-30T09:31:00Z"),
+      config: { externalMods: { a: {}, b: {}, c: {} } },
+    },
+  ],
+  builtPackages: [
+    {
+      packagePath: "C:/…/collections/ivy-2-1.0.10.ehcoll",
+      fileName: "ivy-2-1.0.10.ehcoll",
+      modifiedAt: Date.parse("2026-08-30T09:33:00Z"),
+      sizeBytes: 157_984_816,
+    },
+    {
+      packagePath: "C:/…/collections/ivy-2-1.0.9.ehcoll",
+      fileName: "ivy-2-1.0.9.ehcoll",
+      modifiedAt: Date.parse("2026-08-24T17:58:00Z"),
+      sizeBytes: 151_220_004,
+    },
+  ],
+} as never;
+
 describe("render", () => {
   const on = process.env.EH_RENDER === "1";
+  it.skipIf(!on)("main dashboard — the first screen anyone sees", () => {
+    write(
+      "dashboard-home",
+      // The real tree is .eh-page > Hero + DashboardBody (see Dashboard).
+      React.createElement(
+        "div",
+        { className: "eh-page" },
+        React.createElement(Hero, null),
+        React.createElement(DashboardBody, {
+        data: dashboardData,
+        onNavigate: () => undefined,
+          onRefresh: () => undefined,
+        } as never),
+      ),
+    );
+  });
+
 
   it.skipIf(!on)("build dashboard — the cards that ARE its content", () => {
     // The dashboard mounts loading and fills in from an effect, which static

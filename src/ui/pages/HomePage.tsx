@@ -111,29 +111,20 @@ function Dashboard(props: HomePageProps): JSX.Element {
 // Hero (compact)
 // ===========================================================================
 
-function Hero(): JSX.Element {
+/** Exported for the render harness alongside {@link DashboardBody}. */
+export function Hero(): JSX.Element {
   return (
     <section
       className="eh-hero"
-      style={{ paddingTop: "var(--eh-sp-5)", paddingBottom: "var(--eh-sp-5)" }}
+      style={{ paddingTop: "var(--eh-sp-3)", paddingBottom: "var(--eh-sp-3)" }}
     >
       <span className="eh-hero__logo">
-        <EventHorizonLogo size={168} />
+        <EventHorizonLogo size={104} />
       </span>
-      <span className="eh-hero__tagline">A Vortex collection installer</span>
-      <h1 className="eh-hero__title" style={{ fontSize: "var(--eh-text-3xl)" }}>
+      <h1 className="eh-hero__title" style={{ fontSize: "var(--eh-text-2xl)" }}>
         <span className="eh-text-gradient">Event Horizon</span>
       </h1>
-      <span
-        style={{
-          color: "var(--eh-text-muted)",
-          fontSize: "var(--eh-text-xs)",
-          letterSpacing: "var(--eh-tracking-widest)",
-          textTransform: "uppercase",
-        }}
-      >
-        by DuduPhudu &amp; Bluuuk
-      </span>
+      <span className="eh-hero__tagline">A Vortex collection installer</span>
     </section>
   );
 }
@@ -197,7 +188,9 @@ interface DashboardBodyProps {
   onRefresh: () => void;
 }
 
-function DashboardBody(props: DashboardBodyProps): JSX.Element {
+/** Exported for the render harness (`src/ui/__render__`), which photographs
+ *  this screen without the async load Dashboard performs. */
+export function DashboardBody(props: DashboardBodyProps): JSX.Element {
   const { data, onNavigate, onRefresh } = props;
   return (
     <div
@@ -230,9 +223,9 @@ function SystemStatusBar(props: {
         style={{
           display: "flex",
           alignItems: "center",
-          gap: "var(--eh-sp-4)",
+          gap: "var(--eh-sp-5)",
           flexWrap: "wrap",
-          padding: "var(--eh-sp-2)",
+          padding: "var(--eh-sp-1) var(--eh-sp-2)",
         }}
       >
         <StatusTile
@@ -242,7 +235,7 @@ function SystemStatusBar(props: {
             status.gameId === undefined
               ? "warning"
               : status.gameIsSupported
-              ? "success"
+              ? "neutral"
               : "danger"
           }
           sub={status.gameIsSupported ? undefined : "Not supported by Event Horizon"}
@@ -251,14 +244,13 @@ function SystemStatusBar(props: {
           label="Profile"
           value={status.profileName ?? "—"}
           sub={status.profileId}
-          intent="info"
+          intent="neutral"
         />
         <StatusTile
           label="Vortex"
           value={`v${status.vortexVersion}`}
           intent="neutral"
         />
-        <div style={{ flex: 1 }} />
         <Button intent="ghost" onClick={onRefresh}>
           Refresh
         </Button>
@@ -278,7 +270,10 @@ function StatusTile(props: {
     warning: "var(--eh-warning)",
     danger: "var(--eh-danger)",
     info: "var(--eh-cyan)",
-    neutral: "var(--eh-text-muted)",
+    // Was text-muted, which made every ordinary fact look de-emphasised while
+    // the coloured ones looked urgent. Neutral is the DEFAULT state and should
+    // read as plain text; colour is reserved for something needing attention.
+    neutral: "var(--eh-text-primary)",
   }[props.intent];
   return (
     <div
@@ -286,7 +281,11 @@ function StatusTile(props: {
         display: "flex",
         flexDirection: "column",
         gap: 2,
-        minWidth: 160,
+        // flex-grow so the three tiles spread across the bar. They used to be
+        // fixed-width and left-hugging, with a flex:1 spacer shoving Refresh to
+        // the far edge - which read as an unfinished row rather than a layout.
+        flex: "1 1 0",
+        minWidth: 150,
       }}
     >
       <span
@@ -399,6 +398,10 @@ function PlayerCuratorGrid(props: {
         display: "grid",
         gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
         gap: "var(--eh-sp-4)",
+        // Without this the grid stretches both panels to the taller one's
+        // height, so the shorter panel ends in a large empty box that looks
+        // like content failed to load.
+        alignItems: "start",
       }}
     >
       <PlayerPanel
@@ -725,9 +728,13 @@ function FooterRow(props: { status: DashboardData["status"] }): JSX.Element {
           opacity: 0.7,
           wordBreak: "break-all",
         }}
+        // appDataPath is already %APPDATA%\Vortex (util.getVortexPath("userData")),
+        // so this used to render ...\Vortex\Vortex\event-horizon\ - a path that does
+        // not exist, under a tooltip saying that is where the user's data lives.
+        // Keep in step with getEventHorizonRoot() in core/paths.ts.
         title="Where Event Horizon stores receipts and configs"
       >
-        {props.status.appDataPath}\Vortex\event-horizon\
+        {props.status.appDataPath}\event-horizon\
       </div>
     </section>
   );
