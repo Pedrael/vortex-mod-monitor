@@ -13,7 +13,7 @@ import * as React from "react";
 import { EventHorizonLogo, Page, Pill, Card } from "../components";
 import { EXTENSION_VERSION } from "../version";
 
-const REPO_URL = "https://github.com/BubuZefirka/vortex-event-horizon";
+const REPO_URL = "https://github.com/ReidenXerx/Event-Horizon";
 const ISSUE_URL = `${REPO_URL}/issues/new`;
 const LICENSE_URL = `${REPO_URL}/blob/main/LICENSE`;
 const VORTEX_URL = "https://www.nexusmods.com/about/vortex/";
@@ -127,7 +127,7 @@ export function AboutPage(): JSX.Element {
           <LinkRow
             href={LICENSE_URL}
             label="MIT License"
-            sub="© 2026 BubuZefirka — see LICENSE for full text"
+            sub="© 2026 DuduPhudu and Bluuuk — see LICENSE for full text"
           />
         </Card>
 

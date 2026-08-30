@@ -9,8 +9,8 @@
 ## Setup
 
 ```powershell
-git clone <repo-url>
-cd vortex-event-horizon
+git clone https://github.com/ReidenXerx/Event-Horizon.git
+cd Event-Horizon
 npm install
 ```
 

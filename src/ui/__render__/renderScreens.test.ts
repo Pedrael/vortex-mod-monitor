@@ -17,6 +17,7 @@
  * this UI's problems stayed invisible.
  */
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 
 import { describe, it } from "vitest";
@@ -45,19 +46,18 @@ import { ToastProvider } from "../components/Toast";
 import { DonePanel } from "../pages/build/BuildPage";
 import { DraftCard, PublishedCard } from "../pages/build/BuildDashboard";
 
-const OUT = path.join(
-  "C:",
-  "Users",
-  "DuduPhudu",
-  "AppData",
-  "Local",
-  "Temp",
-  "claude",
-  "C--Users-DuduPhudu-Documents-Projects-vortex-mod-monitor",
-  "14324b8e-dcc0-4943-aa2c-69a8476e5edf",
-  "scratchpad",
-  "ui",
-);
+/**
+ * Where the rendered screens land.
+ *
+ * This was an absolute path hardcoded to one machine, one user and one agent
+ * session id — so it wrote nowhere useful for anybody else, and it carried the
+ * project's old name long after the rename. Set `EH_RENDER_OUT` to steer it;
+ * otherwise it goes to a per-run temp directory, which is right for a harness
+ * whose output you look at once.
+ */
+const OUT =
+  process.env.EH_RENDER_OUT ??
+  path.join(os.tmpdir(), "event-horizon-render", "ui");
 
 const CSS = [
   TOKENS_CSS,

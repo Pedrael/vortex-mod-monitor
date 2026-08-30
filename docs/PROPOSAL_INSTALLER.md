@@ -249,7 +249,7 @@ TypeScript source of truth lives in `src/types/ehcoll.ts` (to be created). JSON 
     "id": "uuid-v4",                         // stable across re-exports of same collection
     "name": "My Collection",
     "version": "1.4.2",                      // semver
-    "author": "BubuZefirka",
+    "author": "DuduPhudu",
     "createdAt": "2026-04-26T18:00:00.000Z",
     "description": "...",
     "strictMissingMods": false               // §11.3 — skip+warn vs. hard fail
@@ -587,7 +587,7 @@ The diff engine is the load-bearing pillar. The installer is meaningless without
 2. **Starfield specifics** — verify `Plugins.txt` location/format, ESM-list semantics, and Vortex's deployment method for it. Bethesda has changed this multiple times.
 3. **INI tweaks storage** — confirm Vortex Redux key. If non-trivial to extract, drop INI tweaks to a stretch goal.
 4. **LOOT integration** — do we just *require* it, or do we also persist `userlist.yaml` rules into the manifest? Probably yes, but defer to Phase 2.
-5. **Signing** — should `.ehcoll` support an optional Ed25519 signature so users can verify "this is really BubuZefirka's package"? Cheap to add, defer to Phase 5.
+5. **Signing** — should `.ehcoll` support an optional Ed25519 signature so users can verify "this is really the curator's package"? Cheap to add, defer to Phase 5.
 6. **Update flow** — when a curator releases v1.4.3, can users upgrade in place, or only re-install fresh? v1 = re-install fresh.
 7. **License** — which OSI license? MIT proposed. Add `LICENSE` in Phase 0.
 

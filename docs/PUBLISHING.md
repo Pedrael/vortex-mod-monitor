@@ -215,10 +215,26 @@ available".
 
 These are open, and none of them is a code change:
 
-- [ ] Confirm the manifest submission channel (§2b).
-- [ ] Decide the public name — `info.json` says "Event Horizon"; the folder and
-      npm package say `vortex-event-horizon` / `vortex-mod-monitor`. The last
-      is a leftover and reads oddly on a mod page.
+- [x] ~~Confirm the manifest submission channel~~ — done, §2b. It is the
+      `Review Extension` issue form on `Nexus-Mods/Vortex`.
+- [ ] **Sequencing.** Steps 4 and 5 do not have to happen together, and
+      probably should not. Uploading to Nexus (step 4) makes the extension
+      installable by file immediately and is easy to withdraw. Step 5 puts it
+      in front of every Vortex user and costs a review cycle to redo. Do step 4
+      now; do step 5 once the alpha has more than two testers.
+- [x] ~~Decide the public name~~ — **Event Horizon**, settled. The GitHub repo
+      is [ReidenXerx/Event-Horizon](https://github.com/ReidenXerx/Event-Horizon).
+      Nexus's wiki says `info.json`'s `name` *"shouldn't be changed in future
+      updates"*, so treat it as fixed from the first upload.
+- [ ] **The install folder is named from the ZIP filename, not from
+      `info.json`.** Installing `event-horizon-0.1.0-alpha.1.zip` produced
+      `%APPDATA%\Vortex\plugins\event-horizon-0.1.0-alpha.1\` — observed, not
+      assumed. Two consequences worth settling before the first public upload:
+      `npm run deploy:vortex` writes to a *different* folder
+      (`vortex-event-horizon`), so a dev deploy and a zip install coexist as
+      two registered copies; and because the version is in the folder name,
+      confirm Vortex removes the old folder on update rather than leaving
+      every release installed side by side.
 - [ ] A mod-page description and at least one screenshot; the browser shows
       `description.short` and `image` from the mirrored Nexus data.
 - [ ] Decide what a supported game list means publicly — the code accepts
