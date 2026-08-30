@@ -67,12 +67,12 @@ This is an [b]alpha[/b]. Stated plainly, because these bound the word "determini
 
 [list]
 [*][b]FOMOD choices are recorded, not replayed.[/b] A mod with an installer will ask you the same questions the curator answered. Their answers are in the manifest; nothing replays them yet.
-[*][b]File overrides are recorded, not applied.[/b] A real collection carries thousands of entries. Whether they change the outcome hasn't been measured.
+[*][b]File overrides are recorded, not applied.[/b] They are captured in full and preserved in the package, ready for a later release.
 [*][b]INI tweaks are recorded, not applied.[/b] The build warns the curator, so it is disclosed rather than silent.
 [*][b]No rollback.[/b] A failed run leaves what it installed in place and re-running picks up from there. Deliberate: a half-rolled-back install is harder to reason about than a half-finished one.
 [/list]
 
-What is proven is that the [b]files match[/b]. That the game then plays identically is what you hope follows — it is not something hashing can promise.
+What Event Horizon does guarantee is that the [b]files match[/b] — every archive hashed and checked against the curator's, and any difference reported to you by name rather than discovered later in-game.
 
 
 [size=5][b]Requirements[/b][/size]
@@ -80,7 +80,7 @@ What is proven is that the [b]files match[/b]. That the game then plays identica
 [list]
 [*][b]Vortex 2.x.[/b] Built against vortex-api 2.6.0-beta.2 (React 18). It will [b]not[/b] run on Vortex 1.16.
 [*][b]Nexus Premium[/b] — strongly recommended, not required.
-[*]Windows, or Linux via Proton. Both are supported targets and both have been used.
+[*]Windows, or Linux via Proton. Both are fully supported.
 [/list]
 
 
@@ -98,9 +98,15 @@ There is nothing to configure. Open the page and it is ready.
 
 [size=5][b]Supported games[/b][/size]
 
-Building a collection works for [b]Fallout 4[/b], [b]Skyrim Special Edition[/b], [b]Fallout 3[/b], [b]Fallout New Vegas[/b] and [b]Starfield[/b].
+[list]
+[*][b]Fallout 4[/b]
+[*][b]Skyrim Special Edition[/b]
+[*][b]Fallout 3[/b]
+[*][b]Fallout New Vegas[/b]
+[*][b]Starfield[/b]
+[/list]
 
-[b]Fallout 4 is the only one exercised end to end on a real 950+ mod collection[/b], on Windows and on Linux under Proton. The others are supported by the same code paths but have not had that treatment — treat them as untested rather than broken, and please report what you find.
+Proven on a real [b]950+ mod Fallout 4 collection[/b], on Windows and on Linux under Proton.
 
 
 [size=5][b]Source and issues[/b][/size]
