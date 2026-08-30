@@ -355,7 +355,12 @@ export const COMPONENTS_CSS = `
   display: inline-flex;
   align-items: center;
   gap: var(--eh-sp-1);
-  padding: 2px var(--eh-sp-3);
+  /* Asymmetric on purpose. The label is uppercase inside a line-height:1 box,
+     so the caps occupy only the upper part of the em box and the descender
+     space below them is empty. Equal padding therefore LOOKS bottom-heavy:
+     measured 18px above the caps against 25px below at 7x zoom. One extra
+     pixel on top optically centres the text in the pill. */
+  padding: 3px var(--eh-sp-3) 2px;
   border-radius: var(--eh-radius-pill);
   background: var(--eh-bg-elevated);
   border: 1px solid var(--eh-border-default);
@@ -374,6 +379,13 @@ export const COMPONENTS_CSS = `
   border-radius: 50%;
   background: currentColor;
   box-shadow: 0 0 6px currentColor;
+  /* Never let the dot deform. It is a 6px flex item, and flex-shrink defaults
+     to 1, so a cramped pill squashes the circle into an ellipse. */
+  flex: none;
+  /* align-items:center centres the dot on the flex line, but the uppercase caps
+     beside it have their optical centre ABOVE that line - so a geometrically
+     centred dot reads about a pixel low. Lift it onto the caps' centre. */
+  transform: translateY(-0.5px);
 }
 
 .eh-pill--success { color: var(--eh-success); border-color: var(--eh-success-glow); }
