@@ -46,6 +46,8 @@ import { ToastProvider } from "../components/Toast";
 import { DonePanel } from "../pages/build/BuildPage";
 import { DraftCard, PublishedCard } from "../pages/build/BuildDashboard";
 import { DashboardBody, Hero } from "../pages/HomePage";
+import { DoctorPanel } from "../pages/doctor/DoctorPanel";
+import { evaluateHealth } from "../../core/doctor/health";
 
 /**
  * Where the rendered screens land.
@@ -258,6 +260,54 @@ const dashboardData = {
 
 describe("render", () => {
   const on = process.env.EH_RENDER === "1";
+  it.skipIf(!on)("doctor — a collection with real problems", () => {
+    // The interesting state, not the happy one: a screen of green cards tells
+    // you nothing about whether the design works.
+    const checks = evaluateHealth(
+      {
+        packageName: "Ivy 2",
+        packageVersion: "1.0.10",
+        vortexProfileId: "prof-1",
+        mods: Array.from({ length: 963 }, (_, i) => ({
+          vortexModId: `m${i}`,
+          compareKey: `nexus:${i}:${i}`,
+          name: `Mod ${i}`,
+        })),
+        rulesApplication: {
+          appliedRuleCount: 291,
+          baselinePluginOrder: ["a.esp", "b.esp", "c.esp", "d.esp"],
+        },
+        userlistApplication: { appliedRuleCount: 29 },
+      },
+      {
+        existingProfileIds: ["prof-1"],
+        activeProfileId: "other-profile",
+        // three mods removed, two more disabled
+        installedModIds: Array.from({ length: 960 }, (_, i) => `m${i}`),
+        enabledModIds: Array.from({ length: 958 }, (_, i) => `m${i}`),
+        driftedCompareKeys: ["nexus:5:5", "nexus:9:9"],
+        currentPluginOrder: ["a.esp", "c.esp", "b.esp", "d.esp"],
+        currentModRuleCount: 280,
+        currentUserlistRuleCount: 29,
+      },
+    );
+    write(
+      "doctor",
+      React.createElement(
+        "div",
+        { className: "eh-page" },
+        React.createElement(DoctorPanel, {
+          packageName: "Ivy 2",
+          packageVersion: "1.0.10",
+          checks,
+          onRecheck: () => undefined,
+          onRunDeepScan: () => undefined,
+          onHeal: () => undefined,
+        } as never),
+      ),
+    );
+  });
+
   it.skipIf(!on)("main dashboard — the first screen anyone sees", () => {
     write(
       "dashboard-home",
