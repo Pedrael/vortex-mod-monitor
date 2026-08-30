@@ -5,7 +5,7 @@ alwaysApply: true
 
 # GitNexus is the primary navigation tool
 
-This repo is indexed by GitNexus (`Event-Horizon`): **7385 symbols, 17797 edges, 401 execution flows, 295 clusters, 6532 vector embeddings**. Every tool below is hot. Use them BEFORE Grep / Glob / Read / SemanticSearch on any code-understanding question.
+This repo is indexed by GitNexus (`Event-Horizon`): **7391 symbols, 17846 edges, 401 execution flows, 295 clusters, 6537 vector embeddings**. Every tool below is hot. Use them BEFORE Grep / Glob / Read / SemanticSearch on any code-understanding question.
 
 ## First move (mandatory triage)
 
@@ -75,7 +75,7 @@ Prefer reading these BEFORE running tools when you're orienting. They're cheap a
 
 ### Embeddings (don't forget!)
 
-The repo has **6532 vector embeddings** generated. `query` already uses them under the hood (BM25 + vector, fused via Reciprocal Rank Fusion). When the user asks something conceptually fuzzy ("payment processing", "the LOOT rules application", "where we hash archives"), trust `query` over keyword search — it surfaces semantically related processes even if the literal words don't appear in code. Pass `task_context` (what you're working on) and `goal` (what you want to find) to sharpen ranking further.
+The repo has **6537 vector embeddings** generated. `query` already uses them under the hood (BM25 + vector, fused via Reciprocal Rank Fusion). When the user asks something conceptually fuzzy ("payment processing", "the LOOT rules application", "where we hash archives"), trust `query` over keyword search — it surfaces semantically related processes even if the literal words don't appear in code. Pass `task_context` (what you're working on) and `goal` (what you want to find) to sharpen ranking further.
 
 Embeddings are preserved across re-indexes by default. `npx gitnexus analyze` keeps them; only `--drop-embeddings` rebuilds them.
 

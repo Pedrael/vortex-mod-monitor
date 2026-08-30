@@ -1,18 +1,18 @@
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **Event-Horizon** (7385 symbols, 17797 relationships, 401 execution flows).
+This project is indexed by GitNexus as **Event-Horizon** (7391 symbols, 17846 relationships, 401 execution flows).
 
 > Index stale? Run `node .gitnexus/run.cjs analyze --index-only` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? Bootstrap with `npx`, `bunx`, or `pnpm dlx` — e.g. `bunx gitnexus@latest analyze` (npm 11 npx crash; #1939).
 
 ## Always Do
 
-- **MUST run impact analysis before editing.** Use `impact({target: "symbolName", direction: "upstream"})` (MCP) or `node .gitnexus/run.cjs impact "symbolName" --direction upstream --repo .` (CLI fallback); report callers, processes, and risk. Never substitute grep for graph analysis.
+- **MUST run impact before editing.** Use `impact({target: "symbolName", direction: "upstream"})` or `node .gitnexus/run.cjs impact "symbolName" --direction upstream --repo .`; report callers, processes, and risk. Never substitute grep for graph analysis.
 - **MUST analyze graph changes before committing.** Use `detect_changes({scope: "all"})` (MCP) or `node .gitnexus/run.cjs detect-changes --scope all --repo .` (CLI fallback). `partial: true` or `truncated: true` is not a clean check — a zero means unseen, not unaffected; re-run it. For regression review: `detect_changes({scope: "compare", base_ref: "master"})` or `node .gitnexus/run.cjs detect-changes --scope compare --base-ref "master" --repo .`.
-- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
+- MUST warn on HIGH/CRITICAL `risk` pre-edit; never use `riskSharedAxes` to waive a HIGH/CRITICAL `risk` warning. Compare File/symbol: MCP File omits axes; Graph-RAG expands File.
 - **MUST treat `risk: UNKNOWN` as unresolved, not as low.** An empty caller set is not evidence the symbol is unused — it can also mean the callers are not resolvable by the index (plain-object property access, dynamic dispatch, cross-language calls). `impact` pairs `UNKNOWN` with a `riskNote` saying so. Confirm with a text search before treating the symbol as safe to change or delete; do not proceed on the strength of a zero.
-- When exploring unfamiliar code, use `query({search_query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
-- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `context({name: "symbolName"})`.
+- Explore with `query({search_query: "concept"})` for process-grouped flows.
+- Use `context({name: "symbolName"})` for callers, callees, and flows.
 - For security review, `explain({target: "fileOrSymbol"})` lists taint findings (source→sink flows; needs `analyze --pdg`).
 
 ## Never Do
@@ -72,7 +72,7 @@ Full reference: .cursor/rules/gitnexus.mdc (alwaysApply: true)
 
 ## First move — before any code-understanding tool
 
-This repo is GitNexus-indexed as `Event-Horizon`: 7385 symbols, 17797 edges, 401 execution flows, 295 clusters, **6532 vector embeddings**. GitNexus tools are the *primary* navigation surface, NOT a "remember to use this." Before reaching for `Grep`, `Glob`, `Read`, or `SemanticSearch`, ask: "Could a GitNexus tool answer this in one shot?" Almost always: yes.
+This repo is GitNexus-indexed as `Event-Horizon`: 7391 symbols, 17846 edges, 401 execution flows, 295 clusters, **6537 vector embeddings**. GitNexus tools are the *primary* navigation surface, NOT a "remember to use this." Before reaching for `Grep`, `Glob`, `Read`, or `SemanticSearch`, ask: "Could a GitNexus tool answer this in one shot?" Almost always: yes.
 
 | Intent | First-move tool |
 | --- | --- |
@@ -101,7 +101,7 @@ This repo is GitNexus-indexed as `Event-Horizon`: 7385 symbols, 17797 edges, 401
 
 **Tools:** `query`, `context`, `impact`, `detect_changes`, `rename`, `cypher`, `api_impact`, `route_map`, `shape_check`, `tool_map`, `list_repos`, `group_list`, `group_sync`.
 
-**Embeddings (6532):** `query` uses them under the hood (BM25 + vector via Reciprocal Rank Fusion). For fuzzy concepts, trust `query` over keyword search. Pass `task_context` and `goal` to sharpen ranking. Embeddings persist across `npx gitnexus analyze` unless you pass `--drop-embeddings`.
+**Embeddings (6537):** `query` is *supposed* to be BM25 + vector fused by RRF. **On this machine BM25 is DEAD** — the FTS extension cannot load (Windows error 126, missing OpenSSL 3 DLLs), so `query` runs on vectors alone; its own response says so in `warning`, and `timing.bm25` sits near 0ms against ~600ms of vector. Read that field before trusting a keyword-shaped query. Pass `task_context` and `goal` to sharpen ranking. Embeddings persist across `npx gitnexus analyze` unless you pass `--drop-embeddings`.
 
 **Resources** (lightweight, 100-500 tokens — read these first to orient):
 
