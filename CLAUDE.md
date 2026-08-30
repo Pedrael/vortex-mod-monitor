@@ -101,7 +101,7 @@ This repo is GitNexus-indexed as `Event-Horizon`: 7391 symbols, 17846 edges, 401
 
 **Tools:** `query`, `context`, `impact`, `detect_changes`, `rename`, `cypher`, `api_impact`, `route_map`, `shape_check`, `tool_map`, `list_repos`, `group_list`, `group_sync`.
 
-**Embeddings (6537):** `query` is *supposed* to be BM25 + vector fused by RRF. **On this machine BM25 is DEAD** — the FTS extension cannot load (Windows error 126, missing OpenSSL 3 DLLs), so `query` runs on vectors alone; its own response says so in `warning`, and `timing.bm25` sits near 0ms against ~600ms of vector. Read that field before trusting a keyword-shaped query. Pass `task_context` and `goal` to sharpen ranking. Embeddings persist across `npx gitnexus analyze` unless you pass `--drop-embeddings`.
+**Embeddings (6537):** `query` fuses BM25 + vector via RRF. Both rankers depend on LadybugDB extensions that need OpenSSL 3 DLLs on PATH; when they are missing the MCP server silently degrades to *no* keyword search and an exact-scan vector fallback capped at 10k chunks. Check with `gitnexus doctor` — it must say `Full-text search: available` AND `Semantic mode: vector-index`. A CLI probe is NOT a valid test: the Bash tool's shell snapshot already has the DLLs on PATH, so the CLI passes while the MCP server fails. Pass `task_context` and `goal` to sharpen ranking. Embeddings persist across `npx gitnexus analyze` unless you pass `--drop-embeddings`.
 
 **Resources** (lightweight, 100-500 tokens — read these first to orient):
 
