@@ -49,7 +49,10 @@ describe("installNexusViaApi — a failed download must not leak its watchdog", 
     try {
       const { api, listenerCount } = fakeApi(undefined);
 
-      await expect(
+      // The download now RETRIES, so the rejection does not arrive until both
+      // backoffs have elapsed. Start the assertion, then drive the clock —
+      // awaiting first deadlocks against the fake timers.
+      const attempt = expect(
         installNexusViaApi(api, {
           gameId: "fallout4",
           nexusModId: 98669,
@@ -57,6 +60,8 @@ describe("installNexusViaApi — a failed download must not leak its watchdog", 
           fileName: "Crazy Wasteland - New Magazines.7z",
         } as never),
       ).rejects.toThrow(/returned no archiveId/);
+      await vi.advanceTimersByTimeAsync(20_000);
+      await attempt;
 
       // The leak this test exists for: before the fix this was 1, and the
       // watchdog behind it fired 15 minutes later.
@@ -64,6 +69,64 @@ describe("installNexusViaApi — a failed download must not leak its watchdog", 
 
       // Advance well past the stall budget AND the 60-minute absolute cap.
       // A leaked timer would fire in here.
+      await vi.advanceTimersByTimeAsync(61 * 60_000);
+      expect(listenerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("retries a transient empty answer, and succeeds on a later attempt", async () => {
+    vi.useFakeTimers();
+    try {
+      const { api } = fakeApi(undefined);
+      // Empty twice, then a real id — the ZP's Billboards shape (56s, then
+      // nothing) rather than the pulled-file shape (<1s, forever).
+      const nexusDownload = vi
+        .fn()
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce("")
+        .mockResolvedValue("archive-3");
+      (api as unknown as { ext: { nexusDownload: unknown } }).ext = {
+        nexusDownload,
+      };
+
+      const p = installNexusViaApi(api, {
+        gameId: "fallout4",
+        nexusModId: 93047,
+        nexusFileId: 353836,
+        fileName: "ZP Billboards.7z",
+      } as never);
+      // Let both backoffs elapse.
+      await vi.advanceTimersByTimeAsync(20_000);
+      // It got an id on the third attempt, so it is now waiting on
+      // did-install-mod rather than having thrown.
+      const settled = await Promise.race([
+        p.then(() => "resolved").catch((e: Error) => `rejected: ${e.message}`),
+        Promise.resolve().then(() => "pending"),
+      ]);
+      expect(nexusDownload).toHaveBeenCalledTimes(3);
+      expect(settled).toBe("pending");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("gives up after three attempts and leaks nothing", async () => {
+    vi.useFakeTimers();
+    try {
+      const { api, listenerCount } = fakeApi(undefined);
+      const p = installNexusViaApi(api, {
+        gameId: "fallout4",
+        nexusModId: 98669,
+        nexusFileId: 375818,
+        fileName: "Crazy Wasteland.7z",
+      } as never);
+      const assertion = expect(p).rejects.toThrow(/returned no archiveId/);
+      await vi.advanceTimersByTimeAsync(20_000);
+      await assertion;
+      // Every attempt armed a waiter; every one must have been torn down.
+      expect(listenerCount()).toBe(0);
       await vi.advanceTimersByTimeAsync(61 * 60_000);
       expect(listenerCount()).toBe(0);
     } finally {

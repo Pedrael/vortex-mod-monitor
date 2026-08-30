@@ -116,27 +116,54 @@ const INSTALL_ABSOLUTE_CAP_MS = 60 * 60_000; // 60 min hard ceiling
 /**
  * Is Vortex currently blocked on the user rather than working?
  *
- * `session.base.visibleDialog` holds the id of the dialog on screen, and
- * `overlayOpen` covers the overlay surface — both mean a human has to act
- * before anything else happens. This is the one thing that separates "the
- * pipeline is hung" from "the pipeline is fine and nobody is at the keyboard",
- * because neither produces progress.
+ * THREE signals, because Vortex has more than one kind of dialog and the one
+ * that matters most is not the obvious one.
  *
- * Deliberately fails to FALSE. If the shape ever changes, the watchdog goes
- * back to its old behaviour — occasionally impatient — rather than never
- * firing at all, which would turn a real hang into an install that waits
- * forever.
+ * `session.base.visibleDialog` and `overlayOpen` cover Vortex's GENERIC dialog
+ * surface. The FOMOD installer does not use either: it keeps its own state at
+ * `session.fomod.installer.dialog.activeInstanceId`, which is exactly what
+ * Vortex's own shipped code tests to answer "is a FOMOD dialog open" —
+ *
+ *     const activeInstanceId =
+ *       state.session.fomod.installer?.dialog?.activeInstanceId;
+ *     return !!activeInstanceId;
+ *
+ * read out of app.asar rather than guessed, the same way the CLEAR_USERLIST
+ * action names were.
+ *
+ * Missing that third signal is not academic. A tester's run lost SIX mods to
+ * the watchdog while he was answering FOMOD prompts, including a 535 KB
+ * archive "stalled" after 270 seconds — a file that does not take four minutes
+ * to extract. The pause was watching a key the FOMOD installer never sets.
+ *
+ * Deliberately fails to FALSE. If a shape ever changes, the watchdog goes back
+ * to being occasionally impatient rather than never firing at all, which would
+ * turn a real hang into an install that waits forever.
  */
 export function isAwaitingUserInput(api: types.IExtensionApi): boolean {
   try {
     const session = (
       api.getState() as unknown as {
-        session?: { base?: { visibleDialog?: unknown; overlayOpen?: unknown } };
+        session?: {
+          base?: { visibleDialog?: unknown; overlayOpen?: unknown };
+          fomod?: {
+            installer?: { dialog?: { activeInstanceId?: unknown } };
+          };
+        };
       }
-    )?.session?.base;
-    const dialog = session?.visibleDialog;
+    )?.session;
+
+    // The FOMOD installer's own dialog — the one that actually blocks a
+    // 900-mod install while someone picks options.
+    const fomodInstance = session?.fomod?.installer?.dialog?.activeInstanceId;
+    if (fomodInstance !== undefined && fomodInstance !== null && fomodInstance !== "") {
+      return true;
+    }
+
+    const base = session?.base;
+    const dialog = base?.visibleDialog;
     if (typeof dialog === "string" && dialog.length > 0) return true;
-    return session?.overlayOpen === true;
+    return base?.overlayOpen === true;
   } catch {
     return false;
   }
@@ -190,41 +217,90 @@ export async function installNexusViaApi(
 
   const replaying = args.choices !== undefined;
 
-  // Subscribe BEFORE triggering — `did-install-mod` can fire before the
-  // `nexusDownload` promise resolves on hot caches. Not needed when
-  // replaying: nothing installs until we say so, and
-  // installFromExistingDownload does its own waiting.
-  const completed = replaying
-    ? undefined
-    : waitForInstallCompletion(api, {
-        gameId: args.gameId,
-        matchArchiveId: undefined, // we don't know it yet; matched below
-        signal: args.signal,
-      });
+  // ── retry, because not every empty answer means the file is gone ──────
+  //
+  // Two shapes turned up in one tester's run, and they are NOT the same
+  // problem:
+  //
+  //   modId=98669  564ms   file pulled from Nexus — permanent, retrying is
+  //                        pointless but costs one second
+  //   modId=93047  55834ms fifty-six seconds and then nothing — a timeout or
+  //                        a rate limit, and very likely fine on a second try
+  //
+  // Nothing in the response distinguishes them, so the only honest policy is
+  // to try again a couple of times. A dead file fails fast each time and the
+  // retries cost ~10s; a transient one gets the chance it deserves instead of
+  // costing the user a mod.
+  const MAX_DOWNLOAD_ATTEMPTS = 3;
+  const BACKOFF_MS = [3_000, 8_000];
 
-  const archiveId = await api.ext.nexusDownload(
-    args.gameId,
-    args.nexusModId,
-    args.nexusFileId,
-    args.fileName,
-    // Download only, when there are choices to hand the installer. The
-    // one-step form gives no opportunity to supply them.
-    !replaying,
-  );
+  let archiveId: string | undefined;
+  let completed: ReturnType<typeof waitForInstallCompletion> | undefined;
+  let lastError: unknown;
 
-  if (typeof archiveId !== "string" || archiveId.length === 0) {
-    // Nothing will ever await `completed` now, so tear it down explicitly.
-    // Without this the listener and its 15-minute stall watchdog outlive the
-    // failed run and fire a bogus "install stalled" long after the install
-    // already reported failure.
+  for (let attempt = 1; attempt <= MAX_DOWNLOAD_ATTEMPTS; attempt += 1) {
+    if (args.signal?.aborted) throw makeAbortErrorLocal("nexus install");
+
+    // Subscribe BEFORE triggering — `did-install-mod` can fire before the
+    // `nexusDownload` promise resolves on hot caches. Re-armed per attempt,
+    // because a cancelled waiter cannot be reused. Not needed when replaying:
+    // nothing installs until we say so, and installFromExistingDownload does
+    // its own waiting.
+    completed = replaying
+      ? undefined
+      : waitForInstallCompletion(api, {
+          gameId: args.gameId,
+          matchArchiveId: undefined, // we don't know it yet; matched below
+          signal: args.signal,
+        });
+
+    try {
+      const id = await api.ext.nexusDownload(
+        args.gameId,
+        args.nexusModId,
+        args.nexusFileId,
+        args.fileName,
+        // Download only, when there are choices to hand the installer. The
+        // one-step form gives no opportunity to supply them.
+        !replaying,
+      );
+      if (typeof id === "string" && id.length > 0) {
+        archiveId = id;
+        break;
+      }
+      lastError = new Error(
+        `Nexus download for modId=${args.nexusModId}, ` +
+          `fileId=${args.nexusFileId} returned no archiveId.`,
+      );
+    } catch (err) {
+      if (isAbortErrorLocal(err)) throw err;
+      lastError = err;
+    }
+
+    // This attempt failed, so nothing will ever await `completed`. Tear it
+    // down explicitly: otherwise the listener and its stall watchdog outlive
+    // the attempt and fire a bogus "install stalled" long afterwards.
     if (completed !== undefined) {
       void completed.promise.catch(() => undefined);
       completed.cancel();
+      completed = undefined;
     }
-    throw new Error(
-      `Nexus download for modId=${args.nexusModId}, fileId=${args.nexusFileId} ` +
-        `returned no archiveId.`,
-    );
+
+    if (attempt < MAX_DOWNLOAD_ATTEMPTS) {
+      ehLog("warn", "install.download.retry", {
+        modId: args.nexusModId,
+        fileId: args.nexusFileId,
+        attempt,
+        error: lastError instanceof Error ? lastError.message : String(lastError),
+      });
+      await delayRespectingAbort(BACKOFF_MS[attempt - 1] ?? 5_000, args.signal);
+    }
+  }
+
+  if (archiveId === undefined) {
+    throw lastError instanceof Error
+      ? lastError
+      : new Error(String(lastError));
   }
 
   if (replaying) {
@@ -1149,4 +1225,38 @@ function makeAbortErrorLocal(operation: string): Error {
   const err = new Error(`${operation} aborted by user`);
   err.name = "AbortError";
   return err;
+}
+
+/**
+ * A user cancel must never be swallowed by the download retry.
+ *
+ * Retrying an abort would keep a cancelled install running for another two
+ * attempts and ~11 seconds of backoff, which is exactly the "I pressed stop
+ * and nothing happened" complaint.
+ */
+function isAbortErrorLocal(err: unknown): boolean {
+  return err instanceof Error && err.name === "AbortError";
+}
+
+/**
+ * Sleep, but wake immediately if the install is cancelled.
+ *
+ * A plain setTimeout would hold a cancelled install open for the full backoff.
+ * The listener is removed on both paths so a long install cannot accumulate
+ * one abort listener per retry.
+ */
+function delayRespectingAbort(
+  ms: number,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  if (signal?.aborted === true) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const done = (): void => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal?.addEventListener("abort", done, { once: true });
+  });
 }

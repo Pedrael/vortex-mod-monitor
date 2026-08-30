@@ -25,6 +25,46 @@ describe("knowing when Vortex is waiting on a person", () => {
   const withSession = (base: unknown): types.IExtensionApi =>
     ({ getState: () => ({ session: { base } }) }) as unknown as types.IExtensionApi;
 
+  /** A whole session, so the FOMOD installer's own dialog state can be set. */
+  const withFullSession = (session: unknown): types.IExtensionApi =>
+    ({ getState: () => ({ session }) }) as unknown as types.IExtensionApi;
+
+  it("sees the FOMOD installer's OWN dialog, which uses a different key", () => {
+    // The signal that actually matters, and the one that was missing: the
+    // FOMOD installer does not set session.base.visibleDialog. It keeps
+    // session.fomod.installer.dialog.activeInstanceId, which is what Vortex's
+    // own shipped code tests. A tester lost six mods to the watchdog while
+    // answering FOMOD prompts because we watched the wrong key.
+    expect(
+      isAwaitingUserInput(
+        withFullSession({
+          base: { visibleDialog: "", overlayOpen: false },
+          fomod: { installer: { dialog: { activeInstanceId: "inst-42" } } },
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("is false when the FOMOD dialog has no active instance", () => {
+    expect(
+      isAwaitingUserInput(
+        withFullSession({
+          base: { visibleDialog: "", overlayOpen: false },
+          fomod: { installer: { dialog: { activeInstanceId: undefined } } },
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("survives a session with no fomod branch at all", () => {
+    // Older Vortex builds, or a profile where the installer never ran.
+    expect(
+      isAwaitingUserInput(
+        withFullSession({ base: { visibleDialog: "", overlayOpen: false } }),
+      ),
+    ).toBe(false);
+  });
+
   it("sees an open dialog", () => {
     expect(isAwaitingUserInput(withSession({ visibleDialog: "fomod-installer" }))).toBe(
       true,
