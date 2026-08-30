@@ -79,6 +79,17 @@ export interface LoadProgressEvents {
   ) => void;
 }
 
+/**
+ * A FATAL 7-Zip verdict, carried out of the loading pipeline so the install
+ * can be refused later without re-checking. See PreviewBundle.extractorBlocked.
+ */
+export interface ExtractorBlocked {
+  message: string;
+  steps: string[];
+  /** Mods that still need unpacking — zero means the block does not apply. */
+  toUnpack: number;
+}
+
 export type LoadOutcome =
   | {
       kind: "stale-receipt";
@@ -92,6 +103,7 @@ export type LoadOutcome =
       receipt: InstallReceipt | undefined;
       plan: InstallPlan;
       appDataPath: string;
+      extractorBlocked?: ExtractorBlocked;
     };
 
 /**
@@ -158,8 +170,9 @@ export async function runLoadingPipeline(args: {
   //
   // Placed after the game gate deliberately: by here the package is known to
   // be real and for the right game, so the warning is worth the interruption.
-  // Warns, never blocks — see checkSevenZipHealth.
-  await warnIfSevenZipBroken(api);
+  // Warns on anything survivable; a FATAL verdict (extraction itself broken)
+  // comes back here and rides along in the bundle so startInstall can refuse.
+  const extractorFatal = await warnIfSevenZipBroken(api);
 
   // ── 3. read receipt ──────────────────────────────────────────────
   checkAbort();
@@ -252,7 +265,26 @@ export async function runLoadingPipeline(args: {
 
   const plan = resolveInstallPlan(manifest, userState, installTarget);
 
-  return { kind: "ready", ehcoll, receipt, plan, appDataPath };
+  return {
+    kind: "ready",
+    ehcoll,
+    receipt,
+    plan,
+    appDataPath,
+    ...(extractorFatal !== undefined
+      ? {
+          extractorBlocked: {
+            ...extractorFatal,
+            // Mods already installed do not need unpacking, so a collection
+            // that is entirely already-installed is still legitimately
+            // installable with a dead extractor. Name the real number.
+            toUnpack: plan.modResolutions.filter(
+              (r) => !r.decision.kind.endsWith("already-installed"),
+            ).length,
+          },
+        }
+      : {}),
+  };
 }
 
 /**
@@ -274,9 +306,14 @@ export async function runLoadingPipelineWithReceipt(args: {
   receipt: InstallReceipt | undefined;
   plan: InstallPlan;
   appDataPath: string;
+  extractorBlocked?: ExtractorBlocked;
 }> {
   const { api, ehcoll, receipt, appDataPath, events, signal } = args;
   const { manifest } = ehcoll;
+  // Re-checked here rather than carried from the first pass: this is the
+  // stale-receipt re-run, and skipping it would leave one route into the
+  // confirm step with no extractor verdict at all — an ungated back door.
+  const extractorFatal = await warnIfSevenZipBroken(api);
   const checkAbort = (): void => {
     if (signal?.aborted) {
       throw new AbortError("Loading cancelled by user");
@@ -371,7 +408,22 @@ export async function runLoadingPipelineWithReceipt(args: {
 
   const plan = resolveInstallPlan(manifest, userState, installTarget);
 
-  return { ehcoll, receipt, plan, appDataPath };
+  return {
+    ehcoll,
+    receipt,
+    plan,
+    appDataPath,
+    ...(extractorFatal !== undefined
+      ? {
+          extractorBlocked: {
+            ...extractorFatal,
+            toUnpack: plan.modResolutions.filter(
+              (r) => !r.decision.kind.endsWith("already-installed"),
+            ).length,
+          },
+        }
+      : {}),
+  };
 }
 
 /**
@@ -385,13 +437,13 @@ export async function runLoadingPipelineWithReceipt(args: {
  */
 export async function warnIfSevenZipBroken(
   api: types.IExtensionApi,
-): Promise<void> {
+): Promise<{ message: string; steps: string[] } | undefined> {
   try {
     const { checkSevenZipHealth, describeSevenZipHealth, looksLikeWine } =
       await import("../../../core/installer/checkSevenZipHealth");
     const health = await checkSevenZipHealth();
     const advice = describeSevenZipHealth(health);
-    if (advice === undefined) return;
+    if (advice === undefined) return undefined;
 
     // Logged as well as shown: the tester's log is what we get to read when a
     // remote install goes wrong, and a notification the user dismissed leaves
@@ -424,8 +476,16 @@ export async function warnIfSevenZipBroken(
         },
       ],
     });
+    // Only a FATAL verdict is returned, and only that one blocks. A broken
+    // `list` with working extraction is survivable — every listing path here
+    // is native-first — and blocking on it would stop users who can install
+    // perfectly well.
+    return health.kind === "broken" && health.fatal
+      ? { message: advice.message, steps: advice.steps }
+      : undefined;
   } catch {
     // A preflight that fails must not become the failure.
+    return undefined;
   }
 }
 

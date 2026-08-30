@@ -63,6 +63,17 @@ export interface PreviewBundle {
    * driver call site doesn't have to re-derive it.
    */
   appDataPath: string;
+  /**
+   * Set only when the 7-Zip preflight found a FATAL problem — extraction is
+   * broken, so Vortex cannot unpack a single mod archive.
+   *
+   * Carried rather than re-checked so the gate is synchronous: the check
+   * already runs during the loading pipeline, and its result used to be
+   * thrown away after a notification the user could dismiss. A collection
+   * whose mods are all already installed can still proceed, which is why the
+   * block names the number of mods that would have to be unpacked.
+   */
+  extractorBlocked?: { message: string; steps: string[]; toUnpack: number };
 }
 
 export type WizardState =

@@ -165,6 +165,13 @@ class InstallSession {
             receipt: outcome.receipt,
             plan: outcome.plan,
             appDataPath: outcome.appDataPath,
+            // Forwarded explicitly. The bundle is built field-by-field, so a
+            // new field on PreviewBundle is silently dropped unless it is
+            // named here — which is how a declared-but-never-populated field
+            // gets into this codebase.
+            ...(outcome.extractorBlocked !== undefined
+              ? { extractorBlocked: outcome.extractorBlocked }
+              : {}),
           },
         });
       } catch (err) {
@@ -249,6 +256,9 @@ class InstallSession {
             receipt: outcome.receipt,
             plan: outcome.plan,
             appDataPath: outcome.appDataPath,
+            ...(outcome.extractorBlocked !== undefined
+              ? { extractorBlocked: outcome.extractorBlocked }
+              : {}),
           },
         });
       } catch (err) {
@@ -343,6 +353,37 @@ class InstallSession {
   startInstall(api: types.IExtensionApi): void {
     if (this.state.kind !== "confirm") return;
     if (this.installInFlight) return;
+
+    // THE GATE. Vortex's extractor is dead, so every mod that still has to be
+    // unpacked would fail. This used to be a dismissible notification during
+    // loading, and a tester ran a 963-mod install four minutes after we had
+    // already detected the problem.
+    //
+    // Only a FATAL verdict reaches here — a broken `list` with working
+    // extraction does not block, because our listing paths are native-first.
+    // And a collection whose mods are ALL already installed needs no
+    // extraction at all, so it is still allowed through.
+    const blocked = this.state.bundle.extractorBlocked;
+    if (blocked !== undefined && blocked.toUnpack > 0) {
+      void api.showDialog?.(
+        "error",
+        "Vortex cannot unpack mod archives",
+        {
+          text: [
+            blocked.message,
+            "",
+            `${blocked.toUnpack} of this collection's mods still have to be ` +
+              `unpacked, and every one of them would fail. Fix the extractor ` +
+              `first — nothing here is lost by stopping now.`,
+            "",
+            ...blocked.steps,
+          ].join(String.fromCharCode(10)),
+        },
+        [{ label: "Close" }],
+      );
+      return;
+    }
+
     this.installInFlight = true;
     const controller = new AbortController();
     this.installController = controller;
