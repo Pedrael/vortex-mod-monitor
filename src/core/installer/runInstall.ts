@@ -555,6 +555,14 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
   const damagedArchives: string[] = [];
   /** What clearing the user's own rules removed, when it removed anything. */
   let rulesPurgeNotice: string[] | undefined;
+  /**
+   * When this run began, for the duration on the Done screen.
+   *
+   * Wall clock, including time spent waiting on the user to answer an
+   * installer dialog — "this took four hours" is the honest answer even when
+   * most of it was a prompt nobody was there to click.
+   */
+  const runStartedAtMs = Date.now();
 
   /**
    * The package's own sha256, hashed at most once and only if asked.
@@ -1889,6 +1897,7 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
       profileId: activeProfileId,
       profileName: activeProfileName ?? activeProfileId,
       installTargetMode: plan.installTarget.kind,
+      durationMs: Date.now() - runStartedAtMs,
       receiptPath,
       installedModIds: installedMods.map((m) => m.vortexModId),
       installedMods,

@@ -250,6 +250,16 @@ export type InstallSuccess = {
   /** Mode the driver actually ran in (mirrors plan.installTarget.kind). */
   installTargetMode: "fresh-profile" | "current-profile";
   /**
+   * Wall-clock time the run took, including any time it spent waiting on the
+   * user to answer an installer dialog.
+   *
+   * Wall-clock rather than working time on purpose: "this took four hours"
+   * is the honest answer even when three of them were a FOMOD prompt nobody
+   * was there to click, and it is the number a curator needs when someone
+   * reports that installing their collection takes all day.
+   */
+  durationMs: number;
+  /**
    * Absolute path of the receipt file that was written.
    * `<appData>/Vortex/event-horizon/installs/<package.id>.json`.
    */

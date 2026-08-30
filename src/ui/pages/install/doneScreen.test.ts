@@ -17,8 +17,43 @@ import * as path from "path";
 
 import { describe, expect, it } from "vitest";
 
+import { reconcileMods } from "./steps";
+
 const steps = (): string =>
   fs.readFileSync(path.join(__dirname, "steps.tsx"), "utf8");
+
+describe("every mod is accounted for, or the screen says it is not", () => {
+  // Six independent counters that do not visibly add up read as a UI hiding
+  // something — and on the real run they genuinely did not: a 963-mod
+  // collection reported "installed 958, skipped 1", leaving four mods the
+  // reader could only find by subtracting and never learn the fate of.
+  it("balances when everything is accounted for", () => {
+    const r = reconcileMods({ total: 963, installed: 900, carried: 60, skipped: 3 });
+    expect(r.accounted).toBe(963);
+    expect(r.missing).toBe(0);
+    expect(r.parts).toBe("900 installed + 60 already had + 3 skipped");
+  });
+
+  it("reports mods that are unaccounted for", () => {
+    const r = reconcileMods({ total: 963, installed: 958, carried: 0, skipped: 1 });
+    expect(r.missing).toBe(4);
+  });
+
+  it("reports DOUBLE-COUNTING as a negative rather than clamping it", () => {
+    // Clamping to zero would turn a broken tally into a clean one, which is
+    // the same class of lie as the gap it replaces.
+    const r = reconcileMods({ total: 10, installed: 8, carried: 3, skipped: 1 });
+    expect(r.missing).toBe(-2);
+  });
+
+  it("names only the buckets that have anything in them", () => {
+    // "958 installed + 0 already had + 0 skipped" invites the reader to check
+    // arithmetic that was never in question.
+    expect(
+      reconcileMods({ total: 5, installed: 5, carried: 0, skipped: 0 }).parts,
+    ).toBe("5 installed");
+  });
+});
 
 describe("nothing defined here is invisible", () => {
   it("every *Notice component is actually rendered", () => {

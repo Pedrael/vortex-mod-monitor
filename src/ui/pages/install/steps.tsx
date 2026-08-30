@@ -35,7 +35,7 @@ import { useApi, useApiOptional } from "../../state";
 import { useToast } from "../../components";
 import { useKeyboardShortcut } from "../../hooks/useKeyboardShortcut";
 import { formatBytes } from "../../../utils/diskSpace";
-import { openExternalUrl } from "../../../core/revealPath";
+import { openExternalUrl, revealInFileManager } from "../../../core/revealPath";
 import { writeToClipboard } from "../../clipboard";
 import { describeDownload } from "./downloadGuidance";
 import {
@@ -1786,6 +1786,124 @@ const PHASE_LABELS: Record<DriverProgress["phase"], string> = {
   failed: "Failed",
 };
 
+/**
+ * The phases a run passes through, in order, minus the terminal ones.
+ *
+ * The wizard's step dots count SEVEN wizard steps, of which the whole install
+ * is one — so during the hour that step takes they never move. This is the
+ * map of what is actually happening, and its value is mostly in what it shows
+ * is still to come: a user watching "Installing mods" for forty minutes cannot
+ * otherwise tell whether verification, rules and deployment are minutes or
+ * hours away.
+ *
+ * Phases are SKIPPED, not merely passed: a current-profile install creates no
+ * profile, and a collection with no rules applies none. So this marks
+ * everything before the current phase as done rather than tracking each one,
+ * which would report a skipped phase as pending forever.
+ */
+/**
+ * How many past activity lines to keep.
+ *
+ * Enough to see that something is moving and to recognise a repeat; short
+ * enough that it stays a glance rather than becoming a log viewer, which is
+ * what the log file is for.
+ */
+const ACTIVITY_TRAIL = 6;
+
+/**
+ * The directory holding a file, without importing node:path into the renderer.
+ *
+ * Both separators, because these paths come from Vortex and cross Wine, where
+ * a Windows path can arrive with forward slashes.
+ */
+function parentDir(filePath: string): string {
+  const cut = Math.max(filePath.lastIndexOf("\\"), filePath.lastIndexOf("/"));
+  return cut > 0 ? filePath.slice(0, cut) : filePath;
+}
+
+const DRIVER_PHASE_ORDER: ReadonlyArray<DriverProgress["phase"]> = [
+  "preflight",
+  "creating-profile",
+  "switching-profile",
+  "removing-mods",
+  "installing-mods",
+  "verifying-mods",
+  "applying-mod-rules",
+  "applying-userlist",
+  "deploying",
+  "applying-load-order",
+  "writing-receipt",
+];
+
+/** Short forms — the trail is a glance, not a second copy of the phase label. */
+const PHASE_SHORT: Partial<Record<DriverProgress["phase"], string>> = {
+  preflight: "Checks",
+  "creating-profile": "Profile",
+  "switching-profile": "Switch",
+  "removing-mods": "Remove",
+  "installing-mods": "Install",
+  "verifying-mods": "Verify",
+  "applying-mod-rules": "Rules",
+  "applying-userlist": "LOOT",
+  deploying: "Deploy",
+  "applying-load-order": "Order",
+  "writing-receipt": "Receipt",
+};
+
+function PhaseTrail(props: {
+  current: DriverProgress["phase"] | undefined;
+}): JSX.Element | null {
+  const idx =
+    props.current === undefined
+      ? -1
+      : DRIVER_PHASE_ORDER.indexOf(props.current);
+  if (idx < 0) return null;
+
+  return (
+    <ol
+      aria-label="Install phases"
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        gap: "var(--eh-sp-2)",
+        listStyle: "none",
+        margin: "var(--eh-sp-3) 0 0 0",
+        padding: 0,
+      }}
+    >
+      {DRIVER_PHASE_ORDER.map((phase, i) => {
+        const done = i < idx;
+        const active = i === idx;
+        return (
+          <li
+            key={phase}
+            aria-current={active ? "step" : undefined}
+            style={{
+              fontSize: "var(--eh-text-xs)",
+              fontFamily: "var(--eh-font-mono)",
+              padding: "2px var(--eh-sp-2)",
+              borderRadius: "var(--eh-radius-sm)",
+              border: `1px solid ${
+                active ? "var(--eh-cyan)" : "var(--eh-border-subtle)"
+              }`,
+              color: active
+                ? "var(--eh-cyan)"
+                : done
+                  ? "var(--eh-text-secondary)"
+                  : "var(--eh-text-muted)",
+              background: active ? "var(--eh-bg-raised)" : "transparent",
+              opacity: done || active ? 1 : 0.55,
+            }}
+          >
+            {done ? "✓ " : ""}
+            {PHASE_SHORT[phase] ?? phase}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 export function InstallingStep(props: {
   state: Extract<WizardState, { kind: "installing" }>;
   /** Ask the driver to stop at its next checkpoint. */
@@ -1822,6 +1940,37 @@ export function InstallingStep(props: {
     if (progress === undefined) return;
     setTiming((prev) => trackPhase(prev, progress, Date.now()));
   }, [progress]);
+
+  // The last few things the driver said.
+  //
+  // One line of "what is happening now" is only useful while it changes. On a
+  // 963-mod run it changes every few seconds for an hour and then stops, and
+  // the single line cannot tell "finished that mod, starting the next" from
+  // "stuck on this mod" — the reader has no memory of what it said before.
+  // Keeping a short trail makes stalls self-evident: the same line at the top
+  // of an unchanging list, for minutes.
+  const [recent, setRecent] = React.useState<readonly string[]>([]);
+  React.useEffect(() => {
+    const line = progress?.message;
+    if (line === undefined || line.length === 0) return;
+    setRecent((prev) =>
+      prev[0] === line ? prev : [line, ...prev].slice(0, ACTIVITY_TRAIL),
+    );
+  }, [progress?.message]);
+
+  // How many mods will show Vortex's own installer dialog and WAIT.
+  //
+  // This is the thing whose absence cost a real install: a tester left the
+  // machine with a FOMOD prompt open, nothing moved, and it looked hung. The
+  // run is not hung and not finished — it is waiting for a person, and nothing
+  // on screen said that was going to happen.
+  const fomodCount = React.useMemo(
+    () =>
+      bundle.plan.manifest.mods.filter(
+        (m) => (m.install?.fomodSelections ?? []).length > 0,
+      ).length,
+    [bundle.plan.manifest.mods],
+  );
 
   const phaseLabel =
     progress !== undefined ? PHASE_LABELS[progress.phase] : "Starting...";
@@ -1896,8 +2045,58 @@ export function InstallingStep(props: {
               ? ` · about ${formatDuration(remainingMs)} left`
               : ""}
           </p>
+          <PhaseTrail current={progress?.phase} />
         </div>
       </div>
+
+      {/* Said once, before it happens, and only while mods are being installed
+          — by verification time the prompts are done and this would be noise. */}
+      {fomodCount > 0 && progress?.phase === "installing-mods" && (
+        <p className="eh-note" style={{ margin: "var(--eh-sp-3) 0 0 0" }}>
+          {fomodCount} of these mods have installer options. Vortex will open
+          its own installer window for them with the curator&apos;s choices
+          already selected — <strong>the run pauses until you confirm</strong>,
+          so it is not stuck if it sits still with a dialog open.
+        </p>
+      )}
+
+      {recent.length > 1 && (
+        <details style={{ marginTop: "var(--eh-sp-3)" }}>
+          <summary
+            style={{
+              color: "var(--eh-text-muted)",
+              cursor: "pointer",
+              fontSize: "var(--eh-text-sm)",
+            }}
+          >
+            Recent activity
+          </summary>
+          <ol
+            style={{
+              margin: "var(--eh-sp-2) 0 0 0",
+              padding: 0,
+              listStyle: "none",
+              fontFamily: "var(--eh-font-mono)",
+              fontSize: "var(--eh-text-xs)",
+              color: "var(--eh-text-muted)",
+            }}
+          >
+            {recent.map((line, i) => (
+              <li
+                key={`${i}-${line}`}
+                style={{
+                  padding: "1px 0",
+                  // The newest line is the one the eye should land on; the
+                  // rest are context and fade back.
+                  color: i === 0 ? "var(--eh-text-secondary)" : undefined,
+                }}
+              >
+                {line}
+              </li>
+            ))}
+          </ol>
+        </details>
+      )}
 
       {quiet !== undefined && (
         <p
@@ -1978,6 +2177,7 @@ export function DoneStep(props: DoneStepProps): JSX.Element {
     body = (
       <SuccessBody
         result={result}
+        bundle={bundle}
       />
     );
   } else if (result.kind === "aborted") {
@@ -2464,6 +2664,95 @@ function CuratorReportsNotice(props: {
 }
 
 /**
+ * The arithmetic behind {@link ModAccounting}, kept separate so it can be
+ * tested without rendering — the whole point of the section is that its sums
+ * are right, and a component test would prove the layout instead.
+ *
+ * `missing` is positive when mods are unaccounted for and negative when they
+ * have been counted twice; both are reportable and neither should be silently
+ * clamped to zero, which would hide exactly the discrepancy this exists to
+ * surface.
+ */
+export function reconcileMods(input: {
+  total: number;
+  installed: number;
+  carried: number;
+  skipped: number;
+}): { accounted: number; missing: number; parts: string } {
+  const accounted = input.installed + input.carried + input.skipped;
+  return {
+    accounted,
+    missing: input.total - accounted,
+    parts: [
+      `${input.installed} installed`,
+      ...(input.carried > 0 ? [`${input.carried} already had`] : []),
+      ...(input.skipped > 0 ? [`${input.skipped} skipped`] : []),
+    ].join(" + "),
+  };
+}
+
+/**
+ * Does every mod in the collection appear somewhere in the outcome?
+ *
+ * The tiles above are six independent counters, and on a real run they do not
+ * visibly add up: a 963-mod collection reporting "installed 958, skipped 1"
+ * leaves four mods the reader can only find by subtracting, and no way at all
+ * to learn what became of them. Six correct numbers that do not reconcile read
+ * as a UI that is hiding something — which, in the case where they genuinely
+ * do not reconcile, it is.
+ *
+ * So this states the sum, and when it does not balance it says so plainly
+ * rather than letting the arithmetic fail quietly. Unaccounted mods are not a
+ * cosmetic problem: each one is a mod the collection contains and this profile
+ * does not, which is exactly the failure the whole project exists to catch.
+ */
+function ModAccounting(props: {
+  result: Extract<InstallResult, { kind: "success" }>;
+  bundle: PreviewBundle;
+}): JSX.Element | null {
+  const total = props.bundle.plan.manifest.mods.length;
+  if (total === 0) return null;
+
+  const { accounted, missing, parts } = reconcileMods({
+    total,
+    installed: props.result.installedModIds.length,
+    carried: props.result.carriedMods.length,
+    skipped: props.result.skippedMods.length,
+  });
+
+  return (
+    <p
+      className="eh-note"
+      style={{ margin: "var(--eh-sp-2) 0 0 0" }}
+      role={missing !== 0 ? "status" : undefined}
+    >
+      {missing === 0 ? (
+        <>
+          All {total} mods in this collection are accounted for: {parts}.
+        </>
+      ) : missing > 0 ? (
+        <>
+          <strong>
+            {missing} of the {total} mods in this collection are not accounted
+            for
+          </strong>{" "}
+          — {parts} leaves {missing} that were neither installed, already
+          present, nor recorded as skipped. That is a gap in this report, not a
+          mod you can go and find: the log for this run lists every mod the
+          driver touched.
+        </>
+      ) : (
+        <>
+          This report counts {accounted} outcomes for a collection of {total}{" "}
+          mods, so {-missing} mod(s) have been counted twice. The install
+          itself is unaffected; the tally above is wrong.
+        </>
+      )}
+    </p>
+  );
+}
+
+/**
  * The notices that state a fact and ask nothing.
  *
  * Folded behind one line, but the line NAMES each of them — "3 notes: INI
@@ -2529,6 +2818,9 @@ function InstallNotes(props: {
 
 function SuccessBody(props: {
   result: Extract<InstallResult, { kind: "success" }>;
+  /** Needed for the collection's own mod count — the result carries outcomes,
+   *  not the total they are supposed to add up to. */
+  bundle: PreviewBundle;
 }): JSX.Element {
   const { result } = props;
   const installedBuckets = countByKey(
@@ -2597,6 +2889,12 @@ function SuccessBody(props: {
               : "Current profile"
           }
         />
+        {/*
+          How long it took. Absent before, and it is the first thing anyone
+          asks when reporting that a collection "takes forever" — without it
+          the answer is a guess on both sides of the conversation.
+        */}
+        <Tile label="Took" value={formatDuration(result.durationMs)} />
         <Tile
           label="Installed"
           value={String(result.installedModIds.length)}
@@ -2620,6 +2918,8 @@ function SuccessBody(props: {
           value={String(result.skippedMods.length)}
         />
       </div>
+
+      <ModAccounting result={result} bundle={props.bundle} />
 
       {/*
         ─── THINGS THAT ARE MERELY TRUE ─────────────────────────────────
@@ -2684,6 +2984,46 @@ function SuccessBody(props: {
       >
         receipt: {result.receiptPath}
       </p>
+      {/*
+        The path above is unselectable in practice and means nothing to most
+        people, but it is the door to everything this run recorded — the
+        receipt itself, and the log beside it that lists every mod the driver
+        touched. The accounting line above sends readers to that log; without
+        a way to reach it that instruction is a dead end.
+      */}
+      <div className="eh-actions" style={{ marginTop: "var(--eh-sp-2)" }}>
+        <Button
+          intent="ghost"
+          size="sm"
+          onClick={(): void => {
+            void revealInFileManager({
+              filePath: result.receiptPath,
+              folderPath: parentDir(result.receiptPath),
+            });
+          }}
+        >
+          Show receipt
+        </Button>
+        <Button
+          intent="ghost"
+          size="sm"
+          onClick={(): void => {
+            void (async (): Promise<void> => {
+              const { getLogFilePath } = await import(
+                "../../../core/logging/ehLog"
+              );
+              const log = getLogFilePath();
+              if (log === undefined) return;
+              await revealInFileManager({
+                filePath: log,
+                folderPath: parentDir(log),
+              });
+            })();
+          }}
+        >
+          Show log
+        </Button>
+      </div>
     </div>
   );
 }
@@ -2938,10 +3278,20 @@ function RulesAndUserlistSection(props: {
           label="Mod rules applied"
           value={String(rules.appliedRuleCount)}
         />
-        <Tile
-          label="Load order entries"
-          value={String(rules.appliedLoadOrderCount)}
-        />
+        {/*
+          Only when the game HAS one. Fallout 4 and Skyrim drive load order
+          through plugins.txt, not Vortex's generic LoadOrder API, so a
+          correct run legitimately applies zero entries — and "LOAD ORDER
+          ENTRIES 0" on the one screen summarising a load-order-critical
+          install reads as a failure of the thing the collection exists to
+          reproduce. It made the curator stop and ask.
+        */}
+        {rules.appliedLoadOrderCount > 0 && (
+          <Tile
+            label="Load order entries"
+            value={String(rules.appliedLoadOrderCount)}
+          />
+        )}
         <Tile
           label="Plugin rules applied"
           value={String(userlist.appliedRuleCount)}
@@ -2950,14 +3300,21 @@ function RulesAndUserlistSection(props: {
           label="Plugin groups"
           value={`${userlist.appliedGroupAssignmentCount} assigned · ${userlist.appliedNewGroupCount} new`}
         />
+        {/*
+          Not a warning any more. Replacing the user's rules with the
+          collection's is now deliberate policy — it is the only way what
+          loads matches what the curator tested — so colouring it amber
+          reports our own intended behaviour as something that went wrong.
+          The "Rules replaced" card above explains it and names the backup;
+          this is just the count.
+        */}
         {hasOverwrites && (
           <Tile
-            label="User rules overwritten"
+            label="Your rules replaced"
             value={String(
               rules.overwrittenUserRuleCount +
                 userlist.overwrittenGroupAssignmentCount,
             )}
-            accent="var(--eh-warning)"
           />
         )}
         {totalSkipped > 0 && (

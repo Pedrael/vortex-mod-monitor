@@ -105,7 +105,15 @@ const write = (name: string, node: React.ReactElement): void => {
 const manifest = {
   package: { id: "pkg", name: "Ivy 2", version: "1.0.10" },
   game: { id: "fallout4", version: "1.10.163.0" },
-  mods: Array.from({ length: 963 }, (_, i) => ({ name: `Mod ${i}` })),
+  // 115 of them carry FOMOD answers, as the real collection does — the screen
+  // has to warn that Vortex will stop and ask.
+  mods: Array.from({ length: 963 }, (_, i) => ({
+    name: `Mod ${i}`,
+    install:
+      i < 115
+        ? { fomodSelections: [{ name: "step", groups: [{ name: "g", choices: [{ name: "c", idx: 1 }] }] }] }
+        : {},
+  })),
   plugins: { order: Array.from({ length: 817 }, (_, i) => ({ name: `p${i}.esp` })) },
   rules: Array.from({ length: 291 }, () => ({})),
 };
@@ -179,6 +187,7 @@ describe("render", () => {
       kind: "success",
       profileName: "Ivy 2 v1.0.10",
       installTargetMode: "fresh-profile",
+      durationMs: 96 * 60_000 + 14_000,
       installedModIds: Array.from({ length: 958 }, (_, i) => `m${i}`),
       installedMods: Array.from({ length: 958 }, (_, i) => ({
         compareKey: `k${i}`,
@@ -272,6 +281,7 @@ describe("render", () => {
       kind: "success",
       profileName: "Ivy 2 v1.0.10",
       installTargetMode: "fresh-profile",
+      durationMs: 96 * 60_000 + 14_000,
       installedModIds: Array.from({ length: 963 }, (_, i) => `m${i}`),
       installedMods: Array.from({ length: 963 }, (_, i) => ({
         compareKey: `k${i}`,
@@ -306,3 +316,4 @@ describe("render", () => {
     );
   });
 });
+
