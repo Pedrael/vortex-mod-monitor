@@ -1,6 +1,6 @@
 ---
 name: gitnexus-area-build
-description: "Skill for the Build area of vortex-mod-monitor. 224 symbols across 38 files."
+description: "Skill for the Build area of Event-Horizon. 224 symbols across 38 files."
 ---
 
 # Build

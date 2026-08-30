@@ -1,6 +1,6 @@
 ---
 name: gitnexus-area-cluster-39
-description: "Skill for the Cluster_39 area of vortex-mod-monitor. 5 symbols across 1 files."
+description: "Skill for the Cluster_39 area of Event-Horizon. 5 symbols across 1 files."
 ---
 
 # Cluster_39

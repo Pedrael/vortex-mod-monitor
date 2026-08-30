@@ -1,6 +1,6 @@
 ---
 name: gitnexus-area-install
-description: "Skill for the Install area of vortex-mod-monitor. 86 symbols across 16 files."
+description: "Skill for the Install area of Event-Horizon. 86 symbols across 16 files."
 ---
 
 # Install

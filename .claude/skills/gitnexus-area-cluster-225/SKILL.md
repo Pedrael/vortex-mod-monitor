@@ -1,6 +1,6 @@
 ---
 name: gitnexus-area-cluster-225
-description: "Skill for the Cluster_225 area of vortex-mod-monitor. 5 symbols across 2 files."
+description: "Skill for the Cluster_225 area of Event-Horizon. 5 symbols across 2 files."
 ---
 
 # Cluster_225

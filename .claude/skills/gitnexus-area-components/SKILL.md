@@ -1,6 +1,6 @@
 ---
 name: gitnexus-area-components
-description: "Skill for the Components area of vortex-mod-monitor. 14 symbols across 5 files."
+description: "Skill for the Components area of Event-Horizon. 14 symbols across 5 files."
 ---
 
 # Components

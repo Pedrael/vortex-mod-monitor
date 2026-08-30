@@ -1,4 +1,7 @@
 {
+  "env": {
+    "GITNEXUS_REPO": "Event-Horizon"
+  },
   "hooks": {
     "PreToolUse": [
       {

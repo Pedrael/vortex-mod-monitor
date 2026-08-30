@@ -1,6 +1,6 @@
 ---
 name: gitnexus-area-actions
-description: "Skill for the Actions area of vortex-mod-monitor. 78 symbols across 16 files."
+description: "Skill for the Actions area of Event-Horizon. 78 symbols across 16 files."
 ---
 
 # Actions

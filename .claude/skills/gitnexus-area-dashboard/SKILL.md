@@ -1,6 +1,6 @@
 ---
 name: gitnexus-area-dashboard
-description: "Skill for the Dashboard area of vortex-mod-monitor. 7 symbols across 2 files."
+description: "Skill for the Dashboard area of Event-Horizon. 7 symbols across 2 files."
 ---
 
 # Dashboard

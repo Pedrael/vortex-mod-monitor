@@ -1,6 +1,6 @@
 ---
 name: gitnexus-area-e2e
-description: "Skill for the E2e area of vortex-mod-monitor. 3 symbols across 1 files."
+description: "Skill for the E2e area of Event-Horizon. 3 symbols across 1 files."
 ---
 
 # E2e

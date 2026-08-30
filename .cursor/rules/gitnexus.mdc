@@ -5,7 +5,7 @@ alwaysApply: true
 
 # GitNexus is the primary navigation tool
 
-This repo is indexed by GitNexus (`vortex-mod-monitor`): **2316 nodes, 4801 edges, 199 execution flows, 69 communities, 2186 vector embeddings**. Every tool below is hot. Use them BEFORE Grep / Glob / Read / SemanticSearch on any code-understanding question.
+This repo is indexed by GitNexus (`Event-Horizon`): **7385 symbols, 17797 edges, 401 execution flows, 295 clusters, 6532 vector embeddings**. Every tool below is hot. Use them BEFORE Grep / Glob / Read / SemanticSearch on any code-understanding question.
 
 ## First move (mandatory triage)
 
@@ -20,9 +20,9 @@ Before reaching for `Grep`, `Glob`, `Read`, or `SemanticSearch` to understand co
 | "rename X to Y" across the repo | `gitnexus_rename({symbol_name: "X", new_name: "Y", dry_run: true})` |
 | "what does endpoint /api/x do?" / API consumer breakdown | `api_impact({route: "/api/x"})` |
 | "find all places that read or write field foo" | `gitnexus_cypher` with `ACCESSES` (see schema below) |
-| "what's the codebase shape?" / list functional areas | READ `gitnexus://repo/vortex-mod-monitor/clusters` |
-| "trace execution of <flow>" | READ `gitnexus://repo/vortex-mod-monitor/process/<name>` |
-| "is the index up to date?" / staleness check | READ `gitnexus://repo/vortex-mod-monitor/context` |
+| "what's the codebase shape?" / list functional areas | READ `gitnexus://repo/Event-Horizon/clusters` |
+| "trace execution of <flow>" | READ `gitnexus://repo/Event-Horizon/process/<name>` |
+| "is the index up to date?" / staleness check | READ `gitnexus://repo/Event-Horizon/context` |
 | Reviewing a PR | `detect_changes({scope: "compare", base_ref: "main"})` then `impact` per changed symbol |
 
 `Grep` / `Glob` are appropriate ONLY when:
@@ -51,7 +51,7 @@ Before reaching for `Grep`, `Glob`, `Read`, or `SemanticSearch` to understand co
 | `impact` | Blast radius grouped by depth (d=1 will-break, d=2 likely, d=3 maybe). Returns risk level + affected processes + affected modules. Pass `relationTypes: ["CALLS","IMPORTS","HAS_METHOD","ACCESSES"]` to widen when you care about field reads or class-member impact. Use `target_uid` to skip resolution. |
 | `detect_changes` | Map current git diff to changed symbols AND affected execution flows. `scope`: `unstaged` (default), `staged`, `all`, `compare` (with `base_ref`). Run before every commit and during PR review. |
 | `rename` | Multi-file coordinated rename. Edits are tagged `graph` (safe to accept) vs `text_search` (review). Always `dry_run: true` first. |
-| `cypher` | Raw Kuzu Cypher queries. READ `gitnexus://repo/vortex-mod-monitor/schema` first. Powerful for: ACCESSES (field read/write tracking), METHOD_OVERRIDES (MRO resolution), HAS_METHOD/HAS_PROPERTY (class shape), STEP_IN_PROCESS (custom traces), diamond inheritance. Returns markdown-formatted tables. |
+| `cypher` | Raw Kuzu Cypher queries. READ `gitnexus://repo/Event-Horizon/schema` first. Powerful for: ACCESSES (field read/write tracking), METHOD_OVERRIDES (MRO resolution), HAS_METHOD/HAS_PROPERTY (class shape), STEP_IN_PROCESS (custom traces), diamond inheritance. Returns markdown-formatted tables. |
 | `api_impact` | One-shot pre-change report for an HTTP route: handlers + middleware chain + consumers + response-shape mismatches + risk level. Use this BEFORE touching any HTTP handler. |
 | `route_map` | All API routes with handlers, middleware wrappers, and consumers. |
 | `shape_check` | Detect drift between route response shapes and consumer property accesses. |
@@ -66,16 +66,16 @@ Prefer reading these BEFORE running tools when you're orienting. They're cheap a
 | URI | Content |
 | --- | --- |
 | `gitnexus://repos` | All indexed repos at a glance |
-| `gitnexus://repo/vortex-mod-monitor/context` | Stats, **staleness check**, run-analyze hint |
-| `gitnexus://repo/vortex-mod-monitor/clusters` | All Leiden-detected communities (functional areas) with cohesion + keywords |
-| `gitnexus://repo/vortex-mod-monitor/cluster/<name>` | Members of one community with file paths |
-| `gitnexus://repo/vortex-mod-monitor/processes` | All 199 execution flows |
-| `gitnexus://repo/vortex-mod-monitor/process/<name>` | Step-by-step trace of one flow (great for debugging) |
-| `gitnexus://repo/vortex-mod-monitor/schema` | Full graph schema — read before writing Cypher |
+| `gitnexus://repo/Event-Horizon/context` | Stats, **staleness check**, run-analyze hint |
+| `gitnexus://repo/Event-Horizon/clusters` | All Leiden-detected communities (functional areas) with cohesion + keywords |
+| `gitnexus://repo/Event-Horizon/cluster/<name>` | Members of one community with file paths |
+| `gitnexus://repo/Event-Horizon/processes` | All 401 execution flows |
+| `gitnexus://repo/Event-Horizon/process/<name>` | Step-by-step trace of one flow (great for debugging) |
+| `gitnexus://repo/Event-Horizon/schema` | Full graph schema — read before writing Cypher |
 
 ### Embeddings (don't forget!)
 
-The repo has **2186 vector embeddings** generated. `query` already uses them under the hood (BM25 + vector, fused via Reciprocal Rank Fusion). When the user asks something conceptually fuzzy ("payment processing", "the LOOT rules application", "where we hash archives"), trust `query` over keyword search — it surfaces semantically related processes even if the literal words don't appear in code. Pass `task_context` (what you're working on) and `goal` (what you want to find) to sharpen ranking further.
+The repo has **6532 vector embeddings** generated. `query` already uses them under the hood (BM25 + vector, fused via Reciprocal Rank Fusion). When the user asks something conceptually fuzzy ("payment processing", "the LOOT rules application", "where we hash archives"), trust `query` over keyword search — it surfaces semantically related processes even if the literal words don't appear in code. Pass `task_context` (what you're working on) and `goal` (what you want to find) to sharpen ranking further.
 
 Embeddings are preserved across re-indexes by default. `npx gitnexus analyze` keeps them; only `--drop-embeddings` rebuilds them.
 

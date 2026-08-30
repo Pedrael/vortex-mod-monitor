@@ -1,7 +1,7 @@
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **vortex-mod-monitor** (7385 symbols, 17797 relationships, 401 execution flows).
+This project is indexed by GitNexus as **Event-Horizon** (7385 symbols, 17797 relationships, 401 execution flows).
 
 > Index stale? Run `node .gitnexus/run.cjs analyze --index-only` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? Bootstrap with `npx`, `bunx`, or `pnpm dlx` — e.g. `bunx gitnexus@latest analyze` (npm 11 npx crash; #1939).
 
@@ -26,10 +26,10 @@ This project is indexed by GitNexus as **vortex-mod-monitor** (7385 symbols, 177
 
 | Resource | Use for |
 | --- | --- |
-| `gitnexus://repo/vortex-mod-monitor/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/vortex-mod-monitor/clusters` | All functional areas |
-| `gitnexus://repo/vortex-mod-monitor/processes` | All execution flows |
-| `gitnexus://repo/vortex-mod-monitor/process/{name}` | Step-by-step execution trace |
+| `gitnexus://repo/Event-Horizon/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/Event-Horizon/clusters` | All functional areas |
+| `gitnexus://repo/Event-Horizon/processes` | All execution flows |
+| `gitnexus://repo/Event-Horizon/process/{name}` | Step-by-step execution trace |
 
 ## CLI
 
@@ -72,7 +72,7 @@ Full reference: .cursor/rules/gitnexus.mdc (alwaysApply: true)
 
 ## First move — before any code-understanding tool
 
-This repo is GitNexus-indexed: 2316 nodes, 4801 edges, 199 execution flows, 69 communities, **2186 vector embeddings**. GitNexus tools are the *primary* navigation surface, NOT a "remember to use this." Before reaching for `Grep`, `Glob`, `Read`, or `SemanticSearch`, ask: "Could a GitNexus tool answer this in one shot?" Almost always: yes.
+This repo is GitNexus-indexed as `Event-Horizon`: 7385 symbols, 17797 edges, 401 execution flows, 295 clusters, **6532 vector embeddings**. GitNexus tools are the *primary* navigation surface, NOT a "remember to use this." Before reaching for `Grep`, `Glob`, `Read`, or `SemanticSearch`, ask: "Could a GitNexus tool answer this in one shot?" Almost always: yes.
 
 | Intent | First-move tool |
 | --- | --- |
@@ -83,8 +83,8 @@ This repo is GitNexus-indexed: 2316 nodes, 4801 edges, 199 execution flows, 69 c
 | "rename X to Y" | `gitnexus_rename({symbol_name: "X", new_name: "Y", dry_run: true})` |
 | "what does endpoint /api/x do?" | `api_impact({route: "/api/x"})` |
 | "find all writers/readers of field foo" | `gitnexus_cypher` with `ACCESSES` (`reason: 'write'` or `'read'`) |
-| Codebase orientation / functional areas | READ `gitnexus://repo/vortex-mod-monitor/clusters` |
-| Step-by-step trace of a flow | READ `gitnexus://repo/vortex-mod-monitor/process/<name>` |
+| Codebase orientation / functional areas | READ `gitnexus://repo/Event-Horizon/clusters` |
+| Step-by-step trace of a flow | READ `gitnexus://repo/Event-Horizon/process/<name>` |
 
 `Grep` / `Glob` are appropriate ONLY for: string literals, comments, raw text in JSON/YAML/MD, config keys not modeled in the graph, or exact-string lookups where you already know what you want.
 
@@ -101,15 +101,15 @@ This repo is GitNexus-indexed: 2316 nodes, 4801 edges, 199 execution flows, 69 c
 
 **Tools:** `query`, `context`, `impact`, `detect_changes`, `rename`, `cypher`, `api_impact`, `route_map`, `shape_check`, `tool_map`, `list_repos`, `group_list`, `group_sync`.
 
-**Embeddings (2186):** `query` uses them under the hood (BM25 + vector via Reciprocal Rank Fusion). For fuzzy concepts, trust `query` over keyword search. Pass `task_context` and `goal` to sharpen ranking. Embeddings persist across `npx gitnexus analyze` unless you pass `--drop-embeddings`.
+**Embeddings (6532):** `query` uses them under the hood (BM25 + vector via Reciprocal Rank Fusion). For fuzzy concepts, trust `query` over keyword search. Pass `task_context` and `goal` to sharpen ranking. Embeddings persist across `npx gitnexus analyze` unless you pass `--drop-embeddings`.
 
 **Resources** (lightweight, 100-500 tokens — read these first to orient):
 
-- `gitnexus://repo/vortex-mod-monitor/context` — stats + staleness check
-- `gitnexus://repo/vortex-mod-monitor/clusters` — all 69 functional areas with cohesion + keywords
-- `gitnexus://repo/vortex-mod-monitor/processes` — all 199 execution flows
-- `gitnexus://repo/vortex-mod-monitor/process/<name>` — step-by-step trace of one flow
-- `gitnexus://repo/vortex-mod-monitor/schema` — full graph schema (read before writing Cypher)
+- `gitnexus://repo/Event-Horizon/context` — stats + staleness check
+- `gitnexus://repo/Event-Horizon/clusters` — all 295 functional areas with cohesion + keywords
+- `gitnexus://repo/Event-Horizon/processes` — all 401 execution flows
+- `gitnexus://repo/Event-Horizon/process/<name>` — step-by-step trace of one flow
+- `gitnexus://repo/Event-Horizon/schema` — full graph schema (read before writing Cypher)
 
 **Edge types** (filter `CodeRelation` by `type`): `CALLS`, `IMPORTS`, `EXTENDS`, `IMPLEMENTS`, `HAS_METHOD`, `HAS_PROPERTY`, `METHOD_OVERRIDES`, `METHOD_IMPLEMENTS`, **`ACCESSES`** (with `reason: 'read'` or `'write'` — use this for field-level data-flow tracing), `DEFINES`, `MEMBER_OF`, `STEP_IN_PROCESS`, `HANDLES_ROUTE`, `FETCHES`, `HANDLES_TOOL`, `ENTRY_POINT_OF`.
 

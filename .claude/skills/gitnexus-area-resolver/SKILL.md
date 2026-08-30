@@ -1,6 +1,6 @@
 ---
 name: gitnexus-area-resolver
-description: "Skill for the Resolver area of vortex-mod-monitor. 68 symbols across 11 files."
+description: "Skill for the Resolver area of Event-Horizon. 68 symbols across 11 files."
 ---
 
 # Resolver

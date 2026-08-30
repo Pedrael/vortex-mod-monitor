@@ -1,6 +1,6 @@
 ---
 name: gitnexus-area-scripts
-description: "Skill for the Scripts area of vortex-mod-monitor. 53 symbols across 6 files."
+description: "Skill for the Scripts area of Event-Horizon. 53 symbols across 6 files."
 ---
 
 # Scripts

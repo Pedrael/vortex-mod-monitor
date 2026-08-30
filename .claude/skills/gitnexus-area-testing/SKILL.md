@@ -1,6 +1,6 @@
 ---
 name: gitnexus-area-testing
-description: "Skill for the Testing area of vortex-mod-monitor. 3 symbols across 1 files."
+description: "Skill for the Testing area of Event-Horizon. 3 symbols across 1 files."
 ---
 
 # Testing

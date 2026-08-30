@@ -1,6 +1,6 @@
 ---
 name: gitnexus-area-manifest
-description: "Skill for the Manifest area of vortex-mod-monitor. 319 symbols across 60 files."
+description: "Skill for the Manifest area of Event-Horizon. 319 symbols across 60 files."
 ---
 
 # Manifest

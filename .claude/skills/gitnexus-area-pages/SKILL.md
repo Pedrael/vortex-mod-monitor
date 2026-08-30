@@ -1,6 +1,6 @@
 ---
 name: gitnexus-area-pages
-description: "Skill for the Pages area of vortex-mod-monitor. 75 symbols across 22 files."
+description: "Skill for the Pages area of Event-Horizon. 75 symbols across 22 files."
 ---
 
 # Pages

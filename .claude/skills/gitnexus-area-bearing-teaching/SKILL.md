@@ -1,6 +1,6 @@
 ---
 name: gitnexus-area-bearing-teaching
-description: "Skill for the Bearing-teaching area of vortex-mod-monitor. 9 symbols across 2 files."
+description: "Skill for the Bearing-teaching area of Event-Horizon. 9 symbols across 2 files."
 ---
 
 # Bearing-teaching

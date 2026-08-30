@@ -1,6 +1,6 @@
 ---
 name: gitnexus-area-identity
-description: "Skill for the Identity area of vortex-mod-monitor. 19 symbols across 2 files."
+description: "Skill for the Identity area of Event-Horizon. 19 symbols across 2 files."
 ---
 
 # Identity

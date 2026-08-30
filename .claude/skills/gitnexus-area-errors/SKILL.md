@@ -1,6 +1,6 @@
 ---
 name: gitnexus-area-errors
-description: "Skill for the Errors area of vortex-mod-monitor. 29 symbols across 6 files."
+description: "Skill for the Errors area of Event-Horizon. 29 symbols across 6 files."
 ---
 
 # Errors
