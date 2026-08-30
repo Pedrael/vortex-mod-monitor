@@ -108,6 +108,7 @@ import type {
   InstallAborted,
   InstallResult,
   InstalledModReportEntry,
+  FailedModReportEntry,
   OrphanChoice,
   RemovedModReportEntry,
   SkippedModReportEntry,
@@ -506,6 +507,18 @@ export function buildAbortedResult(args: {
 export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
   const { plan, api } = ctx;
   const installedMods: InstalledModReportEntry[] = [];
+  /**
+   * Isolated per-mod failures. Collected rather than returned, so one mod that
+   * cannot be fetched does not cost the user every mod after it.
+   */
+  const failedMods: FailedModReportEntry[] = [];
+  /**
+   * Consecutive failures, to tell "this mod is broken" from "everything is
+   * broken". A dead extractor or a lost connection fails every mod in turn,
+   * and grinding through 900 of them to say so helps nobody.
+   */
+  let consecutiveFailures = 0;
+  const SYSTEMIC_FAILURE_STREAK = 8;
   const skippedMods: SkippedModReportEntry[] = [];
   const removedMods: RemovedModReportEntry[] = [];
   const carriedMods: CarriedModReportEntry[] = [];
@@ -948,15 +961,37 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
           ms: Date.now() - modStartedAt,
           error: formatError(err),
         });
-        return {
-          kind: "failed",
-          phase,
-          partialProfileId: createdProfileId,
-          error:
-            `Failed installing "${resolution.name}" ` +
-            `(decision=${resolution.decision.kind}): ${formatError(err)}`,
-          installedSoFar: installedMods.map((m) => m.vortexModId),
-        };
+        failedMods.push({
+          compareKey: resolution.compareKey,
+          name: resolution.name,
+          decision: resolution.decision.kind,
+          error: formatError(err),
+        });
+        consecutiveFailures += 1;
+
+        // A streak means the cause is not this mod. Stop and say which one it
+        // looks like, rather than reporting 900 identical failures.
+        if (consecutiveFailures >= SYSTEMIC_FAILURE_STREAK) {
+          ehLog("error", "install.systemic-failure", {
+            streak: consecutiveFailures,
+            atIndex: i + 1,
+            total,
+          });
+          return {
+            kind: "failed",
+            phase,
+            partialProfileId: createdProfileId,
+            error:
+              `${consecutiveFailures} mods in a row failed to install, ending ` +
+              `with "${resolution.name}": ${formatError(err)}. That is not one ` +
+              `bad mod — something is wrong for every mod (Vortex's extractor, ` +
+              `the Nexus connection, or disk space). Stopped rather than ` +
+              `repeating it ${total - i} more times.`,
+            installedSoFar: installedMods.map((m) => m.vortexModId),
+            failedMods,
+          };
+        }
+        continue;
       }
 
       if (installEntry === undefined) {
@@ -967,6 +1002,7 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
       }
 
       installedMods.push(installEntry);
+      consecutiveFailures = 0;
       enableModInProfile(api, activeProfileId, installEntry.vortexModId);
 
       aborted = checkAbort("installing-mods");
@@ -1857,6 +1893,40 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
       gameId: plan.manifest.game.id,
       reportProgress,
     });
+
+    // Mods installed, deployed, rules and order applied — but if anything
+    // failed we did NOT reproduce the curator's state, so no receipt.
+    //
+    // A receipt asserts the collection IS installed, and cross-release lineage
+    // is built on that claim. Writing one for a partial reproduction would
+    // make the next upgrade reason from a state that never existed. The user
+    // keeps everything that installed and gets the exact list of what did not,
+    // which is the difference between "re-run after you source these" and
+    // "start again and hope".
+    if (failedMods.length > 0) {
+      ehLog("warn", "install.partial", {
+        installed: installedMods.length,
+        failed: failedMods.length,
+        total,
+      });
+      const names = failedMods
+        .slice(0, 5)
+        .map((f) => f.name)
+        .join(", ");
+      return {
+        kind: "failed",
+        phase: "writing-receipt",
+        partialProfileId: createdProfileId,
+        error:
+          `${installedMods.length} of ${total} mods installed, but ` +
+          `${failedMods.length} could not be: ${names}` +
+          `${failedMods.length > 5 ? `, and ${failedMods.length - 5} more` : ""}. ` +
+          `Everything that did install is in place and deployed — source the ` +
+          `missing ones and run this again to finish.`,
+        installedSoFar: installedMods.map((m) => m.vortexModId),
+        failedMods,
+      };
+    }
 
     const receipt = buildReceipt({
       ctx,

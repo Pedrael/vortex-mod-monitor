@@ -496,6 +496,27 @@ export type InstallFailed = {
    * automatically removed.
    */
   installedSoFar: string[];
+  /**
+   * Every mod that failed, not just the one that stopped the run.
+   *
+   * The driver used to return on the FIRST per-mod failure. On a real 967-mod
+   * collection a single Nexus file that had been pulled killed the run at mod
+   * 274, so 693 mods that would have installed fine never got the chance — and
+   * re-running hit the same wall at the same index. Isolated failures are now
+   * collected and the run continues, so one dead link costs one mod.
+   */
+  failedMods?: FailedModReportEntry[];
+};
+
+/** One mod that could not be installed, and why. */
+export type FailedModReportEntry = {
+  /** compareKey from the manifest entry. */
+  compareKey: string;
+  name: string;
+  /** The decision the resolver had made for it. */
+  decision: string;
+  /** One-line reason, already formatted for a human. */
+  error: string;
 };
 
 export type InstalledModReportEntry = {
