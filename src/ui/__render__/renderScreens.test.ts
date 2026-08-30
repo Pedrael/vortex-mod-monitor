@@ -43,6 +43,7 @@ import {
 import { ApiProvider } from "../state/ApiContext";
 import { ToastProvider } from "../components/Toast";
 import { DonePanel } from "../pages/build/BuildPage";
+import { DraftCard, PublishedCard } from "../pages/build/BuildDashboard";
 
 const OUT = path.join(
   "C:",
@@ -190,6 +191,77 @@ const USERLIST = {
 
 describe("render", () => {
   const on = process.env.EH_RENDER === "1";
+
+  it.skipIf(!on)("build dashboard — the cards that ARE its content", () => {
+    // The dashboard mounts loading and fills in from an effect, which static
+    // rendering never runs, so capturing the page shows a skeleton. The cards
+    // take their data as props, so they show the real screen without a DOM.
+    //
+    // Both states that matter: a published collection whose profile has NOT
+    // changed since it shipped (Update suppressed), and one whose fingerprint
+    // is unknown — which must still offer Update, because unknown is not the
+    // same as up to date.
+    const published = {
+      slug: "ivy-2",
+      packageId: "00000000-0000-4000-8000-000000000000",
+      configPath: "C:/Users/x/AppData/Roaming/Vortex/event-horizon/collections/ivy-2.json",
+      gameId: "fallout4",
+      lastBuiltName: "Ivy 2",
+      lastBuiltVersion: "1.0.10",
+      lastBuiltAuthor: "DuduPhudu",
+      lastBuiltAt: new Date(Date.now() - 42 * 60_000).toISOString(),
+      lastBuiltProfileFingerprint: "dfe737127f8add3a",
+    } as never;
+
+    const draft = {
+      key: "fallout4",
+      updatedAt: new Date(Date.now() - 3 * 60_000).toISOString(),
+      payload: {
+        draftId: "d1",
+        gameId: "fallout4",
+        title: "Ivy 2",
+        linkedSlug: "ivy-2",
+        linkedPackageId: "00000000-0000-4000-8000-000000000000",
+        verificationLevel: "thorough",
+        reverifyEverything: false,
+        changelog: "",
+        readme: "",
+        overrides: {},
+        curator: { name: "Ivy 2", version: "1.0.11", author: "DuduPhudu", description: "" },
+      },
+    } as never;
+
+    write(
+      "build-dashboard",
+      React.createElement(ToastProvider, {
+        children: React.createElement(
+          "div",
+          { className: "eh-stack eh-stack--lg" },
+          React.createElement(DraftCard, {
+            env: draft,
+            activeGameId: "fallout4",
+            registrySessionStateKind: "idle",
+            onOpen: () => undefined,
+            onDiscard: () => undefined,
+          } as never),
+          React.createElement(PublishedCard, {
+            summary: published,
+            upToDate: true,
+            knownSlugs: ["ivy-2"],
+            onUpdate: () => undefined,
+            onDelete: () => undefined,
+          } as never),
+          React.createElement(PublishedCard, {
+            summary: { ...(published as object), lastBuiltProfileFingerprint: undefined },
+            upToDate: false,
+            knownSlugs: ["ivy-2"],
+            onUpdate: () => undefined,
+            onDelete: () => undefined,
+          } as never),
+        ),
+      } as never),
+    );
+  });
 
   it.skipIf(!on)("build done — the real v1.0.10 result and its 10 warnings", () => {
     // Verbatim from the actual build log: same counts, same sha256, same

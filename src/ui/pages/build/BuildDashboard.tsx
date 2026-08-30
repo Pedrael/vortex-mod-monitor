@@ -974,7 +974,8 @@ type DashboardItem =
   | { kind: "draft"; env: DraftEnvelope<BuildDraftPayload> }
   | { kind: "published"; summary: PublishedCollectionSummary };
 
-function DraftCard(props: {
+/** Exported for the render harness only — see {@link PublishedCard}. */
+export function DraftCard(props: {
   env: DraftEnvelope<BuildDraftPayload>;
   activeGameId: string | undefined;
   registrySessionStateKind: string | undefined;
@@ -1229,7 +1230,16 @@ function PublishedDetailsPanel(props: {
   );
 }
 
-function PublishedCard(props: {
+/**
+ * Exported for the render harness only — nothing else imports it.
+ *
+ * The dashboard itself cannot be screenshotted: it mounts in a loading state
+ * and fills in from an effect, which static rendering never runs, so a capture
+ * of the whole page shows a skeleton. The cards ARE the dashboard's content,
+ * and they take their data as props, so rendering them directly shows the real
+ * screen without needing a DOM environment.
+ */
+export function PublishedCard(props: {
   summary: PublishedCollectionSummary;
   /**
    * `true` only when we KNOW the enabled-mod set is the same as the one this
@@ -1275,6 +1285,25 @@ function PublishedCard(props: {
           <div className="eh-note">
             Same mods as when v{summary.lastBuiltVersion} was built. Edits to
             files inside a mod are not detected — rebuild if you made any.
+          </div>
+        )}
+        {/*
+          The other branch said NOTHING, and it covers two situations that
+          deserve different answers. "Update" appearing bare left the curator
+          unable to tell "your mods changed" from "we have no idea" — and the
+          second is the case for any collection built before fingerprints were
+          recorded.
+
+          The distinction is available right here: an absent fingerprint IS the
+          unknown case. Offering Update either way stays as it was, per this
+          component's own rule that unknown must never suppress an action; only
+          the silence is fixed.
+        */}
+        {!upToDate && (
+          <div className="eh-note">
+            {summary.lastBuiltProfileFingerprint === undefined
+              ? "This collection was built before Event Horizon recorded which mods were enabled, so it cannot tell whether anything changed since. Update rebuilds it from your profile as it is now."
+              : `Your enabled mods differ from when v${summary.lastBuiltVersion ?? "?"} was built. Update rebuilds the collection from your profile as it is now.`}
           </div>
         )}
         {/* Slug moved into Details: it is the on-disk identity, useful when
