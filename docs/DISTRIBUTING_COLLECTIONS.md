@@ -1,8 +1,22 @@
-# Research — Publishing & Distribution
+# Distributing collections — research, not yet built
 
-**Status**: RESEARCH — findings only, no code committed
-**Owner**: TBD
-**Last updated**: 2026-04-27
+**Status**: RESEARCH. Section 6's recommended hybrid was never implemented —
+`registerInstaller` appears nowhere in `src/`, so nothing claims a `.ehcoll`
+downloaded from Nexus. **How collections actually reach users today:** the
+curator hands over the `.ehcoll` file by whatever means they like, and the user
+picks it from disk on the Install page. That is the whole mechanism.
+
+**Do not confuse this with [`PUBLISHING.md`](PUBLISHING.md).** Two different
+problems that both used to be called "publishing":
+
+| Doc | Question | State |
+| --- | --- | --- |
+| [`PUBLISHING.md`](PUBLISHING.md) | How does the **extension** get to Vortex users? | Procedure written, packaging script built |
+| **This file** | How does a **collection** (`.ehcoll`) get to its users? | Research only, unbuilt |
+
+This file was `RESEARCH_PUBLISHING.md` and nothing linked to it.
+
+**Last updated**: 2026-04-27 (the research; this header is newer)
 **Related**: [`PROPOSAL_INSTALLER.md`](PROPOSAL_INSTALLER.md)
 
 ---

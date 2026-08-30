@@ -1,9 +1,9 @@
 ---
-name: gitnexus-area-cluster-212
-description: "Skill for the Cluster_212 area of vortex-mod-monitor. 5 symbols across 2 files."
+name: gitnexus-area-cluster-225
+description: "Skill for the Cluster_225 area of vortex-mod-monitor. 5 symbols across 2 files."
 ---
 
-# Cluster_212
+# Cluster_225
 
 5 symbols | 2 files | Cohesion: 80%
 
@@ -11,7 +11,7 @@ description: "Skill for the Cluster_212 area of vortex-mod-monitor. 5 symbols ac
 
 - Working with code in `src/`
 - Understanding how opn, opn, opn work
-- Modifying cluster_212-related functionality
+- Modifying cluster_225-related functionality
 
 ## Key Files
 
@@ -42,6 +42,6 @@ description: "Skill for the Cluster_212 area of vortex-mod-monitor. 5 symbols ac
 ## How to Explore
 
 1. `context({name: "opn"})` — see callers and callees
-2. `query({search_query: "cluster_212"})` — find related execution flows
+2. `query({search_query: "cluster_225"})` — find related execution flows
 3. Read key files listed above for implementation details
 4. `explain({target: "<file or symbol>"})` — persisted taint findings (source→sink data flows), when indexed with `--pdg`

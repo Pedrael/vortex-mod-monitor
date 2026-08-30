@@ -21,3 +21,6 @@ docs/ARCHITECTURE.gitnexus.md
 # Backups written by tooling (bearing rewrites .claude/settings.json in place).
 *.bak
 
+# Built extension packages (npm run package:extension).
+release/
+

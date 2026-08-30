@@ -436,11 +436,38 @@ External-dep status feeds into `summary.canProceed` only when `manifest.package.
 
 | `kind` | Behavior |
 | --- | --- |
-| `"replace"` | Driver overwrites `plugins.txt` with `manifest.plugins.order`, after writing a `.bak` to `backupPath`. |
-| `"merge"`   | **Reserved for future**. Insert the manifest's plugins into the user's existing order, preserving entries the user has that aren't in the manifest. v1 resolver never emits this. |
-| `"none"`    | Manifest declares no plugins, or the user's `plugins.txt` already matches. No work. |
+| `"replace"` | The curator's order becomes the order. See below — the driver no longer writes `plugins.txt` itself. |
+| `"merge"`   | Never emitted. Kept in the union so an older plan still parses; the *merging* it described now happens inside `"replace"`. |
+| `"none"`    | Manifest declares no plugins, or the user's order already matches. No work. |
 
-**INVARIANT** — backup is mandatory for `"replace"`. The driver writes the backup before any modification, even if the user later confirms cancelation; the original state is recoverable.
+**`"replace"` does not mean "overwrite the file".** It used to: the driver wrote
+`plugins.txt` directly after backing it up. That was wrong in a way that only
+shows up on a live install — Vortex's `PluginPersistor` owns that file and
+rewrites it from its own state on the next deploy, so a direct write is
+reverted at an unpredictable moment.
+
+What happens now: the driver pins the order through Vortex
+(`set-plugin-list` → `autosort-plugins`), and Vortex persists it. Plugins the
+user has that the collection does not know about are **integrated LOOT-style**
+rather than appended last — which is what the retired `"merge"` kind was
+reserved for, so the distinction between the two kinds stopped being real. See
+[`INSTALL_DRIVER.md`](INSTALL_DRIVER.md) → "`plugins.txt` — the driver pins the
+order, Vortex persists it".
+
+**The `backupPath` backup is gone, and that is not a regression.** It existed
+because the driver overwrote `plugins.txt`; a destructive write needs something
+to restore from. The driver no longer performs that write, so there is nothing
+to restore — the user's order is changed through Vortex, the same way pressing
+Sort changes it.
+
+`backupPath` is still declared in the type and is now read by nothing. Treat it
+as vestigial rather than as a promise: a plan that sets it gets no backup.
+
+What *is* still backed up is the user's **rule** state — every mod rule and the
+whole LOOT userlist — because that purge genuinely is destructive and is not
+recoverable from Vortex. That backup is an interlock: it must land on disk
+before the purge runs. Different mechanism, different field
+(`purgeUserRules.ts`), do not conflate the two.
 
 ---
 

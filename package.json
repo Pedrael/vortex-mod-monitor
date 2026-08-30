@@ -12,6 +12,7 @@
     "watch": "tsc -w",
     "typecheck": "tsc --noEmit",
     "typecheck:test": "tsc -p tsconfig.test.json",
+    "package:extension": "npm run build && node scripts/package-extension.js",
     "smoke": "node scripts/smoke-extension.cjs",
     "test": "vitest run",
     "gitnexus:setup": "bash scripts/bearing-setup.sh",

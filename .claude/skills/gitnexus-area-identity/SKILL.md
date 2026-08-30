@@ -58,12 +58,12 @@ Start here when exploring this area:
 
 | Flow | Type | Steps |
 |------|------|-------|
-| `CompareSnapshots → StripVersionTokens` | cross_community | 5 |
-| `CompareSnapshots → StripVortexPin` | cross_community | 5 |
-| `CompareSnapshots → Str` | cross_community | 5 |
-| `CompareSnapshots → DiceCoefficient` | intra_community | 4 |
-| `CompareSnapshots → ArchiveShaKey` | cross_community | 4 |
-| `CompareSnapshots → StagingSetKey` | cross_community | 4 |
+| `MatchSnapshots → StripVersionTokens` | cross_community | 4 |
+| `MatchSnapshots → StripVortexPin` | cross_community | 4 |
+| `MatchSnapshots → Str` | cross_community | 4 |
+| `MatchSnapshots → DiceCoefficient` | intra_community | 3 |
+| `MatchSnapshots → ArchiveShaKey` | cross_community | 3 |
+| `MatchSnapshots → StagingSetKey` | cross_community | 3 |
 
 ## How to Explore
 

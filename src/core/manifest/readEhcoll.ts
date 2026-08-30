@@ -2,7 +2,9 @@
  * `.ehcoll` ZIP reader (Phase 3 slice 2).
  *
  * Mirror of {@link ./packageZip.packageEhcoll}. Takes one absolute path
- * to a `.ehcoll` ZIP, opens it via `vortex-api`'s `util.SevenZip`,
+ * to a `.ehcoll` ZIP, opens it with the project's own native ZIP reader
+ * ({@link ./readZip}) — NOT 7-Zip, which used to spawn here and could not
+ * on a Wine prefix, turning a healthy package into "7z failed to list" —
  * extracts and validates `manifest.json`, cross-checks the package
  * structure (`bundled/` directory, optional `README.md`/`CHANGELOG.md`,
  * Phase 5 `ini-tweaks/` placeholder), and returns a fully-typed result
@@ -69,11 +71,13 @@ export type ReadEhcollOptions = {
    * place after a successful read — useful for offline inspection.
    */
   cleanupOnSuccess?: boolean;
-  /**
-   * Optional injection point. Defaults to `vortex-api`'s `util.SevenZip`
-   * via {@link resolveSevenZip}. Tests substitute a fake.
-   */
-  sevenZip?: SevenZipApi;
+  // There is deliberately no `sevenZip` option here any more.
+  //
+  // One existed, documented as an injection point that "tests substitute a
+  // fake" — and after the reader was rewritten to use readZip nothing read it.
+  // A caller passing a fake 7-Zip to control this function got no error and no
+  // effect, which is worse than the option not existing: it invites someone to
+  // test a code path that is not running.
 };
 
 export type ReadEhcollResult = {

@@ -1,16 +1,16 @@
 ---
 name: gitnexus-area-actions
-description: "Skill for the Actions area of vortex-mod-monitor. 79 symbols across 16 files."
+description: "Skill for the Actions area of vortex-mod-monitor. 78 symbols across 16 files."
 ---
 
 # Actions
 
-79 symbols | 16 files | Cohesion: 75%
+78 symbols | 16 files | Cohesion: 74%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how createBuildPackageAction, reconcileExternalModsConfig, toBuildManifestExternalMods work
+- Understanding how createBuildPackageAction, captureLoadOrder, reconcileExternalModsConfig work
 - Modifying actions-related functionality
 
 ## Key Files
@@ -25,27 +25,26 @@ description: "Skill for the Actions area of vortex-mod-monitor. 79 symbols acros
 | `src/actions/comparePluginsAction.ts` | createComparePluginsAction, action, action |
 | `src/actions/exportModsAction.ts` | createExportModsAction, action, action |
 | `src/core/comparePlugins.ts` | exportPluginsDiffReport, getCurrentPluginsTxtPath, getLocalAppDataPath |
-| `src/core/manifest/collectionConfig.ts` | reconcileExternalModsConfig, toBuildManifestExternalMods |
 | `src/ui/pages/dashboard/data.ts` | formatGameLabel, readSystemStatus |
+| `src/core/loadOrder.ts` | captureLoadOrder |
 
 ## Entry Points
 
 Start here when exploring this area:
 
 - **`createBuildPackageAction`** (Function) — `src/actions/buildPackageAction.ts:109`
+- **`captureLoadOrder`** (Function) — `src/core/loadOrder.ts:40`
 - **`reconcileExternalModsConfig`** (Function) — `src/core/manifest/collectionConfig.ts:288`
-- **`toBuildManifestExternalMods`** (Function) — `src/core/manifest/collectionConfig.ts:329`
-- **`applyHint`** (Function) — `src/core/manifest/externalHints.ts:229`
 - **`createCompareModsAction`** (Function) — `src/actions/compareModsAction.ts:21`
+- **`createComparePluginsAction`** (Function) — `src/actions/comparePluginsAction.ts:15`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
 | `createBuildPackageAction` | Function | `src/actions/buildPackageAction.ts` | 109 |
+| `captureLoadOrder` | Function | `src/core/loadOrder.ts` | 40 |
 | `reconcileExternalModsConfig` | Function | `src/core/manifest/collectionConfig.ts` | 288 |
-| `toBuildManifestExternalMods` | Function | `src/core/manifest/collectionConfig.ts` | 329 |
-| `applyHint` | Function | `src/core/manifest/externalHints.ts` | 229 |
 | `createCompareModsAction` | Function | `src/actions/compareModsAction.ts` | 21 |
 | `createComparePluginsAction` | Function | `src/actions/comparePluginsAction.ts` | 15 |
 | `createExportModsAction` | Function | `src/actions/exportModsAction.ts` | 17 |
@@ -62,6 +61,7 @@ Start here when exploring this area:
 | `pickJsonFile` | Function | `src/utils/utils.ts` | 70 |
 | `pickTxtFile` | Function | `src/utils/utils.ts` | 473 |
 | `pickModArchiveFile` | Function | `src/utils/utils.ts` | 113 |
+| `action` | Function | `src/actions/buildPackageAction.ts` | 335 |
 
 ## Execution Flows
 
@@ -74,9 +74,9 @@ Start here when exploring this area:
 | `RouteOutlet → BelongsToGame` | cross_community | 7 |
 | `ProbeNexusAccount → GetVortexUserDataPath` | cross_community | 7 |
 | `ProbeInstallerApi → GetVortexUserDataPath` | cross_community | 7 |
-| `ExecutePromptUserChoice → GetVortexUserDataPath` | cross_community | 7 |
 | `RunSelfChecks → GetVortexUserDataPath` | cross_community | 7 |
 | `CurrentFingerprint → GetVortexUserDataPath` | cross_community | 7 |
+| `RouteOutlet → GetActiveGameId` | cross_community | 6 |
 
 ## How to Explore
 

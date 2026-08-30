@@ -2,163 +2,219 @@
 
 > *Vortex is a black hole. Collections, rules, FOMOD selections, conflict overrides — they all get pulled in and never come out the same on the other side. Event Horizon is the boundary that captures everything **before** it crosses over.*
 
-A [Vortex](https://www.nexusmods.com/about/vortex/) extension that lets you **snapshot, diff, build, and reproduce** the exact mod state of a profile — rules, FOMOD choices, file overrides, install order, load order, archive hashes — so a curated setup actually arrives on a user's machine the way you built it.
+A [Vortex](https://www.nexusmods.com/about/vortex/) extension that captures a curator's exact mod state into a portable, hash-verified `.ehcoll` package — and reproduces it on someone else's machine.
 
-> **Status: pre-release (v0.0.1).** Both halves now exist in the code — capture (export + diff), packaging (`.ehcoll`), and the user-side installer — reachable from a dedicated **Event Horizon** page in the Vortex sidebar. It has not been through a tagged release. Automated tests are **just getting started** (`npm test`, vitest — currently covering mod-identity matching only), so treat the determinism guarantees below as *intended behaviour that is not yet mechanically verified end to end*. Tested mainly with Bethesda games (Skyrim SE, Skyrim, Fallout 4).
+**Requires Vortex 2.x.** Built against `@nexusmods/vortex-api` 2.6.0-beta.2 (React 18); it will not run on Vortex 1.16. Windows and Linux/Proton are both supported targets.
 
-**Requires Vortex 2.x.** The extension builds against `@nexusmods/vortex-api` 2.6.0-beta.2 (React 18). It will not run on Vortex 1.16.
+---
+
+## Status — alpha, v0.1.0-alpha.1
+
+Everything described below is built and running. It has been exercised end to
+end against a real 954-mod Fallout 4 profile, on Windows and on Linux under
+umu/Proton. 848 tests across 83 files cover it.
+
+What that does **not** mean:
+
+- It has not been through a tagged public release.
+- Reproduction is verified by hashing, not by launching the game. "The files
+  match" is what we prove; "the game plays identically" is what you hope
+  follows.
+- Three captured things are still recorded and never applied — see
+  [Known gaps](#known-gaps). Read that section before you rely on the word
+  "deterministic".
+
+Tested on Bethesda titles (Fallout 4 primarily, Skyrim SE, Skyrim).
 
 ---
 
 ## Why this exists
 
-Vortex's built-in collection system is genius in concept and unreliable in practice — rules go missing, FOMOD selections get lost, file overrides reset, and "the same collection" produces different installs on different machines. Event Horizon tackles the problem from the other end: capture **every** load-bearing piece of state on the curator's side (in a portable, hash-verified package), then deterministically reproduce it on the user's side using Vortex's low-level installer/deploy primitives — without touching the vanilla collection mechanism at all.
+Vortex's collection system is a good idea that loses state. Rules go missing,
+FOMOD selections get dropped, file overrides reset, and "the same collection"
+produces different installs on different machines — silently, which is the part
+that costs you a weekend.
+
+Event Horizon attacks it from the other end. Capture **every** load-bearing
+piece of state on the curator's side into a package that carries its own
+hashes, then rebuild it on the user's side through Vortex's low-level
+installer and deploy primitives. It never enters the vanilla collection
+codepath.
+
+Two design positions do most of the work:
+
+**The curator's disk is not the source of truth.** A curator's staging folder
+can be quietly corrupt, and hashing it would make that corruption the
+reference every user is measured against. Identity comes from the archives, and
+drift is measured against *our own previous install*, never against the
+curator's machine.
+
+**Sequential, not concurrent.** Vortex loses files when mods install in
+parallel. Installing one at a time is slower and is a correctness property, not
+a performance oversight.
+
+---
+
+## What it does
+
+### Capture (curator side)
+
+Snapshots the active profile: mod identity and archive SHA-256, enabled state,
+collection membership, FOMOD selections, mod rules, file overrides, enabled INI
+tweaks, install order, load order, per-modtype deployment manifests, and the
+ESL/light flag on every plugin.
+
+Packs it into a `.ehcoll` — a self-contained ZIP with a `schemaVersion: 1`
+`manifest.json`. External mods that cannot be linked can be bundled into the
+package itself.
+
+### Reproduce (user side)
+
+Reads the package, resolves every mod against what the user already has,
+downloads or extracts the rest, and installs them **one at a time**. Then:
+
+- **Verifies** each installed archive by SHA-256, reporting `matches`,
+  `differs`, `damaged`, or `unknown`. The `differs`/`damaged` split matters:
+  only a damaged archive is fixed by downloading again, and only that one is
+  not the curator's problem.
+- **Replaces** the user's mod rules and LOOT userlist with the collection's —
+  it does not merge. Everything is backed up first, and the backup landing on
+  disk is an interlock, not a courtesy. Merging produces a rule set that exists
+  on nobody's machine but theirs, and it fails invisibly: every file verifies,
+  and the game still loads something else.
+- **Pins** the curator's plugin order and restores ESL flags. Plugins the user
+  has that the collection does not know about are integrated LOOT-style, not
+  appended last.
+- **Writes a receipt**, which is the only record of cross-release lineage.
+
+An aborted install writes no receipt.
+
+### Audit
+
+Export a snapshot to JSON and diff it later; diff a reference `plugins.txt`
+against the live one. Reports are browsable in-app.
+
+---
+
+## Known gaps
+
+Stated here rather than buried, because they bound the word "deterministic":
+
+| Gap | Consequence |
+| --- | --- |
+| **FOMOD choices are recorded, not replayed.** | A mod with an installer asks the user the same questions the curator answered. Their answers are in the manifest; nothing replays them. |
+| **`fileOverrides` are recorded, not applied.** | A real collection carries 4,382 entries. Nobody has measured whether they change the outcome. |
+| **INI tweaks are recorded, not applied.** | The build warns the curator, so it is disclosed rather than silent. |
+
+The driver also does not roll back. A failed run leaves what it installed in
+place and re-running picks up from there — deliberate, because a half-rolled-back
+install is harder to reason about than a half-finished one.
+
+---
+
+## Install (users)
+
+```
+npm install
+npm run build:vortex     # builds, then copies into %APPDATA%\Vortex\plugins\
+```
+
+Restart Vortex. **Event Horizon** appears in the sidebar.
+
+To install by hand instead, copy `index.js`, `info.json`, `dist/` and `assets/`
+into `%APPDATA%\Vortex\plugins\vortex-event-horizon\`.
+
+For a distributable archive, `npm run package:extension` writes
+`release/event-horizon-<version>.zip` with `info.json` at the archive root —
+which is where Vortex looks, and the thing that zipping the project folder gets
+wrong. See [`docs/PUBLISHING.md`](docs/PUBLISHING.md).
 
 ---
 
 ## The Event Horizon page
 
-The extension registers a custom React `mainPage` in Vortex's sidebar (global group, so it is visible regardless of which game profile is active). It has seven sections:
+A React `mainPage` in the sidebar (global group — visible whatever game is
+active), with seven sections: **Dashboard**, **Install**, **My Collections**,
+**Build**, **Plugin Diffs**, **Mod Diffs**, **About**.
 
-| Section | What it does |
-|---|---|
-| **Dashboard** | Overview, system status, and recent activity |
-| **Install** | Install an Event Horizon collection from an `.ehcoll` package |
-| **My Collections** | Installed collections and their receipts |
-| **Build** | Package your current setup as a collection |
-| **Plugin Diffs** | Review plugin comparison reports |
-| **Mod Diffs** | Review mod snapshot comparison reports |
-| **About** | Version and project info |
+Five actions are also registered on Vortex's own toolbars: Export Mods To JSON
+and Compare Current Mods With JSON on `mod-icons`, Compare Plugins With TXT on
+`gamebryo-plugin-icons`, and legacy Build/Install dialogs on `global-icons`.
+The `global-icons` pair are deliberate fallbacks for scripted testing — **the
+page is the supported UX.**
 
-Alongside the page, five actions are registered on Vortex's own toolbars:
+### Game support
 
-| Toolbar | Action |
-|---|---|
-| `mod-icons` | Export Mods To JSON |
-| `mod-icons` | Compare Current Mods With JSON |
-| `gamebryo-plugin-icons` | Compare Plugins With TXT |
-| `global-icons` | Event Horizon: Build *(legacy dialog)* |
-| `global-icons` | Event Horizon: Install *(legacy dialog)* |
-
-The two `global-icons` entries are deliberate fallbacks — the same flows without the page, handy for scripted testing. **The page is the recommended UX.**
-
----
-
-## Capabilities
-
-### Export Mods To JSON
-
-Writes a full snapshot of the **active profile's mods** to a JSON file, including:
-
-- Mod identity (`id`, `name`, `version`, `source`, `nexusModId`, `nexusFileId`, `archiveId`)
-- **Archive SHA-256** — the load-bearing identity for external (non-Nexus) mods
-- Enabled/disabled state (resolved from the profile's `modState`)
-- Collection membership (`collectionIds`)
-- Installer info (`installerType`, `hasInstallerChoices`, `hasDetailedInstallerChoices`)
-- **FOMOD selections** — every step → group → choice the user picked during installation (when Vortex captured them)
-- **Mod rules** — captured from Vortex state and canonically sorted
-- **File overrides** + **enabled INI tweaks** — the curator's explicit conflict-resolution choices
-- **Install order** — derived ordinal so a packager can reproduce timing-sensitive installs
-- **Load order** — for games using Vortex's LoadOrder API (distinct from `plugins.txt`)
-- **Deployment manifests** — per mod-type, capturing which mod won deployment for each file
-
-Output: `%APPDATA%/Vortex/.../event-horizon/exports/event-horizon-mods-{gameId}-{profileId}-{timestamp}.json`
-
-### Compare Current Mods With JSON
-
-Pick a previously exported snapshot; the extension builds a fresh snapshot of your current profile and produces a diff report:
-
-- `onlyInReference` — mods in the snapshot but missing locally
-- `onlyInCurrent` — mods present locally but not in the snapshot
-- `changed` — mods present in both with field-level differences (name, version, enabled, FOMOD selections, rules, overrides, install/load order, etc.)
-
-Output: `.../event-horizon/diffs/event-horizon-mod-diff-{gameId}-{timestamp}.json` — browsable in the **Mod Diffs** section.
-
-### Compare Plugins With TXT
-
-Pick a reference `plugins.txt`; the extension reads the **current** `plugins.txt` from `%LOCALAPPDATA%\<GameFolder>\plugins.txt` and diffs them:
-
-- `onlyInReference` / `onlyInCurrent` — plugins added/removed
-- `enabledMismatch` — plugin present in both but `*`-prefix (enabled state) differs
-- `positionChanged` — load order index differs
-
-Output: `.../event-horizon/plugin-diffs/event-horizon-plugins-diff-{gameId}-{timestamp}.json` — browsable in the **Plugin Diffs** section.
-
-Supported games for plugin diffs (mapped via `LOCAL_APPDATA_GAME_FOLDER_BY_GAME_ID`):
-
-| `gameId` | Folder under `%LOCALAPPDATA%` |
-|---|---|
-| `skyrimse` | `Skyrim Special Edition` |
-| `skyrim` | `Skyrim` |
-| `fallout4` | `Fallout4` |
-
-Other games will throw `Unsupported gameId for plugins.txt`. PRs welcome.
-
-### Build
-
-Packs the snapshot into a standalone `.ehcoll` package — a self-contained ZIP with a `manifest.json` the installer consumes. Asks for collection **name**, **version** (semver), **author**, and an optional **description**.
-
-Supported games: `skyrimse`, `fallout3`, `falloutnv`, `fallout4`, `starfield`. Others are rejected with an error notification.
-
-Output: `%APPDATA%/Vortex/event-horizon/collections/<slug>-<version>.ehcoll`
-
-Manifest format is `schemaVersion: 1` — see [`docs/business/MANIFEST_SCHEMA.md`](docs/business/MANIFEST_SCHEMA.md). Inspect a package with `7z l file.ehcoll`. Full spec: [`docs/business/BUILD_PACKAGE.md`](docs/business/BUILD_PACKAGE.md).
-
-### Install
-
-Reads an `.ehcoll` package and reproduces the captured state — resolving archives, replaying install order, applying mod rules, file overrides, userlist and load order, then recording a receipt. See [`docs/business/INSTALL_ACTION.md`](docs/business/INSTALL_ACTION.md), [`INSTALL_DRIVER.md`](docs/business/INSTALL_DRIVER.md), and [`INSTALL_LEDGER.md`](docs/business/INSTALL_LEDGER.md).
-
-> This is the newest and least-exercised part of the extension. Back up a profile before pointing it at one you care about.
-
----
-
-## Install (end users)
-
-1. Build the extension (see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)) or grab a release build.
-2. Copy the contents of `dist/` plus `index.js`, `info.json`, and `assets/` into:
-
-   ```
-   %APPDATA%\Vortex\plugins\vortex-event-horizon\
-   ```
-
-3. Restart Vortex. **Event Horizon** appears in the sidebar, and the toolbar actions appear on the mods and plugins screens.
-
-> `scripts/deploy-to-vortex.js` automates this — `npm run build:vortex`. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
-
----
-
-## Usage
-
-1. Open **Event Horizon → Build** to package your current profile as an `.ehcoll`, or use **Export Mods To JSON** on the mods toolbar for a plain snapshot.
-2. To audit drift: export a snapshot, then later use **Compare Current Mods With JSON** and read the report under **Mod Diffs**.
-3. For load-order auditing on Bethesda games, keep a baseline `plugins.txt`, then use **Compare Plugins With TXT** and read the report under **Plugin Diffs**.
-4. To reproduce a setup elsewhere, open **Event Horizon → Install** and point it at an `.ehcoll`.
-
-Toolbar actions show a Vortex notification with **Open Diff** and **Open Folder** buttons.
+Building a collection: `skyrimse`, `fallout3`, `falloutnv`, `fallout4`,
+`starfield`. Plugin diffs additionally need a `%LOCALAPPDATA%` folder mapping
+and currently cover `skyrimse`, `skyrim`, `fallout4`; anything else raises
+`Unsupported gameId for plugins.txt`. Both lists are small tables — PRs welcome.
 
 ---
 
 ## Documentation
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — code layout, modules, and execution flow
-- [docs/DATA_FORMATS.md](docs/DATA_FORMATS.md) — exact shape of every JSON file the extension reads/writes
-- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — build, deploy, debug, and contribute
+| Doc | Read it for |
+| --- | --- |
+| [`docs/business/`](docs/business/) | **Per-operation behaviour in plain English** — failure modes, edge cases, invariants. The contract; start here. |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Code layout and execution flow |
+| [`docs/DATA_FORMATS.md`](docs/DATA_FORMATS.md) | Exact shape of every JSON file read or written |
+| [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Build, deploy, debug |
+| [`docs/PUBLISHING.md`](docs/PUBLISHING.md) | Getting the **extension** to Vortex users |
+| [`docs/DISTRIBUTING_COLLECTIONS.md`](docs/DISTRIBUTING_COLLECTIONS.md) | Getting a **collection** to its users — research, unbuilt |
+| [`docs/PROPOSAL_INSTALLER.md`](docs/PROPOSAL_INSTALLER.md) | The original design doc. History: it is built, and its load-order reasoning has since been reversed. |
 
-Run the test suite with `npm test` (vitest). Tests live beside the code as `*.test.ts` and are excluded from the compiled `dist/` output.
-- [docs/business/](docs/business/) — **business-logic specs**: per-operation behaviour in plain English. Read here when onboarding or when you need to know exactly how a feature behaves in any case (failure modes, edge cases, invariants).
-- [docs/PROPOSAL_INSTALLER.md](docs/PROPOSAL_INSTALLER.md) — original design doc for the standalone collection installer
+When a doc and the code disagree, the doc is the spec and the code is the bug —
+until someone proves otherwise. A change in behaviour ships with its spec
+update in the same commit.
 
 ---
 
-## Tech
+## Development
 
-- **Language**: TypeScript (strict, ES2019, CommonJS output)
-- **Runtime**: Vortex 2.x (Electron), React 18
-- **API**: [`@nexusmods/vortex-api`](https://www.npmjs.com/package/@nexusmods/vortex-api) — `util`, `selectors`, `actions`, `types`
-- **No bundler** — plain `tsc`; every Vortex-provided module stays external and is injected by the host
-- **No runtime dependencies** — everything in `devDependencies` is types or tooling
+```
+npm test                 # vitest
+npm run typecheck        # tsc --noEmit, src
+npm run typecheck:test   # tests are typechecked separately, and must be
+npm run build            # tsc
+npm run package:extension
+```
 
-> `.npmrc` sets `legacy-peer-deps`. `@nexusmods/vortex-api` 2.6.0-beta.2 pins React 18 while also pinning `react-select@1.3.0`, whose peer range stops at React 16 — unsatisfiable under npm's strict resolution. Upstream builds with pnpm, which only warns. Since nothing here is bundled, the conflict is type-time only.
+`typecheck:test` exists because the test files were not typechecked for most of
+this project's life, which hid five shape drifts in tests that were passing.
+
+### Tech
+
+- TypeScript, strict, ES2019, CommonJS output
+- **No bundler** — plain `tsc`; Vortex-provided modules stay external and are
+  injected by the host
+- **No runtime dependencies.** Everything in `devDependencies` is types or
+  tooling.
+
+**Reading a `.ehcoll` uses a hand-written zero-dependency ZIP reader**
+(`src/core/manifest/readZip.ts`), not Vortex's 7-Zip. Shelling out to `7z.exe`
+fails under a Wine/Proton prefix for reasons that have nothing to do with the
+archive — a missing vcrun runtime in the prefix — and surfaces to the user as
+`7z failed to list`, which reads as "your collection is broken" and is not.
+
+The split is deliberate and asymmetric:
+
+| | Uses |
+| --- | --- |
+| Reading our own `.ehcoll` | native `readZip.ts` |
+| Listing an archive | native-ZIP-first, 7z fallback (`listArchive.ts`) |
+| **Writing** a `.ehcoll` | still Vortex's 7-Zip (`packageZip.ts`) |
+| Unpacking third-party mod archives (`.7z`, `.rar`) | Vortex's 7-Zip — the right tool, and ours cannot do it |
+
+Writing stayed on 7-Zip because packaging is a curator-side operation and the
+Proton failure is user-side. If curators start hitting it, that is the next
+piece to move.
+
+> `.npmrc` sets `legacy-peer-deps`. `@nexusmods/vortex-api` 2.6.0-beta.2 pins
+> React 18 while also pinning `react-select@1.3.0`, whose peer range stops at
+> React 16 — unsatisfiable under npm's strict resolution. Upstream builds with
+> pnpm, which only warns. Nothing here is bundled, so the conflict is
+> type-time only.
 
 ---
 

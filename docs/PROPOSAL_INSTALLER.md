@@ -1,8 +1,20 @@
 # Proposal — Event Horizon Standalone Collection Installer
 
-**Status**: DRAFT — pending review
-**Owner**: TBD
-**Last updated**: 2026-04-26
+**Status**: BUILT AND SHIPPING. This is the original design proposal, kept
+because the code cites its section numbers (`per §5.5` and similar appear in
+`src/types/ehcoll.ts`, `src/types/installPlan.ts`,
+`src/core/resolver/resolveInstallPlan.ts` and elsewhere). It is a record of the
+design as proposed, **not a description of current behaviour**.
+
+**Read it as history.** Several decisions here have since been reversed on
+evidence — most importantly the load-order strategy: this document's
+"rules-only, never write plugins.txt" reasoning was correct about the FILE and
+wrong about the STATE, and the installer now pins the curator's plugin order
+through Vortex's own `set-plugin-list` → `autosort-plugins` →
+`collection-postprocess-complete` path. For what the installer does today, the
+source of truth is `docs/business/INSTALL_DRIVER.md` and the code itself.
+
+**Last updated**: 2026-04-26 (proposal), status revised 2026-08-30
 
 ---
 

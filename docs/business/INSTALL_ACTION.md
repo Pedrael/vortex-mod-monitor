@@ -33,13 +33,13 @@ buildUserSideState → pickInstallTarget → resolveInstallPlan → preview dial
                                                        result dialog
 ```
 
-Slice 5 stopped at "render the plan." Slice 6a added the **Install** button for the fresh-profile happy path. Slice 6b extends the action to:
+The action grew in slices; all of them have landed. It now:
 
-- accept plans with **manual-review** decisions (`*-diverged`, `external-prompt-user`),
-- accept plans with **orphans**,
-- accept plans targeting the **current profile**,
-- collect a `UserConfirmedDecisions` object via sequential picker dialogs after the user clicks Install,
-- pass those decisions to `runInstall`.
+- accepts plans with **manual-review** decisions (`*-diverged`, `external-prompt-user`),
+- accepts plans with **orphans**,
+- accepts plans targeting the **current profile**,
+- collects a `UserConfirmedDecisions` object via sequential picker dialogs after the user clicks Install,
+- passes those decisions to `runInstall`.
 
 The only decisions the action still refuses outright are the two structural blockers: `nexus-unreachable` and `external-missing`.
 
@@ -305,8 +305,8 @@ The user never sees an unhandled-promise toast; every code path either succeeds 
 5. **Picker is the single rule site.** The action does not branch on `receipt`; it asks `pickInstallTarget`.
 6. **Picker-chain cancellation aborts cleanly.** Cancelling any conflict or orphan picker exits before the driver runs. No partial state is created.
 7. **External-prompt-user file picker is best-effort.** If the user cancels the file picker, the mod is silently skipped (mapped to `kind: "skip"`). Phase 5's React UI will let the user retry without restarting the chain.
-8. **SHA-256 is NOT verified for `use-local-file`.** The driver installs whatever the user picked. Phase 5 may add a verification step; v1 trusts the user.
-9. **`availableDownloads` and `externalDependencyState` are `undefined` in slice 5/6a/6b.** Action handler may enrich them in future slices; resolver degrades cleanly when absent.
+8. **SHA-256 IS verified for `use-local-file`** — and the install still proceeds. `checkArchiveIdentity` hashes the picked file against the manifest and reports `matches` / `differs` / `damaged` / `unknown`. It does not block: a browse-mode dependency legitimately resolves to a different-but-equivalent build, and that call is the user's. What they must not do is make it unknowingly. (This entry used to read "SHA-256 is NOT verified... v1 trusts the user.")
+9. **`availableDownloads` is populated in both pipelines.** It used to be `undefined` here while the engine pipeline scanned properly — which is precisely the bug that stranded a tester on a resume that could never find its download. One scanner (`core/resolver/scanAvailableDownloads.ts`) is imported by both call sites; never copy it. `externalDependencyState` is still `undefined` and the resolver still degrades cleanly without it.
 10. **Driver emits no rollback.** If `runInstall` fails midway, the partial profile / state is preserved (see [`INSTALL_DRIVER.md`](INSTALL_DRIVER.md) "Failure semantics"). The action does not attempt to clean up.
 11. **Progress notification id is fixed** (`"vortex-event-horizon:install-progress"`). The driver emits many beats per phase; reusing one id avoids spamming the notification stack.
 12. **Result dialog always fires.** Even for `aborted` / `failed`, the user gets a structured summary, not just a toast. The toast is supplementary.

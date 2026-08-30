@@ -151,7 +151,27 @@ Once the user clicks "Install", the page mounts an effect that calls `runInstall
 - The `EventHorizonLogo` next to a phase label ("Creating profile…", "Installing mod 4 of 12: Skyland AIO", "Writing receipt…").
 - A `ProgressRing` reflecting the driver's phase / step progress.
 - A scrolling activity feed (last ~20 events) so testers can see the driver narrate what it's doing.
-- No cancel button — the driver doesn't support clean abort yet (acknowledged gap in INSTALL_DRIVER.md).
+- **No cancel button, deliberately.** The reason has changed since this said
+  "the driver doesn't support clean abort yet" — the driver *does* check for
+  abort at every phase boundary and between mods, and an aborted run writes no
+  receipt. The wizard still wires no `AbortController` for the `installing`
+  phase, because the driver mutates `mods/`, downloads and deployment, and
+  stopping midway leaves a half-applied state. Showing a Cancel button that
+  cannot safely do the thing it names would be worse than not showing one.
+  Stated at `installSession.ts:25-31`.
+
+The **hang watchdog** can still end a run: two timers (a per-phase stall window
+and an absolute cap) fail the install when Vortex makes no observable progress.
+Both **pause while Vortex is blocked on user input** —
+`session.base.visibleDialog` / `overlayOpen`, via `isAwaitingUserInput`.
+
+That pause is not a refinement, it is a bug fix. A tester walked away while a
+FOMOD dialog waited for him; nothing dispatched, no progress signal moved, and
+the watchdog cancelled a perfectly healthy install. A dialog waiting for a human
+cannot be told from a hang by watching for progress — neither makes any — so the
+question has to be "is Vortex currently blocked on input?", which Vortex
+publishes. The absolute cap had to pause too, or the same failure would just
+move to the user who goes to bed mid-install.
 
 When the driver resolves with `InstallResult`, the wizard transitions to `done`. Any thrown error transitions to `error`.
 

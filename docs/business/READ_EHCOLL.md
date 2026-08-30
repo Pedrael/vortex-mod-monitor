@@ -7,9 +7,10 @@
 ## Purpose
 
 The user-side opener for `.ehcoll` packages. Takes one absolute path on
-disk, opens the ZIP via `vortex-api`'s `util.SevenZip`, validates the
-package structure, parses `manifest.json`, and returns a typed result
-the resolver/installer can consume.
+disk, opens the ZIP with the project's own native reader
+(`src/core/manifest/readZip.ts`), validates the package structure, parses
+`manifest.json`, and returns a typed result the resolver/installer can
+consume.
 
 This is the I/O wrapper around the pure {@link parseManifest} validator.
 The split mirrors the producer side:
@@ -23,15 +24,33 @@ After this slice, anything `packageEhcoll` writes, `readEhcoll` reads
 back losslessly. That round-trip is the gate every Phase 3+ consumer
 (resolver, installer, drift report, package inspector UI) builds on.
 
-## Why the manifest is read out of a temp dir
+## Why this does not use 7-Zip
 
-`node-7z` shells out to `7z.exe`, which writes extracted bytes to disk.
-There is no in-memory extract pipe. So the read flow is:
+It used to, and that was the bug. `node-7z` shells out to `7z.exe`, and on a
+Wine/Proton prefix that spawn fails for reasons unrelated to the archive —
+a missing vcrun runtime under the prefix, not a corrupt package. The failure
+surfaced as `7z failed to list`, which reads as "your collection is broken"
+and is not.
 
-1. **List** the archive's central directory (cheap; no extraction).
-2. **Cherry-pick extract** `manifest.json` only into a temp dir.
+Vortex ships 7-Zip and it is still the right tool for **third-party mod
+archives**, which are as often `.7z` or `.rar` as `.zip` and are Vortex's job
+to unpack. But a `.ehcoll` is our own format and is always a ZIP, so reading it
+needs nothing but `fs` and `zlib`. `readZip.ts` is a zero-dependency ZIP
+reader: it parses the central directory, handles ZIP64, verifies CRC on every
+entry it decompresses, and refuses encrypted or unsupported-method entries by
+name rather than returning wrong bytes.
+
+The read flow:
+
+1. **List** the archive's central directory (cheap; no decompression).
+2. **Extract** `manifest.json` only, into a temp dir.
 3. Read its bytes from disk, hand them to `parseManifest`.
 4. Cleanup.
+
+Step 2 still goes through a temp dir rather than memory. That is now a
+deliberate choice rather than a 7-Zip constraint: it keeps this function's
+contract identical to the version it replaced, and a manifest large enough to
+matter is one worth streaming anyway.
 
 Bundled archives are deliberately **not** extracted here. We only
 confirm they're present in the central directory and that they match
@@ -53,7 +72,11 @@ and directories are rejected.
 | --- | --- | --- |
 | `stagingDir` | `os.tmpdir()/event-horizon-read-<random>` | Where `manifest.json` is extracted to. Useful for tests. |
 | `cleanupOnSuccess` | `true` | When `false`, the staging dir is left in place after a successful read for offline inspection. |
-| `sevenZip` | `resolveSevenZip()` | Test injection point. Defaults to `vortex-api`'s `util.SevenZip`. |
+
+There is no `sevenZip` injection point. One existed and was removed: after the
+switch to the native reader nothing read it, so passing a fake 7-Zip silently
+had no effect — an option that invites you to test a code path that is not
+running.
 
 ## Outputs
 
@@ -70,7 +93,7 @@ and directories are rejected.
 
 `BundledArchiveEntry` carries the parsed sha256, the in-zip path
 (forward-slashed), the file extension (without dot), and the
-uncompressed size when 7z reports it.
+uncompressed size, read straight from the central directory.
 
 ## Behavior — pipeline
 
@@ -82,9 +105,13 @@ phase 3 accumulates errors.
 1. Reject if `zipPath` is not absolute.
 2. `fs.stat` the path. `ENOENT` ⇒ "no file at...". Anything else ⇒
    "cannot stat...". Non-regular-file ⇒ "...is not a regular file."
-3. Call `sevenZip.list(zipPath)`. Collect every emitted `data` entry.
-4. If 7z's stream errors, wrap as a `ReadEhcollError` ("the file may be
-   corrupt, password-protected, or not a ZIP").
+3. Call `listZipEntries(zipPath)` (`readZip.ts`), which parses the whole
+   central directory in one pass. The result is still shaped as
+   `SevenZipListEntry` so the six downstream consumers did not have to
+   change when the reader underneath did.
+4. If it throws — no end-of-central-directory record, an encrypted entry,
+   a ZIP64 layout it will not guess at — wrap as a `ReadEhcollError`
+   ("the file may be corrupt, password-protected, or not a ZIP").
 
 ### Phase 2 — layout classification + manifest extract
 
@@ -105,8 +132,10 @@ phase 3 accumulates errors.
    collection at all.
 7. Prepare a staging directory (clears `options.stagingDir` if
    provided, else `mkdtemp` under the OS temp dir).
-8. Call `sevenZip.extract(zipPath, stagingDir, { $cherryPick: ['manifest.json'] })`.
-   On 7z error, wrap as `ReadEhcollError`.
+8. Call `extractZipEntryToFile` for `manifest.json` alone, into `stagingDir`.
+   The reader verifies the entry's CRC-32 as it inflates, so a truncated or
+   altered manifest fails here rather than downstream as a confusing parse
+   error. On any failure, wrap as `ReadEhcollError`.
 9. `fs.readFile(stagingDir + '/manifest.json', 'utf8')`.
 10. Call `parseManifest(raw)`. If it throws `ParseManifestError`,
     repackage its `.errors[]` into a `ReadEhcollError` so callers have
@@ -142,7 +171,7 @@ phase 3 accumulates errors.
 | `ENOENT` | File moved / deleted | Throw, single error |
 | `EACCES`, etc. | Filesystem issue | Throw, single error |
 | Path is a directory or symlink | Wrong target | Throw, single error |
-| `7z list` errors out | Corrupt ZIP, password-protected, not a ZIP | Throw, single error |
+| central directory unreadable | Corrupt ZIP, encrypted entry, not a ZIP | Throw, single error |
 | `manifest.json` missing | Not an Event Horizon package | Throw, single error |
 | `manifest.json` not valid JSON | Hand-edit / producer bug | Throw, list from `parseManifest` |
 | `schemaVersion` ≠ 1 | Future package | Throw, single error |
@@ -160,13 +189,15 @@ phase 3 accumulates errors.
    listed, never extracted. The resolver (slice 3+) owns extraction;
    `readEhcoll` is purely "tell me what's in here." This keeps a UI
    "inspect package" action fast on a 4 GB collection.
-2. **Path normalization is forward-slash.** 7z reports OS-native
-   separators; we rewrite them so cross-platform comparisons and the
-   eventual UI stay consistent. Producer-side `packageEhcoll` already
-   stages with `/`.
-3. **Directory entries from 7z are filtered.** Some 7z builds emit
-   `bundled/` as a separate entry with `attr` starting `"D"`. We drop
-   those — they're the directory marker, not a file.
+2. **Path normalization is forward-slash.** The ZIP spec says entry names
+   use `/`, but writers exist that emit `\`; we rewrite them so
+   cross-platform comparisons and the UI stay consistent. Producer-side
+   `packageEhcoll` already stages with `/`.
+3. **Directory entries are filtered.** ZIP writers commonly emit
+   `bundled/` as its own entry — a trailing slash, or a `D` in the DOS
+   attribute byte. We drop those: they are the directory marker, not a
+   file, and counting them as files makes them look like package contents
+   that can never be extracted.
 4. **Unknown root-level files are tolerated.** The schema is additive;
    a v1.x producer might ship a new top-level file that this v1 reader
    doesn't recognize. We don't refuse the package — we just ignore the

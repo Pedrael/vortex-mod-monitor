@@ -5,7 +5,7 @@ description: "Skill for the Dashboard area of vortex-mod-monitor. 7 symbols acro
 
 # Dashboard
 
-7 symbols | 2 files | Cohesion: 61%
+7 symbols | 2 files | Cohesion: 58%
 
 ## When to Use
 

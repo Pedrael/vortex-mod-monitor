@@ -1,47 +1,49 @@
 ---
 name: gitnexus-area-install
-description: "Skill for the Install area of vortex-mod-monitor. 63 symbols across 10 files."
+description: "Skill for the Install area of vortex-mod-monitor. 86 symbols across 16 files."
 ---
 
 # Install
 
-63 symbols | 10 files | Cohesion: 69%
+86 symbols | 16 files | Cohesion: 76%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how wizardReducer, canProceedFromDecisions, countUndecidedConflicts work
+- Understanding how reconcileMods, wizardReducer, canProceedFromDecisions work
 - Modifying install-related functionality
 
 ## Key Files
 
 | File | Symbols |
 |------|---------|
-| `src/ui/pages/install/steps.tsx` | DecisionsStep, OrphanRow, RadioOption, SectionHeader, InstallingStep (+17) |
-| `src/ui/pages/install/installSession.ts` | onHashProgress, onPhase, onHashProgress, onPhase, onProgress (+16) |
+| `src/ui/pages/install/steps.tsx` | BucketList, CuratorReportsNotice, DamagedArchiveNotice, ExternalArchiveNotice, GameIniNotice (+27) |
+| `src/ui/pages/install/installSession.ts` | onHashProgress, onPhase, onHashProgress, onPhase, onProgress (+19) |
 | `src/ui/pages/install/state.ts` | wizardReducer, canProceedFromDecisions, countUndecidedConflicts, defaultConflictChoice, defaultOrphanChoice (+3) |
 | `src/ui/pages/install/installProgress.ts` | describeElapsed, describeQuiet, estimateRemainingMs, formatDuration, trackPhase |
-| `src/core/revealPath.ts` | loadShell, openExternalUrl |
-| `src/core/revealPath.test.ts` | openExternal |
-| `src/ui/pages/install/downloadGuidance.ts` | describeDownload |
-| `src/ui/hooks/useKeyboardShortcut.ts` | useKeyboardShortcut |
-| `src/utils/diskSpace.ts` | formatBytes |
-| `src/ui/pages/install/InstallPage.tsx` | session |
+| `src/core/revealPath.ts` | describe, loadShell, openExternalUrl |
+| `src/ui/runtime/ehRuntime.ts` | notify, setBuildBusy, setInstallBusy |
+| `src/ui/pages/install/engine.ts` | checkAbort, checkAbort |
+| `src/utils/abortError.ts` | AbortError |
+| `src/core/archiveHashing.ts` | onAbort |
+| `src/core/installer/applyLoadOrder.ts` | applyLoadOrder |
 
 ## Entry Points
 
 Start here when exploring this area:
 
+- **`reconcileMods`** (Function) — `src/ui/pages/install/steps.tsx:2726`
 - **`wizardReducer`** (Function) — `src/ui/pages/install/state.ts:177`
 - **`canProceedFromDecisions`** (Function) — `src/ui/pages/install/state.ts:373`
 - **`countUndecidedConflicts`** (Function) — `src/ui/pages/install/state.ts:400`
 - **`defaultConflictChoice`** (Function) — `src/ui/pages/install/state.ts:332`
-- **`defaultOrphanChoice`** (Function) — `src/ui/pages/install/state.ts:350`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
+| `AbortError` | Class | `src/utils/abortError.ts` | 22 |
+| `reconcileMods` | Function | `src/ui/pages/install/steps.tsx` | 2726 |
 | `wizardReducer` | Function | `src/ui/pages/install/state.ts` | 177 |
 | `canProceedFromDecisions` | Function | `src/ui/pages/install/state.ts` | 373 |
 | `countUndecidedConflicts` | Function | `src/ui/pages/install/state.ts` | 400 |
@@ -50,37 +52,35 @@ Start here when exploring this area:
 | `fillDefaultConflictChoices` | Function | `src/ui/pages/install/state.ts` | 416 |
 | `fillDefaultOrphanChoices` | Function | `src/ui/pages/install/state.ts` | 432 |
 | `selectConflictResolutions` | Function | `src/ui/pages/install/state.ts` | 318 |
-| `DecisionsStep` | Function | `src/ui/pages/install/steps.tsx` | 1050 |
+| `DecisionsStep` | Function | `src/ui/pages/install/steps.tsx` | 1060 |
 | `describeElapsed` | Function | `src/ui/pages/install/installProgress.ts` | 147 |
 | `describeQuiet` | Function | `src/ui/pages/install/installProgress.ts` | 114 |
 | `estimateRemainingMs` | Function | `src/ui/pages/install/installProgress.ts` | 89 |
 | `formatDuration` | Function | `src/ui/pages/install/installProgress.ts` | 132 |
 | `trackPhase` | Function | `src/ui/pages/install/installProgress.ts` | 66 |
-| `InstallingStep` | Function | `src/ui/pages/install/steps.tsx` | 1788 |
-| `openExternalUrl` | Function | `src/core/revealPath.ts` | 139 |
-| `describeDownload` | Function | `src/ui/pages/install/downloadGuidance.ts` | 44 |
-| `isAbortError` | Function | `src/ui/pages/install/installSession.ts` | 506 |
-| `useKeyboardShortcut` | Function | `src/ui/hooks/useKeyboardShortcut.ts` | 35 |
-| `ConfirmStep` | Function | `src/ui/pages/install/steps.tsx` | 1633 |
+| `InstallingStep` | Function | `src/ui/pages/install/steps.tsx` | 1957 |
+| `onAbort` | Function | `src/core/archiveHashing.ts` | 50 |
+| `applyLoadOrder` | Function | `src/core/installer/applyLoadOrder.ts` | 99 |
+| `checkAbort` | Function | `src/ui/pages/build/engine.ts` | 723 |
 
 ## Execution Flows
 
 | Flow | Type | Steps |
 |------|------|-------|
+| `RunInstall → AbortError` | cross_community | 6 |
 | `StartInstall → EHRuntime` | cross_community | 6 |
 | `StartInstall → Notify` | cross_community | 6 |
 | `DoneStep → Pill` | cross_community | 5 |
 | `StartInstall → GetSnapshot` | cross_community | 5 |
-| `OnHashProgress → EHRuntime` | cross_community | 5 |
-| `OnHashProgress → Notify` | cross_community | 5 |
-| `OnPhase → EHRuntime` | cross_community | 5 |
-| `OnPhase → Notify` | cross_community | 5 |
+| `Take → AbortError` | cross_community | 5 |
+| `Session → Notify` | cross_community | 5 |
+| `ReleaseBuild → Notify` | cross_community | 5 |
 | `OnHashProgress → EHRuntime` | cross_community | 5 |
 | `OnHashProgress → Notify` | cross_community | 5 |
 
 ## How to Explore
 
-1. `context({name: "wizardReducer"})` — see callers and callees
+1. `context({name: "reconcileMods"})` — see callers and callees
 2. `query({search_query: "install"})` — find related execution flows
 3. Read key files listed above for implementation details
 4. `explain({target: "<file or symbol>"})` — persisted taint findings (source→sink data flows), when indexed with `--pdg`

@@ -1,7 +1,10 @@
 # Business logic: install driver (`runInstall`)
 
 > Spec for `src/core/installer/runInstall.ts` and the `src/core/installer/`
-> support modules (`profile.ts`, `modInstall.ts`, `pluginsTxt.ts`).
+> support modules (`profile.ts`, `modInstall.ts`, `verifyModInstall.ts`,
+> `purgeUserRules.ts`, `applyModRules.ts`, `applyUserlist.ts`,
+> `applyPluginOrder.ts`, `applyPluginLightFlags.ts`). There is no
+> `pluginsTxt.ts` any more — see the `plugins.txt` section.
 
 The install driver is the **only** part of Event Horizon that mutates Vortex
 state or the filesystem. Every other module — auditor, manifest builder,
@@ -14,19 +17,24 @@ companion type-level contract lives in `src/types/installDriver.ts`.
 
 ---
 
-## Slicing
+## How it got here
 
-The install driver lands in three slices. Each slice is independently
-testable end-to-end in a real Vortex environment:
+The driver landed in four slices, each independently testable end-to-end in a
+real Vortex environment. All four have shipped:
 
 | Slice  | Scope                                                                                    | Status |
 |--------|------------------------------------------------------------------------------------------|--------|
 | **6a** | Fresh-profile happy path. Refuses anything that needs user input.                         | shipped |
-| **6b** | Current-profile mode. Manual-review pickers (conflict + orphan). Mod uninstall primitive. | **shipped** |
-| 6c     | Apply mod rules. Apply Vortex `setLoadOrder`. Drift report.                               | future |
+| **6b** | Current-profile mode. Manual-review pickers (conflict + orphan). Mod uninstall primitive. | shipped |
+| **6c** | Apply mod rules. Apply Vortex `setLoadOrder`. Drift report.                               | shipped |
+| **7**  | Replace the user's rules, pin the plugin order, restore ESL flags.                        | shipped |
 
-This document describes **slices 6a + 6b's behavior**. Where slice 6c
-will extend the driver, the section is marked _(future)_.
+**This document describes current behaviour.** It used to be scoped to "slices
+6a + 6b" with everything later marked _(future)_, and those markers outlived
+the work — the load-order sections in particular said the driver deliberately
+did **not** touch plugin order, long after it did. Prefer this file over any
+`_(future)_` phrasing you find elsewhere; if you find one still standing,
+it is stale.
 
 ---
 
@@ -47,7 +55,7 @@ never call `api.events.emit` or `api.store.dispatch`.
 
 ---
 
-## Scope (slices 6a + 6b)
+## Scope
 
 The driver, when given a plan and a `UserConfirmedDecisions` bundle, will:
 
@@ -74,9 +82,16 @@ The driver, when given a plan and a `UserConfirmedDecisions` bundle, will:
      `*-diverged` + `replace-existing` choice.
 5. **Enable** each newly-installed mod in the active profile (current
    or fresh).
-6. **Deploy** by emitting `deploy-mods` and waiting for `did-deploy`.
-   `plugins.txt` is produced *here*, by Vortex, not by us — see below.
-7. **Write** the install ledger receipt for cross-release lineage.
+6. **Verify** what landed — hash each installed archive against the manifest
+   and classify it `matches` / `differs` / `damaged` / `unknown`.
+7. **Replace** the user's mod rules and LOOT userlist with the collection's,
+   after backing both up. See "Replacing the user's rules".
+8. **Deploy** by emitting `deploy-mods` and waiting for `did-deploy`.
+9. **Pin** the curator's plugin order and restore ESL flags, integrating any
+   extra plugins the user has rather than appending them. `plugins.txt` is
+   WRITTEN by Vortex, but it carries the order pinned here — see the
+   `plugins.txt` section below.
+10. **Write** the install ledger receipt for cross-release lineage.
 
 **Refused** in `preflight` (returns `{kind: "failed", phase: "preflight"}`):
 - `plan.summary.canProceed === false`,
@@ -91,11 +106,15 @@ The driver, when given a plan and a `UserConfirmedDecisions` bundle, will:
 - any `decisions.orphanChoices` entry whose `existingModId` doesn't
   match an actual `OrphanedModDecision` in `plan.orphanedMods`.
 
-**Deferred** to slice 6c (NOT applied in 6a/6b but the receipt still
-records the install):
-- `plan.rulePlan` (mod rules — load-after, conflict-resolution, etc.)
-- Vortex `setLoadOrder` (non-plugin load-order; mostly cosmetic for
-  Bethesda games where `plugins.txt` is the truth).
+**Now applied** (this list used to read "deferred to slice 6c"):
+- `plan.rulePlan` (mod rules — load-after, conflict-resolution, etc.), and
+  they REPLACE the user's rather than merging with them: everything is backed
+  up, all mod rules for the game and the whole LOOT userlist are cleared, then
+  the collection's are applied. See "Replacing the user's rules" below.
+- Vortex `setLoadOrder` (non-plugin load-order). Empty on Bethesda titles,
+  which drive order through `plugins.txt` — `captureLoadOrder` documents that
+  as an invariant, so a zero here is correct rather than a failure.
+- The curator's plugin order and ESL flags, after deploy.
 
 ---
 
@@ -127,18 +146,38 @@ installing-mods   ── per mod, sequentially:
   │                  ├── *-diverged + replace-existing  │
   │                  └── external-prompt-user + use-local-file
   ▼
+verifying-mods    ── hash what landed against the manifest; classify each
+  │                  archive matches / differs / damaged / unknown
+  ▼
+applying-mod-rules ── back up the user's rules, CLEAR them, apply the
+  │                   collection's  (before deploy, matching Vortex's own
+  │                   collections)
+  ▼
+applying-userlist ── same treatment for the LOOT userlist
+  │
+  ▼
 deploying ── (emit deploy-mods, await did-deploy)
   │
   ▼
-writing-receipt ── (writeReceipt)
+applying-load-order ── AFTER deploy, because Vortex only persists the order
+  │                    of plugins it considers deployed: pin the curator's
+  │                    order (set-plugin-list), integrate any extra plugins
+  │                    the user has, restore ESL flags
+  ▼
+writing-receipt ── game settings, then writeReceipt
   │
   ▼
 complete ──────────────────────────────────────────────────►
 ```
 
+The `deploying` / `applying-load-order` split is the one ordering constraint
+that is not stylistic: `PluginPersistor` serializes from its **deployed** set,
+so an order pinned before deploy is pinned against a plugin list that does not
+exist yet and is silently discarded.
+
 Each phase emits at least one `DriverProgress` beat. The
-`installing-mods` and `removing-mods` phases emit one per mod.
-`currentStep`/`totalSteps` are scoped to the phase, not the run as a
+`installing-mods`, `removing-mods` and `verifying-mods` phases emit one per
+mod. `currentStep`/`totalSteps` are scoped to the phase, not the run as a
 whole — there's no useful global step count.
 
 For `current-profile` mode the `creating-profile` and
@@ -297,21 +336,108 @@ Removed mods are tracked in `result.removedMods` (a
 
 ---
 
-## `plugins.txt` — written by Vortex, not by the driver
+## Replacing the user's rules
 
-**The driver does not write `plugins.txt`, and there is no
-`writing-plugins-txt` phase.** An earlier design had one, backed by a
-`src/core/installer/pluginsTxt.ts` writer that emitted the manifest's
-order directly (asterisk format for Skyrim/Fallout 4/Starfield, legacy
-format for Fallout 3/NV, with a timestamped backup of the existing
-file). That module and that phase were **deleted** when the rules-only
-strategy locked.
+**The collection's rule set is the whole rule set.** The driver does not merge
+its rules into whatever the user already had — it clears theirs first, then
+applies the curator's, so the machine ends up with exactly the rules the
+collection was built with.
 
-The current contract: the driver applies **mod rules**, **load order**
-and **userlist**, and Vortex's own `gamebryo-plugin-management` plus
-LOOT auto-sort derive `plugins.txt` from those during deploy. Writing
-the file ourselves would fight the host — the two would disagree the
-moment LOOT re-sorted.
+The reason is that the failure mode of merging is silent. Mod rules decide
+which mod wins a file conflict; LOOT userlist rules decide plugin order. One
+leftover rule changes what the game actually loads while every check we run
+still passes: the files are byte-correct, the manifest verifies, and the game
+behaves differently from the curator's anyway. That lands as "your collection
+is broken" with nothing to point at.
+
+`purgeUserRules.ts` owns this. The sequence, in order:
+
+1. `captureUserRuleState` snapshots **everything** first — every mod rule for
+   the game and the entire LOOT userlist, verbatim.
+2. The caller writes that snapshot beside the receipt. This is an interlock,
+   not a courtesy: the purge does not run unless the backup landed on disk.
+3. `CLEAR_USERLIST` empties the userlist in one dispatch. Mod rules are removed
+   per mod.
+4. The collection's rules are applied.
+
+### What this deletes, stated plainly
+
+Vortex stores mod rules on the **mod** (`persistent.mods[gameId][modId].rules`)
+and the LOOT userlist per **game**. Neither is per-profile, so a
+profile-scoped purge is not available to us and the blast radius is wider than
+the profile being installed into:
+
+- rules on mods that are not part of the collection, and
+- rules the user set for their **other profiles of the same game**.
+
+That is the intended scope, it is not recoverable from Vortex itself, and it is
+why step 1 exists. A user who says "it deleted my rules" can be shown exactly
+what was removed and have it put back.
+
+The action names (`CLEAR_USERLIST`, `REMOVE_USERLIST_RULE`,
+`REMOVE_PLUGIN_GROUP`) were read out of the shipped
+`gamebryo-plugin-management` bundle rather than guessed — `CLEAR_USERLIST`
+genuinely takes no payload.
+
+---
+
+## `plugins.txt` — the driver pins the order, Vortex persists it
+
+**The driver DOES apply the curator's plugin order, and `plugins.txt` ends
+up carrying it.** This section previously said the opposite, and the
+reasoning behind that was half right.
+
+The original design wrote the FILE, via a `src/core/installer/pluginsTxt.ts`
+writer that emitted the manifest's order directly. That module was deleted for
+a good reason: Vortex and LOOT own `plugins.txt` and regenerate it, so writing
+it behind their back is undone the moment anything re-sorts. What followed was
+a "rules-only" strategy — apply mod rules and the LOOT userlist, then merely
+*report* how far the resulting order drifted from the curator's.
+
+The premise that survived too long was that the order therefore could not be
+applied at all. The file is Vortex's; the STATE is not. Vortex's own
+`gamebryo-plugin-management` ships `PluginPersistor.syncFromState`, whose
+purpose is to flush the redux load-order hive to `plugins.txt` after a
+collection install — its error string names collection installs explicitly.
+
+So `applyPluginOrder` (after deploy, in the `applying-load-order` phase) does
+three things, and the order of them is the whole safety argument:
+
+1. `set-plugin-list` — dispatches `updatePluginOrder(names, setEnabled=false)`.
+   The curator's plugins take the recorded order; plugins the collection does
+   not contain are appended after them, keeping their enabled state. Passing
+   `true` here would disable every plugin the user added themselves, which is
+   not ours to do.
+2. `autosort-plugins` — LOOT. Vortex feeds it the list sorted by the CURRENT
+   order and libloot's sort is topological with that as the tiebreak, so step 1
+   becomes the baseline: the curator's relative order survives wherever nothing
+   forces otherwise, while masters, the curator's userlist rules and the
+   masterlist lift the user's own plugins into their correct places instead of
+   stranding them at the end.
+3. `collection-postprocess-complete` — `syncFromState` writes `plugins.txt`.
+
+**Pinning first is what makes the attempt safe.** LOOT refuses to sort at all
+when rules form a cycle. If the sort fails, times out, or the events do not
+exist on an older Vortex, the curator's order is already in the hive and is
+still written; the cost of failure is the interleaving of the user's own
+plugins, never the order itself.
+
+The drift report still runs afterwards, and now means something it did not
+before: a remaining difference is LOOT actively disagreeing with the curator —
+a master-order violation, or a newer masterlist — rather than nobody having
+tried.
+
+### ESL / light flags
+
+Applied in the same phase, straight after the order. The flag is a bit in the
+plugin file's TES4 header, so a plugin the curator marked light after
+installing is a staged file the archive does not contain — the user installs
+the archive and silently gets the unflagged copy. Nothing else catches that:
+verification sees different bytes, the archive check finds the user's copy
+matches the archive exactly, and accepts it as curator divergence. Correct for
+every other difference, and fatal for this one, because only 254 regular
+plugins can load and a large collection fits only because most of its plugins
+are light.
 
 The authority for this is `DriverPhase` in
 `src/types/installDriver.ts`, which carries the same note above its
@@ -433,8 +559,14 @@ When the signal aborts, the driver returns
 `{kind: "aborted", phase, partialProfileId, reason}`. Same partial-state
 guarantees as a failure.
 
-The action handler in slice 6a does not pass an `abortSignal`. Slice
-6b's UI may add a Cancel button that wires one up.
+**Nothing currently passes an `abortSignal`, and that is a decision rather than
+an omission.** The legacy action handler never did. The React wizard
+deliberately does not either (`installSession.ts:25-31`): the driver mutates
+`mods/`, downloads and deployment, so stopping midway leaves a half-applied
+state, and a Cancel button that cannot safely do what it says is worse than
+none. The abort machinery stays wired through the driver because the hang
+watchdog uses that path, and because the contract — an aborted run writes no
+receipt — has to hold whoever triggers it.
 
 ---
 
@@ -453,16 +585,32 @@ something the user understands; a bar that says "47% installed across
 
 ---
 
-## What the driver does NOT do (slices 6a + 6b)
+## What the driver does NOT do
 
-- ❌ Apply `manifest.rules`. Slice 6c.
-- ❌ Apply Vortex `setLoadOrder`. Slice 6c.
-- ❌ Verify SHA-256 of `use-local-file` archives. The user is trusted
-  to provide the right file; Phase 5 UI may add a verification step.
-- ❌ Verify SHA-256 of downloaded archives post-install. The resolver
-  matches what the user already has; downloads are trusted to be
-  byte-correct because they come from Nexus's CDN. (Slice 6c may add
-  a defensive check.)
+Every entry that used to say "Slice 6c" has since been built; what follows is
+what genuinely remains outside its scope.
+
+- ✅ ~~Apply `manifest.rules`~~ — applied, and they replace the user's.
+- ✅ ~~Apply Vortex `setLoadOrder`~~ — applied after deploy, alongside the
+  plugin order and ESL flags.
+- ✅ ~~Verify SHA-256 of `use-local-file` archives~~ — `checkArchiveIdentity`
+  hashes a hand-picked archive against the manifest and tells the user when it
+  is not the one the collection was built from. It still installs what they
+  chose: a browse-mode dependency legitimately resolves to a different-but-
+  equivalent build, and that call is theirs. What they should not do is make it
+  unknowingly.
+- ✅ ~~Verify SHA-256 of downloaded archives post-install~~ — the assumption
+  that "downloads are trusted to be byte-correct because they come from Nexus's
+  CDN" was wrong twice over: a mod can be re-uploaded under the same file id,
+  and a download can simply be truncated. Both are checked, and told apart,
+  because only one of them is fixed by downloading again.
+- ❌ Roll back. A run that fails leaves what it installed in place; re-running
+  picks up from there. Deliberate — see the idempotency note above.
+- ❌ Apply INI tweaks (`state.enabledINITweaks`). Recorded, not applied; the
+  build warns the curator so they do not assume otherwise.
+- ❌ Apply `fileOverrides`. Recorded (4,382 entries on a real collection) and
+  read by nothing. Decide whether it is load-bearing before promising
+  byte-exact reproduction.
 - ❌ Verify external dependencies (`plan.externalDependencies`). The
   external-deps verification flow is its own project (Phase 4); the
   driver records what was installed and the user-side verifier is a
@@ -686,23 +834,40 @@ them.
 
 ---
 
-## Open questions for slice 6c / Phase 5
+## Open questions
 
-- **Mod rule application timing**: rules can be applied either
-  before or after deploy. Vortex's vanilla collections apply
-  before. We'll match. Slice 6c.
-- **Conflict picker UI**: per-mod `showDialog` is fine for collections
-  with a handful of conflicts but tedious at 50+. Phase 5's React
-  panel batches everything into a single table.
-- **Drift report on success**: compare what was installed against
-  the manifest's curator-side hashes; surface deltas. Slice 6c.
-- **Nexus auth fallback**: if `api.ext.nexusDownload` is missing
-  (Nexus extension disabled / not logged in), today we fail
-  installing-mods with a hard error. Phase 5 may add a
-  "Log in to Nexus" recovery action.
-- **SHA-256 verification of `use-local-file`**: v1 trusts the user's
-  picked file. Phase 5 may verify on install and re-prompt on
-  mismatch.
+Settled since this list was written, kept because the answers are load-bearing:
+
+- ~~**Mod rule application timing**~~ — **before deploy**, matching Vortex's own
+  collections. And rules now *replace* the user's rather than being applied on
+  top; see "Replacing the user's rules".
+- ~~**Conflict picker UI**~~ — the React install wizard batches conflicts and
+  orphans into one table instead of a `showDialog` per mod.
+- ~~**Drift report on success**~~ — built, and the reference had to be corrected:
+  drift is measured against **our previous install's hashes**, never against the
+  curator's staging folder, which can be corrupt without anyone knowing. It
+  compares only the paths the manifest records, not a folder walk.
+- ~~**SHA-256 verification of `use-local-file`**~~ — verified, and the outcome is
+  reported as `matches` / `differs` / `damaged` / `unknown`. Telling `differs`
+  from `damaged` is the point: only one of them is fixed by downloading again.
+
+Genuinely still open:
+
+- **Nexus auth fallback**: if `api.ext.nexusDownload` is missing (Nexus
+  extension disabled / not logged in) the driver fails `installing-mods` with a
+  hard error. A "Log in to Nexus" recovery action would be better than making
+  the user restart the install.
+- **`fileOverrides` are recorded and never applied.** A real collection carries
+  4,382 entries. Either they matter to reproduction, in which case the driver
+  has a gap, or they do not, in which case the manifest should stop claiming
+  them. Nobody has measured which.
+- **INI tweaks** (`enabledINITweaks`) are captured but never applied. The build
+  warns the curator, so it is disclosed rather than silent — but it is still a
+  hole in "deterministic reproduction".
+- **Load-order integration policy at scale.** Extra plugins the user has that
+  the collection does not know about are integrated LOOT-style rather than
+  appended. That is the right behaviour on paper; the number to watch is how
+  far the result drifts from the curator's on a real 954-mod profile.
 
 ---
 

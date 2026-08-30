@@ -905,26 +905,25 @@ export type OrphanRecommendation =
 // ---------------------------------------------------------------------------
 
 /**
- * Tells the install driver how to bring the user's `plugins.txt` in
- * line with `manifest.plugins.order`. Always present — the driver
- * uses `kind` to decide whether to act.
+ * Tells the install driver whether the curator's plugin order needs applying.
+ *
+ * NOTE — this no longer describes writing `plugins.txt`. The driver pins the
+ * order through Vortex (`set-plugin-list` → `autosort-plugins`) and Vortex
+ * persists the file; see `applyPluginOrder.ts`. Writing the file directly is
+ * pointless because `PluginPersistor` rewrites it from its own state.
  */
 export type PluginOrderPlan = {
   /**
-   *  - `"replace"` ⇒ overwrite `plugins.txt` with the manifest's
-   *     order. The driver writes a `.bak` copy first.
-   *  - `"merge"`   ⇒ insert the manifest's plugins into the user's
-   *     existing order, preserving plugins the user has that aren't
-   *     in the manifest. (v1: not emitted; reserved for future.)
-   *  - `"none"`    ⇒ no plugin work needed (manifest has no plugins,
-   *     or the user's order already matches).
+   *  - `"replace"` ⇒ the curator's order becomes the order. Plugins the user
+   *     has that the collection does not know about are integrated LOOT-style
+   *     rather than appended last.
+   *  - `"merge"`   ⇒ never emitted. Retained so an older plan still parses;
+   *     the merging it was reserved for now happens inside `"replace"`, which
+   *     is what collapsed the distinction.
+   *  - `"none"`    ⇒ no plugin work needed (manifest has no plugins, or the
+   *     user's order already matches).
    */
   kind: "replace" | "merge" | "none";
-  /**
-   * Where the backup will be written before any change. Only set
-   * when `kind === "replace"`.
-   */
-  backupPath?: string;
   /**
    * Number of plugin entries the manifest declares. Surfaced in the
    * UI so the user knows the scope of the change.
