@@ -213,6 +213,14 @@ export async function installNexusViaApi(
   );
 
   if (typeof archiveId !== "string" || archiveId.length === 0) {
+    // Nothing will ever await `completed` now, so tear it down explicitly.
+    // Without this the listener and its 15-minute stall watchdog outlive the
+    // failed run and fire a bogus "install stalled" long after the install
+    // already reported failure.
+    if (completed !== undefined) {
+      void completed.promise.catch(() => undefined);
+      completed.cancel();
+    }
     throw new Error(
       `Nexus download for modId=${args.nexusModId}, fileId=${args.nexusFileId} ` +
         `returned no archiveId.`,
@@ -651,6 +659,18 @@ function waitForInstallCompletion(
 ): {
   promise: Promise<{ modId: string; archiveId: string }>;
   setExpectedArchiveId: (archiveId: string) => void;
+  /**
+   * Tear the wait down without ever having awaited it.
+   *
+   * cleanup() otherwise runs only when the promise settles, so a caller that
+   * arms this and then throws before awaiting leaks the `did-install-mod`
+   * listener AND both timers - permanently. Observed in a real run: a mod
+   * failed at 13:57:52 and the orphaned watchdog logged install.stalled at
+   * 14:12:51, exactly 900s after it was armed and 15 minutes after the run
+   * had already ended. The leaked listener is the worse half: it stays
+   * subscribed and can match a LATER install's event.
+   */
+  cancel: () => void;
 } {
   if (opts.acceptAny && opts.matchArchiveId !== undefined) {
     throw new Error(
@@ -1000,6 +1020,14 @@ function waitForInstallCompletion(
 
   return {
     promise,
+    cancel: (): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      // Settle so nothing can await this forever. Callers that cancel are by
+      // definition not awaiting, so they attach a catch first.
+      rejectFn(makeAbortErrorLocal("install wait cancelled"));
+    },
     setExpectedArchiveId: (archiveId: string) => {
       expectedArchiveId = archiveId;
       // Reset the download snapshot so the next store tick captures
