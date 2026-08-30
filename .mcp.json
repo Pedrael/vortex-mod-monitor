@@ -1,10 +1,8 @@
 {
   "mcpServers": {
     "gitnexus": {
-      "command": "gitnexus",
-      "args": [
-        "mcp"
-      ]
+      "type": "http",
+      "url": "http://127.0.0.1:3737/mcp"
     }
   }
 }
