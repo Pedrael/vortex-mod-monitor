@@ -39,6 +39,7 @@ Resolves every mod against what you already have, downloads or extracts the rest
 [*][b]Verifies what landed.[/b] Every installed archive is hashed against the manifest and reported as [b]matches[/b], [b]differs[/b], [b]damaged[/b] or [b]unknown[/b]. Telling [i]differs[/i] from [i]damaged[/i] matters: only a damaged archive is fixed by downloading it again, and only that one isn't the curator's problem.
 [*][b]Applies the curator's mod rules and LOOT userlist.[/b] See the warning below — this one replaces yours.
 [*][b]Pins the curator's plugin order and restores ESL flags.[/b] Plugins you have that the collection doesn't know about are integrated LOOT-style, not dumped at the bottom.
+[*][b]Replays the curator's FOMOD answers.[/b] Mods with an installer come pre-filled with exactly what the curator chose — you confirm and move on, instead of guessing your way through a dozen option screens hoping you picked what they picked.
 [*][b]Writes a receipt[/b], which is how it recognises an upgrade later instead of treating it as a fresh install.
 [/list]
 
@@ -46,6 +47,17 @@ An aborted install writes no receipt, so a half-finished run never gets mistaken
 
 [b]Auditing[/b]
 Export a snapshot to JSON and diff it later. Diff a reference plugins.txt against your live one. Reports are browsable in-app.
+
+
+[size=5][b]Linux and Steam Deck are first-class[/b][/size]
+
+[b]This is not "it might work under Proton". It is a supported target, and real work went into making it one.[/b]
+
+Vortex bundles 7-Zip, and 7-Zip is spawned as an external process. Under a Wine/Proton prefix that spawn fails for reasons that have nothing to do with your files — and it surfaces as [i]"7z failed to list"[/i], which reads as [b]"your collection is corrupt"[/b] when it is perfectly fine. That single misleading error is enough to make a Linux user abandon a collection that would have installed.
+
+So Event Horizon reads its own packages with its own ZIP reader — no external process, nothing to fail in a prefix. Timeouts are platform-aware too, because a Proton prefix legitimately needs longer than Windows, and a fixed deadline turns a slow-but-healthy install into a fake hang.
+
+[b]The whole 950+ mod collection has been installed and verified on Linux under umu/Proton, not only on Windows.[/b] If you mod on a Steam Deck or a Linux desktop, this was built for you rather than tolerated on you.
 
 
 [size=5][b]⚠ Two things it will do that you should know about[/b][/size]
@@ -61,18 +73,19 @@ This is deliberate. Merging the collection's rules into yours produces a rule se
 Without it, installing a large collection means one manual click per mod. It is not blocked, and you will be warned — but a 900-mod collection without Premium is an afternoon of clicking.
 
 
-[size=5][b]What it does NOT do yet[/b][/size]
+[size=5][b]Roadmap[/b][/size]
 
-This is an [b]alpha[/b]. Stated plainly, because these bound the word "deterministic":
+This is an [b]alpha[/b], and it is actively being worked on. What is coming:
 
 [list]
-[*][b]FOMOD choices are recorded, not replayed.[/b] A mod with an installer will ask you the same questions the curator answered. Their answers are in the manifest; nothing replays them yet.
-[*][b]File overrides are recorded, not applied.[/b] They are captured in full and preserved in the package, ready for a later release.
-[*][b]INI tweaks are recorded, not applied.[/b] The build warns the curator, so it is disclosed rather than silent.
-[*][b]No rollback.[/b] A failed run leaves what it installed in place and re-running picks up from there. Deliberate: a half-rolled-back install is harder to reason about than a half-finished one.
+[*][b]Applying file overrides.[/b] Captured in full today and preserved in every package — the remaining work is applying them on the user's side.
+[*][b]Applying INI tweaks.[/b] Same story: recorded now, applied next.
+[*][b]More UI polish.[/b] Clearer progress while a long install runs, better reporting when something needs your attention, and a calmer dashboard.
+[*][b]Undo an install.[/b] Today a failed run leaves what it installed in place and re-running picks up from there. A clean rollback is wanted.
+[*][b]Richer drift reporting.[/b] Show exactly what changed between the curator's setup and yours, not merely that something did.
 [/list]
 
-What Event Horizon does guarantee is that the [b]files match[/b] — every archive hashed and checked against the curator's, and any difference reported to you by name rather than discovered later in-game.
+Requests and bug reports genuinely shape this list — see [b]Source and issues[/b] below.
 
 
 [size=5][b]Requirements[/b][/size]
@@ -80,7 +93,7 @@ What Event Horizon does guarantee is that the [b]files match[/b] — every archi
 [list]
 [*][b]Vortex 2.x.[/b] Built against vortex-api 2.6.0-beta.2 (React 18). It will [b]not[/b] run on Vortex 1.16.
 [*][b]Nexus Premium[/b] — strongly recommended, not required.
-[*]Windows, or Linux via Proton. Both are fully supported.
+[*][b]Windows, or Linux via Proton.[/b] Both fully supported — see above.
 [/list]
 
 

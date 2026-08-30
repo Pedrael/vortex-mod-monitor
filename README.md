@@ -8,7 +8,7 @@ A [Vortex](https://www.nexusmods.com/about/vortex/) extension that captures a cu
 
 ---
 
-## Status — alpha, v0.1.0-alpha.1
+## Status — alpha, v0.1.0-alpha.2
 
 Everything described below is built and running. It has been exercised end to
 end against a real 954-mod Fallout 4 profile, on Windows and on Linux under
@@ -20,7 +20,7 @@ What that does **not** mean:
 - Reproduction is verified by hashing, not by launching the game. "The files
   match" is what we prove; "the game plays identically" is what you hope
   follows.
-- Three captured things are still recorded and never applied — see
+- Two captured things are still recorded and never applied — see
   [Known gaps](#known-gaps). Read that section before you rely on the word
   "deterministic".
 
@@ -85,6 +85,10 @@ downloads or extracts the rest, and installs them **one at a time**. Then:
 - **Pins** the curator's plugin order and restores ESL flags. Plugins the user
   has that the collection does not know about are integrated LOOT-style, not
   appended last.
+- **Replays the curator's FOMOD answers.** `installerChoices.ts` hands them to
+  Vortex's installer as `IChoiceType` on `start-install-download`, so a mod with
+  an installer arrives pre-filled with the curator's selections for the user to
+  confirm rather than re-derive.
 - **Writes a receipt**, which is the only record of cross-release lineage.
 
 An aborted install writes no receipt.
@@ -102,7 +106,6 @@ Stated here rather than buried, because they bound the word "deterministic":
 
 | Gap | Consequence |
 | --- | --- |
-| **FOMOD choices are recorded, not replayed.** | A mod with an installer asks the user the same questions the curator answered. Their answers are in the manifest; nothing replays them. |
 | **`fileOverrides` are recorded, not applied.** | A real collection carries 4,382 entries. Nobody has measured whether they change the outcome. |
 | **INI tweaks are recorded, not applied.** | The build warns the curator, so it is disclosed rather than silent. |
 
