@@ -47,7 +47,7 @@ import { DonePanel } from "../pages/build/BuildPage";
 import { DraftCard, PublishedCard } from "../pages/build/BuildDashboard";
 import { DashboardBody, Hero } from "../pages/HomePage";
 import { DoctorPanel } from "../pages/doctor/DoctorPanel";
-import { evaluateHealth } from "../../core/doctor/health";
+import { evaluateHealth, healingBlockedReason } from "../../core/doctor/health";
 
 /**
  * Where the rendered screens land.
@@ -302,6 +302,51 @@ describe("render", () => {
           checks,
           onRecheck: () => undefined,
           onRunDeepScan: () => undefined,
+          onHeal: () => undefined,
+        } as never),
+      ),
+    );
+  });
+
+  it.skipIf(!on)("doctor — healing blocked because an install is running", () => {
+    const checks = evaluateHealth(
+      {
+        packageName: "Ivy 2",
+        packageVersion: "1.0.10",
+        vortexProfileId: "prof-1",
+        mods: Array.from({ length: 963 }, (_, i) => ({
+          vortexModId: `m${i}`,
+          compareKey: `nexus:${i}:${i}`,
+          name: `Mod ${i}`,
+        })),
+        rulesApplication: {
+          appliedRuleCount: 291,
+          baselinePluginOrder: ["a.esp", "b.esp", "c.esp", "d.esp"],
+        },
+        userlistApplication: { appliedRuleCount: 29 },
+      },
+      {
+        existingProfileIds: ["prof-1"],
+        activeProfileId: "prof-1",
+        installedModIds: Array.from({ length: 960 }, (_, i) => `m${i}`),
+        enabledModIds: Array.from({ length: 960 }, (_, i) => `m${i}`),
+        driftedCompareKeys: undefined,
+        currentPluginOrder: ["a.esp", "c.esp", "b.esp", "d.esp"],
+        currentModRuleCount: 291,
+        currentUserlistRuleCount: 29,
+      },
+    );
+    write(
+      "doctor-blocked",
+      React.createElement(
+        "div",
+        { className: "eh-page" },
+        React.createElement(DoctorPanel, {
+          packageName: "Ivy 2",
+          packageVersion: "1.0.10",
+          checks,
+          healingBlocked: healingBlockedReason({ kind: "installing" }),
+          onRecheck: () => undefined,
           onHeal: () => undefined,
         } as never),
       ),

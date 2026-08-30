@@ -457,3 +457,36 @@ export function overallHealth(checks: readonly HealthCheck[]): {
     problems: 0,
   };
 }
+
+/**
+ * Why healing must not run right now, or `undefined` when it may.
+ *
+ * Every heal action re-runs a step of the install pipeline, and those steps
+ * mutate Vortex: they install mods, flip enabled state, clear and rewrite the
+ * user's rules, rewrite the plugin order. Doing that WHILE the driver is doing
+ * the same thing is how a collection gets corrupted in a way no verification
+ * would catch afterwards, because both halves would look individually correct.
+ *
+ * Only the `installing` phase is mutating. Loading, previewing and choosing
+ * are read-only, so blocking those would be superstition rather than safety.
+ *
+ * Deliberately fails to BLOCKED on an unrecognised shape: if we cannot tell
+ * what the installer is doing, the safe answer is not to also start writing.
+ */
+export function healingBlockedReason(
+  installState: { kind?: unknown } | undefined,
+): string | undefined {
+  if (installState === undefined) return undefined;
+  const kind = installState.kind;
+  if (typeof kind !== "string") {
+    return "Cannot tell whether an install is running, so healing is paused.";
+  }
+  if (kind === "installing") {
+    return (
+      "An install is running right now. Healing re-runs steps of the same " +
+      "pipeline, and two of them writing at once is how a collection gets " +
+      "quietly corrupted — wait for it to finish."
+    );
+  }
+  return undefined;
+}

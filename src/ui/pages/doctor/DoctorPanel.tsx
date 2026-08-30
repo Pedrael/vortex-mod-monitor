@@ -35,6 +35,13 @@ export interface DoctorPanelProps {
   onRunDeepScan?: () => void;
   onRecheck?: () => void;
   onHeal?: (action: HealAction, checkId: string) => void;
+  /**
+   * Set while an install is running. Every heal re-runs a pipeline step that
+   * mutates Vortex, so they are disabled rather than hidden — a button that
+   * vanishes reads as a missing feature, one that is disabled with a reason
+   * reads as a system that knows what it is doing.
+   */
+  healingBlocked?: string;
 }
 
 const STATUS_COLOR: Record<HealthStatus, string> = {
@@ -104,9 +111,10 @@ function VerdictRing(props: { checks: readonly HealthCheck[] }): JSX.Element {
 function CheckCard(props: {
   check: HealthCheck;
   busy: boolean;
+  blocked: boolean;
   onHeal?: (action: HealAction, checkId: string) => void;
 }): JSX.Element {
-  const { check, busy } = props;
+  const { check, busy, blocked } = props;
   const [open, setOpen] = React.useState(false);
   const isProblem = check.status === "broken" || check.status === "drifted";
 
@@ -218,10 +226,10 @@ function CheckCard(props: {
           <Button
             intent="ghost"
             size="sm"
-            disabled={busy}
+            disabled={busy || blocked}
             onClick={() => props.onHeal?.(check.heal!.action, check.id)}
           >
-            {busy ? "Working…" : check.heal.label}
+            {busy ? "Working…" : blocked ? "Install in progress" : check.heal.label}
           </Button>
         )}
       </div>
@@ -276,13 +284,44 @@ export function DoctorPanel(props: DoctorPanelProps): JSX.Element {
               </Button>
             )}
             {props.onRunDeepScan !== undefined && (
-              <Button intent="primary" onClick={props.onRunDeepScan}>
+              // Disabled during an install even though a scan only READS. It
+              // would be hashing files the driver is still writing, and every
+              // half-written mod would come back as drift — a scary, wrong
+              // answer is worse than no answer.
+              <Button
+                intent="primary"
+                disabled={props.healingBlocked !== undefined}
+                onClick={props.onRunDeepScan}
+              >
                 Deep scan files
               </Button>
             )}
           </div>
         </div>
       </Card>
+
+      {props.healingBlocked !== undefined && (
+        <div
+          role="status"
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: "var(--eh-sp-3)",
+            padding: "var(--eh-sp-4)",
+            borderRadius: "var(--eh-radius-lg)",
+            background: "var(--eh-bg-elevated)",
+            border: "1px solid var(--eh-warning)",
+            color: "var(--eh-text-secondary)",
+            fontSize: "var(--eh-text-sm)",
+            lineHeight: 1.5,
+          }}
+        >
+          <span aria-hidden="true" style={{ color: "var(--eh-warning)", fontWeight: 700 }}>
+            ⏸
+          </span>
+          <span>{props.healingBlocked}</span>
+        </div>
+      )}
 
       <section
         style={{
@@ -297,6 +336,7 @@ export function DoctorPanel(props: DoctorPanelProps): JSX.Element {
             key={c.id}
             check={c}
             busy={props.busyCheckId === c.id}
+            blocked={props.healingBlocked !== undefined}
             {...(props.onHeal !== undefined ? { onHeal: props.onHeal } : {})}
           />
         ))}

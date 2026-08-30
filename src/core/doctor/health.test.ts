@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   evaluateHealth,
+  healingBlockedReason,
   overallHealth,
   type HealthObservations,
   type HealthReceiptView,
@@ -200,5 +201,34 @@ describe("overallHealth", () => {
     );
     expect(overallHealth(checks).status).toBe("broken");
     expect(overallHealth(checks).problems).toBeGreaterThan(1);
+  });
+});
+
+describe("healingBlockedReason", () => {
+  it("blocks while the driver is installing", () => {
+    // Every heal re-runs a pipeline step that mutates Vortex. Two of them
+    // writing at once corrupts a collection in a way neither half's own
+    // verification would catch, because each looks individually correct.
+    const why = healingBlockedReason({ kind: "installing" });
+    expect(why).toBeDefined();
+    expect(why).toMatch(/install is running/i);
+  });
+
+  it("allows healing during read-only phases", () => {
+    // Blocking these would be superstition: nothing is being written.
+    for (const kind of ["pick", "loading", "preview", "decisions", "confirm", "done"]) {
+      expect(healingBlockedReason({ kind })).toBeUndefined();
+    }
+  });
+
+  it("allows healing when there is no install session at all", () => {
+    expect(healingBlockedReason(undefined)).toBeUndefined();
+  });
+
+  it("blocks when it cannot tell, rather than assuming safety", () => {
+    // If we do not know what the installer is doing, the safe answer is not to
+    // also start writing.
+    expect(healingBlockedReason({} as { kind?: unknown })).toBeDefined();
+    expect(healingBlockedReason({ kind: 42 } as { kind?: unknown })).toBeDefined();
   });
 });
