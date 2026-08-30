@@ -95,12 +95,27 @@ and the rest is metadata mirrored from the Nexus page. Some entries also carry
 URL/file*. It does **not** put it in the browser. That requires an entry in a
 repository owned by Nexus Mods.
 
-> **NOT VERIFIED:** the human process for getting an entry added — who reviews
-> it, on what timeline, and through which channel (PR to `Vortex-Backend`,
-> Discord, or forum request). The repo is Nexus's, and nothing in the shipped
-> app states the submission route. **Confirm this with Nexus before promising
-> anyone a listing date.** The Vortex Discord's extension-development channel
-> is the usual starting point.
+**The submission route (verified against Nexus's own wiki, 2026-08-30):** it is
+a **GitHub issue form on the `Nexus-Mods/Vortex` repo** — not a PR to
+`Vortex-Backend`, and not Discord.
+
+- Form: `Review Extension`
+  ([template `review-extension.yaml`](https://github.com/Nexus-Mods/Vortex/issues/new?assignees=&labels=extension+%3Agear%3A&projects=&template=review-extension.yaml&title=Review%3A+Game+Name)),
+  labelled `extension :gear:`.
+- Nexus states: *"One of our team will take a look and be in touch within 5
+  working days of submission."*
+- New extensions are **never** added automatically. `Vortex-Backend`'s own
+  README says: *"Completely new extensions aren't added automatically as we
+  verify these manually"*. A maintainer then runs the repo's **Add Extension**
+  workflow (`workflow_dispatch`), whose inputs are `modid`, `extension-type`
+  (`game` / `theme` / `translation` / `tool`), plus `gamedomain` for a game
+  extension or `language` for a translation, and an optional `dry-run`.
+- **Ours is `extension-type: tool`**, not `game`. That distinction matters for
+  the packaging rules below.
+
+Questions outside the review process go to the
+[Vortex forums](https://forums.nexusmods.com/forum/4306-vortex-support/) or the
+[Nexus Mods Discord](https://discord.gg/nexusmods).
 
 ---
 
@@ -151,19 +166,37 @@ copies loose files. Only the zip proves the archive layout is right.
 
 ### Step 4 — upload to Nexus
 
-Under **Tools & Extensions** (`nexusmods.com/site`), as a normal mod:
+Under **Tools & Extensions** (`nexusmods.com/site`), as a normal mod. Nexus's
+wiki adds two rules that are easy to get wrong and are checked at review:
 
-- The uploaded file is `release/event-horizon-<version>.zip`.
-- Note the resulting **`modId`** and, for the uploaded file, its **`fileId`** —
-  those two numbers are what the extension manifest keys on.
+- **Category must be `Vortex > Extensions`.** Upload from the Modding Tools
+  section.
+- **Exactly one file under "Main Files".** Not two, not a file parked under
+  Optional. `release/event-horizon-<version>.zip` is that file.
+- **`info.json`'s version must exactly match the version you type into the
+  Nexus upload form.** `package:extension` already refuses to build when
+  `info.json` and `package.json` disagree, which removes one of the two ways
+  this drifts; the Nexus form is the other, and nothing but care guards it.
+
+Note the resulting **`modId`** and the uploaded file's **`fileId`** — those two
+numbers are what the extension manifest keys on.
+
+> Nexus's packaging page also lists `gameart.png` as required alongside
+> `info.json` and `index.js`. That page is *"How to package a **game**
+> extension"* and the art is the game tile. We are a `tool` extension and ship
+> no `gameart.png`. If review asks for one, that is the reason to push back —
+> but confirm rather than assume, because it is the one requirement here read
+> from a game-extension page.
 
 ### Step 5 — request the browser listing
 
-Ask Nexus to add the entry to `Vortex-Backend`'s
-`out/extensions-manifest.json`, supplying `modId` and `fileId`.
+File the [**Review Extension**](https://github.com/Nexus-Mods/Vortex/issues/new?assignees=&labels=extension+%3Agear%3A&projects=&template=review-extension.yaml&title=Review%3A+Game+Name)
+issue form on `Nexus-Mods/Vortex`, supplying the `modId`. A maintainer runs the
+`Add Extension` workflow in `Vortex-Backend` with `extension-type: tool`.
+Expect a reply within **5 working days**.
 
-See the NOT VERIFIED note in §2b: confirm the current channel rather than
-assuming a PR is accepted.
+Do not open a PR against `Vortex-Backend` — additions go through the workflow,
+run by them, after manual verification.
 
 Until that lands, people can still install by downloading the zip from the mod
 page and using Install from file — worth saying plainly in the mod description
