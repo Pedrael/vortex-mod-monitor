@@ -41,7 +41,21 @@
 export const WINE_SLOWDOWN = 3;
 
 /** Assumed worst-case extraction throughput, for sizing the quiet window. */
-const PESSIMISTIC_EXTRACT_BYTES_PER_SEC = 2 * 1024 * 1024; // 2 MB/s
+/**
+ * Deliberately far below any disk's real throughput, because extraction time
+ * tracks FILE COUNT, not bytes.
+ *
+ * A 50 MB mod of 20,000 loose meshes and textures takes far longer than a
+ * 500 MB mod of three BA2s, and under a Wine/Proton prefix every one of those
+ * file operations crosses the translation layer. Sizing from bytes at a
+ * disk-like rate assumes the opposite, and a tester's run killed a 535 KB mod
+ * and a 28 MB mod that were extracting perfectly well.
+ *
+ * We cannot see the file count before extracting, so the rate absorbs it: at
+ * 512 KB/s a byte-light, file-heavy mod still gets a window measured in
+ * minutes rather than seconds.
+ */
+const PESSIMISTIC_EXTRACT_BYTES_PER_SEC = 512 * 1024; // 512 KB/s
 
 /**
  * The flat constants these budgets replaced.
@@ -55,6 +69,15 @@ const PESSIMISTIC_EXTRACT_BYTES_PER_SEC = 2 * 1024 * 1024; // 2 MB/s
 export const LEGACY_DEPLOY_TIMEOUT_MS = 5 * 60_000;
 export const LEGACY_PROFILE_SWITCH_TIMEOUT_MS = 30_000;
 export const LEGACY_STALL_WATCHDOG_MS = 90_000;
+
+/**
+ * The smallest extraction window we will ever allow, before the Wine multiplier.
+ *
+ * Ten minutes sounds enormous for a 500 KB file and is not: the number that
+ * matters is how long Vortex can be silent while doing real work, and on a slow
+ * disk full of loose files that is minutes, not seconds.
+ */
+export const EXTRACT_FLOOR_MS = 10 * 60_000;
 
 export type BudgetEnv = {
   /** Whether we are running under Wine/Proton. */
@@ -135,14 +158,25 @@ export function stallBudgetMs(at: StallPhase, env: BudgetEnv): number {
 
   // Unknown size: we cannot size the window, so fall back to something that
   // will not fail a large mod. Guessing small here is the expensive mistake.
+  //
+  // The FLOOR matters more than the formula. A small archive is not a fast
+  // extraction — it may be thousands of tiny files, on unknown hardware, in a
+  // prefix. The old floor was 90s (270s under Wine) and it killed healthy mods
+  // of 535 KB, 2.2 MB, 6.2 MB and 28 MB in a single run.
+  //
+  // Being generous costs nothing when things are working: this timer RESETS on
+  // every observed progress signal, so a large window is only ever spent when
+  // genuinely nothing is happening. The only price is that a true hang takes
+  // longer to notice, which is the right trade for an install that legitimately
+  // runs for hours.
   const bytes = at.bytes ?? 0;
   const fromSize =
-    bytes > 0 ? (bytes / PESSIMISTIC_EXTRACT_BYTES_PER_SEC) * 1000 : 5 * 60_000;
+    bytes > 0 ? (bytes / PESSIMISTIC_EXTRACT_BYTES_PER_SEC) * 1000 : 10 * 60_000;
 
   return clamp(
-    scale(Math.max(90_000, fromSize), env),
-    LEGACY_STALL_WATCHDOG_MS,
-    20 * 60_000,
+    scale(Math.max(EXTRACT_FLOOR_MS, fromSize), env),
+    EXTRACT_FLOOR_MS,
+    2 * 60 * 60_000,
   );
 }
 

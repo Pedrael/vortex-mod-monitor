@@ -111,7 +111,12 @@ import { ehLog } from "../logging/ehLog";
 // The stall window is no longer a constant — see stallBudgetMs, which sizes
 // it from the phase and the archive. The absolute cap stays flat and stays
 // per-mod: it is a livelock backstop, not a performance budget.
-const INSTALL_ABSOLUTE_CAP_MS = 60 * 60_000; // 60 min hard ceiling
+// Six hours, not one. This is a LIVELOCK BACKSTOP, not a performance budget,
+// and a single mod can legitimately take a very long time: thousands of loose
+// files, a slow disk, a Proton prefix, or a user who walked away mid-FOMOD.
+// One hour was a cap on how patient the tool is willing to be, which is not
+// ours to decide — the user's hardware decides it.
+const INSTALL_ABSOLUTE_CAP_MS = 6 * 60 * 60_000;
 
 /**
  * Is Vortex currently blocked on the user rather than working?

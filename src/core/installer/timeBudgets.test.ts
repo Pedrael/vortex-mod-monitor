@@ -101,11 +101,27 @@ describe("stallBudgetMs", () => {
     expect(large).toBeGreaterThan(small);
   });
 
-  it("does not punish a small mod with a huge window", async () => {
-    // Proportionality cuts both ways: a 1 MB mod that goes quiet for ten
-    // minutes IS hung, and should be reported as such.
+  it("gives a SMALL archive a large window, because bytes are not the work", () => {
+    // This assertion used to read `toBe(90_000)`, on the reasoning that "a 1 MB
+    // mod that goes quiet for ten minutes IS hung". A tester's log disproved
+    // it: mods of 535 KB, 2.2 MB, 6.2 MB and 28 MB were all killed at the 270s
+    // floor while extracting perfectly well.
+    //
+    // Byte size does not predict extraction time. A small archive can hold
+    // thousands of loose files, and each one costs a filesystem round trip -
+    // three of them, inside a Proton prefix.
     const small = stallBudgetMs({ phase: "extracting", bytes: 1024 * 1024 }, WIN);
-    expect(small).toBe(90_000);
+    expect(small).toBeGreaterThanOrEqual(10 * 60_000);
+  });
+
+  it("costs nothing when work is happening, because the timer resets", () => {
+    // The reason a generous window is safe rather than reckless: this budget is
+    // an IDLE timeout. It is only ever spent in full when nothing at all is
+    // observable, so raising it delays noticing a true hang and does not slow
+    // down a single healthy install.
+    const win = stallBudgetMs({ phase: "extracting", bytes: 1024 * 1024 }, WIN);
+    const wine = stallBudgetMs({ phase: "extracting", bytes: 1024 * 1024 }, WINE);
+    expect(wine).toBeGreaterThan(win);
   });
 
   it("falls back generously when the size is unknown", async () => {
@@ -120,7 +136,11 @@ describe("stallBudgetMs", () => {
       { phase: "extracting", bytes: 500 * 1024 * 1024 * 1024 },
       WINE,
     );
-    expect(huge).toBeLessThanOrEqual(20 * 60_000);
+    // Still bounded — a backstop has to exist — but the bound is now two hours
+    // rather than twenty minutes. The old ceiling was a cap on how patient the
+    // tool was willing to be, and that is the user's hardware to decide.
+    expect(huge).toBeLessThanOrEqual(2 * 60 * 60_000);
+    expect(huge).toBeGreaterThan(20 * 60_000);
   });
 
   it("is at least as generous under Wine as on Windows, never less", async () => {
