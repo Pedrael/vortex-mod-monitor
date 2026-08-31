@@ -161,6 +161,9 @@ describe("install driver, end to end", () => {
     expect(call!.args[1]).toEqual({
       allowAutoEnable: true,
       choices: FOMOD_CHOICES,
+      // Bypasses the FOMOD dialog. Vortex's installer requires all three:
+      // choices present, choices.type === "fomod", unattended === true.
+      unattended: true,
     });
   });
 
@@ -211,6 +214,9 @@ describe("install driver, end to end", () => {
     expect(call!.args[1]).toEqual({
       allowAutoEnable: true,
       choices: FOMOD_CHOICES,
+      // Bypasses the FOMOD dialog. Vortex's installer requires all three:
+      // choices present, choices.type === "fomod", unattended === true.
+      unattended: true,
     });
     // And NOT through the call that cannot carry them.
     expect(emitsOf(fake, "start-install")).toEqual([]);

@@ -73,9 +73,48 @@ export function choicesFor(entry: EhcollMod | undefined): VortexInstallerChoices
  * as it normally would. The driver sets enablement itself afterwards from the
  * manifest, so this decides only the moment in between.
  */
-export function installOptions(choices: VortexInstallerChoices): {
+/**
+ * Should the curator's answers be applied WITHOUT showing the FOMOD dialog?
+ *
+ * Read out of the shipped Vortex bundle rather than guessed. Its installer:
+ *
+ *     const canBeUnattended =
+ *       choices !== undefined && choices.type === "fomod";
+ *     const shouldBypassDialog = canBeUnattended && unattended === true;
+ *
+ * and the install manager forwards `options.unattended` from the very option
+ * bag we pass to `start-install-download`. So all three conditions are ours to
+ * satisfy — we already supply `choices` with `type: "fomod"`.
+ *
+ * (The comment directly above that code says the dialog is bypassed
+ * "regardless of unattended flag". It is not; the line beneath it requires
+ * `unattended === true`. Trust the code.)
+ *
+ * Vortex's own note on the flag calls it "collection install with preset
+ * choices" and points out it also skips dozens of main-thread callbacks per
+ * mod — so on a 900-mod collection this is a speed change as well as a
+ * quiet one.
+ *
+ * ─── WHY THIS IS THE DEFAULT ───────────────────────────────────────────
+ * The curator already answered these questions, and that answer IS the
+ * collection. Stopping to ask the user to re-confirm it invites them to
+ * deviate from the thing they chose to reproduce, and it is the single
+ * biggest source of friction in a large install: a tester's run showed
+ * per-mod times with a median of 4ms and a 99th percentile of 491 SECONDS,
+ * all of it a human reading dialogs, and six mods killed by the stall
+ * watchdog while he did.
+ *
+ * Set to false to watch each step go past instead.
+ */
+export const REPLAY_FOMOD_SILENTLY = true;
+
+export function installOptions(
+  choices: VortexInstallerChoices,
+  unattended: boolean = REPLAY_FOMOD_SILENTLY,
+): {
   allowAutoEnable: boolean;
   choices: VortexInstallerChoices;
+  unattended: boolean;
 } {
-  return { allowAutoEnable: true, choices };
+  return { allowAutoEnable: true, choices, unattended };
 }

@@ -111,7 +111,11 @@ describe("installFromBundledArchive", () => {
 
     const call = emits.find((e) => e.event === "start-install-download");
     expect(call, "a bundled mod never reached the choices-carrying call").toBeDefined();
-    expect(call!.args[1]).toEqual({ allowAutoEnable: true, choices: CHOICES });
+    expect(call!.args[1]).toEqual({
+      allowAutoEnable: true,
+      choices: CHOICES,
+      unattended: true,
+    });
     // And NOT through the call that cannot carry them.
     expect(emits.some((e) => e.event === "start-install")).toBe(false);
   });

@@ -73,7 +73,11 @@ describe("start-install-download call shape", () => {
 
     const call = emitted.find((e) => e.event === "start-install-download")!;
     expect(call.args[0]).toBe("dl-1");
-    expect(call.args[1]).toEqual({ allowAutoEnable: true, choices });
+    expect(call.args[1]).toEqual({
+      allowAutoEnable: true,
+      choices,
+      unattended: true,
+    });
     // Vortex passes a callback of its own; it is the only failure channel.
     expect(typeof call.args[2]).toBe("function");
   });

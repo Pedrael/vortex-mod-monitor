@@ -8,7 +8,8 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { choicesFor, installOptions } from "./installerChoices";
+import { choicesFor, installOptions,
+} from "./installerChoices";
 import type { EhcollMod } from "../../types/ehcoll";
 
 const entry = (install: Partial<EhcollMod["install"]>): EhcollMod =>
@@ -77,10 +78,42 @@ describe("choicesFor", () => {
 
 describe("installOptions", () => {
   it("builds the bag Vortex was observed to pass", () => {
+    // `unattended` joined the bag deliberately. Vortex's install manager
+    // forwards options.unattended straight into the fomod installer, which
+    // bypasses the dialog only when choices.type === "fomod" AND
+    // unattended === true. This deep-equal is the record of what we send, so
+    // it is meant to fail when that changes — which is what it just did.
     const choices = { type: "fomod", options: [] };
     expect(installOptions(choices)).toEqual({
       allowAutoEnable: true,
       choices,
+      unattended: true,
     });
+  });
+});
+
+describe("silent FOMOD replay", () => {
+  it("asks Vortex to bypass the dialog by default", () => {
+    // Vortex's installer bypasses only when all three hold:
+    //   choices !== undefined && choices.type === "fomod" && unattended === true
+    // We supply the first two already; this is the third.
+    const opts = installOptions({ type: "fomod", options: [] });
+    expect(opts.unattended).toBe(true);
+    expect(opts.choices.type).toBe("fomod");
+  });
+
+  it("can be told to show the dialog instead", () => {
+    // Observability is a legitimate preference, so the automation is a
+    // parameter rather than a hard-coded truth.
+    expect(installOptions({ type: "fomod", options: [] }, false).unattended)
+      .toBe(false);
+  });
+
+  it("keeps allowAutoEnable, which is a different thing entirely", () => {
+    // allowAutoEnable is about enabling the mod in the profile; unattended is
+    // about showing a dialog. Conflating them would silently change what gets
+    // enabled while trying to change what gets shown.
+    const opts = installOptions({ type: "fomod", options: [] }, false);
+    expect(opts.allowAutoEnable).toBe(true);
   });
 });
