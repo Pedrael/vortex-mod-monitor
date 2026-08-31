@@ -57,6 +57,7 @@ import {
 import { extractZipEntryToFile } from "../manifest/readZip";
 import { looksLikeWine } from "./checkSevenZipHealth";
 import { stallBudgetMs, type StallPhase } from "./timeBudgets";
+import { classifyAttempt, backoffMs } from "./downloadFailureShape";
 import { ehLog } from "../logging/ehLog";
 
 /**
@@ -244,7 +245,6 @@ export async function installNexusViaApi(
   // retries cost ~10s; a transient one gets the chance it deserves instead of
   // costing the user a mod.
   const MAX_DOWNLOAD_ATTEMPTS = 3;
-  const BACKOFF_MS = [3_000, 8_000];
 
   let archiveId: string | undefined;
   let completed: ReturnType<typeof waitForInstallCompletion> | undefined;
@@ -252,6 +252,7 @@ export async function installNexusViaApi(
 
   for (let attempt = 1; attempt <= MAX_DOWNLOAD_ATTEMPTS; attempt += 1) {
     if (args.signal?.aborted) throw makeAbortErrorLocal("nexus install");
+    const attemptStartedAt = Date.now();
 
     // Subscribe BEFORE triggering — `did-install-mod` can fire before the
     // `nexusDownload` promise resolves on hot caches. Re-armed per attempt,
@@ -299,13 +300,21 @@ export async function installNexusViaApi(
     }
 
     if (attempt < MAX_DOWNLOAD_ATTEMPTS) {
+      // How long the attempt took is the only thing separating "this file is
+      // gone" from "Nexus is not answering" — see downloadFailureShape.ts. A
+      // three-second wait cannot clear a rate limit, and a sixty-second one
+      // wastes a minute per mod on a file that is genuinely deleted.
+      const attemptMs = Date.now() - attemptStartedAt;
+      const shape = classifyAttempt(attemptMs);
       ehLog("warn", "install.download.retry", {
         modId: args.nexusModId,
         fileId: args.nexusFileId,
         attempt,
+        attemptMs,
+        shape,
         error: lastError instanceof Error ? lastError.message : String(lastError),
       });
-      await delayRespectingAbort(BACKOFF_MS[attempt - 1] ?? 5_000, args.signal);
+      await delayRespectingAbort(backoffMs(attempt, shape), args.signal);
     }
   }
 

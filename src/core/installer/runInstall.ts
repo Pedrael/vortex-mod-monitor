@@ -195,6 +195,10 @@ import {
   safeRmTempDir,
   uninstallMod,
 } from "./modInstall";
+import {
+  classifyModFailure,
+  describeSystemicFailure,
+} from "./downloadFailureShape";
 import { replayArgs } from "./installerChoices";
 import {
   applyGameIni,
@@ -518,7 +522,12 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
    * and grinding through 900 of them to say so helps nobody.
    */
   let consecutiveFailures = 0;
+  let consecutiveTimeouts = 0;
   const SYSTEMIC_FAILURE_STREAK = 8;
+  // A timing-out mod costs ~70 seconds; eight of them burn ten minutes proving
+  // what four already proved. Fast failures are cheap, so they keep the
+  // higher threshold.
+  const SYSTEMIC_TIMEOUT_STREAK = 4;
   const skippedMods: SkippedModReportEntry[] = [];
   const removedMods: RemovedModReportEntry[] = [];
   const carriedMods: CarriedModReportEntry[] = [];
@@ -968,12 +977,18 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
           error: formatError(err),
         });
         consecutiveFailures += 1;
+        const failureShape = classifyModFailure(Date.now() - modStartedAt);
+        consecutiveTimeouts =
+          failureShape === "timed-out" ? consecutiveTimeouts + 1 : 0;
 
         // A streak means the cause is not this mod. Stop and say which one it
         // looks like, rather than reporting 900 identical failures.
-        if (consecutiveFailures >= SYSTEMIC_FAILURE_STREAK) {
+        const systemicTimeout = consecutiveTimeouts >= SYSTEMIC_TIMEOUT_STREAK;
+        if (systemicTimeout || consecutiveFailures >= SYSTEMIC_FAILURE_STREAK) {
           ehLog("error", "install.systemic-failure", {
             streak: consecutiveFailures,
+            timeoutStreak: consecutiveTimeouts,
+            shape: systemicTimeout ? "timed-out" : "unclear",
             atIndex: i + 1,
             total,
           });
@@ -981,12 +996,13 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
             kind: "failed",
             phase,
             partialProfileId: createdProfileId,
-            error:
-              `${consecutiveFailures} mods in a row failed to install, ending ` +
-              `with "${resolution.name}": ${formatError(err)}. That is not one ` +
-              `bad mod — something is wrong for every mod (Vortex's extractor, ` +
-              `the Nexus connection, or disk space). Stopped rather than ` +
-              `repeating it ${total - i} more times.`,
+            error: describeSystemicFailure({
+              streak: consecutiveFailures,
+              lastModName: resolution.name,
+              lastError: formatError(err),
+              remaining: total - i,
+              shape: systemicTimeout ? "timed-out" : "unclear",
+            }),
             installedSoFar: installedMods.map((m) => m.vortexModId),
             failedMods,
           };
@@ -1003,6 +1019,7 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
 
       installedMods.push(installEntry);
       consecutiveFailures = 0;
+      consecutiveTimeouts = 0;
       enableModInProfile(api, activeProfileId, installEntry.vortexModId);
 
       aborted = checkAbort("installing-mods");
