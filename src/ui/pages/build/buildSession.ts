@@ -87,6 +87,13 @@ import {
 } from "../../../core/archiveHashCache";
 import { describeMissingArchives } from "./engine";
 import {
+  checkNexusAvailability,
+  summarizeAvailability,
+  type AvailabilityEntry,
+  type AvailabilityFinding,
+  type AvailabilitySummary,
+} from "../../../core/build/nexusAvailability";
+import {
   deleteDraft,
   getAppDataPath,
   loadDraft,
@@ -220,6 +227,21 @@ export type BuildSessionState =
        * "Discard draft". Autosave keeps running independently.
        */
       restoredAt?: string;
+      /**
+       * Progress of a Nexus availability sweep, while one is running.
+       *
+       * Kept on the form rather than as its own state kind: the sweep is
+       * read-only, changes nothing the curator has typed, and taking over the
+       * screen for it would stop them working on the collection for the eight
+       * hundred lookups it takes.
+       */
+      availabilityProgress?: { done: number; total: number };
+      /** Result of the last sweep, if one has been run this session. */
+      availability?: {
+        summary: AvailabilitySummary;
+        findings: readonly AvailabilityFinding[];
+        checkedAt: string;
+      };
     }
   | {
       /**
@@ -605,6 +627,120 @@ class BuildSession {
    * hash cache, so a later build costs nothing even though Vortex's own records
    * still point at the dead downloads.
    */
+  /**
+   * Ask Nexus whether the USER will be able to download what we are about to
+   * pack.
+   *
+   * The curator cannot answer this from their own machine: every mod is
+   * already on their disk, so a collection referencing a file Nexus deleted
+   * builds and ships perfectly and fails only for somebody else. Two such mods
+   * sat in a real collection for days, failing on a tester's machine every
+   * time, with nothing on the build side ever mentioning them.
+   *
+   * Explicit rather than automatic. It is one lookup per unique mod — 780 of
+   * them for a 955-mod collection — which is a real slice of a daily API
+   * budget and not something every build should silently spend.
+   */
+  checkNexusAvailability(api: types.IExtensionApi): void {
+    if (this.state.kind !== "form") return;
+    const form = this.state;
+
+    const getModFiles = api.ext.nexusGetModFiles;
+    if (getModFiles === undefined) {
+      // Vortex's Nexus integration is optional and its ext functions are all
+      // declared `?`. Say so rather than reporting every mod unknown, which
+      // would look like Nexus was down.
+      this.setState({
+        ...form,
+        availability: {
+          summary: {
+            available: 0,
+            oldVersion: 0,
+            fileMissing: 0,
+            modMissing: 0,
+            unknown: 0,
+            clean: true,
+            lines: [
+              "Vortex's Nexus integration is not available, so this could " +
+                "not be checked. Is the Nexus extension enabled and are you " +
+                "logged in?",
+            ],
+          },
+          findings: [],
+          checkedAt: new Date().toISOString(),
+        },
+      });
+      return;
+    }
+
+    const entries: AvailabilityEntry[] = [];
+    for (const mod of form.ctx.mods) {
+      const modId = Number(mod.nexusModId);
+      const fileId = Number(mod.nexusFileId);
+      if (!Number.isFinite(modId) || !Number.isFinite(fileId)) continue;
+      if (modId <= 0 || fileId <= 0) continue;
+      entries.push({
+        compareKey: `nexus:${modId}:${fileId}`,
+        name: mod.name,
+        modId,
+        fileId,
+      });
+    }
+    if (entries.length === 0) return;
+
+    this.controller?.abort();
+    const controller = new AbortController();
+    this.controller = controller;
+    this.setState({ ...form, availabilityProgress: { done: 0, total: 0 } });
+
+    void (async (): Promise<void> => {
+      ehLog("info", "availability.start", { files: entries.length });
+      try {
+        const report = await checkNexusAvailability(entries, {
+          getModFiles: async (modId) =>
+            (await getModFiles(form.ctx.gameId, modId)) as never,
+          signal: controller.signal,
+          onProgress: (done, total) => {
+            if (this.controller !== controller) return;
+            if (this.state.kind !== "form") return;
+            this.setState({
+              ...this.state,
+              availabilityProgress: { done, total },
+            });
+          },
+        });
+        if (this.controller !== controller) return;
+        const summary = summarizeAvailability(report.findings);
+        ehLog("info", "availability.done", {
+          modsChecked: report.modsChecked,
+          gaveUpEarly: report.gaveUpEarly,
+          fileMissing: summary.fileMissing,
+          modMissing: summary.modMissing,
+          oldVersion: summary.oldVersion,
+          unknown: summary.unknown,
+        });
+        if (this.state.kind !== "form") return;
+        const { availabilityProgress: _drop, ...rest } = this.state;
+        this.setState({
+          ...rest,
+          availability: {
+            summary,
+            findings: report.findings,
+            checkedAt: new Date().toISOString(),
+          },
+        });
+      } catch (err) {
+        if (this.controller !== controller) return;
+        ehLog("warn", "availability.failed", { error: String(err) });
+        if (this.state.kind !== "form") return;
+        const { availabilityProgress: _drop, ...rest } = this.state;
+        this.setState(rest);
+      } finally {
+        if (this.controller === controller) this.controller = undefined;
+      }
+    })();
+  }
+
   recoverArchives(api: types.IExtensionApi): void {
     if (this.state.kind !== "form") return;
     const form = this.state;

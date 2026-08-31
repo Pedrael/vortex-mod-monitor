@@ -1,0 +1,330 @@
+/**
+ * ──────────────────────────────────────────────────────────────────────
+ * Can the USER still download what the curator packed?
+ *
+ * The curator never finds out on their own. Their copy of every mod is already
+ * on disk, so a collection referencing a file Nexus deleted builds perfectly,
+ * ships perfectly, and fails only on someone else's machine — as
+ * "Nexus download for modId=… returned no archiveId", eight hundred mods into
+ * an install, at which point the curator is not in the room.
+ *
+ * Two of those turned up in a tester's run (modIds 98669 and 82232) and failed
+ * identically in every attempt for days. Nothing on the curator's side had
+ * said a word.
+ *
+ * ─── WHAT THIS COSTS, MEASURED ─────────────────────────────────────────
+ * `nexusGetModFiles` is per MOD, not per file, and a real collection has far
+ * fewer mods than files: ivy-2 v1.0.9 is 955 mods, 926 Nexus-sourced, but only
+ * **780 unique modIds**. One call answers every file from that mod.
+ *
+ * 780 calls is still a real chunk of a daily API budget, so this is an
+ * explicit action rather than something every build pays for silently, and
+ * results are cacheable by modId.
+ *
+ * ─── THE RULE THAT MATTERS MOST: UNKNOWN IS NOT MISSING ────────────────
+ * A false "this mod is gone" is worse than no check at all. It tells the
+ * curator to cut a mod that is perfectly fine, and they have no easy way to
+ * discover the tool was wrong. So every failure to answer — a rejected call, a
+ * rate limit, an offline machine, a response we do not recognise — resolves to
+ * `unknown`, and `unknown` is reported as "could not check", never folded in
+ * with the problems. This is the same five-state honesty the Doctor's health
+ * checks use, for the same reason.
+ *
+ * ─── AND IT IS AN EARLY WARNING, NOT A GUARANTEE ───────────────────────
+ * A file alive at pack time can die next week — authors routinely delete old
+ * versions when they upload a new one, which is exactly how a collection rots.
+ * So `old-version` is reported separately from `available`: those files are
+ * downloadable *today* and are the ones most likely to disappear. A check that
+ * only said "all fine" would be telling the truth and still leaving the
+ * curator uninformed.
+ * ──────────────────────────────────────────────────────────────────────
+ */
+
+export type NexusAvailability =
+  /** Present in the mod's current file list. */
+  | "available"
+  /** Present, but flagged old/archived — downloadable now, fragile. */
+  | "old-version"
+  /** The mod exists; this file is not in its list any more. */
+  | "file-missing"
+  /** The mod page itself is gone, hidden, or under moderation. */
+  | "mod-missing"
+  /** Could not answer. NEVER treat as a problem. */
+  | "unknown";
+
+export interface AvailabilityEntry {
+  compareKey: string;
+  name: string;
+  modId: number;
+  fileId: number;
+}
+
+export interface AvailabilityFinding extends AvailabilityEntry {
+  status: NexusAvailability;
+  /** Why, in words, for the report. */
+  detail?: string;
+}
+
+/**
+ * One file as Nexus describes it.
+ *
+ * Both spellings are read on purpose. The Nexus REST API returns snake_case
+ * (`file_id`, `category_name`); Vortex's `IFileInfo` wrapper is not something
+ * this repo can verify locally, because `@nexusmods/nexus-api` is a
+ * types-only transitive dependency that is not installed. Reading both costs
+ * one `??` and removes a guess that would otherwise fail silently — as
+ * "every file missing", the most alarming wrong answer available.
+ */
+export interface NexusFileLike {
+  file_id?: number;
+  fileId?: number;
+  category_name?: string | null;
+  categoryName?: string | null;
+  name?: string;
+}
+
+export function fileIdOf(file: NexusFileLike): number | undefined {
+  return file.file_id ?? file.fileId;
+}
+
+function categoryOf(file: NexusFileLike): string {
+  return (file.category_name ?? file.categoryName ?? "").toUpperCase();
+}
+
+/** Categories Nexus uses for files that still exist but are on their way out. */
+const FRAGILE_CATEGORIES = new Set(["OLD_VERSION", "ARCHIVED"]);
+
+/**
+ * Where one file stands in the mod's list.
+ *
+ * `files` being empty is deliberately NOT read as "everything is deleted" — a
+ * mod with no listed files is far more likely to be a response we failed to
+ * understand than an author who deleted their own mod's every file.
+ */
+export function classifyFile(
+  files: readonly NexusFileLike[],
+  fileId: number,
+): { status: NexusAvailability; detail?: string } {
+  if (files.length === 0) {
+    return {
+      status: "unknown",
+      detail: "Nexus returned no file list for this mod.",
+    };
+  }
+  const hit = files.find((f) => fileIdOf(f) === fileId);
+  if (hit === undefined) {
+    return {
+      status: "file-missing",
+      detail:
+        `The mod page still exists but file ${fileId} is no longer among its ` +
+        `${files.length} file${files.length === 1 ? "" : "s"}.`,
+    };
+  }
+  const category = categoryOf(hit);
+  if (FRAGILE_CATEGORIES.has(category)) {
+    return {
+      status: "old-version",
+      detail: `Still downloadable, but filed under ${category}.`,
+    };
+  }
+  return { status: "available" };
+}
+
+export interface CheckAvailabilityDeps {
+  /**
+   * One call per unique modId. Should reject when the mod page is gone.
+   *
+   * Injected rather than reached for, so the whole walk is testable without a
+   * network — the only way to test the rate-limit and give-up behaviour at all.
+   */
+  getModFiles: (modId: number) => Promise<readonly NexusFileLike[]>;
+  onProgress?: (done: number, totalMods: number) => void;
+  signal?: AbortSignal;
+  /**
+   * Stop after this many CONSECUTIVE failed lookups.
+   *
+   * The same lesson as the install driver's systemic-failure guard: once the
+   * API has refused six times in a row it is going to refuse the other seven
+   * hundred, and grinding through them turns a rate limit into a twenty-minute
+   * wait that ends in no information. The rest are reported `unknown`, which
+   * is exactly what they are.
+   */
+  giveUpAfterConsecutiveFailures?: number;
+}
+
+export interface AvailabilityReport {
+  findings: AvailabilityFinding[];
+  /** Unique mods actually looked up. */
+  modsChecked: number;
+  /** True when the walk stopped early; the remainder are `unknown`. */
+  gaveUpEarly: boolean;
+}
+
+/** Is this an abort rather than a failure to answer? */
+function isAbort(err: unknown): boolean {
+  return (
+    err instanceof Error &&
+    (err.name === "AbortError" || /abort/i.test(err.message))
+  );
+}
+
+/**
+ * Check every entry, one lookup per unique mod.
+ *
+ * Sequential on purpose. This is a read-only sweep and could be parallel, but
+ * the thing most likely to go wrong is a rate limit, and firing eight hundred
+ * requests at a service in order to discover it is rate-limiting us is the
+ * wrong way round.
+ */
+export async function checkNexusAvailability(
+  entries: readonly AvailabilityEntry[],
+  deps: CheckAvailabilityDeps,
+): Promise<AvailabilityReport> {
+  const byMod = new Map<number, AvailabilityEntry[]>();
+  for (const e of entries) {
+    const list = byMod.get(e.modId);
+    if (list === undefined) byMod.set(e.modId, [e]);
+    else list.push(e);
+  }
+
+  const giveUpAfter = deps.giveUpAfterConsecutiveFailures ?? 6;
+  const findings: AvailabilityFinding[] = [];
+  let consecutiveFailures = 0;
+  let gaveUpEarly = false;
+  let modsChecked = 0;
+  let done = 0;
+
+  for (const [modId, group] of byMod) {
+    if (deps.signal?.aborted === true) {
+      gaveUpEarly = true;
+    }
+
+    if (gaveUpEarly) {
+      for (const e of group) {
+        findings.push({
+          ...e,
+          status: "unknown",
+          detail: "Not checked — the sweep stopped early.",
+        });
+      }
+      continue;
+    }
+
+    try {
+      const files = await deps.getModFiles(modId);
+      modsChecked += 1;
+      consecutiveFailures = 0;
+      for (const e of group) findings.push({ ...e, ...classifyFile(files, e.fileId) });
+    } catch (err) {
+      if (isAbort(err)) {
+        gaveUpEarly = true;
+        for (const e of group) {
+          findings.push({
+            ...e,
+            status: "unknown",
+            detail: "Not checked — cancelled.",
+          });
+        }
+        continue;
+      }
+      modsChecked += 1;
+      consecutiveFailures += 1;
+      // A rejected lookup is ambiguous: a deleted mod page and a refused
+      // request look the same from here. Only call it gone while the API is
+      // otherwise answering — during a failure streak, it is the API talking,
+      // not the mod.
+      const looksSystemic = consecutiveFailures >= giveUpAfter;
+      for (const e of group) {
+        findings.push({
+          ...e,
+          status: looksSystemic ? "unknown" : "mod-missing",
+          detail: looksSystemic
+            ? "Not checked — Nexus stopped answering."
+            : `Nexus did not return this mod page: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+        });
+      }
+      if (looksSystemic) gaveUpEarly = true;
+    }
+
+    done += 1;
+    deps.onProgress?.(done, byMod.size);
+  }
+
+  return { findings, modsChecked, gaveUpEarly };
+}
+
+export interface AvailabilitySummary {
+  available: number;
+  oldVersion: number;
+  fileMissing: number;
+  modMissing: number;
+  unknown: number;
+  /** Nothing a user could fail to download. */
+  clean: boolean;
+  lines: string[];
+}
+
+/**
+ * Turn findings into what the curator reads.
+ *
+ * Counts first, names second: "3 mods your users cannot download" is the
+ * sentence that changes behaviour, and burying it under 926 rows of "fine"
+ * is how a check gets ignored.
+ */
+export function summarizeAvailability(
+  findings: readonly AvailabilityFinding[],
+): AvailabilitySummary {
+  const by = (s: NexusAvailability): AvailabilityFinding[] =>
+    findings.filter((f) => f.status === s);
+
+  const fileMissing = by("file-missing");
+  const modMissing = by("mod-missing");
+  const oldVersion = by("old-version");
+  const unknown = by("unknown");
+  const lines: string[] = [];
+
+  const blocked = fileMissing.length + modMissing.length;
+  if (blocked > 0) {
+    lines.push(
+      `${blocked} mod${blocked === 1 ? "" : "s"} in this collection cannot be ` +
+        `downloaded from Nexus any more. Your copy still works — you already ` +
+        `have the files — but anyone installing this collection will fail on ` +
+        `${blocked === 1 ? "it" : "them"}.`,
+    );
+  }
+  if (oldVersion.length > 0) {
+    lines.push(
+      `${oldVersion.length} file${oldVersion.length === 1 ? " is" : "s are"} ` +
+        `filed as an old or archived version. ${
+          oldVersion.length === 1 ? "It downloads" : "They download"
+        } today, but authors routinely delete old files when they publish an ` +
+        `update — this is how a collection quietly stops working.`,
+    );
+  }
+  if (unknown.length > 0) {
+    lines.push(
+      `${unknown.length} could not be checked. That is not a problem with ` +
+        `${unknown.length === 1 ? "it" : "them"} — it means Nexus did not ` +
+        `answer, so nothing is known either way.`,
+    );
+  }
+  if (lines.length === 0) {
+    lines.push(
+      `Every Nexus mod in this collection is still downloadable. Worth ` +
+        `re-checking before you publish an update: this is true today, not ` +
+        `forever.`,
+    );
+  }
+
+  return {
+    available: by("available").length,
+    oldVersion: oldVersion.length,
+    fileMissing: fileMissing.length,
+    modMissing: modMissing.length,
+    unknown: unknown.length,
+    clean: blocked === 0,
+    lines,
+  };
+}

@@ -43,7 +43,8 @@ import {
 } from "../pages/install/steps";
 import { ApiProvider } from "../state/ApiContext";
 import { ToastProvider } from "../components/Toast";
-import { DonePanel } from "../pages/build/BuildPage";
+import { AvailabilityPanel, DonePanel } from "../pages/build/BuildPage";
+import { summarizeAvailability } from "../../core/build/nexusAvailability";
 import { DraftCard, PublishedCard } from "../pages/build/BuildDashboard";
 import { DashboardBody, Hero } from "../pages/HomePage";
 import { DoctorPanel } from "../pages/doctor/DoctorPanel";
@@ -543,6 +544,50 @@ describe("render", () => {
           onContinue: () => undefined,
         } as never),
       }),
+    );
+  });
+
+
+  // The curator-side availability check. Rendered with a result that has
+  // something wrong in it — a panel screenshotted in its happy state shows
+  // the layout that never needed checking.
+  it.skipIf(!on)("build-availability — what users cannot download", () => {
+    const finding = (
+      modId: number,
+      fileId: number,
+      name: string,
+      status: string,
+    ) => ({ compareKey: `nexus:${modId}:${fileId}`, name, modId, fileId, status });
+    write(
+      "build-availability",
+      React.createElement(AvailabilityPanel, {
+        onCheck: () => undefined,
+        result: {
+          checkedAt: new Date().toISOString(),
+          findings: [
+            finding(98669, 375818, "Crazy Wasteland - New Magazines - FRI Files", "file-missing"),
+            finding(82232, 314623, "Colletible Magazines and Post Cards Replacer", "mod-missing"),
+            ...Array.from({ length: 40 }, (_, i) =>
+              finding(1000 + i, 2000 + i, `Old version mod ${i}`, "old-version"),
+            ),
+            ...Array.from({ length: 880 }, (_, i) =>
+              finding(3000 + i, 4000 + i, `Fine mod ${i}`, "available"),
+            ),
+          ],
+          summary: summarizeAvailability([
+            { compareKey: "a", name: "a", modId: 1, fileId: 1, status: "file-missing" },
+            { compareKey: "b", name: "b", modId: 2, fileId: 2, status: "mod-missing" },
+            ...Array.from({ length: 40 }, (_, i) => ({
+              compareKey: `o${i}`, name: `o${i}`, modId: i, fileId: i,
+              status: "old-version" as const,
+            })),
+            ...Array.from({ length: 4 }, (_, i) => ({
+              compareKey: `u${i}`, name: `u${i}`, modId: i, fileId: i,
+              status: "unknown" as const,
+            })),
+          ]),
+        },
+      } as never),
     );
   });
 

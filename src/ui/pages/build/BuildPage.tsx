@@ -43,6 +43,10 @@ import {
   type BuildProgress,
   type CuratorInput,
 } from "./engine";
+import type {
+  AvailabilityFinding,
+  AvailabilitySummary,
+} from "../../../core/build/nexusAvailability";
 import type { ExternalModConfigEntry } from "../../../core/manifest/collectionConfig";
 import { findRecoverableMods } from "../../../core/archiveRecovery";
 import type {
@@ -635,6 +639,13 @@ function BuildWizard(props: BuildWizardProps): JSX.Element {
           findRecoverableMods(formState.ctx.mods).recoverable.length
         }
         onRecoverArchives={(): void => session.recoverArchives(api)}
+        onCheckAvailability={(): void => session.checkNexusAvailability(api)}
+        {...(state.availabilityProgress !== undefined
+          ? { availabilityProgress: state.availabilityProgress }
+          : {})}
+        {...(state.availability !== undefined
+          ? { availability: state.availability }
+          : {})}
       />
     </div>
   );
@@ -750,6 +761,109 @@ function QueuedPanel(props: {
 // ===========================================================================
 // Idle
 // ===========================================================================
+
+
+/**
+ * Whether the people installing this collection can still get the mods.
+ *
+ * The curator is the one person who cannot notice this problem unaided: every
+ * mod is already on their disk, so a collection referencing a file Nexus
+ * deleted builds, packs and ships perfectly, and fails only on someone else's
+ * machine — hundreds of mods into an install, with the curator not in the
+ * room. Two such mods sat in a real collection for days doing exactly that.
+ *
+ * Deliberately a button rather than part of every build. It is one lookup per
+ * unique mod (780 of them for a 955-mod collection), which is a real slice of
+ * a daily Nexus API budget.
+ */
+export function AvailabilityPanel(props: {
+  onCheck: () => void;
+  progress?: { done: number; total: number };
+  result?: {
+    summary: AvailabilitySummary;
+    findings: readonly AvailabilityFinding[];
+    checkedAt: string;
+  };
+}): JSX.Element {
+  const running = props.progress !== undefined;
+  const result = props.result;
+  // Only the two statuses a user would actually fail on. `old-version` is
+  // fragile but downloadable, and `unknown` is not a finding at all.
+  const blocked = (result?.findings ?? []).filter(
+    (f) => f.status === "file-missing" || f.status === "mod-missing",
+  );
+
+  return (
+    <Card title="Can your users still download these mods?">
+      <p
+        style={{
+          margin: 0,
+          fontSize: "var(--eh-text-sm)",
+          color: "var(--eh-text-secondary)",
+          lineHeight: "var(--eh-leading-relaxed)",
+        }}
+      >
+        Your own copies are on disk, so a mod Nexus has since deleted still
+        packs and ships — and then fails for everyone else. This asks Nexus
+        about each mod, once per mod page.
+      </p>
+
+      <div style={{ marginTop: "var(--eh-sp-3)" }}>
+        <Button intent="ghost" size="sm" disabled={running} onClick={props.onCheck}>
+          {running
+            ? `Checking ${props.progress!.done}/${props.progress!.total || "…"}`
+            : result === undefined
+              ? "Check Nexus availability"
+              : "Check again"}
+        </Button>
+      </div>
+
+      {result !== undefined && (
+        <div style={{ marginTop: "var(--eh-sp-3)" }}>
+          {result.summary.lines.map((line, i) => (
+            <p
+              key={i}
+              style={{
+                margin: "0 0 var(--eh-sp-2) 0",
+                fontSize: "var(--eh-text-sm)",
+                lineHeight: "var(--eh-leading-relaxed)",
+                color:
+                  i === 0 && !result.summary.clean
+                    ? "var(--eh-text-primary)"
+                    : "var(--eh-text-secondary)",
+              }}
+            >
+              {line}
+            </p>
+          ))}
+
+          {blocked.length > 0 && (
+            <ul
+              style={{
+                margin: "var(--eh-sp-2) 0 0 0",
+                paddingLeft: "var(--eh-sp-4)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 2,
+                fontSize: "var(--eh-text-xs)",
+                fontFamily: "var(--eh-font-mono)",
+                color: "var(--eh-text-muted)",
+                maxHeight: 220,
+                overflowY: "auto",
+              }}
+            >
+              {blocked.map((f) => (
+                <li key={f.compareKey}>
+                  {f.name} — mod {f.modId}, file {f.fileId}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
 
 /**
  * First-impression panel for the build flow. We deliberately don't
@@ -964,6 +1078,14 @@ interface FormPanelProps {
   /** How many mods could have their archive fetched back from Nexus. */
   recoverableCount: number;
   onRecoverArchives: () => void;
+  /** Ask Nexus whether users can still download every mod. */
+  onCheckAvailability: () => void;
+  availabilityProgress?: { done: number; total: number };
+  availability?: {
+    summary: AvailabilitySummary;
+    findings: readonly AvailabilityFinding[];
+    checkedAt: string;
+  };
 }
 
 /**
@@ -1067,6 +1189,9 @@ function FormPanel(props: FormPanelProps): JSX.Element {
     onDismissDraftBanner,
     recoverableCount,
     onRecoverArchives,
+    onCheckAvailability,
+    availabilityProgress,
+    availability,
   } = props;
   const {
     ctx, curator, overrides, readme, changelog, validationError, restoredAt,
@@ -1184,6 +1309,13 @@ function FormPanel(props: FormPanelProps): JSX.Element {
           </div>
         </div>
       )}
+
+      <AvailabilityPanel
+        onCheck={onCheckAvailability}
+        {...(availabilityProgress !== undefined ? { progress: availabilityProgress } : {})}
+        {...(availability !== undefined ? { result: availability } : {})}
+      />
+
       {ctx.mods.length === 0 && (
         <div
           role="alert"
