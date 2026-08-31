@@ -125,12 +125,17 @@ const manifest = {
   game: { id: "fallout4", version: "1.10.163.0" },
   // 115 of them carry FOMOD answers, as the real collection does — the screen
   // has to warn that Vortex will stop and ask.
+  // 112 replayable + 3 that recorded an installer but answered nothing —
+  // the real 963-mod split. The 3 ask the user in BOTH modes, so the copy has
+  // to account for them and the fixture has to contain them.
   mods: Array.from({ length: 963 }, (_, i) => ({
     name: `Mod ${i}`,
     install:
-      i < 115
+      i < 112
         ? { fomodSelections: [{ name: "step", groups: [{ name: "g", choices: [{ name: "c", idx: 1 }] }] }] }
-        : {},
+        : i < 115
+          ? { fomodSelections: [{ name: "step", groups: [{ name: "g", choices: [] }] }] }
+          : {},
   })),
   plugins: { order: Array.from({ length: 817 }, (_, i) => ({ name: `p${i}.esp` })) },
   rules: Array.from({ length: 291 }, () => ({})),

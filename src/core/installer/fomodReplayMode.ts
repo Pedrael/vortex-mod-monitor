@@ -61,28 +61,54 @@ export interface FomodModeOption {
 /**
  * The two options, written for someone who has never heard the word FOMOD.
  *
- * `modCount` is threaded in because "930 installers" is the argument. An
- * abstract "some mods have installers" does not convey what supervising them
- * actually costs an evening.
+ * ─── TWO COUNTS, BECAUSE THEY ARE NOT THE SAME QUESTION ────────────────
+ * `answerable` is how many mods we can hand an answer back for. `unanswered`
+ * is how many recorded installer steps with NOTHING selected in any group —
+ * `choicesFor` returns undefined for those on purpose, rather than claim a
+ * choice the curator never made.
+ *
+ * The consequence is easy to miss and it points the wrong way: passing no
+ * choices means the mod takes Vortex's ordinary install path, which is exactly
+ * the path that OPENS the dialog. So those mods ask the user **in both modes**,
+ * with no preset — they are the one thing silent replay cannot silence.
+ *
+ * Measured on the real 963-mod collection: 112 answerable, 3 unanswered. Three
+ * dialogs is not many, but promising zero and delivering three is precisely the
+ * "is it stuck?" failure this copy exists to prevent.
  */
-export function describeFomodModes(modsWithChoices: number): FomodModeOption[] {
-  const many = modsWithChoices >= 25;
+export function describeFomodModes(
+  answerable: number,
+  unanswered: number = 0,
+): FomodModeOption[] {
+  const total = answerable + unanswered;
+  const many = total >= 25;
+  const s = (n: number): string => (n === 1 ? "" : "s");
+  // The residue, said the same way in both options because it is true of both.
+  const residue =
+    unanswered > 0
+      ? `${unanswered} other mod${s(unanswered)} recorded no usable answer, ` +
+        `so Vortex will still ask you about ${unanswered === 1 ? "it" : "them"}.`
+      : undefined;
+
   return [
     {
       mode: "silent",
       title: "Apply the curator's answers automatically",
       blurb:
-        modsWithChoices > 0
-          ? `${modsWithChoices} mod${modsWithChoices === 1 ? "" : "s"} in this collection ` +
-            `${modsWithChoices === 1 ? "has an installer" : "have installers"}. ` +
+        answerable > 0
+          ? `${answerable} mod${s(answerable)} in this collection ` +
+            `${answerable === 1 ? "has an installer" : "have installers"}. ` +
             `Their questions are answered for you.`
           : "Installers are answered for you, if any turn up.",
       points: [
-        "The install runs start to finish without stopping for you.",
+        unanswered > 0
+          ? "The install runs without stopping, apart from the ones below."
+          : "The install runs start to finish without stopping for you.",
         "You get exactly the setup the curator tested.",
         ...(many
           ? ["Noticeably faster — Vortex skips the dialog work entirely."]
           : []),
+        ...(residue !== undefined ? [residue] : []),
       ],
       recommended: true,
     },
@@ -95,9 +121,21 @@ export function describeFomodModes(modsWithChoices: number): FomodModeOption[] {
       points: [
         "You see exactly what each mod is installing.",
         "You can deliberately differ from the curator where you want to.",
-        modsWithChoices > 0
-          ? `Expect to click through ${modsWithChoices} dialog${modsWithChoices === 1 ? "" : "s"}.`
+        // `total`, not `answerable`: the unanswered ones open too, just
+        // without a preset. Counting only the answerable ones would understate
+        // the clicking the user is signing up for.
+        total > 0
+          ? `Expect to click through ${total} dialog${s(total)}.`
           : "You will be asked whenever a mod has an installer.",
+        // Not `residue`: under supervision everything asks, so "will still
+        // ask you" is redundant. What is worth knowing is that these few
+        // arrive blank, with no curator answer to accept.
+        ...(unanswered > 0
+          ? [
+              `${unanswered} of those recorded no usable answer, so ` +
+                `${unanswered === 1 ? "it opens" : "they open"} with nothing preselected.`,
+            ]
+          : []),
       ],
       caution:
         "If you change an answer, this is no longer the curator's setup and " +

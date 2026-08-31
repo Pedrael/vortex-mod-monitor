@@ -107,3 +107,53 @@ describe("the default", () => {
     expect(DEFAULT_FOMOD_REPLAY_MODE).toBe("silent");
   });
 });
+
+describe("the installers silent replay cannot silence", () => {
+  // The correction. A mod whose recorded steps have NOTHING selected in any
+  // group gets no choices passed — deliberately, so we never claim an answer
+  // the curator did not make. But passing no choices means Vortex's ORDINARY
+  // install path, and that is the path that opens the dialog. So these mods
+  // ask the user in BOTH modes, and the silent copy must not promise silence.
+  //
+  // Measured 112 answerable / 3 unanswered on the real 963-mod collection.
+
+  it("does not promise an uninterrupted run when some installers will still ask", () => {
+    const silent = describeFomodModes(112, 3).find((o) => o.mode === "silent")!;
+    const text = silent.points.join(" ");
+    expect(text).not.toContain("start to finish");
+    expect(text).toContain("3 other mods");
+    expect(text.toLowerCase()).toContain("still ask");
+  });
+
+  it("still promises an uninterrupted run when nothing will ask", () => {
+    const silent = describeFomodModes(112, 0).find((o) => o.mode === "silent")!;
+    expect(silent.points.join(" ")).toContain("start to finish");
+    expect(silent.points.join(" ")).not.toContain("still ask");
+  });
+
+  it("counts the unanswered ones in the supervised dialog total", () => {
+    // 112 answerable + 3 unanswered = 115 dialogs to click through. Counting
+    // only the replayable ones understates the evening the user is agreeing to.
+    const sup = describeFomodModes(112, 3).find((o) => o.mode === "supervised")!;
+    expect(sup.points.join(" ")).toContain("115 dialogs");
+  });
+
+  it("warns that the unanswered ones open with nothing preselected", () => {
+    const sup = describeFomodModes(112, 3).find((o) => o.mode === "supervised")!;
+    expect(sup.points.join(" ")).toContain("nothing preselected");
+  });
+
+  it("stays grammatical for exactly one unanswered mod", () => {
+    const text = JSON.stringify(describeFomodModes(112, 1));
+    expect(text).toContain("1 other mod ");
+    expect(text).not.toContain("1 other mods");
+    expect(text).toContain("ask you about it");
+  });
+
+  it("keeps the silent blurb about what IS replayed", () => {
+    // The residue is a caveat, not the headline. 112 answered automatically is
+    // still the main fact about this option.
+    const silent = describeFomodModes(112, 3).find((o) => o.mode === "silent")!;
+    expect(silent.blurb).toContain("112 mods");
+  });
+});

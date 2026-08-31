@@ -1692,15 +1692,21 @@ function WarningPanel(props: {
  */
 function FomodModeChooser(props: {
   mode: FomodReplayMode;
-  modsWithChoices: number;
+  /** Mods whose recorded answers can be replayed. */
+  answerable: number;
+  /** Mods with an installer but no usable recorded answer — these ask either way. */
+  unanswered: number;
   onSelect: (mode: FomodReplayMode) => void;
 }): JSX.Element | null {
   // Nothing to replay, nothing to ask. Showing a question about installers
   // for a collection that has none is noise on the one screen that must not
   // have any.
-  if (props.modsWithChoices === 0) return null;
+  //
+  // Gated on `answerable`: with nothing to replay the mode changes nothing,
+  // and any unanswered installers open regardless of what the user picks.
+  if (props.answerable === 0) return null;
 
-  const options = describeFomodModes(props.modsWithChoices);
+  const options = describeFomodModes(props.answerable, props.unanswered);
 
   return (
     <section
@@ -1822,15 +1828,26 @@ export function ConfirmStep(props: ConfirmStepProps): JSX.Element {
   const { bundle, decisions } = state;
   const target = bundle.plan.installTarget;
 
-  // Counted through `choicesFor`, not by "has fomodSelections": a recorded
-  // step where the curator answered nothing is not a question the user will
-  // be asked, and counting it would promise dialogs that never appear.
-  const modsWithChoices = React.useMemo(
-    () =>
-      bundle.plan.manifest.mods.filter((m) => choicesFor(m) !== undefined)
-        .length,
-    [bundle.plan.manifest.mods],
-  );
+  // TWO counts, because they behave differently and the difference is the
+  // one thing silent replay cannot hide.
+  //
+  //   answerable — we have an answer to hand back; silent replay silences it.
+  //   unanswered — the curator's install went through an installer but nothing
+  //                was selected in any group. `choicesFor` returns undefined
+  //                rather than invent an answer, so the mod takes Vortex's
+  //                ordinary path — which is the path that OPENS the dialog.
+  //
+  // Measured 112 / 3 on the real collection. Collapsing them would either
+  // promise three dialogs that do appear, or undercount the clicking.
+  const fomodCounts = React.useMemo(() => {
+    let answerable = 0;
+    let unanswered = 0;
+    for (const m of bundle.plan.manifest.mods) {
+      if (choicesFor(m) !== undefined) answerable += 1;
+      else if ((m.install?.fomodSelections ?? []).length > 0) unanswered += 1;
+    }
+    return { answerable, unanswered };
+  }, [bundle.plan.manifest.mods]);
 
   // Esc = back to decisions. Enter is deliberately NOT bound here.
   //
@@ -1965,7 +1982,8 @@ export function ConfirmStep(props: ConfirmStepProps): JSX.Element {
       {props.onSetFomodMode !== undefined && (
         <FomodModeChooser
           mode={decisions.fomodReplayMode ?? DEFAULT_FOMOD_REPLAY_MODE}
-          modsWithChoices={modsWithChoices}
+          answerable={fomodCounts.answerable}
+          unanswered={fomodCounts.unanswered}
           onSelect={props.onSetFomodMode}
         />
       )}
@@ -2185,12 +2203,17 @@ export function InstallingStep(props: {
   //
   // Counted through `choicesFor` to match what actually gets replayed: a
   // recorded step the curator answered nothing in produces no dialog.
-  const fomodCount = React.useMemo(
-    () =>
-      bundle.plan.manifest.mods.filter((m) => choicesFor(m) !== undefined)
-        .length,
-    [bundle.plan.manifest.mods],
-  );
+  const fomodCounts = React.useMemo(() => {
+    let answerable = 0;
+    let unanswered = 0;
+    for (const m of bundle.plan.manifest.mods) {
+      if (choicesFor(m) !== undefined) answerable += 1;
+      else if ((m.install?.fomodSelections ?? []).length > 0) unanswered += 1;
+    }
+    return { answerable, unanswered };
+  }, [bundle.plan.manifest.mods]);
+  const { answerable, unanswered } = fomodCounts;
+  const fomodCount = answerable + unanswered;
   const supervised = decisions.fomodReplayMode === "supervised";
 
   const phaseLabel =
@@ -2288,9 +2311,17 @@ export function InstallingStep(props: {
               <strong>the run pauses until you confirm</strong>, so it is not
               stuck if it sits still with a dialog open.
             </>
+          ) : unanswered > 0 ? (
+            <>
+              {answerable} of these mods have installer options that are
+              answered for you automatically. {unanswered} other
+              {unanswered === 1 ? " mod" : " mods"} recorded no usable answer,
+              so <strong>Vortex will still ask you about those</strong> — if it
+              sits still with a dialog open, it is waiting on you, not stuck.
+            </>
           ) : (
             <>
-              {fomodCount} of these mods have installer options. You chose to
+              {answerable} of these mods have installer options. You chose to
               have the curator&apos;s answers applied automatically, so{" "}
               <strong>no installer windows will open</strong> — nothing here is
               waiting on you.

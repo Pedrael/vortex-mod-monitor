@@ -148,8 +148,24 @@ A final pre-flight summary. The wizard precomputes the `UserConfirmedDecisions` 
 
 The last question before anything is written: how the curator's recorded FOMOD
 answers get replayed. Rendered only when at least one mod actually has answers
-to replay — counted through `choicesFor`, so a recorded step the curator left
-blank does not promise a dialog that never opens.
+to replay.
+
+**Two counts, and they are not interchangeable.** `choicesFor` returns
+`undefined` both for a mod with no recorded selections *and* for one whose
+recorded steps have nothing selected in any group — it will not invent an
+answer the curator never gave. But passing no choices means the mod takes
+Vortex's ordinary install path, and **that is the path that opens the dialog**.
+So:
+
+| | real collection | silent | supervised |
+|---|---|---|---|
+| answerable (`choicesFor` returns choices) | 112 | no dialog | dialog, preset |
+| unanswered (installer recorded, nothing selected) | 3 | **dialog, no preset** | dialog, no preset |
+
+The unanswered residue is the one thing silent replay cannot silence, so both
+the confirm-step copy and the InstallingStep banner have to name it. Promising
+zero dialogs and delivering three is exactly the "is it stuck?" failure that
+banner exists to prevent.
 
 | Mode | `unattended` | What happens |
 |---|---|---|
