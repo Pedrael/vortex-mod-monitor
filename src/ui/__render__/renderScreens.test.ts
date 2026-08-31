@@ -103,6 +103,12 @@ const page = (title: string, body: string): string => `<!doctype html>
           overflow:visible !important;}
   .eh-app__inner,.eh-app__main{height:auto !important;max-height:none !important;
           overflow:visible !important;}
+  /* Modal sizes itself as calc(100% - 32px) of the backdrop, and the backdrop
+     is absolute:inset-0 inside .eh-app. With height:auto above, that resolves
+     against the PAGE CONTENT rather than the window, so a modal renders
+     clipped here and fine in Vortex. Give it a realistic window height so the
+     screenshot shows what the user sees, not what the harness did. */
+  .eh-app{min-height:780px !important;}
 </style>
 </head><body>
 <div class="eh-app"><div class="eh-app__inner"><main class="eh-app__main">
@@ -558,23 +564,27 @@ describe("render", () => {
     );
   });
 
-  // The same screen with the option that carries a warning selected — the
-  // caution only renders on the chosen one, so the default render never shows
-  // the copy that most needed looking at.
-  it.skipIf(!on)("confirm-supervised — the caution, visible", () => {
+  // The modal is what the Install button opens, and it is the only place the
+  // question is asked — so it is the screen that actually needs looking at.
+  // Rendered via ConfirmStep rather than in isolation so the real counts,
+  // real copy and real Modal chrome all participate.
+  it.skipIf(!on)("confirm-asking — the modal, which cannot be dismissed into a default", () => {
     write(
-      "confirm-supervised",
+      "confirm-asking",
       React.createElement(ConfirmStep, {
         state: {
           kind: "confirm",
           bundle,
-          decisions: { fomodReplayMode: "supervised" } as never,
+          decisions: {} as never,
           conflictChoices: {},
           orphanChoices: {},
         },
         onInstall: () => undefined,
         onBack: () => undefined,
         onSetFomodMode: () => undefined,
+        // Test-only: opens the modal at render time. Without it a static
+        // render shows the closed state and the copy goes unlooked-at.
+        __openModalForRender: true,
       } as never),
     );
   });

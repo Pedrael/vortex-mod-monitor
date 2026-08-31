@@ -27,6 +27,7 @@ import {
   Card,
   EventHorizonLogo,
   HashingCard,
+  Modal,
   Pill,
   ProgressRing,
   StepDots,
@@ -84,8 +85,8 @@ import {
 import { choicesFor } from "../../../core/installer/installerChoices";
 import type { FomodReplayMode } from "../../../core/installer/fomodReplayMode";
 import {
-  DEFAULT_FOMOD_REPLAY_MODE,
   describeFomodModes,
+  mustAskReplayMode,
 } from "../../../core/installer/fomodReplayMode";
 
 // ===========================================================================
@@ -1633,6 +1634,14 @@ export interface ConfirmStepProps {
   onInstall: () => void;
   onBack: () => void;
   onSetFomodMode?: (mode: FomodReplayMode) => void;
+  /**
+   * Render-harness only: start with the replay-mode modal open.
+   *
+   * The modal is the only place this question is asked, and a static render
+   * shows the closed state — so without this the copy that matters most is the
+   * copy nobody ever looks at.
+   */
+  __openModalForRender?: boolean;
 }
 
 /** Below this many free bytes on the install drive we surface a
@@ -1676,150 +1685,165 @@ function WarningPanel(props: {
 
 
 /**
- * How the curator's FOMOD answers get replayed — the last question before
- * anything is written.
+ * How the curator's FOMOD answers get replayed — asked once, as the last act
+ * before the driver starts.
  *
- * This is on the confirm step and not in a settings page on purpose. It is a
- * per-install decision, the trade-off only makes sense next to "you are about
- * to install 954 mods", and a preference buried in settings would be set once
- * by someone who had no idea what it meant.
+ * ─── WHY A MODAL, AND WHY IT HAS NO DEFAULT BUTTON ─────────────────────
+ * This began as an inline radio group on the confirm screen with "silent"
+ * preselected. That is offering, not asking: the recommended answer was
+ * already filled in, so the whole question — including the part about the
+ * Doctor undoing a deliberate change — could be scrolled past unread by
+ * someone clicking Install. Which is most people.
  *
- * The caution is not decoration. Deviating from the curator's answers is a
- * legitimate thing to want, and it has a consequence the user cannot possibly
- * guess: the Doctor diagnoses against the receipt but repairs from the
- * collection, so a later heal restores the curator's answer over theirs.
- * Better said here, once, than discovered as a mysterious reversion.
+ * So the two modes are the two BUTTONS, and there is no third button that
+ * proceeds without choosing. You cannot start this install without saying
+ * which one you want. Cancel returns to the review screen; it does not pick
+ * for you.
+ *
+ * One modal for the whole collection, not one per mod: the answer applies to
+ * every installer in the run and is held for its duration.
+ *
+ * Esc and backdrop-click are disabled deliberately. Both would dismiss the
+ * question, and the only sane reading of a dismissal is "do not install" —
+ * which is what Cancel already says, in a word the user chose rather than a
+ * gesture they may have made by accident.
  */
-function FomodModeChooser(props: {
-  mode: FomodReplayMode;
-  /** Mods whose recorded answers can be replayed. */
+function FomodModeModal(props: {
+  open: boolean;
   answerable: number;
-  /** Mods with an installer but no usable recorded answer — these ask either way. */
   unanswered: number;
-  onSelect: (mode: FomodReplayMode) => void;
-}): JSX.Element | null {
-  // Nothing to replay, nothing to ask. Showing a question about installers
-  // for a collection that has none is noise on the one screen that must not
-  // have any.
-  //
-  // Gated on `answerable`: with nothing to replay the mode changes nothing,
-  // and any unanswered installers open regardless of what the user picks.
-  if (props.answerable === 0) return null;
-
+  onCancel: () => void;
+  /** The chosen mode AND the go-ahead: this starts the install. */
+  onChoose: (mode: FomodReplayMode) => void;
+  installCount: number;
+}): JSX.Element {
   const options = describeFomodModes(props.answerable, props.unanswered);
 
   return (
-    <section
-      aria-label="Installer questions"
-      style={{ marginTop: "var(--eh-sp-4)" }}
+    <Modal
+      open={props.open}
+      onClose={props.onCancel}
+      // xl + a two-up grid so BOTH options are on screen at once. Stacked,
+      // they overflowed a normal Vortex window and put "Show me each
+      // installer" — the option carrying the warning — below the fold behind a
+      // scrollbar. An option you have to go looking for is not a choice being
+      // offered, and it is the wrong one to hide.
+      size="xl"
+      closeOnEsc={false}
+      closeOnBackdropClick={false}
+      hideCloseButton
+      title="Some mods ask questions while they install"
+      subtitle={
+        <>
+          The curator already answered them, and those answers are part of the
+          collection. Choose how you want them applied — this covers all{" "}
+          {props.installCount} mods.
+        </>
+      }
+      footer={
+        <Button intent="ghost" onClick={props.onCancel}>
+          Cancel
+        </Button>
+      }
     >
-      <h3
+      <div
         style={{
-          margin: "0 0 var(--eh-sp-1) 0",
-          fontSize: "var(--eh-text-md)",
-          color: "var(--eh-text-primary)",
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(330px, 1fr))",
+          gap: "var(--eh-sp-3)",
+          // Stretch, not start: the columns are different heights (only one
+          // carries a caution) and `margin-top: auto` on the buttons needs
+          // free space to push into, or they sit at ragged heights.
+          alignItems: "stretch",
         }}
       >
-        Some mods ask questions while they install
-      </h3>
-      <p
-        style={{
-          margin: "0 0 var(--eh-sp-3) 0",
-          fontSize: "var(--eh-text-sm)",
-          color: "var(--eh-text-secondary)",
-          lineHeight: "var(--eh-leading-relaxed)",
-        }}
-      >
-        The curator already answered them, and those answers are part of the
-        collection. Choose whether you want to watch them go past.
-      </p>
-
-      <div style={{ display: "grid", gap: "var(--eh-sp-3)" }}>
-        {options.map((opt) => {
-          const selected = opt.mode === props.mode;
-          return (
-            <label
-              key={opt.mode}
+        {options.map((opt) => (
+          <div
+            key={opt.mode}
+            style={{
+              padding: "var(--eh-sp-4)",
+              height: "100%",
+              borderRadius: "var(--eh-radius-md)",
+              background: "var(--eh-bg-elevated)",
+              border: "1px solid var(--eh-border-subtle)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "var(--eh-sp-2)",
+            }}
+          >
+            <span
               style={{
                 display: "flex",
-                gap: "var(--eh-sp-3)",
-                alignItems: "flex-start",
-                padding: "var(--eh-sp-3) var(--eh-sp-4)",
-                borderRadius: "var(--eh-radius-md)",
-                cursor: "pointer",
-                background: selected
-                  ? "var(--eh-bg-raised)"
-                  : "var(--eh-bg-elevated)",
-                border: `1px solid ${
-                  selected ? "var(--eh-cyan)" : "var(--eh-border-subtle)"
-                }`,
+                alignItems: "center",
+                gap: "var(--eh-sp-2)",
+                flexWrap: "wrap",
               }}
             >
-              <input
-                type="radio"
-                name="eh-fomod-mode"
-                checked={selected}
-                onChange={() => props.onSelect(opt.mode)}
-                style={{ marginTop: 4, flex: "none" }}
-              />
-              <span className="eh-fill">
-                <span
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "var(--eh-sp-2)",
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <strong
-                    style={{
-                      fontSize: "var(--eh-text-sm)",
-                      color: "var(--eh-text-primary)",
-                    }}
-                  >
-                    {opt.title}
-                  </strong>
-                  {opt.recommended && (
-                    <Pill intent="info">Recommended</Pill>
-                  )}
-                </span>
-                <span
-                  style={{
-                    display: "block",
-                    marginTop: 2,
-                    fontSize: "var(--eh-text-sm)",
-                    color: "var(--eh-text-secondary)",
-                    lineHeight: "var(--eh-leading-relaxed)",
-                  }}
-                >
-                  {opt.blurb}
-                </span>
-                <ul
-                  style={{
-                    margin: "var(--eh-sp-2) 0 0 0",
-                    paddingLeft: "var(--eh-sp-4)",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 2,
-                    fontSize: "var(--eh-text-xs)",
-                    color: "var(--eh-text-muted)",
-                  }}
-                >
-                  {opt.points.map((pt, i) => (
-                    <li key={i}>{pt}</li>
-                  ))}
-                </ul>
-                {opt.caution !== undefined && selected && (
-                  <WarningPanel style={{ marginTop: "var(--eh-sp-3)" }}>
-                    {opt.caution}
-                  </WarningPanel>
-                )}
-              </span>
-            </label>
-          );
-        })}
+              <strong
+                style={{
+                  fontSize: "var(--eh-text-md)",
+                  color: "var(--eh-text-primary)",
+                }}
+              >
+                {opt.title}
+              </strong>
+              {opt.recommended && <Pill intent="info">Recommended</Pill>}
+            </span>
+
+            <span
+              style={{
+                fontSize: "var(--eh-text-sm)",
+                color: "var(--eh-text-secondary)",
+                lineHeight: "var(--eh-leading-relaxed)",
+              }}
+            >
+              {opt.blurb}
+            </span>
+
+            <ul
+              style={{
+                margin: 0,
+                paddingLeft: "var(--eh-sp-4)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 2,
+                fontSize: "var(--eh-text-xs)",
+                color: "var(--eh-text-muted)",
+              }}
+            >
+              {opt.points.map((pt, i) => (
+                <li key={i}>{pt}</li>
+              ))}
+            </ul>
+
+            {/* Always shown, not only once selected: there is no selection
+                here, and a warning that appears after you commit is not a
+                warning. */}
+            {opt.caution !== undefined && (
+              <WarningPanel style={{ marginTop: "var(--eh-sp-1)" }}>
+                {opt.caution}
+              </WarningPanel>
+            )}
+
+            {/* Wrapped, because Button drops inline `style` by design
+                (Button.tsx omits it) — the margin has to live on something
+                that keeps it. This is what bottom-aligns the two buttons
+                across columns of different heights. */}
+            <div style={{ marginTop: "auto", paddingTop: "var(--eh-sp-2)" }}>
+              <Button
+                intent={opt.recommended ? "primary" : "ghost"}
+                fullWidth
+                onClick={() => props.onChoose(opt.mode)}
+              >
+                {opt.mode === "silent"
+                  ? "Install automatically"
+                  : "Install, showing me each installer"}
+              </Button>
+            </div>
+          </div>
+        ))}
       </div>
-    </section>
+    </Modal>
   );
 }
 
@@ -1848,6 +1872,16 @@ export function ConfirmStep(props: ConfirmStepProps): JSX.Element {
     }
     return { answerable, unanswered };
   }, [bundle.plan.manifest.mods]);
+
+  // Only ask when the answer changes something. With nothing replayable the
+  // mode is inert — any unanswered installers open either way — and a modal
+  // that cannot affect the outcome is pure friction.
+  const asksAboutInstallers =
+    mustAskReplayMode(fomodCounts.answerable) &&
+    props.onSetFomodMode !== undefined;
+  const [askingMode, setAskingMode] = React.useState(
+    props.__openModalForRender === true,
+  );
 
   // Esc = back to decisions. Enter is deliberately NOT bound here.
   //
@@ -1979,25 +2013,37 @@ export function ConfirmStep(props: ConfirmStepProps): JSX.Element {
           </WarningPanel>
         )}
 
-      {props.onSetFomodMode !== undefined && (
-        <FomodModeChooser
-          mode={decisions.fomodReplayMode ?? DEFAULT_FOMOD_REPLAY_MODE}
-          answerable={fomodCounts.answerable}
-          unanswered={fomodCounts.unanswered}
-          onSelect={props.onSetFomodMode}
-        />
-      )}
-
       <div
         className="eh-actions"
       >
         <Button intent="ghost" onClick={onBack}>
           ← Back
         </Button>
-        <Button intent="primary" onClick={onInstall}>
+        <Button
+          intent="primary"
+          onClick={asksAboutInstallers ? () => setAskingMode(true) : onInstall}
+        >
           Install {installCount} mod{installCount === 1 ? "" : "s"}
         </Button>
       </div>
+
+      {asksAboutInstallers && (
+        <FomodModeModal
+          open={askingMode}
+          answerable={fomodCounts.answerable}
+          unanswered={fomodCounts.unanswered}
+          installCount={installCount}
+          onCancel={() => setAskingMode(false)}
+          onChoose={(mode) => {
+            // Order matters: the mode must be in `decisions` before the driver
+            // reads it. The session dispatches synchronously, so by the time
+            // onInstall runs the state already carries the choice.
+            props.onSetFomodMode?.(mode);
+            setAskingMode(false);
+            onInstall();
+          }}
+        />
+      )}
     </StepFrame>
   );
 }

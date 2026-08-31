@@ -163,3 +163,24 @@ export function describeChosenMode(
     : `You were shown ${modsWithChoices} installer${modsWithChoices === 1 ? "" : "s"} and could change the curator's answers. ` +
         `Any change you made is not part of the collection, and healing that mod restores the curator's answer.`;
 }
+
+/**
+ * Must the user be asked before this install may start?
+ *
+ * The rule the modal enforces, kept out of the JSX so it can be stated once
+ * and tested. `answerable` is the count of mods whose recorded answers can
+ * actually be replayed.
+ *
+ * False when nothing is replayable: the mode then changes nothing — any
+ * installer without a usable recorded answer opens either way — and a blocking
+ * question that cannot affect the outcome is pure friction on the last screen
+ * before an hour of work.
+ *
+ * True otherwise, with no default answer anywhere in the flow. That is the
+ * whole point: an install must not be startable by someone who never saw the
+ * question, because one of the answers has a consequence they cannot undo by
+ * answering again.
+ */
+export function mustAskReplayMode(answerable: number): boolean {
+  return answerable > 0;
+}

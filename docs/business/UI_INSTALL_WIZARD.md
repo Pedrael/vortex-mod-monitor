@@ -144,11 +144,25 @@ A final pre-flight summary. The wizard precomputes the `UserConfirmedDecisions` 
 - Profile target reminder ("This will install into a brand-new profile called X" or "This will install into your current profile X").
 - Big "Install" button (primary) + "Back" (returns to decisions, preserving choices).
 
-#### The installer-questions choice
+#### The installer-questions modal
 
 The last question before anything is written: how the curator's recorded FOMOD
-answers get replayed. Rendered only when at least one mod actually has answers
-to replay.
+answers get replayed. **One modal for the whole collection install**, opened by
+the Install button — the driver does not start until it is answered.
+
+It is a modal rather than an inline control, and it has **no preselected
+answer**, because the first version had both and neither worked. An inline
+radio group with "silent" already ticked is offering, not asking: the entire
+question — including the part about the Doctor restoring the curator's answer
+over yours — could be scrolled past unread by anyone who just clicks Install,
+which is most people. So the two modes are the two buttons, and there is no
+third button that proceeds without choosing. Cancel returns to the review
+screen; it does not pick for you. Esc and backdrop-click are disabled for the
+same reason.
+
+Shown only when at least one mod actually has answers to replay
+(`mustAskReplayMode`) — with nothing replayable the mode changes nothing, and a
+blocking question that cannot affect the outcome is pure friction.
 
 **Two counts, and they are not interchangeable.** `choicesFor` returns
 `undefined` both for a mod with no recorded selections *and* for one whose

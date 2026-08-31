@@ -15,6 +15,7 @@ import {
   describeChosenMode,
   describeFomodModes,
   isUnattended,
+  mustAskReplayMode,
 } from "./fomodReplayMode";
 
 describe("isUnattended", () => {
@@ -155,5 +156,25 @@ describe("the installers silent replay cannot silence", () => {
     // still the main fact about this option.
     const silent = describeFomodModes(112, 3).find((o) => o.mode === "silent")!;
     expect(silent.blurb).toContain("112 mods");
+  });
+});
+
+describe("mustAskReplayMode", () => {
+  // The install is gated on this: when it is true the Install button opens the
+  // modal instead of starting, and the modal has no button that proceeds
+  // without choosing. Preselecting an answer was the earlier design and it was
+  // wrong — a recommended option already filled in means the consequence (the
+  // Doctor restoring the curator's answer over yours) can be clicked past
+  // unread by exactly the people it is written for.
+
+  it("asks whenever there is anything to replay", () => {
+    expect(mustAskReplayMode(1)).toBe(true);
+    expect(mustAskReplayMode(112)).toBe(true);
+  });
+
+  it("does not ask when nothing is replayable", () => {
+    // The mode is inert here: installers with no usable recorded answer open
+    // either way, so a blocking question could not change the outcome.
+    expect(mustAskReplayMode(0)).toBe(false);
   });
 });
