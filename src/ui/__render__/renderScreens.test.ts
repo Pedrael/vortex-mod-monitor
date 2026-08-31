@@ -542,12 +542,34 @@ describe("render", () => {
         state: {
           kind: "confirm",
           bundle,
-          decisions: {} as never,
+          decisions: { fomodReplayMode: "silent" } as never,
           conflictChoices: {},
           orphanChoices: {},
         },
         onInstall: () => undefined,
         onBack: () => undefined,
+        onSetFomodMode: () => undefined,
+      } as never),
+    );
+  });
+
+  // The same screen with the option that carries a warning selected — the
+  // caution only renders on the chosen one, so the default render never shows
+  // the copy that most needed looking at.
+  it.skipIf(!on)("confirm-supervised — the caution, visible", () => {
+    write(
+      "confirm-supervised",
+      React.createElement(ConfirmStep, {
+        state: {
+          kind: "confirm",
+          bundle,
+          decisions: { fomodReplayMode: "supervised" } as never,
+          conflictChoices: {},
+          orphanChoices: {},
+        },
+        onInstall: () => undefined,
+        onBack: () => undefined,
+        onSetFomodMode: () => undefined,
       } as never),
     );
   });

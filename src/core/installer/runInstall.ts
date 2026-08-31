@@ -195,7 +195,7 @@ import {
   safeRmTempDir,
   uninstallMod,
 } from "./modInstall";
-import { choicesFor } from "./installerChoices";
+import { replayArgs } from "./installerChoices";
 import {
   applyGameIni,
   describeGameIniApplication,
@@ -2128,9 +2128,7 @@ async function executeDecision(args: {
         signal: ctx.abortSignal,
         // The curator's FOMOD answers, when this mod had any. Undefined
         // leaves the install exactly as it was before replay existed.
-        ...(choicesFor(manifestEntry) !== undefined
-          ? { choices: choicesFor(manifestEntry) }
-          : {}),
+        ...replayArgs(manifestEntry, ctx.decisions.fomodReplayMode),
       });
       return {
         compareKey,
@@ -2147,9 +2145,7 @@ async function executeDecision(args: {
         gameId: manifest.game.id,
         archiveId: decision.archiveId,
         signal: ctx.abortSignal,
-        ...(choicesFor(manifestEntry) !== undefined
-          ? { choices: choicesFor(manifestEntry) }
-          : {}),
+        ...replayArgs(manifestEntry, ctx.decisions.fomodReplayMode),
       });
       return {
         compareKey,
@@ -2171,9 +2167,7 @@ async function executeDecision(args: {
         signal: ctx.abortSignal,
         preExtracted,
         // Bundling a mod must not cost it the curator's installer answers.
-        ...(choicesFor(manifestEntry) !== undefined
-          ? { choices: choicesFor(manifestEntry) }
-          : {}),
+        ...replayArgs(manifestEntry, ctx.decisions.fomodReplayMode),
       });
       // Track the temp **directory**, not the file: cherry-picked
       // entries can have nested paths inside the dir.
@@ -2459,9 +2453,7 @@ async function executePromptUserChoice(args: {
     gameId: ctx.plan.manifest.game.id,
     archivePath: choice.localPath,
     signal: ctx.abortSignal,
-    ...(choicesFor(manifestEntry) !== undefined
-      ? { choices: choicesFor(manifestEntry) }
-      : {}),
+    ...replayArgs(manifestEntry, ctx.decisions.fomodReplayMode),
   });
 
   return {
@@ -2514,9 +2506,7 @@ async function installManifestEntry(args: {
       nexusFileId: nx.source.fileId,
       fileName: nx.source.archiveName,
       signal: ctx.abortSignal,
-      ...(choicesFor(manifestEntry) !== undefined
-        ? { choices: choicesFor(manifestEntry) }
-        : {}),
+      ...replayArgs(manifestEntry, ctx.decisions.fomodReplayMode),
     });
     return {
       compareKey,
@@ -2549,9 +2539,7 @@ async function installManifestEntry(args: {
     // The Nexus branch of this same function already did this; the bundled
     // branch did not, and a "replace existing" choice therefore reinstalled
     // the mod with default installer options.
-    ...(choicesFor(manifestEntry) !== undefined
-      ? { choices: choicesFor(manifestEntry) }
-      : {}),
+    ...replayArgs(manifestEntry, ctx.decisions.fomodReplayMode),
   });
   onTempArchive(result.tempDir);
 
@@ -3001,6 +2989,11 @@ function buildReceipt(args: {
     vortexProfileId: profileId,
     vortexProfileName: profileName,
     installTargetMode: ctx.plan.installTarget.kind,
+    // Only when the user was actually asked. Absent means "not recorded",
+    // which is a weaker and truer claim than defaulting it to silent.
+    ...(ctx.decisions.fomodReplayMode !== undefined
+      ? { fomodReplayMode: ctx.decisions.fomodReplayMode }
+      : {}),
     mods: modEntries,
     rulesApplication,
     userlistApplication,

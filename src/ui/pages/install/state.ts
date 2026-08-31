@@ -32,6 +32,8 @@ import type {
   OrphanChoice,
   UserConfirmedDecisions,
 } from "../../../types/installDriver";
+import type { FomodReplayMode } from "../../../core/installer/fomodReplayMode";
+import { DEFAULT_FOMOD_REPLAY_MODE } from "../../../core/installer/fomodReplayMode";
 import type { InstallPlan } from "../../../types/installPlan";
 import type { FormattedError } from "../../errors";
 
@@ -105,6 +107,11 @@ export type WizardState =
       bundle: PreviewBundle;
       conflictChoices: Record<string, ConflictChoice>;
       orphanChoices: Record<string, OrphanChoice>;
+      /**
+       * Carried here as well as on `confirm` so stepping back and forward
+       * does not silently reset a choice the user made.
+       */
+      fomodReplayMode: FomodReplayMode;
     }
   | {
       kind: "confirm";
@@ -175,6 +182,7 @@ export type WizardAction =
       type: "open-confirm";
       decisions: UserConfirmedDecisions;
     }
+  | { type: "set-fomod-mode"; mode: FomodReplayMode }
   | { type: "back-from-confirm" }
   | { type: "start-install" }
   | { type: "install-progress"; progress: DriverProgress }
@@ -246,6 +254,7 @@ export function wizardReducer(
         bundle: action.bundle,
         conflictChoices: action.conflictChoices,
         orphanChoices: action.orphanChoices,
+        fomodReplayMode: DEFAULT_FOMOD_REPLAY_MODE,
       };
     case "set-conflict-choice": {
       if (state.kind !== "decisions") return state;
@@ -266,6 +275,18 @@ export function wizardReducer(
           [action.modId]: action.choice,
         },
       };
+    }
+    case "set-fomod-mode": {
+      if (state.kind === "decisions") {
+        return { ...state, fomodReplayMode: action.mode };
+      }
+      if (state.kind === "confirm") {
+        return {
+          ...state,
+          decisions: { ...state.decisions, fomodReplayMode: action.mode },
+        };
+      }
+      return state;
     }
     case "back-to-preview": {
       if (state.kind === "decisions" || state.kind === "confirm") {
@@ -288,6 +309,8 @@ export function wizardReducer(
         bundle: state.bundle,
         conflictChoices: state.decisions.conflictChoices ?? {},
         orphanChoices: state.decisions.orphanChoices ?? {},
+        fomodReplayMode:
+          state.decisions.fomodReplayMode ?? DEFAULT_FOMOD_REPLAY_MODE,
       };
     }
     case "start-install": {
@@ -372,8 +395,9 @@ export function defaultOrphanChoice(): OrphanChoice {
 export function buildUserConfirmedDecisions(
   conflictChoices: Record<string, ConflictChoice>,
   orphanChoices: Record<string, OrphanChoice>,
+  fomodReplayMode: FomodReplayMode = DEFAULT_FOMOD_REPLAY_MODE,
 ): UserConfirmedDecisions {
-  return { conflictChoices, orphanChoices };
+  return { conflictChoices, orphanChoices, fomodReplayMode };
 }
 
 /**

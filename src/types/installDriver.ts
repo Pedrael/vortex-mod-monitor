@@ -32,6 +32,7 @@
  * ──────────────────────────────────────────────────────────────────────
  */
 
+import type { FomodReplayMode } from "../core/installer/fomodReplayMode";
 import type { ReadEhcollResult } from "../core/manifest/readEhcoll";
 import type { InstallPlan } from "./installPlan";
 import type {
@@ -78,6 +79,16 @@ export type UserConfirmedDecisions = {
    * `"keep"` — the safest behavior since "uninstall" is destructive.
    */
   orphanChoices?: Record<string, OrphanChoice>;
+  /**
+   * Whether Vortex shows each FOMOD installer during the install, or applies
+   * the curator's recorded answers silently.
+   *
+   * A decision like the other two: the user makes it once, before anything is
+   * written, and it holds for the whole run. Omitted means nobody was asked —
+   * callers predating the question — and the replay falls back to
+   * `DEFAULT_FOMOD_REPLAY_MODE`.
+   */
+  fomodReplayMode?: FomodReplayMode;
 };
 
 /**

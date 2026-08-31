@@ -207,6 +207,13 @@ export async function installNexusViaApi(
      * feature must not change how the other 840 mods in a collection install.
      */
     choices?: VortexInstallerChoices;
+    /**
+     * Apply {@link choices} without showing the FOMOD dialog.
+     *
+     * Travels with `choices` and is meaningless without it. The user picks
+     * this once before the install starts; see `fomodReplayMode.ts`.
+     */
+    unattended?: boolean;
   },
 ): Promise<{ archiveId: string; vortexModId: string }> {
   if (!api.ext?.nexusDownload) {
@@ -313,6 +320,9 @@ export async function installNexusViaApi(
       gameId: args.gameId,
       archiveId,
       choices: args.choices!,
+      ...(args.unattended !== undefined
+        ? { unattended: args.unattended }
+        : {}),
       ...(args.signal !== undefined ? { signal: args.signal } : {}),
     });
     return { archiveId, vortexModId: installed.vortexModId };
@@ -341,6 +351,13 @@ export async function installFromExistingDownload(
      * is byte-for-byte what it was before replay existed.
      */
     choices?: VortexInstallerChoices;
+    /**
+     * Apply {@link choices} without showing the FOMOD dialog.
+     *
+     * Travels with `choices` and is meaningless without it. The user picks
+     * this once before the install starts; see `fomodReplayMode.ts`.
+     */
+    unattended?: boolean;
     /** Optional cancellation token; see {@link installNexusViaApi}. */
     signal?: AbortSignal;
   },
@@ -369,7 +386,7 @@ export async function installFromExistingDownload(
     api.events.emit(
       "start-install-download",
       args.archiveId,
-      installOptions(args.choices!),
+      installOptions(args.choices!, args.unattended),
       (err: Error | null | undefined) => {
         if (err) reject(err);
       },
@@ -420,6 +437,13 @@ export async function installFromLocalArchive(
      * archives around because of a feature it does not use.
      */
     choices?: VortexInstallerChoices;
+    /**
+     * Apply {@link choices} without showing the FOMOD dialog.
+     *
+     * Travels with `choices` and is meaningless without it. The user picks
+     * this once before the install starts; see `fomodReplayMode.ts`.
+     */
+    unattended?: boolean;
   },
 ): Promise<{ vortexModId: string }> {
   if (args.signal?.aborted) {
@@ -435,6 +459,9 @@ export async function installFromLocalArchive(
       gameId: args.gameId,
       archiveId: adopted.archiveId,
       choices: args.choices,
+      ...(args.unattended !== undefined
+        ? { unattended: args.unattended }
+        : {}),
       ...(args.signal !== undefined ? { signal: args.signal } : {}),
     });
   }
@@ -568,6 +595,13 @@ export async function installFromBundledArchive(
      * See adoptLocalArchive for that evidence.
      */
     choices?: VortexInstallerChoices;
+    /**
+     * Apply {@link choices} without showing the FOMOD dialog.
+     *
+     * Travels with `choices` and is meaningless without it. The user picks
+     * this once before the install starts; see `fomodReplayMode.ts`.
+     */
+    unattended?: boolean;
   },
 ): Promise<{
   vortexModId: string;
@@ -607,6 +641,9 @@ export async function installFromBundledArchive(
         gameId: args.gameId,
         archiveId: adopted.archiveId,
         choices: args.choices,
+        ...(args.unattended !== undefined
+          ? { unattended: args.unattended }
+          : {}),
         ...(args.signal !== undefined ? { signal: args.signal } : {}),
       });
       return { vortexModId: installed.vortexModId, extractedPath, tempDir };

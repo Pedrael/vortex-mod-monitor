@@ -28,6 +28,8 @@
  */
 
 /** Which aspect of the collection a check covers. */
+import type { FomodReplayMode } from "../installer/fomodReplayMode";
+
 export type HealthCheckId =
   | "profile"
   | "mods-present"
@@ -110,6 +112,13 @@ export interface HealthReceiptView {
     baselinePluginOrder?: readonly string[];
   };
   userlistApplication?: { appliedRuleCount?: number };
+  /**
+   * How the curator's installer answers were replayed.
+   *
+   * `"supervised"` means the user could have changed them, which makes drift
+   * ambiguous rather than wrong — see the staging check.
+   */
+  fomodReplayMode?: FomodReplayMode;
 }
 
 const MAX_DETAIL = 25;
@@ -254,7 +263,20 @@ export function evaluateHealth(
         names.length === 0
           ? "Every mod's files are exactly as installed."
           : `${names.length} mod${names.length === 1 ? " has" : "s have"} changed on disk since installing.`,
-      detail: detailList(names),
+      detail:
+        names.length > 0 && receipt.fomodReplayMode === "supervised"
+          ? [
+              // The receipt records the RESULT, not the answers behind it, so
+              // a deliberate deviation and a corrupted staging folder are
+              // indistinguishable here. Reinstalling replays the CURATOR's
+              // answers, which would undo the former. Say it before they
+              // click, not after.
+              "Note: you chose to review each installer on this install, so " +
+                "some of these differences may be answers you changed on " +
+                "purpose. Reinstalling restores the curator's answers.",
+              ...detailList(names),
+            ]
+          : detailList(names),
       affectedCount: names.length,
       ...(names.length > 0
         ? {

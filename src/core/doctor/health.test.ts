@@ -232,3 +232,60 @@ describe("healingBlockedReason", () => {
     expect(healingBlockedReason({ kind: 42 } as { kind?: unknown })).toBeDefined();
   });
 });
+
+describe("a supervised install makes drift ambiguous", () => {
+  // The Doctor diagnoses against the receipt but repairs from the collection.
+  // Those two references agree perfectly until the user changes an installer
+  // answer on purpose — and then "reinstall" quietly restores the curator's.
+  // The user was warned at install time; they are warned again at the moment
+  // it would actually happen.
+  const drifted = () => healthy({ driftedCompareKeys: ["nexus:1:1"] });
+
+  it("says a difference may be deliberate when the user drove the installers", () => {
+    const checks = evaluateHealth(
+      receipt({ fomodReplayMode: "supervised" }),
+      drifted(),
+    );
+    const staging = byId(checks, "staging");
+    expect(staging.detail.join(" ").toLowerCase()).toContain("on purpose");
+    expect(staging.detail.join(" ").toLowerCase()).toContain("curator");
+  });
+
+  it("still offers the repair rather than hiding it behind the caveat", () => {
+    // A caveat is not a reason to withhold the fix. Most drift after a
+    // supervised install is still ordinary drift.
+    const checks = evaluateHealth(
+      receipt({ fomodReplayMode: "supervised" }),
+      drifted(),
+    );
+    expect(byId(checks, "staging").heal?.action).toBe("reinstall-mods");
+  });
+
+  it("says nothing of the sort after a silent install", () => {
+    // Nothing could have deviated, so the note would be noise — and worse,
+    // it would suggest the user's own change caused corruption they did not
+    // cause.
+    const checks = evaluateHealth(
+      receipt({ fomodReplayMode: "silent" }),
+      drifted(),
+    );
+    expect(byId(checks, "staging").detail.join(" ")).not.toContain("on purpose");
+  });
+
+  it("says nothing of the sort on an old receipt that never recorded it", () => {
+    // Absent means "not recorded", not "supervised". Guessing would put a
+    // speculative excuse on real corruption.
+    const checks = evaluateHealth(receipt(), drifted());
+    expect(byId(checks, "staging").detail.join(" ")).not.toContain("on purpose");
+  });
+
+  it("keeps the drifted mod names, caveat or not", () => {
+    // The caveat is prepended to the list. Prepending must not replace it.
+    const checks = evaluateHealth(
+      receipt({ fomodReplayMode: "supervised" }),
+      drifted(),
+    );
+    expect(byId(checks, "staging").detail).toContain("Alpha");
+    expect(byId(checks, "staging").affectedCount).toBe(1);
+  });
+});

@@ -25,6 +25,8 @@
 
 import type { FomodSelectionStep } from "../getModsListForProfile";
 import type { EhcollMod } from "../../types/ehcoll";
+import type { FomodReplayMode } from "./fomodReplayMode";
+import { DEFAULT_FOMOD_REPLAY_MODE, isUnattended } from "./fomodReplayMode";
 
 /** Vortex's `IChoiceType`, as its installer expects it. */
 export type VortexInstallerChoices = {
@@ -90,31 +92,43 @@ export function choicesFor(entry: EhcollMod | undefined): VortexInstallerChoices
  * "regardless of unattended flag". It is not; the line beneath it requires
  * `unattended === true`. Trust the code.)
  *
- * Vortex's own note on the flag calls it "collection install with preset
- * choices" and points out it also skips dozens of main-thread callbacks per
- * mod — so on a 900-mod collection this is a speed change as well as a
- * quiet one.
+ * ─── THIS IS THE USER'S CALL, NOT OURS ─────────────────────────────────
+ * It was briefly a constant here. It is not one any more: both answers are
+ * right for different people, and the user is asked once before the install
+ * starts — see `fomodReplayMode.ts` for the wording and for the consequence
+ * that makes the question worth asking at all.
  *
- * ─── WHY THIS IS THE DEFAULT ───────────────────────────────────────────
- * The curator already answered these questions, and that answer IS the
- * collection. Stopping to ask the user to re-confirm it invites them to
- * deviate from the thing they chose to reproduce, and it is the single
- * biggest source of friction in a large install: a tester's run showed
- * per-mod times with a median of 4ms and a 99th percentile of 491 SECONDS,
- * all of it a human reading dialogs, and six mods killed by the stall
- * watchdog while he did.
- *
- * Set to false to watch each step go past instead.
+ * The default below is only what happens when nobody chose, which in practice
+ * means a caller that predates the question.
  */
-export const REPLAY_FOMOD_SILENTLY = true;
-
 export function installOptions(
   choices: VortexInstallerChoices,
-  unattended: boolean = REPLAY_FOMOD_SILENTLY,
+  unattended: boolean = isUnattended(DEFAULT_FOMOD_REPLAY_MODE),
 ): {
   allowAutoEnable: boolean;
   choices: VortexInstallerChoices;
   unattended: boolean;
 } {
   return { allowAutoEnable: true, choices, unattended };
+}
+
+/**
+ * The replay half of an install call's arguments: the curator's answers, and
+ * whether to apply them silently.
+ *
+ * Exists because the six install call sites in `runInstall` each spelled the
+ * same conditional spread out by hand, and threading a second field through
+ * would have meant six more chances to thread it through only five. Both
+ * fields are omitted together when there is nothing to replay, which keeps the
+ * no-choices path byte-identical to what it was before replay existed —
+ * `exactOptionalPropertyTypes` makes that distinction real rather than
+ * cosmetic.
+ */
+export function replayArgs(
+  entry: EhcollMod | undefined,
+  mode: FomodReplayMode = DEFAULT_FOMOD_REPLAY_MODE,
+): { choices?: VortexInstallerChoices; unattended?: boolean } {
+  const choices = choicesFor(entry);
+  if (choices === undefined) return {};
+  return { choices, unattended: isUnattended(mode) };
 }

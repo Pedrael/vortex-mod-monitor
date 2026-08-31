@@ -45,6 +45,7 @@ import {
   runLoadingPipelineWithReceipt,
 } from "./engine";
 import type { ConflictChoice, OrphanChoice } from "../../../types/installDriver";
+import type { FomodReplayMode } from "../../../core/installer/fomodReplayMode";
 import {
   fillDefaultConflictChoices,
   fillDefaultOrphanChoices,
@@ -301,6 +302,15 @@ class InstallSession {
     this.dispatch({ type: "set-orphan-choice", modId, choice });
   }
 
+  /**
+   * How the curator's FOMOD answers get replayed. Asked on the confirm step,
+   * because that is the last moment before anything is written and the only
+   * one where the trade-off is still the user's to make.
+   */
+  setFomodReplayMode(mode: FomodReplayMode): void {
+    this.dispatch({ type: "set-fomod-mode", mode });
+  }
+
   backToPreview(): void {
     this.dispatch({ type: "back-to-preview" });
   }
@@ -325,6 +335,7 @@ class InstallSession {
       decisions: {
         conflictChoices: filledConflicts,
         orphanChoices: filledOrphans,
+        fomodReplayMode: this.state.fomodReplayMode,
       },
     });
   }

@@ -144,6 +144,48 @@ A final pre-flight summary. The wizard precomputes the `UserConfirmedDecisions` 
 - Profile target reminder ("This will install into a brand-new profile called X" or "This will install into your current profile X").
 - Big "Install" button (primary) + "Back" (returns to decisions, preserving choices).
 
+#### The installer-questions choice
+
+The last question before anything is written: how the curator's recorded FOMOD
+answers get replayed. Rendered only when at least one mod actually has answers
+to replay — counted through `choicesFor`, so a recorded step the curator left
+blank does not promise a dialog that never opens.
+
+| Mode | `unattended` | What happens |
+|---|---|---|
+| `silent` (default) | `true` | Vortex applies the curator's answers without opening its installer. |
+| `supervised` | `false` | Each installer opens with the curator's answers preselected; the user confirms or changes them. |
+
+Both answers are defensible, which is exactly why it is a question and not a
+constant. Automation is what most users of a 900-mod collection want — a
+tester's run had a median per-mod time of 4 ms against a 99th percentile of 491
+**seconds**, all of it a human reading dialogs. Supervision is what someone
+wants when they intend to differ from the curator on purpose.
+
+**The `supervised` option carries a warning, and it is not boilerplate.** If the
+user changes an answer:
+
+1. The install no longer reproduces the curator's setup, and the curator cannot
+   vouch for a combination they never tested.
+2. The receipt records the *result* (`stagingSetHash`), never the answers — so
+   the deviation is baked in as the new baseline and the **Doctor reports it as
+   healthy**.
+3. Healing works from the **manifest**, which still holds the curator's answers.
+   So a later "reinstall this mod" **restores the curator's choice and undoes
+   the user's deliberate one**.
+
+Point 3 is the trap: the Doctor diagnoses against the receipt but repairs from
+the manifest, and those two references agree perfectly *until* someone deviates.
+The mode is therefore recorded on the receipt (`InstallReceipt.fomodReplayMode`)
+so the Doctor can say so before healing rather than after — see the staging
+check in `core/doctor/health.ts`.
+
+The choice lives on `UserConfirmedDecisions.fomodReplayMode` and is carried on
+the `decisions` wizard state too, so stepping Back and forward does not silently
+reset it. It reaches Vortex through `replayArgs(entry, mode)`, which pairs the
+choices and the mode so no install route can carry one without the other —
+structurally enforced by `choicesWiring.test.ts`.
+
 ### 8. The InstallingStep
 
 Once the user clicks "Install", the page mounts an effect that calls `runInstall(...)` from `core/installer/runInstall.ts`. The driver streams `DriverProgress` events; the step renders:
@@ -162,16 +204,30 @@ Once the user clicks "Install", the page mounts an effect that calls `runInstall
 
 The **hang watchdog** can still end a run: two timers (a per-phase stall window
 and an absolute cap) fail the install when Vortex makes no observable progress.
-Both **pause while Vortex is blocked on user input** —
-`session.base.visibleDialog` / `overlayOpen`, via `isAwaitingUserInput`.
+Both **pause while Vortex is blocked on user input**, via `isAwaitingUserInput`
+(`modInstall.ts`), which reads **three** signals:
 
-That pause is not a refinement, it is a bug fix. A tester walked away while a
-FOMOD dialog waited for him; nothing dispatched, no progress signal moved, and
-the watchdog cancelled a perfectly healthy install. A dialog waiting for a human
+| Signal | Covers |
+|---|---|
+| `session.base.visibleDialog` | Vortex's generic dialog surface |
+| `session.base.overlayOpen` | overlays |
+| `session.fomod.installer.dialog.activeInstanceId` | **the FOMOD installer** |
+
+The third is the one that mattered. The FOMOD installer uses neither generic
+key — it keeps its own state, and that path is what Vortex's own shipped code
+tests. Watching only the first two lost a tester SIX mods to the watchdog while
+he was answering prompts, including a 535 KB archive "stalled" after 270
+seconds.
+
+That pause is not a refinement, it is a bug fix. A dialog waiting for a human
 cannot be told from a hang by watching for progress — neither makes any — so the
 question has to be "is Vortex currently blocked on input?", which Vortex
 publishes. The absolute cap had to pause too, or the same failure would just
 move to the user who goes to bed mid-install.
+
+Note this whole hazard only exists when the user asked to see the installers
+(see the ConfirmStep section). Under the default silent replay no FOMOD dialog
+opens at all, so there is nothing for the watchdog to mistake for a hang.
 
 When the driver resolves with `InstallResult`, the wizard transitions to `done`. Any thrown error transitions to `error`.
 

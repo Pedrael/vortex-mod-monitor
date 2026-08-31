@@ -39,6 +39,7 @@
  */
 
 import type { SupportedGameId } from "./ehcoll";
+import type { FomodReplayMode } from "../core/installer/fomodReplayMode";
 
 /**
  * Schema version. Bumped only on breaking changes; additive field
@@ -78,6 +79,24 @@ export type InstallReceipt = {
    * because we created it for the install").
    */
   installTargetMode: InstallTargetMode;
+  /**
+   * How the curator's FOMOD answers were replayed on this run.
+   *
+   * Recorded because the receipt stores the RESULT of an install and not the
+   * answers that produced it — `stagingSetHash` alone cannot distinguish "the
+   * curator's build" from "the curator's build with two boxes unticked". Under
+   * `"supervised"` the user could change any answer, so this field is the only
+   * trace that a difference from the collection may be deliberate rather than
+   * corruption.
+   *
+   * It matters most when healing: the Doctor diagnoses against this receipt but
+   * repairs from the manifest, so a heal restores the curator's answer over the
+   * user's. This is what lets it say so first.
+   *
+   * Optional and additive: receipts written before the question was asked do
+   * not have it, and absent means "not recorded", never "silent".
+   */
+  fomodReplayMode?: FomodReplayMode;
   /**
    * Per-mod install records. One entry per mod the driver put on
    * disk for this collection release. The list is the resolver's

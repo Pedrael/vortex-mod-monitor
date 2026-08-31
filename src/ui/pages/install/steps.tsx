@@ -81,6 +81,12 @@ import {
   fillDefaultOrphanChoices,
   selectConflictResolutions,
 } from "./state";
+import { choicesFor } from "../../../core/installer/installerChoices";
+import type { FomodReplayMode } from "../../../core/installer/fomodReplayMode";
+import {
+  DEFAULT_FOMOD_REPLAY_MODE,
+  describeFomodModes,
+} from "../../../core/installer/fomodReplayMode";
 
 // ===========================================================================
 // Common building blocks
@@ -1626,6 +1632,7 @@ export interface ConfirmStepProps {
   state: Extract<WizardState, { kind: "confirm" }>;
   onInstall: () => void;
   onBack: () => void;
+  onSetFomodMode?: (mode: FomodReplayMode) => void;
 }
 
 /** Below this many free bytes on the install drive we surface a
@@ -1667,10 +1674,163 @@ function WarningPanel(props: {
   );
 }
 
+
+/**
+ * How the curator's FOMOD answers get replayed — the last question before
+ * anything is written.
+ *
+ * This is on the confirm step and not in a settings page on purpose. It is a
+ * per-install decision, the trade-off only makes sense next to "you are about
+ * to install 954 mods", and a preference buried in settings would be set once
+ * by someone who had no idea what it meant.
+ *
+ * The caution is not decoration. Deviating from the curator's answers is a
+ * legitimate thing to want, and it has a consequence the user cannot possibly
+ * guess: the Doctor diagnoses against the receipt but repairs from the
+ * collection, so a later heal restores the curator's answer over theirs.
+ * Better said here, once, than discovered as a mysterious reversion.
+ */
+function FomodModeChooser(props: {
+  mode: FomodReplayMode;
+  modsWithChoices: number;
+  onSelect: (mode: FomodReplayMode) => void;
+}): JSX.Element | null {
+  // Nothing to replay, nothing to ask. Showing a question about installers
+  // for a collection that has none is noise on the one screen that must not
+  // have any.
+  if (props.modsWithChoices === 0) return null;
+
+  const options = describeFomodModes(props.modsWithChoices);
+
+  return (
+    <section
+      aria-label="Installer questions"
+      style={{ marginTop: "var(--eh-sp-4)" }}
+    >
+      <h3
+        style={{
+          margin: "0 0 var(--eh-sp-1) 0",
+          fontSize: "var(--eh-text-md)",
+          color: "var(--eh-text-primary)",
+        }}
+      >
+        Some mods ask questions while they install
+      </h3>
+      <p
+        style={{
+          margin: "0 0 var(--eh-sp-3) 0",
+          fontSize: "var(--eh-text-sm)",
+          color: "var(--eh-text-secondary)",
+          lineHeight: "var(--eh-leading-relaxed)",
+        }}
+      >
+        The curator already answered them, and those answers are part of the
+        collection. Choose whether you want to watch them go past.
+      </p>
+
+      <div style={{ display: "grid", gap: "var(--eh-sp-3)" }}>
+        {options.map((opt) => {
+          const selected = opt.mode === props.mode;
+          return (
+            <label
+              key={opt.mode}
+              style={{
+                display: "flex",
+                gap: "var(--eh-sp-3)",
+                alignItems: "flex-start",
+                padding: "var(--eh-sp-3) var(--eh-sp-4)",
+                borderRadius: "var(--eh-radius-md)",
+                cursor: "pointer",
+                background: selected
+                  ? "var(--eh-bg-raised)"
+                  : "var(--eh-bg-elevated)",
+                border: `1px solid ${
+                  selected ? "var(--eh-cyan)" : "var(--eh-border-subtle)"
+                }`,
+              }}
+            >
+              <input
+                type="radio"
+                name="eh-fomod-mode"
+                checked={selected}
+                onChange={() => props.onSelect(opt.mode)}
+                style={{ marginTop: 4, flex: "none" }}
+              />
+              <span className="eh-fill">
+                <span
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "var(--eh-sp-2)",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <strong
+                    style={{
+                      fontSize: "var(--eh-text-sm)",
+                      color: "var(--eh-text-primary)",
+                    }}
+                  >
+                    {opt.title}
+                  </strong>
+                  {opt.recommended && (
+                    <Pill intent="info">Recommended</Pill>
+                  )}
+                </span>
+                <span
+                  style={{
+                    display: "block",
+                    marginTop: 2,
+                    fontSize: "var(--eh-text-sm)",
+                    color: "var(--eh-text-secondary)",
+                    lineHeight: "var(--eh-leading-relaxed)",
+                  }}
+                >
+                  {opt.blurb}
+                </span>
+                <ul
+                  style={{
+                    margin: "var(--eh-sp-2) 0 0 0",
+                    paddingLeft: "var(--eh-sp-4)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 2,
+                    fontSize: "var(--eh-text-xs)",
+                    color: "var(--eh-text-muted)",
+                  }}
+                >
+                  {opt.points.map((pt, i) => (
+                    <li key={i}>{pt}</li>
+                  ))}
+                </ul>
+                {opt.caution !== undefined && selected && (
+                  <WarningPanel style={{ marginTop: "var(--eh-sp-3)" }}>
+                    {opt.caution}
+                  </WarningPanel>
+                )}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export function ConfirmStep(props: ConfirmStepProps): JSX.Element {
   const { state, onInstall, onBack } = props;
   const { bundle, decisions } = state;
   const target = bundle.plan.installTarget;
+
+  // Counted through `choicesFor`, not by "has fomodSelections": a recorded
+  // step where the curator answered nothing is not a question the user will
+  // be asked, and counting it would promise dialogs that never appear.
+  const modsWithChoices = React.useMemo(
+    () =>
+      bundle.plan.manifest.mods.filter((m) => choicesFor(m) !== undefined)
+        .length,
+    [bundle.plan.manifest.mods],
+  );
 
   // Esc = back to decisions. Enter is deliberately NOT bound here.
   //
@@ -1801,6 +1961,14 @@ export function ConfirmStep(props: ConfirmStepProps): JSX.Element {
             before continuing if you&apos;re unsure.
           </WarningPanel>
         )}
+
+      {props.onSetFomodMode !== undefined && (
+        <FomodModeChooser
+          mode={decisions.fomodReplayMode ?? DEFAULT_FOMOD_REPLAY_MODE}
+          modsWithChoices={modsWithChoices}
+          onSelect={props.onSetFomodMode}
+        />
+      )}
 
       <div
         className="eh-actions"
@@ -1962,7 +2130,7 @@ export function InstallingStep(props: {
   /** A stop has been asked for and the driver has not reached a checkpoint. */
   cancelPending: boolean;
 }): JSX.Element {
-  const { progress, bundle } = props.state;
+  const { progress, bundle, decisions } = props.state;
 
   // Stopping a run that has been going for two hours should not be one
   // stray click away, so the button asks first. It is not a destructive
@@ -2009,19 +2177,21 @@ export function InstallingStep(props: {
     );
   }, [progress?.message]);
 
-  // How many mods will show Vortex's own installer dialog and WAIT.
+  // How many mods carry the curator's installer answers.
   //
-  // This is the thing whose absence cost a real install: a tester left the
-  // machine with a FOMOD prompt open, nothing moved, and it looked hung. The
-  // run is not hung and not finished — it is waiting for a person, and nothing
-  // on screen said that was going to happen.
+  // Whether Vortex STOPS for them is now the user's choice, made on the
+  // confirm step — so this count alone no longer says what happens, and the
+  // banner below has to read the mode too.
+  //
+  // Counted through `choicesFor` to match what actually gets replayed: a
+  // recorded step the curator answered nothing in produces no dialog.
   const fomodCount = React.useMemo(
     () =>
-      bundle.plan.manifest.mods.filter(
-        (m) => (m.install?.fomodSelections ?? []).length > 0,
-      ).length,
+      bundle.plan.manifest.mods.filter((m) => choicesFor(m) !== undefined)
+        .length,
     [bundle.plan.manifest.mods],
   );
+  const supervised = decisions.fomodReplayMode === "supervised";
 
   const phaseLabel =
     progress !== undefined ? PHASE_LABELS[progress.phase] : "Starting...";
@@ -2101,13 +2271,31 @@ export function InstallingStep(props: {
       </div>
 
       {/* Said once, before it happens, and only while mods are being installed
-          — by verification time the prompts are done and this would be noise. */}
+          — by verification time the prompts are done and this would be noise.
+
+          It has to follow the user's choice. Promising a dialog that never
+          opens is not a harmless inaccuracy on this screen: it is the one
+          screen where someone sits watching for exactly that, and it would
+          teach them to read a working install as a stuck one — the precise
+          failure the original banner was written to prevent, inverted. */}
       {fomodCount > 0 && progress?.phase === "installing-mods" && (
         <p className="eh-note" style={{ margin: "var(--eh-sp-3) 0 0 0" }}>
-          {fomodCount} of these mods have installer options. Vortex will open
-          its own installer window for them with the curator&apos;s choices
-          already selected — <strong>the run pauses until you confirm</strong>,
-          so it is not stuck if it sits still with a dialog open.
+          {supervised ? (
+            <>
+              {fomodCount} of these mods have installer options. Vortex will
+              open its own installer window for them with the curator&apos;s
+              choices already selected —{" "}
+              <strong>the run pauses until you confirm</strong>, so it is not
+              stuck if it sits still with a dialog open.
+            </>
+          ) : (
+            <>
+              {fomodCount} of these mods have installer options. You chose to
+              have the curator&apos;s answers applied automatically, so{" "}
+              <strong>no installer windows will open</strong> — nothing here is
+              waiting on you.
+            </>
+          )}
         </p>
       )}
 

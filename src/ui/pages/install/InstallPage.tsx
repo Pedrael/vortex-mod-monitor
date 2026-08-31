@@ -240,6 +240,7 @@ function InstallWizard(props: InstallPageProps): JSX.Element {
           state={state}
           onInstall={(): void => session.startInstall(api)}
           onBack={(): void => session.backFromConfirm()}
+          onSetFomodMode={(mode): void => session.setFomodReplayMode(mode)}
         />
       );
 

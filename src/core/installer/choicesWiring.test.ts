@@ -19,6 +19,14 @@
  * It reads the real source because that is where the property lives — the same
  * approach as the theme-token check, which caught four dead tokens the type
  * system could not see.
+ *
+ * ─── AND NOW A SECOND OMISSION IN THE SAME SHAPE ───────────────────────
+ * The user picks whether those answers are replayed silently or shown, and
+ * that mode rides along with the choices as `replayArgs(entry, mode)`. The
+ * mode argument is OPTIONAL and defaults to silent — so `replayArgs(entry)`
+ * compiles, replays the right answers, and quietly ignores what the user asked
+ * for. That is the identical failure this file was written for: correct
+ * output, wrong provenance, invisible from outside. Hence the second check.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -70,7 +78,7 @@ describe("installer choices wiring", () => {
     const offenders: string[] = [];
     for (const fn of CHOICE_CAPABLE) {
       for (const call of callArguments(source, fn)) {
-        if (!call.includes("choices")) {
+        if (!call.includes("choices") && !call.includes("replayArgs(")) {
           offenders.push(`${fn}: ${call.slice(0, 90).replace(/\s+/g, " ")}`);
         }
       }
@@ -86,6 +94,31 @@ describe("installer choices wiring", () => {
       0,
     );
     expect(total).toBeGreaterThanOrEqual(4);
+  });
+
+  it("threads the user's replay mode, not just the choices", () => {
+    // `replayArgs(entry)` type-checks and silently falls back to the default
+    // mode, so passing the choices is no longer sufficient on its own.
+    const offenders: string[] = [];
+    for (const fn of CHOICE_CAPABLE) {
+      for (const call of callArguments(source, fn)) {
+        if (!call.includes("replayArgs(")) continue;
+        if (!/replayArgs\([^)]*,[^)]*\)/.test(call)) {
+          offenders.push(`${fn}: replayArgs called without a mode`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("can tell a replayArgs call WITHOUT a mode from one with it", () => {
+    // Both checks above must be able to fail, or they prove nothing.
+    const bare = "await installFromLocalArchive(a, { ...replayArgs(e) })";
+    const moded =
+      "await installFromLocalArchive(a, { ...replayArgs(e, ctx.decisions.fomodReplayMode) })";
+    const re = /replayArgs\([^)]*,[^)]*\)/;
+    expect(re.test(bare)).toBe(false);
+    expect(re.test(moded)).toBe(true);
   });
 
   it("can tell a call WITHOUT choices from one with them", () => {
