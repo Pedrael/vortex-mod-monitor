@@ -799,6 +799,13 @@ export function AvailabilityPanel(props: {
   const fragile = (result?.findings ?? []).filter(
     (f) => f.status === "old-version",
   );
+  // Listed too, and deliberately NOT as a problem. "Could not check" is not
+  // "broken" — but a mod nobody checked is also a mod nobody confirmed, and
+  // the whole point of running this before publishing is to have no such gap
+  // left. Naming them is what makes a second run targeted instead of blind.
+  const unchecked = (result?.findings ?? []).filter(
+    (f) => f.status === "unknown",
+  );
 
   return (
     <Card title="Can your users still download these mods?">
@@ -887,6 +894,43 @@ export function AvailabilityPanel(props: {
                 </li>
               ))}
             </ul>
+          )}
+
+          {unchecked.length > 0 && (
+            <details style={{ marginTop: "var(--eh-sp-3)" }}>
+              <summary
+                style={{
+                  cursor: "pointer",
+                  color: "var(--eh-text-muted)",
+                  fontSize: "var(--eh-text-xs)",
+                  letterSpacing: "var(--eh-tracking-wide)",
+                  textTransform: "uppercase",
+                  fontWeight: 600,
+                }}
+              >
+                Show the {unchecked.length} Nexus could not answer for
+              </summary>
+              <ul
+                style={{
+                  margin: "var(--eh-sp-2) 0 0 0",
+                  paddingLeft: "var(--eh-sp-4)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 2,
+                  fontSize: "var(--eh-text-xs)",
+                  fontFamily: "var(--eh-font-mono)",
+                  color: "var(--eh-text-muted)",
+                  maxHeight: 220,
+                  overflowY: "auto",
+                }}
+              >
+                {unchecked.map((f) => (
+                  <li key={f.compareKey}>
+                    {f.name} — mod {f.modId}, file {f.fileId}
+                  </li>
+                ))}
+              </ul>
+            </details>
           )}
 
           {fragile.length > 0 && (

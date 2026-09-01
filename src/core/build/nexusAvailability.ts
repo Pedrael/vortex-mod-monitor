@@ -376,9 +376,12 @@ export function summarizeAvailability(
           replaceable > 0
             ? ` ${subjectOf(replaceable, fileMissing.length)} ${
                 replaceable === 1 ? "has" : "have"
-              } a current main file you could move to, but it is not the ` +
-              `version you tested — update the mod in Vortex and rebuild ` +
-              `rather than assuming the new one behaves the same.`
+              } a current main file listed below — but check before moving to ` +
+              `it. The newest file is not always the right one: an older file ` +
+              `is often pinned deliberately because it is the last that works ` +
+              `with the game version this collection targets. Where you ` +
+              `cannot move, the choice is the same as for a mod whose page ` +
+              `is gone.`
             : ""
         }`,
     );
@@ -406,7 +409,10 @@ export function summarizeAvailability(
     lines.push(
       `${unknown.length} could not be checked. That is not a problem with ` +
         `${unknown.length === 1 ? "it" : "them"} — it means Nexus did not ` +
-        `answer, so nothing is known either way.`,
+        `answer, so nothing is known either way. ${
+          unknown.length === 1 ? "It is" : "They are"
+        } listed below, because a mod nobody could check is also a mod ` +
+        `nobody has confirmed your users can download.`,
     );
   }
   if (lines.length === 0) {

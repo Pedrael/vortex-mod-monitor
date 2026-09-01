@@ -349,8 +349,7 @@ describe("what to move to when a file was tidied away", () => {
     // not "1 of them has". Saying the count of a set of one is the template
     // showing through.
     expect(lines).toContain("It has a current main file");
-    expect(lines.toLowerCase()).toContain("not the version you tested");
-    expect(lines.toLowerCase()).toContain("rebuild");
+    expect(lines.toLowerCase()).toContain("check before moving to it");
   });
 
   it("says nothing about moving on when nothing can be moved to", () => {
@@ -394,6 +393,19 @@ describe("the reported wording, on the reported data", () => {
     },
   ];
 
+  it("does not tell the curator to just take the newer file", () => {
+    // The correction. Unofficial Fallout 4 Patch 2.1.5 is the LAST build for
+    // pre-next-gen Fallout 4; 2.2.2a requires the next-gen update. So for the
+    // most load-bearing mod in this very collection, "update the mod in Vortex
+    // and rebuild" was advice that breaks the setup. An older pinned file is
+    // often pinned deliberately, and nothing in the Nexus API says which case
+    // this is — so the report offers the file and withholds the instruction.
+    const text = summarizeAvailability(twoBlocked).lines.join(" ");
+    expect(text.toLowerCase()).toContain("newest file is not always the right one");
+    expect(text.toLowerCase()).toContain("game version this collection targets");
+    expect(text.toLowerCase()).not.toContain("update the mod in vortex and rebuild");
+  });
+
   it("says 'Both' rather than the number, twice", () => {
     const text = summarizeAvailability(twoBlocked).lines.join(" ");
     expect(text).toContain("Both are files that are gone");
@@ -410,5 +422,37 @@ describe("the reported wording, on the reported data", () => {
     const text = summarizeAvailability(mixed).lines.join(" ");
     expect(text).toContain("Both are files that are gone");
     expect(text).toContain("1 of them has a current main file");
+  });
+});
+
+describe("the ones nobody could check", () => {
+  const f = (status: NexusAvailability, n = 1): AvailabilityFinding[] =>
+    Array.from({ length: n }, (_, i) => ({
+      ...entry(i + 1, 1),
+      status,
+    }));
+
+  it("still refuses to count them as problems", () => {
+    // The rule this whole module is built around does not bend just because
+    // the curator wants to see the names.
+    const s = summarizeAvailability([...f("unknown", 8), ...f("available", 900)]);
+    expect(s.clean).toBe(true);
+    expect(s.fileMissing).toBe(0);
+    expect(s.modMissing).toBe(0);
+  });
+
+  it("says why they are worth looking at anyway", () => {
+    // A user could not download two mods from a shipped collection; a mod
+    // nobody could CHECK is also a mod nobody has CONFIRMED, so the curator
+    // needs the names to close that gap before publishing.
+    const text = summarizeAvailability(f("unknown", 8)).lines.join(" ");
+    expect(text).toContain("listed below");
+    expect(text.toLowerCase()).toContain("nobody has confirmed");
+  });
+
+  it("keeps the singular readable", () => {
+    const text = summarizeAvailability(f("unknown", 1)).lines.join(" ");
+    expect(text).toContain("It is listed below");
+    expect(text).not.toContain("They are");
   });
 });

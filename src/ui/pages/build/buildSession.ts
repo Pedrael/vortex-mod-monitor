@@ -719,6 +719,23 @@ class BuildSession {
           oldVersion: summary.oldVersion,
           unknown: summary.unknown,
         });
+        // The counts alone cannot answer "which mod was it?" a day later, and
+        // that is the question that actually gets asked — a user reports a
+        // download failure and the only way to tell whether this check had
+        // already seen that mod is to have written the ids down. Availables
+        // are skipped; they are the vast majority and carry no news.
+        for (const f of report.findings) {
+          if (f.status === "available") continue;
+          ehLog("debug", "availability.finding", {
+            status: f.status,
+            modId: f.modId,
+            fileId: f.fileId,
+            name: f.name,
+            ...(f.replacement !== undefined
+              ? { replacementFileId: f.replacement.fileId }
+              : {}),
+          });
+        }
         if (this.state.kind !== "form") return;
         const { availabilityProgress: _drop, ...rest } = this.state;
         this.setState({
