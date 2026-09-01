@@ -63,6 +63,15 @@ export interface AvailabilityFinding extends AvailabilityEntry {
   status: NexusAvailability;
   /** Why, in words, for the report. */
   detail?: string;
+  /**
+   * For a `file-missing` mod: the current main file, when there is one.
+   *
+   * The file list is already in hand at the moment we discover the loss, and
+   * throwing it away leaves the curator with a problem and no next step. This
+   * is the next step — the mod is still maintained, so the fix is usually to
+   * move to this file and retest rather than to work around the old one.
+   */
+  replacement?: { fileId: number; name?: string; version?: string };
 }
 
 /**
@@ -81,6 +90,7 @@ export interface NexusFileLike {
   category_name?: string | null;
   categoryName?: string | null;
   name?: string;
+  version?: string | null;
 }
 
 export function fileIdOf(file: NexusFileLike): number | undefined {
@@ -95,6 +105,31 @@ function categoryOf(file: NexusFileLike): string {
 const FRAGILE_CATEGORIES = new Set(["OLD_VERSION", "ARCHIVED"]);
 
 /**
+ * The file a curator would most likely move TO.
+ *
+ * Highest file id among the current main files: ids increase with upload, so
+ * this is "the newest thing the author is actually publishing" without relying
+ * on a timestamp field whose presence could not be verified here. Returns
+ * undefined rather than guessing when the mod has no main file at all —
+ * "update to nothing" is not advice.
+ */
+function currentMainFile(
+  files: readonly NexusFileLike[],
+): NexusFileLike | undefined {
+  let best: NexusFileLike | undefined;
+  let bestId = -1;
+  for (const f of files) {
+    const category = categoryOf(f);
+    if (category !== "MAIN") continue;
+    const id = fileIdOf(f);
+    if (id === undefined || id <= bestId) continue;
+    best = f;
+    bestId = id;
+  }
+  return best;
+}
+
+/**
  * Where one file stands in the mod's list.
  *
  * `files` being empty is deliberately NOT read as "everything is deleted" — a
@@ -104,7 +139,11 @@ const FRAGILE_CATEGORIES = new Set(["OLD_VERSION", "ARCHIVED"]);
 export function classifyFile(
   files: readonly NexusFileLike[],
   fileId: number,
-): { status: NexusAvailability; detail?: string } {
+): {
+  status: NexusAvailability;
+  detail?: string;
+  replacement?: { fileId: number; name?: string; version?: string };
+} {
   if (files.length === 0) {
     return {
       status: "unknown",
@@ -113,11 +152,22 @@ export function classifyFile(
   }
   const hit = files.find((f) => fileIdOf(f) === fileId);
   if (hit === undefined) {
+    const current = currentMainFile(files);
+    const currentId = current === undefined ? undefined : fileIdOf(current);
     return {
       status: "file-missing",
       detail:
         `The mod page still exists but file ${fileId} is no longer among its ` +
         `${files.length} file${files.length === 1 ? "" : "s"}.`,
+      ...(current !== undefined && currentId !== undefined
+        ? {
+            replacement: {
+              fileId: currentId,
+              ...(current.name != null ? { name: current.name } : {}),
+              ...(current.version != null ? { version: current.version } : {}),
+            },
+          }
+        : {}),
     };
   }
   const category = categoryOf(hit);
@@ -300,12 +350,22 @@ export function summarizeAvailability(
   // the mod out of circulation. Same "cannot download" outcome, opposite
   // stories about what the curator should do next.
   if (fileMissing.length > 0) {
+    const replaceable = fileMissing.filter(
+      (f) => f.replacement !== undefined,
+    ).length;
     lines.push(
       `${fileMissing.length} of those ${
         fileMissing.length === 1 ? "is a file that is" : "are files that are"
       } gone while the mod page is still up — usually an author cleaning up ` +
-        `an old version after an update. A newer file is probably available, ` +
-        `but it is not the one you tested.`,
+        `an old version after an update.${
+          replaceable > 0
+            ? ` ${replaceable} of ${
+                fileMissing.length === 1 ? "them has" : "these have"
+              } a current main file you could move to, but it is not the ` +
+              `version you tested — update the mod in Vortex and rebuild ` +
+              `rather than assuming the new one behaves the same.`
+            : ""
+        }`,
     );
   }
   if (modMissing.length > 0) {

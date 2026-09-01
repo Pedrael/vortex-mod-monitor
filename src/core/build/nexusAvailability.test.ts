@@ -263,9 +263,13 @@ describe("telling the two kinds of 'gone' apart", () => {
     }));
 
   it("says an old version was probably just cleaned up after an update", () => {
+    // The "move to the current file" half is asserted separately, because it
+    // only appears when a replacement was actually found — these findings
+    // carry none, and claiming a next step that does not exist would be worse
+    // than saying nothing.
     const lines = summarizeAvailability(f("file-missing", 3)).lines.join(" ");
     expect(lines).toContain("mod page is still up");
-    expect(lines.toLowerCase()).toContain("not the one you tested");
+    expect(lines.toLowerCase()).toContain("cleaning up");
   });
 
   it("says a vanished page is probably deliberate", () => {
@@ -284,5 +288,69 @@ describe("telling the two kinds of 'gone' apart", () => {
   it("says nothing about a kind that did not occur", () => {
     const lines = summarizeAvailability(f("file-missing", 1)).lines.join(" ");
     expect(lines.toLowerCase()).not.toContain("deliberate");
+  });
+});
+
+describe("what to move to when a file was tidied away", () => {
+  // A "file gone" verdict without a next step leaves the curator with a
+  // problem and nothing to do about it. The file list is already in hand at
+  // the moment the loss is discovered, so naming the current file costs
+  // nothing and is the whole difference between a warning and an action.
+  const withVersions: NexusFileLike[] = [
+    { file_id: 300, category_name: "MAIN", name: "Ivy HD", version: "1.0" },
+    { file_id: 900, category_name: "MAIN", name: "Ivy HD", version: "2.1" },
+    { file_id: 950, category_name: "OPTIONAL", name: "Ivy patch", version: "2.1" },
+    { file_id: 400, category_name: "OLD_VERSION", name: "Ivy HD", version: "1.5" },
+  ];
+
+  it("points at the newest MAIN file", () => {
+    const r = classifyFile(withVersions, 111);
+    expect(r.status).toBe("file-missing");
+    expect(r.replacement?.fileId).toBe(900);
+    expect(r.replacement?.version).toBe("2.1");
+  });
+
+  it("does not offer an optional or old file as the replacement", () => {
+    // 950 is the highest id here and is exactly the wrong answer: an optional
+    // patch is not what the curator was shipping.
+    expect(classifyFile(withVersions, 111).replacement?.fileId).not.toBe(950);
+    expect(classifyFile(withVersions, 111).replacement?.fileId).not.toBe(400);
+  });
+
+  it("offers nothing rather than guessing when there is no main file", () => {
+    // "Update to nothing" is not advice.
+    const r = classifyFile(
+      [{ file_id: 5, category_name: "OPTIONAL" }],
+      111,
+    );
+    expect(r.status).toBe("file-missing");
+    expect(r.replacement).toBeUndefined();
+  });
+
+  it("never offers a replacement for a file that is fine", () => {
+    expect(classifyFile(withVersions, 900).replacement).toBeUndefined();
+  });
+
+  it("tells the curator the new file is not the one they tested", () => {
+    // The trap this advice could otherwise walk them into: on a 950-mod list
+    // one mod update can invalidate a pile of patches, so "just take the new
+    // version" is not automatically safe.
+    const lines = summarizeAvailability([
+      {
+        ...entry(1, 1),
+        status: "file-missing",
+        replacement: { fileId: 900, version: "2.1" },
+      },
+    ]).lines.join(" ");
+    expect(lines).toContain("1 of them has");
+    expect(lines.toLowerCase()).toContain("not the version you tested");
+    expect(lines.toLowerCase()).toContain("rebuild");
+  });
+
+  it("says nothing about moving on when nothing can be moved to", () => {
+    const lines = summarizeAvailability([
+      { ...entry(1, 1), status: "file-missing" },
+    ]).lines.join(" ");
+    expect(lines.toLowerCase()).not.toContain("could move to");
   });
 });

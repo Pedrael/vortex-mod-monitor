@@ -868,6 +868,15 @@ export function AvailabilityPanel(props: {
                     {f.status === "mod-missing" ? "page gone" : "file gone"}
                   </span>{" "}
                   {f.name} — mod {f.modId}, file {f.fileId}
+                  {f.replacement !== undefined && (
+                    <span style={{ color: "var(--eh-text-secondary)" }}>
+                      {" "}
+                      → current main file {f.replacement.fileId}
+                      {f.replacement.version != null
+                        ? ` (v${f.replacement.version})`
+                        : ""}
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>
