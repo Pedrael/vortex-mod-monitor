@@ -19,6 +19,10 @@
  * to the React layer.
  */
 
+import {
+  mayBundle,
+  shipsAsExternal,
+} from "../../../core/manifest/shipsAsExternal";
 import * as fsp from "fs/promises";
 import * as path from "path";
 import { util } from "@nexusmods/vortex-api";
@@ -992,7 +996,11 @@ export async function runBuildPipeline(
       mods,
       config: collectionConfig,
       sevenZip,
-      isExternal: (m) => !isNexusMod(m),
+      // Includes mods the curator marked `treatAsExternal`: they are
+      // identified by hash now, so they need exactly the archive checks a
+      // born-external mod gets.
+      isExternal: (m) =>
+        shipsAsExternal(isNexusMod(m), collectionConfig.externalMods[m.id]),
       archivePathFor: (m) => getModArchivePath(state, m.archiveId, gameId),
       listArchive: (p) => listArchiveContents(sevenZip, p),
       ...(signal !== undefined ? { signal } : {}),
@@ -1019,7 +1027,11 @@ export async function runBuildPipeline(
       config: collectionConfig,
       sevenZip,
       workDir: repackDir,
-      isExternal: (m) => !isNexusMod(m),
+      // Includes mods the curator marked `treatAsExternal`: they are
+      // identified by hash now, so they need exactly the archive checks a
+      // born-external mod gets.
+      isExternal: (m) =>
+        shipsAsExternal(isNexusMod(m), collectionConfig.externalMods[m.id]),
       options: {
         ...(signal !== undefined ? { signal } : {}),
         onProgress: (done, total, modName) =>
@@ -1440,10 +1452,17 @@ function resolveBundledArchives(
       continue;
     }
 
-    if (isNexusMod(mod)) {
+    // `mayBundle`, not `isNexusMod`. A Nexus mod is normally not bundleable
+    // because the user's own API key fetches it — but that stops being true
+    // the moment the file is deleted from Nexus, which is exactly when the
+    // curator marks it `treatAsExternal`.
+    if (!mayBundle(isNexusMod(mod), entry)) {
       errors.push(
-        `Config flags Nexus mod "${mod.name}" (id="${modId}") as bundled. ` +
-          `Only external (non-Nexus) mods can be bundled.`,
+        `Config flags Nexus mod "${mod.name}" (id="${modId}") as bundled, ` +
+          `but it is not marked as an external dependency. Nexus mods are ` +
+          `downloaded with the user's own API key, so bundling one only ` +
+          `makes sense once its file is gone from Nexus — use "ship as ` +
+          `external" on the availability check first.`,
       );
       continue;
     }

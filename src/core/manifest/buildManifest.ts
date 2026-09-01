@@ -19,6 +19,7 @@
  *    {@link BuildManifestResult.warnings} for the UI to surface.
  */
 
+import { shipsAsExternal } from "./shipsAsExternal";
 import type {
   AuditorMod,
   CapturedModRule,
@@ -255,6 +256,15 @@ export class BuildManifestError extends Error {
     this.name = "BuildManifestError";
     this.errors = errors;
   }
+}
+
+/** buildManifest's own, stricter notion: ids AND an explicit nexus source. */
+function isNexusMod(mod: AuditorMod): boolean {
+  return (
+    mod.source === "nexus" &&
+    mod.nexusModId !== undefined &&
+    mod.nexusFileId !== undefined
+  );
 }
 
 export function buildManifest(input: BuildManifestInput): BuildManifestResult {
@@ -517,7 +527,7 @@ function buildModEntry(
   errors: string[],
   repackedModIds?: ReadonlySet<string>,
 ): EhcollMod | undefined {
-  if (!shipsAsExternal(mod, spec)) {
+  if (!shipsAsExternal(isNexusMod(mod), spec)) {
     if (!mod.archiveSha256) {
       errors.push(
         `Mod ${label(mod)} has no archiveSha256. ` +
@@ -533,33 +543,7 @@ function buildModEntry(
   return buildExternalMod(mod, spec, errors, repackedModIds);
 }
 
-/**
- * Does this mod ship identified by HASH rather than by Nexus ids?
- *
- * Its own function because it decides a mod's IDENTITY in the manifest, and
- * identity is the one thing a collection cannot get wrong quietly: a mod built
- * as `nexus:modId:fileId` promises the user a download, and if that file is
- * gone the promise fails on their machine, hundreds of mods in.
- *
- * `treatAsExternal` therefore OVERRIDES perfectly valid Nexus ids. That is the
- * point — the ids are still true and no longer useful. It is the curator's
- * explicit call, never inferred from an availability check: a network result
- * on the day the build ran must not silently change what a mod is.
- */
-export function shipsAsExternal(
-  mod: AuditorMod,
-  spec: ExternalModSpec | undefined,
-): boolean {
-  return !isNexusMod(mod) || spec?.treatAsExternal === true;
-}
 
-function isNexusMod(mod: AuditorMod): boolean {
-  return (
-    mod.source === "nexus" &&
-    mod.nexusModId !== undefined &&
-    mod.nexusFileId !== undefined
-  );
-}
 
 function buildNexusMod(
   mod: AuditorMod,

@@ -1,63 +1,88 @@
 /**
- * Which identity a mod ships with — the one thing a collection cannot get
- * wrong quietly.
+ * The curator's "ship this as external" override.
  *
- * A mod built as `nexus:modId:fileId` PROMISES the user a download. When that
- * file has been deleted the promise fails on their machine, hundreds of mods
- * into an install, with the curator nowhere near. Shipping it by hash instead
- * is the only honest option left, and it is what lets the existing
- * external-mod machinery — bundle, link, instructions — apply to it.
+ * It decides a mod's IDENTITY in the manifest and whether its archive may be
+ * bundled — and the bug it exists to prevent is not a wrong answer but three
+ * DIFFERENT answers: the flag was honoured where identity is chosen and
+ * ignored by two separate bundling gates, so marking ten dead mods external
+ * fixed the manifest and failed the build.
  */
 import { describe, expect, it } from "vitest";
 
-import { shipsAsExternal } from "./buildManifest";
-
-const nexusMod = (over = {}): never =>
-  ({
-    id: "m1",
-    name: "Unofficial Fallout 4 Patch",
-    source: "nexus",
-    nexusModId: 4598,
-    nexusFileId: 270951,
-    archiveSha256: "a".repeat(64),
-    ...over,
-  }) as never;
-
-const externalMod = (): never =>
-  ({ id: "m2", name: "Hand-installed thing", source: "other" }) as never;
+import { mayBundle, shipsAsExternal } from "./shipsAsExternal";
 
 describe("shipsAsExternal", () => {
-  it("keeps a healthy Nexus mod on its Nexus identity", () => {
-    expect(shipsAsExternal(nexusMod(), undefined)).toBe(false);
-    expect(shipsAsExternal(nexusMod(), { bundled: true })).toBe(false);
+  it("keeps a Nexus mod on its Nexus identity", () => {
+    expect(shipsAsExternal(true, undefined)).toBe(false);
+    expect(shipsAsExternal(true, {})).toBe(false);
   });
 
   it("still treats a non-Nexus mod as external", () => {
-    expect(shipsAsExternal(externalMod(), undefined)).toBe(true);
+    expect(shipsAsExternal(false, undefined)).toBe(true);
   });
 
-  it("overrides valid Nexus ids when the curator says so", () => {
+  it("overrides a valid Nexus identity when the curator says so", () => {
     // The whole feature. UFO4P 2.1.5 has perfectly good ids and a file that no
     // longer exists — the ids are true and useless.
-    expect(shipsAsExternal(nexusMod(), { treatAsExternal: true })).toBe(true);
+    expect(shipsAsExternal(true, { treatAsExternal: true })).toBe(true);
   });
 
-  it("requires an explicit true, not merely a present spec", () => {
-    // Every external mod has a spec. If a spec alone flipped the branch, the
-    // first curator to type an instruction against a Nexus mod would silently
-    // change its identity.
-    expect(shipsAsExternal(nexusMod(), { instructions: "grab it here" })).toBe(
-      false,
-    );
-    expect(shipsAsExternal(nexusMod(), { treatAsExternal: false })).toBe(false);
+  it("requires an explicit true, not merely a present override", () => {
+    // Every external mod has a config entry. If a present entry flipped the
+    // branch, the first curator to type an instruction against a Nexus mod
+    // would silently change its identity.
+    expect(shipsAsExternal(true, { treatAsExternal: false })).toBe(false);
+    expect(shipsAsExternal(true, {} as never)).toBe(false);
+  });
+});
+
+describe("mayBundle", () => {
+  // The gate that actually failed, twice over: engine.resolveBundledArchives
+  // and buildPackageAction each had their own copy, and neither had heard of
+  // the flag. The build died reporting "Only external (non-Nexus) mods can be
+  // bundled" about mods the curator had just declared external.
+  it("refuses to bundle an ordinary Nexus mod", () => {
+    // Still correct, and the reason the gate exists: the user's own API key
+    // fetches it, so bundling is pointless weight in the package.
+    expect(mayBundle(true, undefined)).toBe(false);
   });
 
-  it("is not fooled by a mod that only half looks like a Nexus mod", () => {
-    // A missing fileId means we could never have built a nexus compareKey, so
-    // external is right regardless of the flag.
-    expect(
-      shipsAsExternal(nexusMod({ nexusFileId: undefined }), undefined),
-    ).toBe(true);
-    expect(shipsAsExternal(nexusMod({ source: "other" }), undefined)).toBe(true);
+  it("allows bundling once the curator marks it external", () => {
+    // Which is the only way anyone else gets a mod whose file Nexus deleted.
+    expect(mayBundle(true, { treatAsExternal: true })).toBe(true);
+  });
+
+  it("allows bundling a mod that was external all along", () => {
+    expect(mayBundle(false, undefined)).toBe(true);
+  });
+
+  it("answers identically to shipsAsExternal, by construction", () => {
+    // They are the same question asked by different callers, and the bug was
+    // precisely that they could disagree.
+    for (const isNexus of [true, false]) {
+      for (const o of [
+        undefined,
+        { treatAsExternal: true },
+        { treatAsExternal: false },
+      ]) {
+        expect(mayBundle(isNexus, o)).toBe(shipsAsExternal(isNexus, o));
+      }
+    }
+  });
+});
+
+describe("what this deliberately does NOT decide", () => {
+  it("takes the caller's word for what counts as a Nexus mod", () => {
+    // The first attempt at this fix shared one isNexusSourced across all three
+    // callers. The suite rejected it inside a minute: buildManifest requires
+    // `source === "nexus"` as well as the ids, while both bundling gates check
+    // only that the ids are positive numbers. Unifying them reclassified every
+    // mod carrying ids without a source — changing identities in the manifest
+    // as a side effect of a bundling fix.
+    //
+    // So `isNexus` is a parameter. Same input, same answer, regardless of how
+    // the caller decided.
+    expect(shipsAsExternal(true, undefined)).toBe(false);
+    expect(shipsAsExternal(false, undefined)).toBe(true);
   });
 });

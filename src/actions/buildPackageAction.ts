@@ -47,6 +47,7 @@
  *   - README / CHANGELOG markdown → rich editors writing the same fields.
  */
 
+import { mayBundle } from "../core/manifest/shipsAsExternal";
 import * as fsp from "fs/promises";
 import * as path from "path";
 import { util } from "@nexusmods/vortex-api";
@@ -649,11 +650,15 @@ function resolveBundledArchives(
       continue;
     }
 
-    if (isNexusMod(mod)) {
+    // See engine.resolveBundledArchives — the same rule, and it must stay the
+    // same rule. This copy is why marking a mod external fixed the manifest
+    // and not the build.
+    if (!mayBundle(isNexusMod(mod), entry)) {
       errors.push(
-        `Config flags Nexus mod "${mod.name}" (id="${modId}") as bundled. ` +
-          `Only external (non-Nexus) mods can be bundled — Nexus mods are auto-downloaded from the user's API key. ` +
-          `Set bundled=false for this entry.`,
+        `Config flags Nexus mod "${mod.name}" (id="${modId}") as bundled, ` +
+          `but it is not marked as an external dependency. Nexus mods are ` +
+          `downloaded with the user's own API key, so bundling one only ` +
+          `makes sense once its file is gone from Nexus.`,
       );
       continue;
     }
