@@ -489,6 +489,18 @@ describe("render", () => {
             onOpen: () => undefined,
             onDiscard: () => undefined,
           } as never),
+          // The reported case: a draft linked to a published collection whose
+          // card is therefore hidden, on a profile that has since changed.
+          // Before this the dashboard knew the profile had moved — its own log
+          // said upToDate:false — and showed a card that mentioned none of it.
+          React.createElement(DraftCard, {
+            env: draft,
+            activeGameId: "fallout4",
+            registrySessionStateKind: "idle",
+            linkedPublished: { builtVersion: "1.0.11", profileChanged: true },
+            onOpen: () => undefined,
+            onDiscard: () => undefined,
+          } as never),
           React.createElement(PublishedCard, {
             summary: published,
             upToDate: true,

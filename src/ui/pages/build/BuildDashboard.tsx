@@ -622,24 +622,7 @@ They are not harmless clutter — a collection's ` +
       a.savedAt < b.savedAt ? 1 : a.savedAt > b.savedAt ? -1 : 0,
     );
 
-    const out: DashboardItem[] = [];
-    for (const env of draftEnvelopes) {
-      out.push({ kind: "draft", env });
-    }
-    for (const pub of state.published) {
-      // Hide published collections that have an active draft pointing
-      // at them — the draft IS the "in flight update" for that
-      // published one, so listing both is noisy. Surface as a
-      // subscript on the draft instead (handled in the row renderer).
-      const linkedDraft = draftEnvelopes.find(
-        (d) => d.payload.linkedPackageId === pub.packageId,
-      );
-      if (linkedDraft !== undefined) continue;
-      out.push({ kind: "published", summary: pub });
-    }
-    if (filter === "drafts") return out.filter((i) => i.kind === "draft");
-    if (filter === "published") return out.filter((i) => i.kind === "published");
-    return out;
+    return pairDraftsWithPublished(draftEnvelopes, state.published, filter);
     // `registry` is a stable singleton; `registryTick` is the
     // observable surface that flips on session add/remove/state
     // change and forces the merge to re-evaluate.
@@ -745,6 +728,17 @@ They are not harmless clutter — a collection's ` +
                     .get(item.env.payload.draftId ?? item.env.key)
                     ?.getState().kind
                 }
+                {...(item.superseded !== undefined
+                  ? {
+                      linkedPublished: {
+                        builtVersion: item.superseded.lastBuiltVersion,
+                        profileChanged:
+                          currentFingerprint !== undefined &&
+                          item.superseded.lastBuiltProfileFingerprint !==
+                            currentFingerprint,
+                      },
+                    }
+                  : {})}
                 onOpen={(): void => handleOpenDraft(item.env)}
                 onDiscard={(): void => {
                   void handleDiscardDraft(item.env);
@@ -971,14 +965,90 @@ function EmptyState(props: { onNewDraft: () => void }): JSX.Element {
 }
 
 type DashboardItem =
-  | { kind: "draft"; env: DraftEnvelope<BuildDraftPayload> }
+  | {
+      kind: "draft";
+      env: DraftEnvelope<BuildDraftPayload>;
+      /** Set when this draft hides a published collection's card. */
+      superseded?: PublishedCollectionSummary;
+    }
   | { kind: "published"; summary: PublishedCollectionSummary };
+
+/**
+ * Pair drafts with the published collections they update, and decide what the
+ * list shows.
+ *
+ * Pure, exported and tested because this small rule has produced two separate
+ * user-visible bugs:
+ *
+ *  1. A draft linked to a published collection HIDES that collection's card —
+ *     reasonable, the draft is its in-flight update. But the published card
+ *     was the only thing that ever said "your mods have changed since this was
+ *     built", so hiding it took the answer away along with the question. The
+ *     dashboard knew (its own log said `upToDate: false`) and showed a card
+ *     that mentioned none of it. Hence `superseded` on the draft.
+ *
+ *  2. The hiding also applied to the "Published" FILTER, so the header counted
+ *     a collection ("1 draft · 1 published") that the tab then refused to
+ *     render — and Edit / Details / Show files / Delete were unreachable for
+ *     as long as any draft existed. De-duplication belongs to the combined
+ *     view; a filter is an explicit request for exactly that thing.
+ */
+export function pairDraftsWithPublished(
+  drafts: ReadonlyArray<DraftEnvelope<BuildDraftPayload>>,
+  published: readonly PublishedCollectionSummary[],
+  filter: FilterKey,
+): DashboardItem[] {
+  const supersededByDraftKey = new Map<string, PublishedCollectionSummary>();
+  for (const pub of published) {
+    const linked = drafts.find(
+      (d) => d.payload.linkedPackageId === pub.packageId,
+    );
+    if (linked !== undefined) supersededByDraftKey.set(linked.key, pub);
+  }
+
+  const out: DashboardItem[] = [];
+  for (const env of drafts) {
+    const superseded = supersededByDraftKey.get(env.key);
+    out.push({
+      kind: "draft",
+      env,
+      ...(superseded !== undefined ? { superseded } : {}),
+    });
+  }
+  for (const pub of published) {
+    const hidden =
+      filter === "all" &&
+      drafts.some((d) => d.payload.linkedPackageId === pub.packageId);
+    if (hidden) continue;
+    out.push({ kind: "published", summary: pub });
+  }
+
+  if (filter === "drafts") return out.filter((i) => i.kind === "draft");
+  if (filter === "published") return out.filter((i) => i.kind === "published");
+  return out;
+}
 
 /** Exported for the render harness only — see {@link PublishedCard}. */
 export function DraftCard(props: {
   env: DraftEnvelope<BuildDraftPayload>;
   activeGameId: string | undefined;
   registrySessionStateKind: string | undefined;
+  /**
+   * The published collection this draft supersedes on the dashboard.
+   *
+   * When a draft is linked to a published collection, that collection's card
+   * is HIDDEN — the draft is its in-flight update, and showing both is noise.
+   * But the published card is also the only thing that ever said "your profile
+   * has changed since this was built", so hiding it silently took the answer
+   * away with the question: the dashboard knew the profile had moved, said
+   * `upToDate: false` in its own log, and showed a card that mentioned none of
+   * it. Passing the fact here is what keeps the signal alive.
+   */
+  linkedPublished?: {
+    builtVersion: string | undefined;
+    /** Profile differs from the one that produced the published build. */
+    profileChanged: boolean;
+  };
   onOpen: () => void;
   onDiscard: () => void;
 }): JSX.Element {
@@ -1020,9 +1090,29 @@ export function DraftCard(props: {
         {payload.linkedSlug !== undefined && (
           <div className="eh-muted">
             <strong>Updates:</strong> {payload.linkedSlug}
+            {props.linkedPublished?.builtVersion !== undefined && (
+              <> v{props.linkedPublished.builtVersion}</>
+            )}
             {payload.curator?.version !== undefined && (
               <> → v{payload.curator.version}</>
             )}
+          </div>
+        )}
+        {props.linkedPublished?.profileChanged === true && (
+          // The whole reason this prop exists. Said on the draft card because
+          // the published card that used to say it is not on screen.
+          <div
+            style={{
+              color: "var(--eh-warning)",
+              fontSize: "var(--eh-text-sm)",
+              lineHeight: "var(--eh-leading-relaxed)",
+            }}
+          >
+            Your mods have changed since{" "}
+            {props.linkedPublished.builtVersion !== undefined
+              ? `v${props.linkedPublished.builtVersion}`
+              : "the last build"}{" "}
+            — open this draft and build to include them.
           </div>
         )}
         {payload.curator?.version !== undefined &&
