@@ -42,6 +42,16 @@ export interface DoctorPanelProps {
    * reads as a system that knows what it is doing.
    */
   healingBlocked?: string;
+  /**
+   * Per-action veto, with the reason.
+   *
+   * Three of the six cures re-run pipeline steps that read the collection
+   * manifest, so they cannot run when the `.ehcoll` is missing. Disabled with
+   * the reason on the button rather than hidden: a cure that vanishes reads as
+   * a missing feature, and the user cannot tell that pointing at the package
+   * would bring it back.
+   */
+  unavailableHeal?: (action: HealAction) => string | undefined;
 }
 
 const STATUS_COLOR: Record<HealthStatus, string> = {
@@ -112,9 +122,14 @@ function CheckCard(props: {
   check: HealthCheck;
   busy: boolean;
   blocked: boolean;
+  unavailableHeal?: (action: HealAction) => string | undefined;
   onHeal?: (action: HealAction, checkId: string) => void;
 }): JSX.Element {
   const { check, busy, blocked } = props;
+  const unavailable =
+    check.heal !== undefined
+      ? props.unavailableHeal?.(check.heal.action)
+      : undefined;
   const [open, setOpen] = React.useState(false);
   const isProblem = check.status === "broken" || check.status === "drifted";
 
@@ -226,10 +241,14 @@ function CheckCard(props: {
           <Button
             intent="ghost"
             size="sm"
-            disabled={busy || blocked}
+            disabled={busy || blocked || unavailable !== undefined}
             onClick={() => props.onHeal?.(check.heal!.action, check.id)}
           >
-            {busy ? "Working…" : blocked ? "Install in progress" : check.heal.label}
+            {busy
+              ? "Working…"
+              : blocked
+                ? "Install in progress"
+                : (unavailable ?? check.heal.label)}
           </Button>
         )}
       </div>
@@ -337,6 +356,9 @@ export function DoctorPanel(props: DoctorPanelProps): JSX.Element {
             check={c}
             busy={props.busyCheckId === c.id}
             blocked={props.healingBlocked !== undefined}
+            {...(props.unavailableHeal !== undefined
+              ? { unavailableHeal: props.unavailableHeal }
+              : {})}
             {...(props.onHeal !== undefined ? { onHeal: props.onHeal } : {})}
           />
         ))}

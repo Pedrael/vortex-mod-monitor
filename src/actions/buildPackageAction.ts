@@ -77,6 +77,10 @@ import {
   type BundledArchiveSpec,
 } from "../core/manifest/packageZip";
 import {
+  buildOutputFileName,
+  slugifyPackageName,
+} from "../core/manifest/packageFileName";
+import {
   CollectionConfigError,
   loadOrCreateCollectionConfig,
   reconcileExternalModsConfig,
@@ -198,7 +202,7 @@ export default function createBuildPackageAction(
       // and persists package.id, per-mod overrides, README, CHANGELOG.
       // First build of a slug = fresh UUID + empty externalMods. Subsequent
       // builds reuse the same id, preserving release lineage.
-      const slug = slugify(curator.name);
+      const slug = slugifyPackageName(curator.name);
       const appDataPath = getVortexUserDataPath();
       const outputDir = getCollectionsDir();
       const configDir = path.join(outputDir, ".config");
@@ -570,19 +574,6 @@ async function readPluginsTxtIfPresent(
 // Output filename
 // ---------------------------------------------------------------------------
 
-function buildOutputFileName(name: string, version: string): string {
-  const slug = slugify(name);
-  const safeVersion = version.replace(/[^a-zA-Z0-9.-]/g, "-");
-  return `${slug}-${safeVersion}.ehcoll`;
-}
-
-function slugify(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 64) || "collection";
-}
 
 // ---------------------------------------------------------------------------
 // Misc

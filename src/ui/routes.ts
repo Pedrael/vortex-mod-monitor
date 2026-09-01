@@ -15,6 +15,7 @@ export type EventHorizonRoute =
   | "home"
   | "install"
   | "collections"
+  | "doctor"
   | "build"
   | "plugin-diffs"
   | "mod-diffs"
@@ -54,6 +55,16 @@ export const ROUTES: RouteDescriptor[] = [
     label: "My Collections",
     description: "Installed collections and receipts",
     icon: "layers",
+  },
+  {
+    id: "doctor",
+    label: "Doctor",
+    description: "Check an installed collection is still intact, and repair it",
+    // UNVERIFIED: this is the one icon name here not confirmed against
+    // Vortex's bundled set — that set could not be read on the machine this
+    // was written on. If the nav item renders without a glyph, that is why;
+    // any name already used above is known to work.
+    icon: "health",
   },
   {
     id: "build",

@@ -1,0 +1,448 @@
+/**
+ * ──────────────────────────────────────────────────────────────────────
+ * The Collection Doctor, wired up.
+ *
+ * All the Vortex reads, the package lookup and the repairs live here so
+ * `evaluateHealth` stays pure and `DoctorPanel` stays presentational — which
+ * is what lets both be tested and screenshotted without a running Vortex.
+ *
+ * ─── DIAGNOSIS IS FREE; SOME CURES ARE NOT ─────────────────────────────
+ * Diagnosis needs only the receipt, so the page is useful the instant it
+ * opens, even if the `.ehcoll` was deleted months ago.
+ *
+ * The deep scan and three of the six cures re-run pipeline steps that read the
+ * MANIFEST, so they need the package. It is looked up by name and version in
+ * the collections folder; when that fails the user can point at it. Until then
+ * those actions are disabled WITH THE REASON rather than hidden — a button
+ * that quietly vanishes reads as a missing feature, one that explains itself
+ * reads as a tool that knows what it is doing.
+ * ──────────────────────────────────────────────────────────────────────
+ */
+
+import * as React from "react";
+
+import { Button, Card } from "../../components";
+import { useApi } from "../../state";
+import { useErrorReporter } from "../../errors";
+import { useToast } from "../../components/Toast";
+import { DoctorPanel } from "./DoctorPanel";
+import { evaluateHealth, healingBlockedReason } from "../../../core/doctor/health";
+import type { HealAction, HealthCheck, HealthReceiptView } from "../../../core/doctor/health";
+import { gatherObservations } from "../../../core/doctor/gather";
+import { describeHeal, healNeedsManifest, matchEhcollFile } from "../../../core/doctor/heal";
+import { runHeal } from "../../../core/doctor/runHeal";
+import { getInstallSession } from "../install/installSession";
+import type { EventHorizonRoute } from "../../routes";
+import type { InstallReceipt } from "../../../types/installLedger";
+import type { EhcollManifest } from "../../../types/ehcoll";
+
+export interface DoctorPageProps {
+  onNavigate: (route: EventHorizonRoute) => void;
+}
+
+type Loaded = {
+  receipts: InstallReceipt[];
+  selected: InstallReceipt;
+};
+
+/**
+ * The receipt, narrowed to what the checks read.
+ *
+ * `baselinePluginOrder` is mapped to names on purpose: the receipt stores
+ * `{ name, enabled }`, the check compares ORDER, and handing it objects would
+ * compare them against a list of strings and report every plugin as drifted.
+ */
+function toHealthView(receipt: InstallReceipt): HealthReceiptView {
+  const baseline = receipt.rulesApplication?.baselinePluginOrder;
+  return {
+    packageName: receipt.packageName,
+    packageVersion: receipt.packageVersion,
+    vortexProfileId: receipt.vortexProfileId,
+    mods: receipt.mods.map((m) => ({
+      vortexModId: m.vortexModId,
+      compareKey: m.compareKey,
+      name: m.name,
+    })),
+    ...(receipt.rulesApplication !== undefined
+      ? {
+          rulesApplication: {
+            ...(receipt.rulesApplication.appliedRuleCount !== undefined
+              ? { appliedRuleCount: receipt.rulesApplication.appliedRuleCount }
+              : {}),
+            ...(baseline !== undefined
+              ? { baselinePluginOrder: baseline.map((e) => e.name) }
+              : {}),
+          },
+        }
+      : {}),
+    ...(receipt.userlistApplication !== undefined
+      ? {
+          userlistApplication: {
+            ...(receipt.userlistApplication.appliedRuleCount !== undefined
+              ? {
+                  appliedRuleCount:
+                    receipt.userlistApplication.appliedRuleCount,
+                }
+              : {}),
+          },
+        }
+      : {}),
+    ...(receipt.fomodReplayMode !== undefined
+      ? { fomodReplayMode: receipt.fomodReplayMode }
+      : {}),
+  };
+}
+
+export function DoctorPage(props: DoctorPageProps): JSX.Element {
+  const api = useApi();
+  const reportError = useErrorReporter();
+  const toast = useToast();
+
+  const [loaded, setLoaded] = React.useState<Loaded | undefined>(undefined);
+  const [loadError, setLoadError] = React.useState<string | undefined>(undefined);
+  const [checks, setChecks] = React.useState<HealthCheck[] | undefined>(undefined);
+  const [busyCheckId, setBusyCheckId] = React.useState<string | undefined>(undefined);
+  const [drifted, setDrifted] = React.useState<readonly string[] | undefined>(undefined);
+  const [pkg, setPkg] = React.useState<
+    { path: string; manifest: EhcollManifest } | undefined
+  >(undefined);
+  const [pkgSearched, setPkgSearched] = React.useState(false);
+  const [tick, setTick] = React.useState(0);
+
+  // ── receipts ─────────────────────────────────────────────────────────
+  React.useEffect(() => {
+    let alive = true;
+    void (async (): Promise<void> => {
+      try {
+        const [{ listReceipts }, { getVortexUserDataPath }] = await Promise.all([
+          import("../../../core/installLedger"),
+          import("../../../core/paths"),
+        ]);
+        const receipts = await listReceipts(getVortexUserDataPath());
+        if (!alive) return;
+        const first = receipts[0];
+        if (first === undefined) {
+          setLoaded(undefined);
+          setLoadError(undefined);
+          return;
+        }
+        setLoaded({ receipts, selected: first });
+      } catch (err) {
+        if (!alive) return;
+        setLoadError(err instanceof Error ? err.message : String(err));
+      }
+    })();
+    return (): void => {
+      alive = false;
+    };
+  }, []);
+
+  // ── find the package (for the deep scan and manifest-backed cures) ────
+  React.useEffect(() => {
+    if (loaded === undefined) return;
+    let alive = true;
+    setPkg(undefined);
+    setPkgSearched(false);
+    void (async (): Promise<void> => {
+      try {
+        const [{ getCollectionsDir }, fsp, path] = await Promise.all([
+          import("../../../core/paths"),
+          import("fs/promises"),
+          import("path"),
+        ]);
+        const dir = getCollectionsDir();
+        const files = await fsp.readdir(dir).catch(() => [] as string[]);
+        const match = matchEhcollFile(
+          files,
+          loaded.selected.packageName,
+          loaded.selected.packageVersion,
+        );
+        if (match === undefined) {
+          if (alive) setPkgSearched(true);
+          return;
+        }
+        const { readEhcoll } = await import("../../../core/manifest/readEhcoll");
+        const result = await readEhcoll(path.join(dir, match));
+        if (!alive) return;
+        setPkg({ path: path.join(dir, match), manifest: result.manifest });
+        setPkgSearched(true);
+      } catch {
+        // A package we cannot read is the same situation as one we cannot
+        // find: the cures that need it stay disabled and say why. Not an
+        // error dialog — diagnosis still works perfectly without it.
+        if (alive) setPkgSearched(true);
+      }
+    })();
+    return (): void => {
+      alive = false;
+    };
+  }, [loaded]);
+
+  // ── diagnose ─────────────────────────────────────────────────────────
+  React.useEffect(() => {
+    if (loaded === undefined) return;
+    let alive = true;
+    void (async (): Promise<void> => {
+      try {
+        const gameId = loaded.selected.gameId;
+        const obs = await gatherObservations({
+          api,
+          gameId,
+          receiptProfileId: loaded.selected.vortexProfileId,
+          ...(drifted !== undefined ? { driftedCompareKeys: drifted } : {}),
+        });
+        if (!alive) return;
+        setChecks(evaluateHealth(toHealthView(loaded.selected), obs));
+      } catch (err) {
+        if (!alive) return;
+        reportError(err, {
+          title: "Couldn't check this collection's health",
+          context: { step: "doctor-diagnose" },
+        });
+      }
+    })();
+    return (): void => {
+      alive = false;
+    };
+  }, [api, loaded, drifted, tick, reportError]);
+
+  const installState = getInstallSession().getSnapshot() as { kind?: unknown };
+  const blocked = healingBlockedReason(installState);
+
+  const missingPackage =
+    pkg === undefined && pkgSearched
+      ? "The .ehcoll for this collection was not found in your collections " +
+        "folder. Repairs that re-run a step of the install need it — pick it " +
+        "to enable them."
+      : undefined;
+
+  // ── deep scan ────────────────────────────────────────────────────────
+  const runDeepScan = React.useCallback(() => {
+    if (loaded === undefined || pkg === undefined) return;
+    setBusyCheckId("staging");
+    void (async (): Promise<void> => {
+      try {
+        const [{ selectDriftCandidates, findDriftedMods }, { getVortexUserDataPath }, path, vortex] =
+          await Promise.all([
+            import("../../../core/installer/detectStagingDrift"),
+            import("../../../core/paths"),
+            import("path"),
+            import("@nexusmods/vortex-api"),
+          ]);
+        const gameId = loaded.selected.gameId;
+        const candidates = selectDriftCandidates({
+          receiptMods: loaded.selected.mods,
+          manifestMods: pkg.manifest.mods,
+        });
+        const state = api.getState();
+        const installRoot = vortex.selectors.installPathForGame(state, gameId);
+        const filesByKey = new Map(
+          pkg.manifest.mods.map((m) => [m.compareKey, m.state.stagingFiles]),
+        );
+        const found = await findDriftedMods({
+          candidates,
+          manifestFilesFor: (key) => filesByKey.get(key),
+          cacheDir: getVortexUserDataPath(),
+          stagingRootFor: (vortexModId) => {
+            const mod = (
+              state as unknown as {
+                persistent?: { mods?: Record<string, Record<string, unknown>> };
+              }
+            )?.persistent?.mods?.[gameId]?.[vortexModId] as
+              | { installationPath?: string }
+              | undefined;
+            return typeof mod?.installationPath === "string" && installRoot
+              ? path.join(installRoot, mod.installationPath)
+              : undefined;
+          },
+        });
+        setDrifted(found.map((f) => f.compareKey));
+      } catch (err) {
+        reportError(err, {
+          title: "Deep scan failed",
+          context: { step: "doctor-deep-scan" },
+        });
+      } finally {
+        setBusyCheckId(undefined);
+      }
+    })();
+  }, [api, loaded, pkg, reportError]);
+
+  // ── heal ─────────────────────────────────────────────────────────────
+  const heal = React.useCallback(
+    (action: HealAction, checkId: string) => {
+      if (loaded === undefined) return;
+      const described = describeHeal(action);
+
+      void (async (): Promise<void> => {
+        // Every cure writes to the machine and several are destructive by
+        // design (rules REPLACE the user's). Ask first, in the words that say
+        // what is lost.
+        const result = await api.showDialog?.(
+          "question",
+          described.title,
+          { text: described.body },
+          [{ label: "Cancel" }, { label: described.confirm }],
+        );
+        if (result?.action !== described.confirm) return;
+
+        setBusyCheckId(checkId);
+        try {
+          const outcome = await runHeal(action, {
+            api,
+            gameId: loaded.selected.gameId,
+            receipt: loaded.selected,
+            ...(pkg !== undefined ? { manifest: pkg.manifest, ehcollPath: pkg.path } : {}),
+          });
+          if (outcome.kind === "blocked") {
+            toast({ intent: "warning", message: outcome.reason });
+            return;
+          }
+          if (outcome.kind === "handoff") {
+            toast({ intent: "info", message: outcome.summary });
+            getInstallSession().pickFile(api, outcome.ehcollPath);
+            props.onNavigate("install");
+            return;
+          }
+          toast({ intent: "success", message: outcome.summary });
+          // Re-diagnose: the user should see the verdict change, not be told
+          // it did.
+          setTick((n) => n + 1);
+        } catch (err) {
+          reportError(err, {
+            title: `Couldn't ${described.confirm.toLowerCase()}`,
+            context: { step: "doctor-heal", action },
+          });
+        } finally {
+          setBusyCheckId(undefined);
+        }
+      })();
+    },
+    [api, loaded, pkg, props, reportError, toast],
+  );
+
+  const pickPackage = React.useCallback(() => {
+    void (async (): Promise<void> => {
+      try {
+        const [{ pickEhcollFile }, { readEhcoll }] = await Promise.all([
+          import("../../../utils/utils"),
+          import("../../../core/manifest/readEhcoll"),
+        ]);
+        const picked = await pickEhcollFile(api);
+        if (picked === undefined) return;
+        const result = await readEhcoll(picked);
+        setPkg({ path: picked, manifest: result.manifest });
+      } catch (err) {
+        reportError(err, {
+          title: "Couldn't read that collection package",
+          context: { step: "doctor-pick-package" },
+        });
+      }
+    })();
+  }, [api, reportError]);
+
+  if (loadError !== undefined) {
+    return (
+      <Card title="Collection Doctor">
+        <p className="eh-note">Could not read your install receipts: {loadError}</p>
+      </Card>
+    );
+  }
+
+  if (loaded === undefined) {
+    return (
+      <Card title="Collection Doctor">
+        <p style={{ margin: 0, color: "var(--eh-text-secondary)" }}>
+          No installed collections yet. Install one and the Doctor will be able
+          to tell you whether it is still intact.
+        </p>
+        <div style={{ marginTop: "var(--eh-sp-3)" }}>
+          <Button intent="primary" onClick={() => props.onNavigate("install")}>
+            Install a collection
+          </Button>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--eh-sp-4)" }}>
+      {loaded.receipts.length > 1 && (
+        <Card inert>
+          <label
+            className="eh-label"
+            htmlFor="eh-doctor-collection"
+            style={{ display: "block", marginBottom: "var(--eh-sp-2)" }}
+          >
+            Collection
+          </label>
+          <select
+            id="eh-doctor-collection"
+            className="eh-input"
+            value={loaded.selected.packageId}
+            onChange={(e) => {
+              const next = loaded.receipts.find(
+                (r) => r.packageId === e.target.value,
+              );
+              if (next === undefined) return;
+              setDrifted(undefined);
+              setChecks(undefined);
+              setLoaded({ ...loaded, selected: next });
+            }}
+          >
+            {loaded.receipts.map((r) => (
+              <option key={r.packageId} value={r.packageId}>
+                {r.packageName} v{r.packageVersion}
+              </option>
+            ))}
+          </select>
+        </Card>
+      )}
+
+      {missingPackage !== undefined && (
+        <Card inert>
+          <p
+            style={{
+              margin: 0,
+              fontSize: "var(--eh-text-sm)",
+              color: "var(--eh-text-secondary)",
+              lineHeight: "var(--eh-leading-relaxed)",
+            }}
+          >
+            {missingPackage}
+          </p>
+          <div style={{ marginTop: "var(--eh-sp-3)" }}>
+            <Button intent="ghost" size="sm" onClick={pickPackage}>
+              Pick the .ehcoll…
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {checks === undefined ? (
+        <Card title="Collection Doctor">
+          <p style={{ margin: 0, color: "var(--eh-text-secondary)" }}>
+            Checking…
+          </p>
+        </Card>
+      ) : (
+        <DoctorPanel
+          packageName={loaded.selected.packageName}
+          packageVersion={loaded.selected.packageVersion}
+          checks={checks}
+          {...(busyCheckId !== undefined ? { busyCheckId } : {})}
+          {...(blocked !== undefined ? { healingBlocked: blocked } : {})}
+          {...(pkg !== undefined ? { onRunDeepScan: runDeepScan } : {})}
+          onRecheck={() => setTick((n) => n + 1)}
+          onHeal={heal}
+          {...(pkg === undefined
+            ? {
+                unavailableHeal: (action: HealAction): string | undefined =>
+                  healNeedsManifest(action) ? "Needs the .ehcoll" : undefined,
+              }
+            : {})}
+        />
+      )}
+    </div>
+  );
+}

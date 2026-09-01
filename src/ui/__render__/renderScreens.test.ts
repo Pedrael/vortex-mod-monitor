@@ -320,6 +320,60 @@ describe("render", () => {
     );
   });
 
+  // The state where the .ehcoll is gone: diagnosis still works, and the three
+  // cures that re-run manifest-reading steps say why they cannot. Worth a
+  // screenshot because "disabled with a reason" is only better than "hidden"
+  // if the reason is actually legible on the button.
+  it.skipIf(!on)("doctor-no-package — cures needing the package, disabled with the reason", () => {
+    const checks = evaluateHealth(
+      {
+        packageName: "Ivy 2",
+        packageVersion: "1.0.10",
+        vortexProfileId: "prof-1",
+        mods: Array.from({ length: 963 }, (_, i) => ({
+          vortexModId: `m${i}`,
+          compareKey: `nexus:${i}:${i}`,
+          name: `Mod ${i}`,
+        })),
+        rulesApplication: {
+          appliedRuleCount: 291,
+          baselinePluginOrder: ["a.esp", "b.esp", "c.esp", "d.esp"],
+        },
+        userlistApplication: { appliedRuleCount: 29 },
+      },
+      {
+        existingProfileIds: ["prof-1"],
+        activeProfileId: "other-profile",
+        installedModIds: Array.from({ length: 960 }, (_, i) => `m${i}`),
+        enabledModIds: Array.from({ length: 958 }, (_, i) => `m${i}`),
+        driftedCompareKeys: ["nexus:5:5", "nexus:9:9"],
+        currentPluginOrder: ["a.esp", "c.esp", "b.esp", "d.esp"],
+        currentModRuleCount: 280,
+        currentUserlistRuleCount: 29,
+      },
+    );
+    write(
+      "doctor-no-package",
+      React.createElement(
+        "div",
+        { className: "eh-page" },
+        React.createElement(DoctorPanel, {
+          packageName: "Ivy 2",
+          packageVersion: "1.0.10",
+          checks,
+          onRecheck: () => undefined,
+          onHeal: () => undefined,
+          unavailableHeal: (action: string) =>
+            action === "reapply-rules" ||
+            action === "reapply-userlist" ||
+            action === "reinstall-mods"
+              ? "Needs the .ehcoll"
+              : undefined,
+        } as never),
+      ),
+    );
+  });
+
   it.skipIf(!on)("doctor — healing blocked because an install is running", () => {
     const checks = evaluateHealth(
       {
