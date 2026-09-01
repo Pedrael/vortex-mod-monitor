@@ -274,6 +274,37 @@ describe("install driver, end to end", () => {
     expect(JSON.stringify(result)).toMatch(/installer said no/);
   });
 
+  it("stops the whole run when Vortex cannot deploy, instead of grinding on", async () => {
+    // A tester hit "No deployment method active" at mod 489 of 967. The driver
+    // treated it as one bad mod, carried on for another 478, and died at the
+    // end with no receipt — seventy minutes, and the answer was in the first
+    // failure. It is a property of the MACHINE: mod 490 fails exactly as 489
+    // did, and so does the nine hundredth.
+    //
+    // The fake fails only the FIRST install, so a driver that carries on would
+    // successfully install the other two. That is the discriminator.
+    world = makeWorld({
+      mods: [
+        { id: "a", nexus: { modId: 1, fileId: 1 }, archiveSha256: "a".repeat(64), files: { "Data/a.esp": "a" }, installerChoices: FOMOD_CHOICES },
+        { id: "b", nexus: { modId: 2, fileId: 2 }, archiveSha256: "b".repeat(64), files: { "Data/b.esp": "b" }, installerChoices: FOMOD_CHOICES },
+        { id: "c", nexus: { modId: 3, fileId: 3 }, archiveSha256: "c".repeat(64), files: { "Data/c.esp": "c" }, installerChoices: FOMOD_CHOICES },
+      ],
+    });
+    const manifest = await packageFrom(world);
+    const fake = makeFakeVortex({ gameId: "fallout4" });
+    fake.failNextInstall("No deployment method active");
+
+    const result = await install(manifest, fake);
+
+    // It stopped: the two mods that WOULD have installed never did.
+    expect(fake.installed).toHaveLength(0);
+    // And it said the useful thing rather than blaming the mod or the user.
+    const text = JSON.stringify(result);
+    expect(text).toContain("Every remaining mod would fail the same way");
+    expect(text).toContain("Settings → Mods → Deployment Method");
+    expect(text).toContain("nobody cancelled anything");
+  });
+
   it("writes the collection's game settings and TELLS the user", async () => {
     // The user must hear that their configuration changed. Applying it
     // silently is not acceptable even when it is correct.

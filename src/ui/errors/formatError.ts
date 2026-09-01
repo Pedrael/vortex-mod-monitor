@@ -435,6 +435,15 @@ function guessGenericTitle(err: Error): string {
   if (msg.includes("nexus")) {
     return "Nexus Mods request failed";
   }
+  // Checked BEFORE the cancellation match, which it would otherwise hit.
+  //
+  // Vortex raises this as `ProcessCanceled`, so the word "cancel" appears in a
+  // failure nobody chose. A tester lost a 70-minute install to it and was told
+  // "Operation cancelled — canceled by user" while asleep. A confidently wrong
+  // diagnosis is worse than a raw stack trace: it stops the reader looking.
+  if (msg.includes("no deployment method active")) {
+    return "Vortex cannot deploy mods";
+  }
   if (msg.includes("cancelled") || msg.includes("canceled") || msg.includes("aborted")) {
     return "Operation cancelled";
   }
@@ -444,6 +453,17 @@ function guessGenericTitle(err: Error): string {
 function guessGenericHints(err: Error): string[] {
   const msg = err.message.toLowerCase();
   const hints: string[] = [];
+  if (msg.includes("no deployment method active")) {
+    hints.push(
+      "Vortex has no working way to link mods into the game folder. Set one " +
+        "in Settings → Mods → Deployment Method, then run the install again.",
+    );
+    hints.push(
+      "On Linux/Proton this is usually hardlink deployment: it needs the " +
+        "staging folder and the game folder on the same filesystem inside " +
+        "the prefix.",
+    );
+  }
   if (msg.includes("no active game")) {
     hints.push(
       "Switch to a supported game in Vortex (Skyrim SE, Fallout 3, Fallout NV, Fallout 4, Starfield) and retry.",

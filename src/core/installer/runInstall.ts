@@ -126,7 +126,6 @@ import type {
   OrphanedModDecision,
 } from "../../types/installPlan";
 import type { SupportedGameId } from "../../types/ehcoll";
-import { looksLikeWine } from "./checkSevenZipHealth";
 import { countMods, deployBudgetMs } from "./timeBudgets";
 import { clearInstallMarker, writeInstallMarker } from "./installMarker";
 import { ehLog } from "../logging/ehLog";
@@ -195,6 +194,11 @@ import {
   safeRmTempDir,
   uninstallMod,
 } from "./modInstall";
+import { looksLikeWine } from "./checkSevenZipHealth";
+import {
+  describeMissingDeploymentMethod,
+  isDeploymentMethodMissing,
+} from "./deploymentMethod";
 import {
   classifyModFailure,
   describeSystemicFailure,
@@ -958,6 +962,37 @@ export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
           );
         }
         const phase: DriverPhase = "installing-mods";
+
+        // ── a machine problem wearing a mod's name ───────────────────────
+        //
+        // "No deployment method active" is not about this mod. Vortex cannot
+        // link ANYTHING into the game folder, so mod 490 will fail exactly as
+        // mod 489 did and so will the nine hundredth. A tester's run learned
+        // this at mod 489 of 967, treated it as one bad mod, and ground on for
+        // another 478 before dying with no receipt — seventy minutes, and the
+        // answer was in the first failure.
+        if (isDeploymentMethodMissing(err)) {
+          ehLog("error", "install.no-deployment-method", {
+            i: i + 1,
+            total,
+            name: resolution.name,
+            installedSoFar: installedMods.length,
+          });
+          return {
+            kind: "failed",
+            phase,
+            partialProfileId: createdProfileId,
+            error: describeMissingDeploymentMethod({
+              modName: resolution.name,
+              atIndex: i + 1,
+              total,
+              wine: looksLikeWine(),
+            }),
+            installedSoFar: installedMods.map((m) => m.vortexModId),
+            failedMods,
+          };
+        }
+
         // The error text reaches the user; this reaches us. Same failure,
         // but with the index, the decision kind and how long it ran — which
         // is what separates "this mod is broken" from "everything after mod
