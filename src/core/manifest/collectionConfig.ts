@@ -72,6 +72,15 @@ export type CollectionConfigSchemaVersion =
 export type ExternalModConfigEntry = {
   /** Read-only hint set by the action handler. Curator-edits are preserved but never relied on. */
   name?: string;
+  /**
+   * Ship a NEXUS mod as external, because its file is gone from Nexus.
+   *
+   * Only meaningful on a mod that has Nexus ids — external mods are external
+   * already. Persisted with the other per-mod overrides so the decision
+   * survives a rebuild: a curator should not have to rediscover a dead mod
+   * every release.
+   */
+  treatAsExternal?: boolean;
   /** When true, the source archive ships inside the `.ehcoll` at `bundled/<sha256>.<ext>`. Default false. */
   bundled?: boolean;
   /** Free-form text shown to the user when the mod isn't bundled. */
@@ -352,6 +361,7 @@ export function toBuildManifestExternalMods(
     out[modId] = {
       instructions: merged.instructions,
       bundled: entry.bundled,
+      ...(entry.treatAsExternal === true ? { treatAsExternal: true } : {}),
       ...(merged.url !== undefined ? { url: merged.url } : {}),
       ...(merged.mode !== undefined ? { mode: merged.mode } : {}),
     };
@@ -362,6 +372,8 @@ export function toBuildManifestExternalMods(
 export type ExternalModBuildSpec = {
   instructions?: string;
   bundled?: boolean;
+  /** Ship a Nexus mod as external — its file is gone. */
+  treatAsExternal?: boolean;
   url?: string;
   mode?: DownloadMode;
 };
@@ -761,6 +773,13 @@ const EXTERNAL_MOD_FIELDS: {
   instructions: (raw, path, errors) => expectStringField(raw, path, errors),
   url: (raw, path, errors) => expectStringField(raw, path, errors),
   bundled: (raw, path, errors) => {
+    if (typeof raw !== "boolean") {
+      errors.push(`${path} must be a boolean.`);
+      return undefined;
+    }
+    return raw;
+  },
+  treatAsExternal: (raw, path, errors) => {
     if (typeof raw !== "boolean") {
       errors.push(`${path} must be a boolean.`);
       return undefined;

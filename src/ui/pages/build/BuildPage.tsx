@@ -764,6 +764,50 @@ function QueuedPanel(props: {
 
 
 /**
+ * "Ship as external" — offered on every mod a user could not download.
+ *
+ * Deliberately the SAME mechanism external mods already use rather than a
+ * bespoke one. Marking a mod here moves it into the external-mods table, where
+ * bundling, a link and instructions already exist and have already been
+ * thought about. It is also the shape that keeps the redistribution decision
+ * where it belongs: the curator ticks one specific mod, knowingly, instead of
+ * a tool deciding to ship files on their behalf.
+ */
+function TreatAsExternalAction(props: {
+  finding: AvailabilityFinding;
+  onTreat?: (modId: number, fileId: number) => void;
+  marked: boolean;
+}): JSX.Element | null {
+  if (props.onTreat === undefined) return null;
+  if (props.marked) {
+    return (
+      <span style={{ color: "var(--eh-success)" }}>
+        {" "}
+        — ships as an external mod
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => props.onTreat?.(props.finding.modId, props.finding.fileId)}
+      style={{
+        marginLeft: "var(--eh-sp-2)",
+        background: "none",
+        border: "none",
+        padding: 0,
+        cursor: "pointer",
+        color: "var(--eh-cyan)",
+        font: "inherit",
+        textDecoration: "underline",
+      }}
+    >
+      ship as external
+    </button>
+  );
+}
+
+/**
  * Whether the people installing this collection can still get the mods.
  *
  * The curator is the one person who cannot notice this problem unaided: every
@@ -784,6 +828,19 @@ export function AvailabilityPanel(props: {
     findings: readonly AvailabilityFinding[];
     checkedAt: string;
   };
+  /**
+   * Ship this mod as an external dependency instead of a Nexus download.
+   *
+   * The only honest option left for a mod whose Nexus file is gone: its
+   * `nexus:modId:fileId` identity is a promise the user cannot keep. As an
+   * external it is identified by hash instead, and picks up everything the
+   * external-mods table already offers — bundle it, link somewhere else, or
+   * write instructions. That table exists and has been reviewed; a second
+   * mechanism just for dead mods would not have been.
+   */
+  onTreatAsExternal?: (modId: number, fileId: number) => void;
+  /** `modId:fileId` of mods already marked, so the button can say so. */
+  externalModIds?: ReadonlySet<string>;
 }): JSX.Element {
   const running = props.progress !== undefined;
   const result = props.result;
@@ -891,6 +948,15 @@ export function AvailabilityPanel(props: {
                         : ""}
                     </span>
                   )}
+                  <TreatAsExternalAction
+                    finding={f}
+                    {...(props.onTreatAsExternal !== undefined
+                      ? { onTreat: props.onTreatAsExternal }
+                      : {})}
+                    marked={
+                      props.externalModIds?.has(`${f.modId}:${f.fileId}`) === true
+                    }
+                  />
                 </li>
               ))}
             </ul>
@@ -1357,6 +1423,21 @@ function FormPanel(props: FormPanelProps): JSX.Element {
   const updateCurator = (patch: Partial<CuratorInput>): void =>
     onChange({ curator: { ...curator, ...patch } });
 
+  // Recomputed from the OVERRIDES, not taken from ctx.externalMods.
+  //
+  // The context's list is fixed at load time, so a mod marked "treat as
+  // external" here would not appear in the table below until the whole profile
+  // was rescanned — minutes on a 1000-mod profile, for a checkbox. Deriving it
+  // makes the row appear the moment it is marked, which is the only way the
+  // action reads as having worked.
+  const externalRows = React.useMemo(() => {
+    const byId = new Map(ctx.externalMods.map((m) => [m.id, m]));
+    for (const m of ctx.mods) {
+      if (overrides[m.id]?.treatAsExternal === true) byId.set(m.id, m);
+    }
+    return [...byId.values()];
+  }, [ctx.externalMods, ctx.mods, overrides]);
+
   const updateOverride = (
     modId: string,
     patch: Partial<ExternalModConfigEntry>,
@@ -1423,6 +1504,20 @@ function FormPanel(props: FormPanelProps): JSX.Element {
 
       <AvailabilityPanel
         onCheck={onCheckAvailability}
+        onTreatAsExternal={(modId: number, fileId: number): void => {
+          // Findings are keyed by NEXUS ids; overrides by Vortex mod id.
+          const match = ctx.mods.find(
+            (m) =>
+              Number(m.nexusModId) === modId && Number(m.nexusFileId) === fileId,
+          );
+          if (match === undefined) return;
+          updateOverride(match.id, { treatAsExternal: true });
+        }}
+        externalModIds={new Set(
+          ctx.mods
+            .filter((m) => overrides[m.id]?.treatAsExternal === true)
+            .map((m) => `${String(m.nexusModId)}:${String(m.nexusFileId)}`),
+        )}
         {...(availabilityProgress !== undefined ? { progress: availabilityProgress } : {})}
         {...(availability !== undefined ? { result: availability } : {})}
       />
@@ -1595,13 +1690,13 @@ function FormPanel(props: FormPanelProps): JSX.Element {
       </Card>
 
       <Card title={`External mods (${ctx.externalMods.length})`}>
-        {ctx.externalMods.length === 0 ? (
+        {externalRows.length === 0 ? (
           <p style={{ margin: 0, color: "var(--eh-text-secondary)" }}>
             No external (non-Nexus) mods in this profile. Nothing to override.
           </p>
         ) : (
           <ExternalModsTable
-            mods={ctx.externalMods}
+            mods={externalRows}
             overrides={overrides}
             hints={ctx.externalHints}
             onChange={updateOverride}

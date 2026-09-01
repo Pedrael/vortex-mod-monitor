@@ -456,3 +456,76 @@ describe("the ones nobody could check", () => {
     expect(text).not.toContain("They are");
   });
 });
+
+describe("an empty file list, resolved by what the run proved", () => {
+  // The rule that changed, and the evidence that changed it.
+  //
+  // "Nexus returned no files for this mod" used to resolve as `unknown`
+  // always, reasoning that a misread response shape is likelier than an author
+  // deleting every file of their own mod. A real run refuted it: 789 mods, 781
+  // with usable file lists, 8 empty — and two of those 8 (82232, 98669) are
+  // independently proven undownloadable, having failed in under a second in
+  // every one of a tester's install runs. A shape we could not parse would
+  // have emptied all 789.
+  const emptyFor = (deadIds: number[]) => async (modId: number) =>
+    deadIds.includes(modId) ? [] : [{ file_id: 1, category_name: "MAIN" }];
+
+  it("calls the mod gone once the run has proved parsing works", async () => {
+    const entries = [
+      ...Array.from({ length: 20 }, (_, i) => entry(100 + i, 1)),
+      entry(82232, 1, "Colletible Magazines"),
+    ];
+    const r = await checkNexusAvailability(entries, {
+      getModFiles: emptyFor([82232]),
+    });
+    const dead = r.findings.find((f) => f.modId === 82232);
+    expect(dead?.status).toBe("mod-missing");
+    expect(dead?.detail).toContain("no files for this mod");
+  });
+
+  it("stays unknown when too little else answered to prove anything", async () => {
+    // Three mods, two of them empty. Nothing here shows the parsing works, so
+    // convicting them would be a guess dressed as a finding.
+    const r = await checkNexusAvailability(
+      [entry(1, 1), entry(2, 1), entry(3, 1)],
+      { getModFiles: emptyFor([1, 2]) },
+    );
+    expect(r.findings.filter((f) => f.status === "unknown")).toHaveLength(2);
+    expect(r.findings.filter((f) => f.status === "mod-missing")).toHaveLength(0);
+  });
+
+  it("stays unknown when the empties outnumber the answers", async () => {
+    // Six good, seven empty: the shape is in doubt again, so the doubt wins.
+    const entries = Array.from({ length: 13 }, (_, i) => entry(i + 1, 1));
+    const r = await checkNexusAvailability(entries, {
+      getModFiles: emptyFor([7, 8, 9, 10, 11, 12, 13]),
+    });
+    expect(r.findings.filter((f) => f.status === "unknown")).toHaveLength(7);
+  });
+
+  it("does not touch mods that answered normally", async () => {
+    const entries = [
+      ...Array.from({ length: 20 }, (_, i) => entry(100 + i, 1)),
+      entry(82232, 1),
+    ];
+    const r = await checkNexusAvailability(entries, {
+      getModFiles: emptyFor([82232]),
+    });
+    expect(
+      r.findings.filter((f) => f.status === "available"),
+    ).toHaveLength(20);
+  });
+
+  it("still separates a rejected lookup from an empty one", async () => {
+    // A throw is a different signal from an empty list and keeps its own path.
+    const entries = Array.from({ length: 20 }, (_, i) => entry(i + 1, 1));
+    const r = await checkNexusAvailability(entries, {
+      getModFiles: async (modId) => {
+        if (modId === 3) throw new Error("404");
+        if (modId === 4) return [];
+        return [{ file_id: 1, category_name: "MAIN" }];
+      },
+    });
+    expect(r.findings.filter((f) => f.status === "mod-missing")).toHaveLength(2);
+  });
+});

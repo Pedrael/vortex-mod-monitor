@@ -109,6 +109,19 @@ const KNOWN_RULE_TYPES: ReadonlySet<ModRuleType> = new Set([
  * Anything missing falls back to a documented default — see the prose spec.
  */
 export type ExternalModSpec = {
+  /**
+   * Ship this mod as EXTERNAL even though Vortex knows its Nexus ids.
+   *
+   * For a mod whose Nexus file has been deleted. Its `nexus:modId:fileId`
+   * identity is a promise the user cannot keep — the download simply fails —
+   * so the curator downgrades it to identity-by-hash, which the user can
+   * satisfy from a bundled copy or a file they fetch themselves.
+   *
+   * Explicit rather than inferred from availability: the build must not
+   * silently change a mod's identity because a network check said something
+   * on the day it ran.
+   */
+  treatAsExternal?: boolean;
   /** Filename hint shown in the user-side picker prompt. */
   expectedFilename?: string;
   /** Free-form text shown when the mod isn't bundled. Required when bundled=false. */
@@ -504,7 +517,7 @@ function buildModEntry(
   errors: string[],
   repackedModIds?: ReadonlySet<string>,
 ): EhcollMod | undefined {
-  if (isNexusMod(mod)) {
+  if (!shipsAsExternal(mod, spec)) {
     if (!mod.archiveSha256) {
       errors.push(
         `Mod ${label(mod)} has no archiveSha256. ` +
@@ -518,6 +531,26 @@ function buildModEntry(
   }
 
   return buildExternalMod(mod, spec, errors, repackedModIds);
+}
+
+/**
+ * Does this mod ship identified by HASH rather than by Nexus ids?
+ *
+ * Its own function because it decides a mod's IDENTITY in the manifest, and
+ * identity is the one thing a collection cannot get wrong quietly: a mod built
+ * as `nexus:modId:fileId` promises the user a download, and if that file is
+ * gone the promise fails on their machine, hundreds of mods in.
+ *
+ * `treatAsExternal` therefore OVERRIDES perfectly valid Nexus ids. That is the
+ * point — the ids are still true and no longer useful. It is the curator's
+ * explicit call, never inferred from an availability check: a network result
+ * on the day the build ran must not silently change what a mod is.
+ */
+export function shipsAsExternal(
+  mod: AuditorMod,
+  spec: ExternalModSpec | undefined,
+): boolean {
+  return !isNexusMod(mod) || spec?.treatAsExternal === true;
 }
 
 function isNexusMod(mod: AuditorMod): boolean {

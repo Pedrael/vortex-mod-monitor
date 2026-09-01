@@ -519,8 +519,6 @@ export async function loadBuildContext(
     });
   }
 
-  const externalMods = mods.filter((m) => !isNexusMod(m));
-
   const appDataPath = getVortexUserDataPath();
   const configDir = getCollectionsConfigDir();
 
@@ -547,6 +545,22 @@ export async function loadBuildContext(
   const slug = slugify(defaultName);
   const loaded = await loadOrCreateCollectionConfig({ configDir, slug });
   let collectionConfig = loaded.config;
+
+  // Computed HERE, after the config is loaded, because it now depends on it.
+  //
+  // A Nexus mod the curator marked `treatAsExternal` belongs in this table
+  // too: its Nexus file is gone, so it needs exactly what an external mod
+  // needs — a bundle, a link, or instructions. Reusing the existing table
+  // rather than inventing a second one means it inherits the review that one
+  // has already had.
+  const forcedExternal = new Set(
+    Object.entries(collectionConfig.externalMods)
+      .filter(([, e]) => e.treatAsExternal === true)
+      .map(([id]) => id),
+  );
+  const externalMods = mods.filter(
+    (m) => !isNexusMod(m) || forcedExternal.has(m.id),
+  );
 
   // Reconcile so the curator opens the form already showing every
   // external mod, even ones added since the last build.

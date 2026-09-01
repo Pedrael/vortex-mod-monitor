@@ -653,6 +653,8 @@ describe("render", () => {
       "build-availability",
       React.createElement(AvailabilityPanel, {
         onCheck: () => undefined,
+        onTreatAsExternal: () => undefined,
+        externalModIds: new Set(["4598:270951"]),
         result: {
           checkedAt: new Date().toISOString(),
           findings,

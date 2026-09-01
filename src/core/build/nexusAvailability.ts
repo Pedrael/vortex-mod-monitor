@@ -132,9 +132,10 @@ function currentMainFile(
 /**
  * Where one file stands in the mod's list.
  *
- * `files` being empty is deliberately NOT read as "everything is deleted" — a
- * mod with no listed files is far more likely to be a response we failed to
- * understand than an author who deleted their own mod's every file.
+ * An empty list comes back `unknown` HERE, on its own, because one lookup in
+ * isolation genuinely cannot tell "this mod has no files" from "this response
+ * was not understood". The walk resolves it with evidence this function does
+ * not have — see `checkNexusAvailability`.
  */
 export function classifyFile(
   files: readonly NexusFileLike[],
@@ -202,6 +203,16 @@ export interface CheckAvailabilityDeps {
   giveUpAfterConsecutiveFailures?: number;
 }
 
+/**
+ * Non-empty lookups needed before an EMPTY list is read as "mod is gone".
+ *
+ * Low on purpose: the question it answers is "did the response shape parse at
+ * all", and five mods answering normally settles that. It exists so a
+ * three-mod collection, or a run that mostly failed, does not convict a mod on
+ * no evidence.
+ */
+export const EMPTY_LIST_TRUST_MIN = 5;
+
 export interface AvailabilityReport {
   findings: AvailabilityFinding[];
   /** Unique mods actually looked up. */
@@ -239,6 +250,8 @@ export async function checkNexusAvailability(
 
   const giveUpAfter = deps.giveUpAfterConsecutiveFailures ?? 6;
   const findings: AvailabilityFinding[] = [];
+  const emptyListGroups: AvailabilityEntry[][] = [];
+  let nonEmptyLookups = 0;
   let consecutiveFailures = 0;
   let gaveUpEarly = false;
   let modsChecked = 0;
@@ -264,7 +277,15 @@ export async function checkNexusAvailability(
       const files = await deps.getModFiles(modId);
       modsChecked += 1;
       consecutiveFailures = 0;
-      for (const e of group) findings.push({ ...e, ...classifyFile(files, e.fileId) });
+      if (files.length === 0) {
+        // Held back, not decided. See the reconciliation below.
+        emptyListGroups.push(group);
+      } else {
+        nonEmptyLookups += 1;
+        for (const e of group) {
+          findings.push({ ...e, ...classifyFile(files, e.fileId) });
+        }
+      }
     } catch (err) {
       if (isAbort(err)) {
         gaveUpEarly = true;
@@ -300,6 +321,41 @@ export async function checkNexusAvailability(
 
     done += 1;
     deps.onProgress?.(done, byMod.size);
+  }
+
+  // ─── an empty file list, decided by what the rest of the run proved ───
+  //
+  // On its own, "Nexus returned no files for this mod" is ambiguous: the mod
+  // page is gone, or we failed to understand the response. This used to
+  // resolve as `unknown` always, on the reasoning that a misread shape is more
+  // likely than an author deleting every file of their own mod.
+  //
+  // A real run refuted that. 789 mods looked up, 781 came back with usable
+  // file lists and 8 came back empty — and two of those 8 (modIds 82232 and
+  // 98669) are independently PROVEN undownloadable: they failed in under a
+  // second, identically, in every one of a tester's install runs. A response
+  // format we could not parse would have produced 789 empty lists, not 8.
+  //
+  // So the run validates itself. Once this many lookups have returned real
+  // data, the parsing demonstrably works, and an empty list is the mod being
+  // gone. When it has not — a tiny collection, or a run that mostly failed —
+  // the ambiguity stands and `unknown` is still the honest answer.
+  const parsingProven =
+    nonEmptyLookups >= EMPTY_LIST_TRUST_MIN &&
+    nonEmptyLookups > emptyListGroups.length;
+  for (const group of emptyListGroups) {
+    for (const e of group) {
+      findings.push({
+        ...e,
+        status: parsingProven ? "mod-missing" : "unknown",
+        detail: parsingProven
+          ? `Nexus lists no files for this mod at all — the page is gone, ` +
+            `hidden, or under moderation. (${nonEmptyLookups} other mods in ` +
+            `this run answered normally, so this is the mod, not the check.)`
+          : "Nexus returned no file list, and too little else answered to " +
+            "tell whether that means the mod is gone.",
+      });
+    }
   }
 
   return { findings, modsChecked, gaveUpEarly };
