@@ -294,6 +294,30 @@ export function summarizeAvailability(
         `${blocked === 1 ? "it" : "them"}.`,
     );
   }
+  // Split, because the two mean different things and the difference is the
+  // curator's whole decision. A tidied-up old version is an author shipping
+  // v2.1; a vanished mod page is an author or a moderator deliberately taking
+  // the mod out of circulation. Same "cannot download" outcome, opposite
+  // stories about what the curator should do next.
+  if (fileMissing.length > 0) {
+    lines.push(
+      `${fileMissing.length} of those ${
+        fileMissing.length === 1 ? "is a file that is" : "are files that are"
+      } gone while the mod page is still up — usually an author cleaning up ` +
+        `an old version after an update. A newer file is probably available, ` +
+        `but it is not the one you tested.`,
+    );
+  }
+  if (modMissing.length > 0) {
+    lines.push(
+      `${modMissing.length} of those ${
+        modMissing.length === 1 ? "is a mod whose page" : "are mods whose pages"
+      } no longer exist${modMissing.length === 1 ? "s" : ""} at all. That is ` +
+        `usually deliberate — an author pulling their work, or moderation — ` +
+        `so treat ${modMissing.length === 1 ? "it" : "them"} as removed on ` +
+        `purpose rather than as something to work around.`,
+    );
+  }
   if (oldVersion.length > 0) {
     lines.push(
       `${oldVersion.length} file${oldVersion.length === 1 ? " is" : "s are"} ` +

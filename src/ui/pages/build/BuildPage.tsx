@@ -854,6 +854,19 @@ export function AvailabilityPanel(props: {
             >
               {blocked.map((f) => (
                 <li key={f.compareKey}>
+                  {/* Which of the two, per mod: "old version tidied up" and
+                      "page taken down" read identically as a download
+                      failure and mean opposite things. */}
+                  <span
+                    style={{
+                      color:
+                        f.status === "mod-missing"
+                          ? "var(--eh-danger)"
+                          : "var(--eh-warning)",
+                    }}
+                  >
+                    {f.status === "mod-missing" ? "page gone" : "file gone"}
+                  </span>{" "}
                   {f.name} — mod {f.modId}, file {f.fileId}
                 </li>
               ))}

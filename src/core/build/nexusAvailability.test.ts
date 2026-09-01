@@ -244,3 +244,45 @@ describe("summarizeAvailability", () => {
     expect(s.lines[0]!.toLowerCase()).toContain("today, not");
   });
 });
+
+describe("telling the two kinds of 'gone' apart", () => {
+  // They produce the identical download failure and mean opposite things, and
+  // the difference is the curator's whole decision about what to do next:
+  //
+  //   file-missing  the page is up, this version was tidied away after an
+  //                 update — benign, and a newer file probably exists
+  //   mod-missing   the page itself is gone — usually an author pulling their
+  //                 work or a moderation action, i.e. removed ON PURPOSE
+  //
+  // Reporting them as one number ("2 mods cannot be downloaded") hides the
+  // only signal that separates "grab the new version" from "leave it alone".
+  const f = (status: NexusAvailability, n = 1): AvailabilityFinding[] =>
+    Array.from({ length: n }, (_, i) => ({
+      ...entry(i + 1, 1),
+      status,
+    }));
+
+  it("says an old version was probably just cleaned up after an update", () => {
+    const lines = summarizeAvailability(f("file-missing", 3)).lines.join(" ");
+    expect(lines).toContain("mod page is still up");
+    expect(lines.toLowerCase()).toContain("not the one you tested");
+  });
+
+  it("says a vanished page is probably deliberate", () => {
+    const lines = summarizeAvailability(f("mod-missing", 2)).lines.join(" ");
+    expect(lines.toLowerCase()).toContain("deliberate");
+    expect(lines.toLowerCase()).toContain("removed on purpose");
+  });
+
+  it("keeps the combined headline and then breaks it down", () => {
+    const s = summarizeAvailability([...f("file-missing", 3), ...f("mod-missing", 2)]);
+    expect(s.lines[0]).toContain("5 mods");
+    expect(s.lines.join(" ")).toContain("3 of those");
+    expect(s.lines.join(" ")).toContain("2 of those");
+  });
+
+  it("says nothing about a kind that did not occur", () => {
+    const lines = summarizeAvailability(f("file-missing", 1)).lines.join(" ");
+    expect(lines.toLowerCase()).not.toContain("deliberate");
+  });
+});
