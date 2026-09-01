@@ -792,6 +792,13 @@ export function AvailabilityPanel(props: {
   const blocked = (result?.findings ?? []).filter(
     (f) => f.status === "file-missing" || f.status === "mod-missing",
   );
+  // Listed too, quietly. Saying "21 files are old versions" and not saying
+  // WHICH is the same failure as reporting a missing file with no replacement:
+  // a problem stated with nothing to act on. These are the ones to update
+  // BEFORE an author deletes them, and that is only possible by name.
+  const fragile = (result?.findings ?? []).filter(
+    (f) => f.status === "old-version",
+  );
 
   return (
     <Card title="Can your users still download these mods?">
@@ -803,9 +810,9 @@ export function AvailabilityPanel(props: {
           lineHeight: "var(--eh-leading-relaxed)",
         }}
       >
-        Your own copies are on disk, so a mod Nexus has since deleted still
-        packs and ships — and then fails for everyone else. This asks Nexus
-        about each mod, once per mod page.
+        You already have every mod on disk, so one that Nexus has since
+        deleted packs and ships perfectly — and then fails for everyone else.
+        This asks Nexus about each mod, one request per mod page.
       </p>
 
       <div style={{ marginTop: "var(--eh-sp-3)" }}>
@@ -880,6 +887,44 @@ export function AvailabilityPanel(props: {
                 </li>
               ))}
             </ul>
+          )}
+
+          {fragile.length > 0 && (
+            <details style={{ marginTop: "var(--eh-sp-3)" }}>
+              <summary
+                style={{
+                  cursor: "pointer",
+                  color: "var(--eh-text-muted)",
+                  fontSize: "var(--eh-text-xs)",
+                  letterSpacing: "var(--eh-tracking-wide)",
+                  textTransform: "uppercase",
+                  fontWeight: 600,
+                }}
+              >
+                Show the {fragile.length} old or archived file
+                {fragile.length === 1 ? "" : "s"}
+              </summary>
+              <ul
+                style={{
+                  margin: "var(--eh-sp-2) 0 0 0",
+                  paddingLeft: "var(--eh-sp-4)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 2,
+                  fontSize: "var(--eh-text-xs)",
+                  fontFamily: "var(--eh-font-mono)",
+                  color: "var(--eh-text-muted)",
+                  maxHeight: 220,
+                  overflowY: "auto",
+                }}
+              >
+                {fragile.map((f) => (
+                  <li key={f.compareKey}>
+                    {f.name} — mod {f.modId}, file {f.fileId}
+                  </li>
+                ))}
+              </ul>
+            </details>
           )}
         </div>
       )}

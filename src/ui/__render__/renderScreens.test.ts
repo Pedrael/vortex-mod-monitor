@@ -617,41 +617,46 @@ describe("render", () => {
   // The curator-side availability check. Rendered with a result that has
   // something wrong in it — a panel screenshotted in its happy state shows
   // the layout that never needed checking.
-  it.skipIf(!on)("build-availability — what users cannot download", () => {
+  // The curator's FIRST REAL RUN, verbatim: 2 blocked (both file-gone, both
+  // with a replacement), 21 old-version, 8 unchecked. Invented round numbers
+  // would have hidden the wording bug this reproduces — "2 of those… 2 of
+  // these…" only looks wrong when the two counts are the same two mods.
+  it.skipIf(!on)("build-availability — the curator's real first run", () => {
     const finding = (
       modId: number,
       fileId: number,
       name: string,
       status: string,
-    ) => ({ compareKey: `nexus:${modId}:${fileId}`, name, modId, fileId, status });
+      replacement?: { fileId: number; version: string },
+    ) => ({
+      compareKey: `nexus:${modId}:${fileId}`,
+      name,
+      modId,
+      fileId,
+      status,
+      ...(replacement !== undefined ? { replacement } : {}),
+    });
+    const findings = [
+      finding(69882, 406478, "Reapers Robco Munitions Patches-69882-5-2-1759089401", "file-missing", { fileId: 409332, version: "6.2" }),
+      finding(4598, 270951, "Unofficial Fallout 4 Patch-4598-2-1-5-1679096028", "file-missing", { fileId: 407774, version: "2.2.2a" }),
+      ...Array.from({ length: 21 }, (_, i) =>
+        finding(50000 + i, 300000 + i, `Old version mod ${i}`, "old-version"),
+      ),
+      ...Array.from({ length: 8 }, (_, i) =>
+        finding(60000 + i, 310000 + i, `Unchecked mod ${i}`, "unknown"),
+      ),
+      ...Array.from({ length: 895 }, (_, i) =>
+        finding(70000 + i, 320000 + i, `Fine mod ${i}`, "available"),
+      ),
+    ];
     write(
       "build-availability",
       React.createElement(AvailabilityPanel, {
         onCheck: () => undefined,
         result: {
           checkedAt: new Date().toISOString(),
-          findings: [
-            finding(98669, 375818, "Crazy Wasteland - New Magazines - FRI Files", "file-missing"),
-            finding(82232, 314623, "Colletible Magazines and Post Cards Replacer", "mod-missing"),
-            ...Array.from({ length: 40 }, (_, i) =>
-              finding(1000 + i, 2000 + i, `Old version mod ${i}`, "old-version"),
-            ),
-            ...Array.from({ length: 880 }, (_, i) =>
-              finding(3000 + i, 4000 + i, `Fine mod ${i}`, "available"),
-            ),
-          ],
-          summary: summarizeAvailability([
-            { compareKey: "a", name: "a", modId: 1, fileId: 1, status: "file-missing" },
-            { compareKey: "b", name: "b", modId: 2, fileId: 2, status: "mod-missing" },
-            ...Array.from({ length: 40 }, (_, i) => ({
-              compareKey: `o${i}`, name: `o${i}`, modId: i, fileId: i,
-              status: "old-version" as const,
-            })),
-            ...Array.from({ length: 4 }, (_, i) => ({
-              compareKey: `u${i}`, name: `u${i}`, modId: i, fileId: i,
-              status: "unknown" as const,
-            })),
-          ]),
+          findings,
+          summary: summarizeAvailability(findings as never),
         },
       } as never),
     );

@@ -10,6 +10,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   checkNexusAvailability,
+  subjectOf,
   classifyFile,
   fileIdOf,
   summarizeAvailability,
@@ -281,8 +282,10 @@ describe("telling the two kinds of 'gone' apart", () => {
   it("keeps the combined headline and then breaks it down", () => {
     const s = summarizeAvailability([...f("file-missing", 3), ...f("mod-missing", 2)]);
     expect(s.lines[0]).toContain("5 mods");
-    expect(s.lines.join(" ")).toContain("3 of those");
-    expect(s.lines.join(" ")).toContain("2 of those");
+    // "of them", not "of those" — see subjectOf. Still a genuine subset here,
+    // so the numbers do appear.
+    expect(s.lines.join(" ")).toContain("3 of them");
+    expect(s.lines.join(" ")).toContain("2 of them");
   });
 
   it("says nothing about a kind that did not occur", () => {
@@ -342,7 +345,10 @@ describe("what to move to when a file was tidied away", () => {
         replacement: { fileId: 900, version: "2.1" },
       },
     ]).lines.join(" ");
-    expect(lines).toContain("1 of them has");
+    // One blocked mod, and it is the one with a replacement — so "It has",
+    // not "1 of them has". Saying the count of a set of one is the template
+    // showing through.
+    expect(lines).toContain("It has a current main file");
     expect(lines.toLowerCase()).toContain("not the version you tested");
     expect(lines.toLowerCase()).toContain("rebuild");
   });
@@ -352,5 +358,57 @@ describe("what to move to when a file was tidied away", () => {
       { ...entry(1, 1), status: "file-missing" },
     ]).lines.join(" ");
     expect(lines.toLowerCase()).not.toContain("could move to");
+  });
+});
+
+describe("subjectOf", () => {
+  // The report is about two or three things nearly every time, and it is
+  // usually ALL of them. "2 of those are files that are gone. 2 of these have
+  // a current main file." — same two mods, the number said twice, reading like
+  // a template being filled rather than someone who looked.
+  it("does not repeat a count that means 'all of them'", () => {
+    expect(subjectOf(1, 1)).toBe("It");
+    expect(subjectOf(2, 2)).toBe("Both");
+    expect(subjectOf(5, 5)).toBe("All 5");
+  });
+
+  it("says the count when it really is a subset", () => {
+    expect(subjectOf(2, 5)).toBe("2 of them");
+    expect(subjectOf(1, 3)).toBe("1 of them");
+  });
+});
+
+describe("the reported wording, on the reported data", () => {
+  // The exact shape from the curator's first real run: two blocked mods, both
+  // file-gone, both with a replacement.
+  const twoBlocked: AvailabilityFinding[] = [
+    {
+      ...entry(69882, 406478, "Reapers Robco Munitions Patches"),
+      status: "file-missing",
+      replacement: { fileId: 409332, version: "6.2" },
+    },
+    {
+      ...entry(4598, 270951, "Unofficial Fallout 4 Patch"),
+      status: "file-missing",
+      replacement: { fileId: 407774, version: "2.2.2a" },
+    },
+  ];
+
+  it("says 'Both' rather than the number, twice", () => {
+    const text = summarizeAvailability(twoBlocked).lines.join(" ");
+    expect(text).toContain("Both are files that are gone");
+    expect(text).toContain("Both have a current main file");
+    expect(text).not.toContain("2 of those");
+    expect(text).not.toContain("2 of these");
+  });
+
+  it("still counts properly when only some have a replacement", () => {
+    const mixed: AvailabilityFinding[] = [
+      twoBlocked[0]!,
+      { ...twoBlocked[1]!, replacement: undefined },
+    ];
+    const text = summarizeAvailability(mixed).lines.join(" ");
+    expect(text).toContain("Both are files that are gone");
+    expect(text).toContain("1 of them has a current main file");
   });
 });

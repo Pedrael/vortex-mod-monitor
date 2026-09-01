@@ -305,6 +305,21 @@ export async function checkNexusAvailability(
   return { findings, modsChecked, gaveUpEarly };
 }
 
+/**
+ * "It", "Both", "All 5" or "3 of them" — whichever is actually true.
+ *
+ * The counts here are usually small and usually ALL of the set, and a report
+ * that says "2 of those… 2 of these…" about the same two things reads like a
+ * machine filling a template. Saying "Both" once is the same information and
+ * sounds like someone who looked.
+ */
+export function subjectOf(n: number, total: number): string {
+  if (n !== total) return `${n} of them`;
+  if (n === 1) return "It";
+  if (n === 2) return "Both";
+  return `All ${n}`;
+}
+
 export interface AvailabilitySummary {
   available: number;
   oldVersion: number;
@@ -354,13 +369,13 @@ export function summarizeAvailability(
       (f) => f.replacement !== undefined,
     ).length;
     lines.push(
-      `${fileMissing.length} of those ${
+      `${subjectOf(fileMissing.length, blocked)} ${
         fileMissing.length === 1 ? "is a file that is" : "are files that are"
       } gone while the mod page is still up — usually an author cleaning up ` +
         `an old version after an update.${
           replaceable > 0
-            ? ` ${replaceable} of ${
-                fileMissing.length === 1 ? "them has" : "these have"
+            ? ` ${subjectOf(replaceable, fileMissing.length)} ${
+                replaceable === 1 ? "has" : "have"
               } a current main file you could move to, but it is not the ` +
               `version you tested — update the mod in Vortex and rebuild ` +
               `rather than assuming the new one behaves the same.`
@@ -370,7 +385,7 @@ export function summarizeAvailability(
   }
   if (modMissing.length > 0) {
     lines.push(
-      `${modMissing.length} of those ${
+      `${subjectOf(modMissing.length, blocked)} ${
         modMissing.length === 1 ? "is a mod whose page" : "are mods whose pages"
       } no longer exist${modMissing.length === 1 ? "s" : ""} at all. That is ` +
         `usually deliberate — an author pulling their work, or moderation — ` +
