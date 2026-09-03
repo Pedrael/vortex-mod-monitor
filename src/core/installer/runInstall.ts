@@ -1938,6 +1938,8 @@ async function runInstallImpl(ctx: DriverContext): Promise<InstallResult> {
       // otherwise succeeded — it only means this one check has no answer.
     }
 
+    ehLog("info", "install.phase", { phase: "checking-mod-types" });
+
     // ── 7b2. did each mod install as the right KIND of mod? ─────────
     // Vortex derives modType from the archive and we do not override it —
     // it owns the concept. But when its answer differs from the curator's,
@@ -1991,6 +1993,7 @@ async function runInstallImpl(ctx: DriverContext): Promise<InstallResult> {
     }
 
     // ── 8. write receipt ────────────────────────────────────────────
+    ehLog("info", "install.phase", { phase: "writing-receipt" });
     reportProgress("writing-receipt", 0, 1, "Writing install receipt...");
 
     // ── has anything changed since WE installed it? ──────────────────
@@ -2063,6 +2066,24 @@ async function runInstallImpl(ctx: DriverContext): Promise<InstallResult> {
     let receiptPath: string;
     try {
       receiptPath = await writeReceiptWithRetry(ctx.appDataPath, receipt);
+      // The line whose ABSENCE cost a whole diagnosis.
+      //
+      // A successful run's last log line used to be `plugins.light-flags`,
+      // several steps before the end — so a log that stopped there was equally
+      // consistent with "finished perfectly" and "died silently", and there
+      // was no way to tell which from the artefact the user sends you. A
+      // tester's run ended exactly there and the question could not be
+      // answered at all.
+      ehLog("info", "install.complete", {
+        packageId: plan.manifest.package.id,
+        packageVersion: plan.manifest.package.version,
+        installed: installedMods.length,
+        carried: carriedMods.length,
+        skipped: skippedMods.length,
+        removed: removedMods.length,
+        durationMs: Date.now() - runStartedAtMs,
+        receiptPath,
+      });
     } catch (err) {
       const errMsg =
         err instanceof InstallLedgerError

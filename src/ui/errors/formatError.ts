@@ -23,6 +23,7 @@
  * `classifyUnknown` which still produces a usable bundle.
  */
 
+import { describeForeignError, isForeignError } from "./foreignError";
 import {
   BuildManifestError,
 } from "../../core/manifest/buildManifest";
@@ -121,6 +122,18 @@ export function formatError(
 
   if (options.context !== undefined) {
     base.context = pickStringContext(options.context);
+  }
+
+  // Say whose error it is, at the top of the hints, where the reader looks.
+  //
+  // Our global listeners catch the WHOLE renderer's failures, so a Vortex
+  // rejection used to arrive titled and styled as ours. A tester was told he
+  // had cancelled an install that had completed every step. Detected from the
+  // stack rather than asserted here — see foreignError.ts, which resolves any
+  // doubt towards "ours" on purpose.
+  if (isForeignError(err)) {
+    base.title = `${base.title} (from Vortex)`;
+    base.hints = [describeForeignError(), ...base.hints];
   }
 
   return base;

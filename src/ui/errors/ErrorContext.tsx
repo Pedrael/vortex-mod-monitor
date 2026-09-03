@@ -21,6 +21,7 @@
  * it's safe to put in `useEffect` dependency arrays.
  */
 
+import { isForeignError } from "./foreignError";
 import * as React from "react";
 
 import { ErrorReportModal } from "./ErrorReportModal";
@@ -119,10 +120,18 @@ export function ErrorProvider(props: ErrorProviderProps): JSX.Element {
   React.useEffect(() => {
     if (!installWindowHandlers) return;
 
+    // These listeners are the WHOLE renderer's, not ours. Anything that fails
+    // anywhere in Vortex or in another extension arrives here, and used to be
+    // presented as an Event Horizon error — a tester was told he had cancelled
+    // an install that had in fact completed, by a dialog reporting a rejection
+    // raised inside Vortex's own promise machinery. Still caught, because a
+    // silent unhandled rejection is worse; no longer claimed.
     const onError = (event: ErrorEvent): void => {
-      report(event.error ?? event.message ?? "Unknown window error", {
+      const err = event.error ?? event.message ?? "Unknown window error";
+      report(err, {
         context: {
           source: "window.error",
+          origin: isForeignError(err) ? "vortex" : "event-horizon",
           filename: event.filename,
           line: event.lineno,
           column: event.colno,
@@ -134,6 +143,7 @@ export function ErrorProvider(props: ErrorProviderProps): JSX.Element {
       report(event.reason, {
         context: {
           source: "window.unhandledrejection",
+          origin: isForeignError(event.reason) ? "vortex" : "event-horizon",
         },
       });
     };
