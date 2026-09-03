@@ -46,6 +46,7 @@ import {
 } from "./engine";
 import type { ConflictChoice, OrphanChoice } from "../../../types/installDriver";
 import type { FomodReplayMode } from "../../../core/installer/fomodReplayMode";
+import { blocksInstall as autoDeployBlocks } from "../../../core/installer/autoDeploy";
 import { probeDeploymentMethod } from "../../../core/installer/probeDeployment";
 import {
   fillDefaultConflictChoices,
@@ -578,6 +579,28 @@ class InstallSession {
     // working install because it could not run its own check does more damage
     // than the failure it guards, and the driver still stops at the first real
     // occurrence.
+    // THE THIRD GATE. Vortex's auto-deploy runs a deployment every time the
+    // mod list changes — up to 967 of them here — and, worse than slow, one
+    // can land BEFORE the collection's conflict rules are applied, linking the
+    // wrong winner for every shared file. Every hash still matches afterwards,
+    // which is what makes it the failure this project exists to prevent.
+    //
+    // Unlike the other two, this one is a boolean we can set, so it is offered
+    // rather than described.
+    // Read defensively for the same reason the plan shape is: a gate that
+    // THROWS fails closed in the worst way, killing the install with a
+    // TypeError instead of the thing it was guarding against.
+    let liveState: unknown;
+    try {
+      liveState = api.getState();
+    } catch {
+      liveState = undefined;
+    }
+    if (autoDeployBlocks(liveState)) {
+      void this.offerDisableAutoDeploy(api);
+      return;
+    }
+
     // Read defensively. Failing open is the rule for this whole check, and a
     // gate that THROWS on an unfamiliar plan shape fails closed in the worst
     // way — it takes down the install with a TypeError instead of the thing it
@@ -668,6 +691,49 @@ class InstallSession {
       { text: described.body },
       [{ label: "Close" }],
     );
+  }
+
+  /**
+   * Offer to turn auto-deployment off, then continue.
+   *
+   * Offered, not done: it is the user's Vortex. And left off afterwards rather
+   * than restored — a setting quietly changed back at the end of an hour-long
+   * run is a worse surprise than one left where they agreed to put it.
+   */
+  private async offerDisableAutoDeploy(
+    api: types.IExtensionApi,
+  ): Promise<void> {
+    if (this.state.kind !== "confirm") return;
+    const modCount = this.state.bundle.plan.modResolutions.length;
+    const [{ describeAutoDeployBlock }, { ehLog }, vortex] = await Promise.all([
+      import("../../../core/installer/autoDeploy"),
+      import("../../../core/logging/ehLog"),
+      import("@nexusmods/vortex-api"),
+    ]);
+    const described = describeAutoDeployBlock(modCount);
+    ehLog("warn", "install.blocked.auto-deploy", { modCount });
+
+    const result = await api.showDialog?.(
+      "question",
+      described.title,
+      { text: described.body },
+      [{ label: described.decline }, { label: described.confirm }],
+    );
+    if (result?.action !== described.confirm) return;
+
+    try {
+      api.store?.dispatch(vortex.actions.setAutoDeployment(false));
+      ehLog("info", "install.auto-deploy-disabled", {});
+    } catch (err) {
+      ehLog("warn", "install.auto-deploy-disable-failed", {
+        error: String(err),
+      });
+      return;
+    }
+    // Straight on: the user has just agreed to install, and making them click
+    // Install a second time after answering a question they did not raise is
+    // the kind of friction that reads as a bug.
+    this.startInstall(api);
   }
 
   /**

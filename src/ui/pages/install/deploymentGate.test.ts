@@ -110,3 +110,47 @@ describe("startInstall — deployment gate", () => {
     expect(kindOf(s)).toBe("installing");
   });
 });
+
+describe("startInstall — auto-deploy gate", () => {
+  // Vortex's auto-deploy runs a deployment every time the mod list changes.
+  // One of those can land before the collection's conflict rules are applied,
+  // linking the wrong winner for every shared file — with every hash still
+  // matching afterwards.
+  it("refuses to start while auto-deploy is on", () => {
+    probeResult = { kind: "ok", methodId: "hardlink_activator" };
+    const { api } = fakeApi();
+    const s = confirmSession();
+    (s as unknown as { state: { bundle: PreviewBundle } }).state.bundle = {
+      ...bundle(),
+    } as PreviewBundle;
+    // Vortex reports auto-deploy ON.
+    const withAutoDeploy = {
+      ...(api as unknown as object),
+      getState: () => ({ settings: { automation: { deploy: true } } }),
+    } as never;
+    s.startInstall(withAutoDeploy);
+    expect(kindOf(s)).toBe("confirm");
+  });
+
+  it("starts when auto-deploy is off", () => {
+    probeResult = { kind: "ok", methodId: "hardlink_activator" };
+    const { api } = fakeApi();
+    const s = confirmSession();
+    const withoutAutoDeploy = {
+      ...(api as unknown as object),
+      getState: () => ({ settings: { automation: { deploy: false } } }),
+    } as never;
+    s.startInstall(withoutAutoDeploy);
+    expect(kindOf(s)).toBe("installing");
+  });
+
+  it("starts when the setting cannot be read", () => {
+    // Fail open, like the deployment-method gate: a check that cannot run must
+    // not refuse a working install.
+    probeResult = { kind: "ok", methodId: "hardlink_activator" };
+    const { api } = fakeApi();
+    const s = confirmSession();
+    s.startInstall(api);
+    expect(kindOf(s)).toBe("installing");
+  });
+});
