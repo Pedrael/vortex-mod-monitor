@@ -218,7 +218,20 @@ export function Modal(props: ModalProps): JSX.Element | null {
         )}
         <div
           style={{
-            flex: 1,
+            // `1 1 auto`, NOT `flex: 1`.
+            //
+            // `flex: 1` is shorthand for `1 1 0%`, and a zero basis makes this
+            // body contribute NOTHING to the card's intrinsic height. The card
+            // sets maxHeight but no height, so it then shrank to header +
+            // footer and the body got whatever was left — a sliver, with the
+            // content scrolling inside it. A collection's detail modal showed
+            // three stat cards clipped mid-word above the buttons.
+            //
+            // With an auto basis the body contributes its content height, the
+            // card grows to fit it, maxHeight still caps the whole thing, and
+            // the overflow below only engages once there is genuinely too much.
+            flex: "1 1 auto",
+            minHeight: 0,
             overflowY: "auto",
             padding: "var(--eh-sp-5)",
           }}

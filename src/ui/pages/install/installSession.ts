@@ -287,16 +287,69 @@ class InstallSession {
    */
   openDecisionsFromPreview(): void {
     if (this.state.kind !== "preview") return;
+    const bundle = this.state.bundle;
     this.dispatch({
       type: "open-decisions",
-      bundle: this.state.bundle,
+      bundle,
       conflictChoices: {},
       orphanChoices: {},
     });
+
+    // Pre-fill the answers this collection was given last time, for the files
+    // that are STILL THERE. Checked rather than trusted: a stale path fails
+    // silently, pre-filling an answer nobody re-confirms and installing from a
+    // file that has moved or changed. A missing one is simply asked again.
+    void (async (): Promise<void> => {
+      const { readSourceMemory, usableSources } = await import(
+        "../../../core/installer/sourceMemory"
+      );
+      const remembered = await usableSources(
+        await readSourceMemory(
+          bundle.appDataPath,
+          bundle.plan.manifest.package.id,
+        ),
+      );
+      if (this.state.kind !== "decisions") return;
+      for (const [compareKey, source] of Object.entries(remembered)) {
+        // Never overwrite something the user has already touched on this
+        // screen — they may have started answering before this resolved.
+        if (this.state.conflictChoices[compareKey] !== undefined) continue;
+        this.dispatch({
+          type: "set-conflict-choice",
+          compareKey,
+          choice: { kind: "use-local-file", localPath: source.path },
+        });
+      }
+    })();
   }
 
   setConflictChoice(compareKey: string, choice: ConflictChoice): void {
     this.dispatch({ type: "set-conflict-choice", compareKey, choice });
+
+    // Remember where the user found this mod, NOW rather than at the end.
+    //
+    // The run that most needs this is the one that does not finish: recording
+    // on success would remember only the answers already paid off by a
+    // completed install, and forget exactly the ones the user would have to
+    // give again. A tester with two dozen external mods had to re-supply every
+    // one of them to resume.
+    if (choice.kind !== "use-local-file") return;
+    const bundle =
+      this.state.kind === "decisions" || this.state.kind === "confirm"
+        ? this.state.bundle
+        : undefined;
+    if (bundle === undefined) return;
+    void (async (): Promise<void> => {
+      const { rememberSource } = await import(
+        "../../../core/installer/sourceMemory"
+      );
+      await rememberSource(
+        bundle.appDataPath,
+        bundle.plan.manifest.package.id,
+        compareKey,
+        choice.localPath,
+      );
+    })();
   }
 
   setOrphanChoice(modId: string, choice: OrphanChoice): void {
