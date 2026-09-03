@@ -46,6 +46,7 @@ import {
 } from "./engine";
 import type { ConflictChoice, OrphanChoice } from "../../../types/installDriver";
 import type { FomodReplayMode } from "../../../core/installer/fomodReplayMode";
+import { probeDeploymentMethod } from "../../../core/installer/probeDeployment";
 import {
   fillDefaultConflictChoices,
   fillDefaultOrphanChoices,
@@ -513,6 +514,32 @@ class InstallSession {
       return;
     }
 
+    // THE SECOND GATE, and the same lesson one stage further on.
+    //
+    // Vortex can stage every mod perfectly and still have no way to LINK them
+    // into the game folder. A tester lost seventy minutes to exactly that: 963
+    // mods staged, nothing deployed, and the first sign of it had appeared an
+    // hour earlier on mod 489. Asked here it costs one synchronous call.
+    //
+    // Only `none` blocks. `unknown` proceeds — a preflight that refuses a
+    // working install because it could not run its own check does more damage
+    // than the failure it guards, and the driver still stops at the first real
+    // occurrence.
+    // Read defensively. Failing open is the rule for this whole check, and a
+    // gate that THROWS on an unfamiliar plan shape fails closed in the worst
+    // way — it takes down the install with a TypeError instead of the thing it
+    // was guarding against.
+    const gateGameId = (
+      this.state.bundle.plan as { manifest?: { game?: { id?: unknown } } }
+    )?.manifest?.game?.id;
+    if (typeof gateGameId === "string" && gateGameId.length > 0) {
+      const deployment = probeDeploymentMethod({ api, gameId: gateGameId });
+      if (deployment.kind === "none") {
+        void this.warnNoDeploymentMethod(api);
+        return;
+      }
+    }
+
     this.installInFlight = true;
     const controller = new AbortController();
     this.installController = controller;
@@ -554,6 +581,40 @@ class InstallSession {
         });
       }
     })();
+  }
+
+  /**
+   * Tell the user deployment is impossible, before they spend the hour.
+   *
+   * A plain dialog rather than an offer to repair: unlike the 7-Zip runtimes,
+   * this is a Vortex SETTING for their machine and their filesystem layout,
+   * and picking one on their behalf could silently change how every mod they
+   * already have is linked. Naming the exact screen is the most we should do.
+   */
+  private async warnNoDeploymentMethod(
+    api: types.IExtensionApi,
+  ): Promise<void> {
+    const { looksLikeWine } = await import(
+      "../../../core/installer/checkSevenZipHealth"
+    );
+    const { describeDeploymentBlock } = await import(
+      "../../../core/installer/probeDeployment"
+    );
+    const { ehLog } = await import("../../../core/logging/ehLog");
+    const described = describeDeploymentBlock(looksLikeWine());
+    ehLog("warn", "install.blocked.no-deployment-method", {
+      gameId:
+        this.state.kind === "confirm"
+          ? (this.state.bundle.plan as { manifest?: { game?: { id?: string } } })
+              ?.manifest?.game?.id
+          : undefined,
+    });
+    await api.showDialog?.(
+      "error",
+      described.title,
+      { text: described.body },
+      [{ label: "Close" }],
+    );
   }
 
   /**
