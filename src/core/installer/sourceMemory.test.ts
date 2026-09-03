@@ -108,30 +108,49 @@ describe("refusing to fail an install", () => {
 });
 
 describe("usableSources", () => {
+  const stamped = { size: 100, mtimeMs: 5 };
   const mem = {
-    gone: { path: "C:/gone.7z", rememberedAt: "" },
-    here: { path: "C:/here.7z", rememberedAt: "" },
+    gone: { path: "C:/gone.7z", rememberedAt: "", ...stamped },
+    here: { path: "C:/here.7z", rememberedAt: "", ...stamped },
   };
+  const present = async (p: string) =>
+    p === "C:/here.7z" ? stamped : undefined;
 
   it("drops answers whose file is no longer there", async () => {
-    // The load-bearing rule. Drives get unplugged and folders get tidied; a
-    // pre-filled answer pointing at nothing is worse than asking again,
-    // because nobody re-confirms a field that looks already answered.
-    const usable = await usableSources(mem, async (p) => p === "C:/here.7z");
-    expect(Object.keys(usable)).toEqual(["here"]);
+    // Drives get unplugged and folders get tidied; a pre-filled answer
+    // pointing at nothing is worse than asking again, because nobody
+    // re-confirms a field that looks already answered.
+    expect(Object.keys(await usableSources(mem, present))).toEqual(["here"]);
   });
 
-  it("keeps them all when they all exist", async () => {
-    expect(Object.keys(await usableSources(mem, async () => true)).sort()).toEqual(
-      ["gone", "here"],
-    );
+  it("drops an answer whose file CHANGED under the same name", async () => {
+    // The reason a path alone is not enough. Names get reused. Offering back a
+    // different archive under a compareKey naming a specific sha256 is caught
+    // eventually — by archive identity, or by verifying staged files — but
+    // only after installing the wrong mod, and it surfaces as a puzzling
+    // verification failure rather than "the file you picked has changed".
+    const changed = async () => ({ size: 999, mtimeMs: 5 });
+    expect(await usableSources(mem, changed)).toEqual({});
+    const touched = async () => ({ size: 100, mtimeMs: 99 });
+    expect(await usableSources(mem, touched)).toEqual({});
   });
 
-  it("returns nothing when none exist", async () => {
-    expect(await usableSources(mem, async () => false)).toEqual({});
+  it("keeps an answer whose file is byte-for-byte where it was", async () => {
+    expect(
+      Object.keys(await usableSources(mem, async () => stamped)).sort(),
+    ).toEqual(["gone", "here"]);
+  });
+
+  it("keeps an OLD entry that has no fingerprint at all", async () => {
+    // Written before fingerprints existed. "Cannot compare" is not "does not
+    // match", and forgetting a good answer has a cost too.
+    const legacy = { a: { path: "C:/a.7z", rememberedAt: "" } };
+    expect(
+      Object.keys(await usableSources(legacy, async () => ({ size: 1, mtimeMs: 2 }))),
+    ).toEqual(["a"]);
   });
 
   it("handles an empty memory", async () => {
-    expect(await usableSources({}, async () => true)).toEqual({});
+    expect(await usableSources({}, async () => stamped)).toEqual({});
   });
 });

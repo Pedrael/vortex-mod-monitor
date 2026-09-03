@@ -39,6 +39,26 @@ export interface RememberedSource {
   path: string;
   /** ISO-8601 UTC, so a stale entry can be reasoned about later. */
   rememberedAt: string;
+  /**
+   * Size and mtime of the file when the user chose it.
+   *
+   * The path alone is not enough. A path that still EXISTS is not necessarily
+   * the same file — folders get reorganised and names get reused, and a
+   * pre-filled answer is the one field nobody re-reads. Offering back a
+   * different archive under a compareKey that names a specific sha256 is
+   * caught eventually (by archive identity, or by verifying the staged files)
+   * but only AFTER installing the wrong mod, and it surfaces as a puzzling
+   * verification failure rather than "the file you picked has changed".
+   *
+   * Same fingerprint the archive hash cache uses — `path|size|mtime` — and
+   * cheap for the same reason: one stat, no reading.
+   *
+   * Optional because entries written before this existed have no fingerprint,
+   * and those still work: absent means "cannot compare", which is treated as
+   * usable rather than discarded. Forgetting a good answer has a cost too.
+   */
+  size?: number;
+  mtimeMs?: number;
 }
 
 /** compareKey → where the user said that mod lives. */
@@ -68,9 +88,13 @@ export async function readSourceMemory(
       const p = (value as { path?: unknown })?.path;
       if (typeof p !== "string" || p.length === 0) continue;
       const at = (value as { rememberedAt?: unknown })?.rememberedAt;
+      const size = (value as { size?: unknown })?.size;
+      const mtimeMs = (value as { mtimeMs?: unknown })?.mtimeMs;
       out[key] = {
         path: p,
         rememberedAt: typeof at === "string" ? at : "",
+        ...(typeof size === "number" ? { size } : {}),
+        ...(typeof mtimeMs === "number" ? { mtimeMs } : {}),
       };
     }
     return out;
@@ -96,9 +120,14 @@ export async function rememberSource(
 ): Promise<void> {
   try {
     const current = await readSourceMemory(appDataPath, packageId);
+    // Best-effort: a file we cannot stat is still worth remembering by path.
+    const stat = await fsp.stat(filePath).catch(() => undefined);
     current[compareKey] = {
       path: filePath,
       rememberedAt: new Date().toISOString(),
+      ...(stat !== undefined
+        ? { size: stat.size, mtimeMs: Math.floor(stat.mtimeMs) }
+        : {}),
     };
     const dir = getSourceMemoryDir(appDataPath);
     await fsp.mkdir(dir, { recursive: true });
@@ -123,15 +152,24 @@ export async function rememberSource(
  */
 export async function usableSources(
   memory: SourceMemory,
-  exists: (p: string) => Promise<boolean> = async (p) =>
-    fsp
-      .access(p)
-      .then(() => true)
-      .catch(() => false),
+  inspect: (p: string) => Promise<{ size: number; mtimeMs: number } | undefined> =
+    async (p) =>
+      fsp
+        .stat(p)
+        .then((st) => ({ size: st.size, mtimeMs: Math.floor(st.mtimeMs) }))
+        .catch(() => undefined),
 ): Promise<SourceMemory> {
   const out: SourceMemory = {};
   for (const [key, value] of Object.entries(memory)) {
-    if (await exists(value.path)) out[key] = value;
+    const now = await inspect(value.path);
+    if (now === undefined) continue; // gone: ask again
+    // No fingerprint recorded (an older entry) means we cannot compare, which
+    // is not the same as a mismatch. Keep it.
+    const known = value.size !== undefined && value.mtimeMs !== undefined;
+    if (known && (now.size !== value.size || now.mtimeMs !== value.mtimeMs)) {
+      continue; // same name, different file: ask again
+    }
+    out[key] = value;
   }
   return out;
 }
