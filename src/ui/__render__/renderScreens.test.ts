@@ -47,7 +47,10 @@ import { AvailabilityPanel, DonePanel } from "../pages/build/BuildPage";
 import { summarizeAvailability } from "../../core/build/nexusAvailability";
 import { DraftCard, PublishedCard } from "../pages/build/BuildDashboard";
 import { DashboardBody, Hero } from "../pages/HomePage";
-import { InterruptedInstalls } from "../pages/CollectionsPage";
+import {
+  FailedAttempts,
+  InterruptedInstalls,
+} from "../pages/CollectionsPage";
 import { DoctorPanel } from "../pages/doctor/DoctorPanel";
 import { evaluateHealth, healingBlockedReason } from "../../core/doctor/health";
 
@@ -282,6 +285,24 @@ describe("render", () => {
       React.createElement(
         "div",
         { className: "eh-page" },
+        React.createElement(FailedAttempts, {
+          attempts: [
+            {
+              packageId: "pkg-1",
+              packageName: "Ivy 2",
+              packageVersion: "1.0.12",
+              gameId: "fallout4",
+              endedAt: new Date(Date.now() - 3600_000).toISOString(),
+              outcome: "failed",
+              phase: "installing-mods",
+              installedCount: 963,
+              totalMods: 967,
+              error: "No deployment method active",
+              profileId: "2be7648d",
+            },
+          ],
+          onRetry: () => undefined,
+        } as never),
         React.createElement(InterruptedInstalls, {
           markers: [
             {

@@ -127,6 +127,10 @@ import type {
 } from "../../types/installPlan";
 import type { SupportedGameId } from "../../types/ehcoll";
 import { countMods, deployBudgetMs } from "./timeBudgets";
+import {
+  clearInstallAttempt,
+  writeInstallAttempt,
+} from "./attemptRecord";
 import { clearInstallMarker, writeInstallMarker } from "./installMarker";
 import { ehLog } from "../logging/ehLog";
 import { judgeReinstall } from "./judgeReinstall";
@@ -512,7 +516,69 @@ export function buildAbortedResult(args: {
   };
 }
 
+/**
+ * Run the install, and record how it ended.
+ *
+ * A thin wrapper around the driver so the outcome is observed in exactly ONE
+ * place. The alternatives were both worse: the driver has thirteen return
+ * paths, and `runInstall` has four callers — recording at either would be a
+ * rule spread across a dozen sites, which this file has already learned costs
+ * more than it saves.
+ */
 export async function runInstall(ctx: DriverContext): Promise<InstallResult> {
+  const result = await runInstallImpl(ctx);
+  await recordAttemptOutcome(ctx, result);
+  return result;
+}
+
+/**
+ * Persist (or clear) the record of this attempt. Never throws.
+ *
+ * A success DELETES any previous failure: a panel that keeps warning about a
+ * problem the user has just fixed teaches them to ignore it.
+ */
+async function recordAttemptOutcome(
+  ctx: DriverContext,
+  result: InstallResult,
+): Promise<void> {
+  const pkg = ctx.plan.manifest.package;
+  try {
+    if (result.kind === "success") {
+      await clearInstallAttempt(ctx.appDataPath, pkg.id);
+      return;
+    }
+    // Both remaining kinds carry `installedSoFar` — the list exists precisely
+    // so a stopped run can say what it left behind.
+    const installed = Array.isArray(result.installedSoFar)
+      ? result.installedSoFar.length
+      : 0;
+
+    await writeInstallAttempt(ctx.appDataPath, {
+      packageId: pkg.id,
+      packageName: pkg.name,
+      packageVersion: pkg.version,
+      gameId: ctx.plan.manifest.game.id,
+      endedAt: new Date().toISOString(),
+      outcome: result.kind === "aborted" ? "aborted" : "failed",
+      phase: typeof result.phase === "string" ? result.phase : "unknown",
+      installedCount: installed,
+      totalMods: ctx.plan.manifest.mods.length,
+      // Only `failed` carries an error; an abort is the user's own doing and
+      // has nothing to report beyond where it stopped.
+      ...(result.kind === "failed" && typeof result.error === "string"
+        ? { error: result.error }
+        : {}),
+      ...(typeof result.partialProfileId === "string"
+        ? { profileId: result.partialProfileId }
+        : {}),
+    });
+  } catch {
+    // The install has already ended. Losing the record of a failure is a far
+    // smaller harm than turning a partial install into a crash.
+  }
+}
+
+async function runInstallImpl(ctx: DriverContext): Promise<InstallResult> {
   const { plan, api } = ctx;
   const installedMods: InstalledModReportEntry[] = [];
   /**

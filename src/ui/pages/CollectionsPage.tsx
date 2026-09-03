@@ -37,6 +37,11 @@ import {
 } from "../components";
 import { ErrorBoundary, useErrorReporter, useErrorReporterFormatted } from "../errors";
 import {
+  describeInstallAttempt,
+  listInstallAttempts,
+  type InstallAttempt,
+} from "../../core/installer/attemptRecord";
+import {
   describeInterruptedInstall,
   getMarkerDir,
   listInterruptedInstalls,
@@ -66,6 +71,15 @@ interface LoadedState {
    * The marker is the missing half. It claims only that a run STARTED.
    */
   interrupted: InstallMarker[];
+  /**
+   * Installs that ended cleanly but did not succeed.
+   *
+   * Distinct from `interrupted`: that means the process DIED, this means it
+   * stopped and said why. Seven of the driver's eight failure paths return
+   * before the receipt is written, so without this a failed install is as
+   * invisible as a crashed one was.
+   */
+  failedAttempts: InstallAttempt[];
   errors: Array<{ filename: string; message: string }>;
 }
 
@@ -174,6 +188,104 @@ export function InterruptedInstalls(props: {
   );
 }
 
+/**
+ * Installs that stopped and said why.
+ *
+ * The sibling of {@link InterruptedInstalls}, and the more common case: a
+ * crash leaves a marker behind, but a clean failure returns before the receipt
+ * is written and used to leave nothing at all. A tester's run stopped at the
+ * deploy step with 963 of 967 mods staged, and this page showed him none of
+ * it.
+ *
+ * Quieter than the interrupted banner on purpose — it is a report, not an
+ * alarm, and the mods it describes are on disk and fine.
+ */
+export function FailedAttempts(props: {
+  attempts: readonly InstallAttempt[];
+  onRetry: () => void;
+}): JSX.Element | null {
+  if (props.attempts.length === 0) return null;
+  return (
+    <section
+      aria-label="Installs that did not finish"
+      style={{ marginBottom: "var(--eh-sp-4)" }}
+    >
+      {props.attempts.map((a) => (
+        <div
+          key={a.packageId}
+          style={{
+            display: "flex",
+            gap: "var(--eh-sp-3)",
+            alignItems: "flex-start",
+            padding: "var(--eh-sp-4)",
+            marginBottom: "var(--eh-sp-2)",
+            borderRadius: "var(--eh-radius-lg)",
+            background: "var(--eh-bg-elevated)",
+            border: "1px solid var(--eh-border-subtle)",
+          }}
+        >
+          <div className="eh-fill">
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--eh-sp-2)",
+                flexWrap: "wrap",
+                marginBottom: "var(--eh-sp-1)",
+              }}
+            >
+              <strong
+                style={{
+                  fontSize: "var(--eh-text-md)",
+                  color: "var(--eh-text-primary)",
+                }}
+              >
+                {a.packageName}
+              </strong>
+              {a.packageVersion.length > 0 && (
+                <Pill intent="neutral">v{a.packageVersion}</Pill>
+              )}
+              <Pill intent={a.outcome === "aborted" ? "neutral" : "danger"}>
+                {a.outcome === "aborted" ? "stopped" : "did not finish"}
+              </Pill>
+            </div>
+            <p
+              style={{
+                margin: 0,
+                fontSize: "var(--eh-text-sm)",
+                color: "var(--eh-text-secondary)",
+                lineHeight: "var(--eh-leading-relaxed)",
+              }}
+            >
+              {describeInstallAttempt(a)}
+            </p>
+            {a.error !== undefined && (
+              // The reason it stopped, verbatim. Paraphrasing an error the
+              // user may need to search for helps nobody.
+              <p
+                style={{
+                  margin: "var(--eh-sp-2) 0 0 0",
+                  fontSize: "var(--eh-text-xs)",
+                  fontFamily: "var(--eh-font-mono)",
+                  color: "var(--eh-text-muted)",
+                  lineHeight: 1.5,
+                }}
+              >
+                {a.error}
+              </p>
+            )}
+            <div style={{ marginTop: "var(--eh-sp-3)" }}>
+              <Button intent="ghost" size="sm" onClick={props.onRetry}>
+                Run the install again
+              </Button>
+            </div>
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
 type SortKey = "recent" | "name" | "mods";
 
 function CollectionsList(props: CollectionsPageProps): JSX.Element {
@@ -208,15 +320,25 @@ function CollectionsList(props: CollectionsPageProps): JSX.Element {
         const interrupted = await listInterruptedInstalls(
           getMarkerDir(appData),
         ).catch(() => [] as InstallMarker[]);
+        const failedAttempts = await listInstallAttempts(appData).catch(
+          () => [] as InstallAttempt[],
+        );
         if (!alive) return;
         if (
           receipts.length === 0 &&
           errors.length === 0 &&
-          interrupted.length === 0
+          interrupted.length === 0 &&
+          failedAttempts.length === 0
         ) {
           setState({ kind: "empty" });
         } else {
-          setState({ kind: "loaded", receipts, interrupted, errors });
+          setState({
+            kind: "loaded",
+            receipts,
+            interrupted,
+            failedAttempts,
+            errors,
+          });
         }
       } catch (err) {
         if (!alive) return;
@@ -224,7 +346,13 @@ function CollectionsList(props: CollectionsPageProps): JSX.Element {
           title: "Couldn't list installed collections",
           context: { step: "collections-list" },
         });
-        setState({ kind: "loaded", receipts: [], interrupted: [], errors: [] });
+        setState({
+          kind: "loaded",
+          receipts: [],
+          interrupted: [],
+          failedAttempts: [],
+          errors: [],
+        });
       }
     })();
     return (): void => {
@@ -319,6 +447,10 @@ function CollectionsList(props: CollectionsPageProps): JSX.Element {
       <InterruptedInstalls
         markers={state.interrupted}
         onResume={(): void => props.onNavigate("install")}
+      />
+      <FailedAttempts
+        attempts={state.failedAttempts}
+        onRetry={(): void => props.onNavigate("install")}
       />
       <header
         style={{

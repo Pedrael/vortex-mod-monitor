@@ -222,6 +222,41 @@ describe("install driver, end to end", () => {
     expect(emitsOf(fake, "start-install")).toEqual([]);
   });
 
+  it("forgets a previous failure once the install succeeds", async () => {
+    // A panel that keeps warning about a problem the user has just fixed
+    // teaches them to ignore it.
+    world = makeWorld({
+      mods: [
+        {
+          id: "ok-mod",
+          nexus: { modId: 9, fileId: 9 },
+          archiveSha256: "d".repeat(64),
+          files: { "Data/ok.esp": "ok" },
+        },
+      ],
+    });
+    const manifest = await packageFrom(world);
+    const { listInstallAttempts, writeInstallAttempt } = await import(
+      "../../src/core/installer/attemptRecord"
+    );
+    await writeInstallAttempt(world.appDataPath, {
+      packageId: manifest.package.id,
+      packageName: manifest.package.name,
+      packageVersion: manifest.package.version,
+      gameId: "fallout4",
+      endedAt: new Date().toISOString(),
+      outcome: "failed",
+      phase: "installing-mods",
+      installedCount: 1,
+      totalMods: 1,
+    });
+    expect(await listInstallAttempts(world.appDataPath)).toHaveLength(1);
+
+    const result = await install(manifest, makeFakeVortex({ gameId: "fallout4" }));
+    expect((result as { kind: string }).kind).toBe("success");
+    expect(await listInstallAttempts(world.appDataPath)).toEqual([]);
+  });
+
   it("leaves a mod with no recorded choices on the original one-step path", async () => {
     // Replay must not change how the other 840 mods in a collection install.
     // A mod without choices is downloaded AND installed by Vortex in one go,
@@ -298,6 +333,18 @@ describe("install driver, end to end", () => {
 
     // It stopped: the two mods that WOULD have installed never did.
     expect(fake.installed).toHaveLength(0);
+
+    // And it left a RECORD. Seven of the driver's eight failure paths return
+    // before the receipt is written, so without this the run is invisible:
+    // a tester had 963 mods staged and an empty "My Collections".
+    const { listInstallAttempts } = await import(
+      "../../src/core/installer/attemptRecord"
+    );
+    const attempts = await listInstallAttempts(world!.appDataPath);
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0]?.outcome).toBe("failed");
+    expect(attempts[0]?.phase).toBe("installing-mods");
+    expect(attempts[0]?.error).toContain("deployment method");
     // And it said the useful thing rather than blaming the mod or the user.
     const text = JSON.stringify(result);
     expect(text).toContain("Every remaining mod would fail the same way");
