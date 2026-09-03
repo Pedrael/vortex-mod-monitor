@@ -47,6 +47,7 @@ import { AvailabilityPanel, DonePanel } from "../pages/build/BuildPage";
 import { summarizeAvailability } from "../../core/build/nexusAvailability";
 import { DraftCard, PublishedCard } from "../pages/build/BuildDashboard";
 import { DashboardBody, Hero } from "../pages/HomePage";
+import { InterruptedInstalls } from "../pages/CollectionsPage";
 import { DoctorPanel } from "../pages/doctor/DoctorPanel";
 import { evaluateHealth, healingBlockedReason } from "../../core/doctor/health";
 
@@ -272,6 +273,32 @@ const dashboardData = {
 
 describe("render", () => {
   const on = process.env.EH_RENDER === "1";
+  // A machine with a half-installed collection and NO receipt — the exact
+  // state a tester was in, where this page said "no collections" while 963
+  // mods sat staged on his disk.
+  it.skipIf(!on)("collections-interrupted — the install that never finished", () => {
+    write(
+      "collections-interrupted",
+      React.createElement(
+        "div",
+        { className: "eh-page" },
+        React.createElement(InterruptedInstalls, {
+          markers: [
+            {
+              packageId: "pkg-1",
+              packageName: "Ivy 2",
+              startedAt: new Date(Date.now() - 3 * 3600_000).toISOString(),
+              profileId: "2be7648d",
+              gameId: "fallout4",
+              totalMods: 967,
+            },
+          ],
+          onResume: () => undefined,
+        } as never),
+      ),
+    );
+  });
+
   it.skipIf(!on)("doctor — a collection with real problems", () => {
     // The interesting state, not the happy one: a screen of green cards tells
     // you nothing about whether the design works.

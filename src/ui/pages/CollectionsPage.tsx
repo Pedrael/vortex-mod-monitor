@@ -36,6 +36,12 @@ import {
   useToast,
 } from "../components";
 import { ErrorBoundary, useErrorReporter, useErrorReporterFormatted } from "../errors";
+import {
+  describeInterruptedInstall,
+  getMarkerDir,
+  listInterruptedInstalls,
+  type InstallMarker,
+} from "../../core/installer/installMarker";
 import type { EventHorizonRoute } from "../routes";
 import { useApi } from "../state";
 import { EXTENSION_VERSION } from "../version";
@@ -48,6 +54,18 @@ export interface CollectionsPageProps {
 interface LoadedState {
   kind: "loaded";
   receipts: InstallReceipt[];
+  /**
+   * Installs that started and never finished.
+   *
+   * A receipt is written only when an install COMPLETES, deliberately — it
+   * asserts the collection IS installed, and a half-finished run has not
+   * earned that claim. The consequence is that an interrupted install leaves
+   * no receipt, so this page showed nothing at all: a tester had 963 mods
+   * staged on his machine and "My Collections" said he had none.
+   *
+   * The marker is the missing half. It claims only that a run STARTED.
+   */
+  interrupted: InstallMarker[];
   errors: Array<{ filename: string; message: string }>;
 }
 
@@ -66,6 +84,93 @@ export function CollectionsPage(props: CollectionsPageProps): JSX.Element {
     >
       <CollectionsList onNavigate={props.onNavigate} />
     </ErrorBoundary>
+  );
+}
+
+/**
+ * Installs that started and never finished.
+ *
+ * Shown ABOVE the installed collections, and shown even when there are none:
+ * the case this exists for is a machine with a half-installed collection and
+ * no receipt, where the page previously said "no collections" to a user
+ * looking at 963 staged mods.
+ *
+ * It offers to re-run rather than to "resume". There is no resume — and that
+ * is the right design, not a missing feature. Re-running re-matches what is
+ * already on disk by Nexus id and hash, so it picks up where it stopped
+ * without trusting a record of what a dead process THOUGHT it had done. The
+ * marker's only job is to tell the user that is what will happen.
+ */
+export function InterruptedInstalls(props: {
+  markers: readonly InstallMarker[];
+  onResume: () => void;
+}): JSX.Element | null {
+  if (props.markers.length === 0) return null;
+  return (
+    <section
+      aria-label="Interrupted installs"
+      style={{ marginBottom: "var(--eh-sp-4)" }}
+    >
+      {props.markers.map((m) => (
+        <div
+          key={m.packageId}
+          role="status"
+          style={{
+            display: "flex",
+            gap: "var(--eh-sp-3)",
+            alignItems: "flex-start",
+            padding: "var(--eh-sp-4)",
+            marginBottom: "var(--eh-sp-2)",
+            borderRadius: "var(--eh-radius-lg)",
+            background: "var(--eh-bg-elevated)",
+            border: "1px solid var(--eh-warning)",
+          }}
+        >
+          <span
+            aria-hidden="true"
+            style={{ color: "var(--eh-warning)", fontWeight: 700 }}
+          >
+            ⏸
+          </span>
+          <div className="eh-fill">
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--eh-sp-2)",
+                flexWrap: "wrap",
+                marginBottom: "var(--eh-sp-1)",
+              }}
+            >
+              <strong
+                style={{
+                  fontSize: "var(--eh-text-md)",
+                  color: "var(--eh-text-primary)",
+                }}
+              >
+                {m.packageName}
+              </strong>
+              <Pill intent="warning">unfinished</Pill>
+            </div>
+            <p
+              style={{
+                margin: 0,
+                fontSize: "var(--eh-text-sm)",
+                color: "var(--eh-text-secondary)",
+                lineHeight: "var(--eh-leading-relaxed)",
+              }}
+            >
+              {describeInterruptedInstall(m)}
+            </p>
+            <div style={{ marginTop: "var(--eh-sp-3)" }}>
+              <Button intent="primary" size="sm" onClick={props.onResume}>
+                Run the install again
+              </Button>
+            </div>
+          </div>
+        </div>
+      ))}
+    </section>
   );
 }
 
@@ -98,11 +203,20 @@ function CollectionsList(props: CollectionsPageProps): JSX.Element {
         const receipts = await listReceipts(appData, (filename, err) => {
           errors.push({ filename, message: err.message });
         });
+        // Never fatal: an unreadable marker directory must not hide the
+        // collections that ARE installed.
+        const interrupted = await listInterruptedInstalls(
+          getMarkerDir(appData),
+        ).catch(() => [] as InstallMarker[]);
         if (!alive) return;
-        if (receipts.length === 0 && errors.length === 0) {
+        if (
+          receipts.length === 0 &&
+          errors.length === 0 &&
+          interrupted.length === 0
+        ) {
           setState({ kind: "empty" });
         } else {
-          setState({ kind: "loaded", receipts, errors });
+          setState({ kind: "loaded", receipts, interrupted, errors });
         }
       } catch (err) {
         if (!alive) return;
@@ -110,7 +224,7 @@ function CollectionsList(props: CollectionsPageProps): JSX.Element {
           title: "Couldn't list installed collections",
           context: { step: "collections-list" },
         });
-        setState({ kind: "loaded", receipts: [], errors: [] });
+        setState({ kind: "loaded", receipts: [], interrupted: [], errors: [] });
       }
     })();
     return (): void => {
@@ -202,6 +316,10 @@ function CollectionsList(props: CollectionsPageProps): JSX.Element {
 
   return (
     <div className="eh-page">
+      <InterruptedInstalls
+        markers={state.interrupted}
+        onResume={(): void => props.onNavigate("install")}
+      />
       <header
         style={{
           display: "flex",
