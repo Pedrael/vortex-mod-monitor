@@ -181,6 +181,29 @@ wiki adds two rules that are easy to get wrong and are checked at review:
 Note the resulting **`modId`** and the uploaded file's **`fileId`** — those two
 numbers are what the extension manifest keys on.
 
+#### The page images
+
+Branding lives in `docs/branding/`, already sized for upload — the originals
+are 2 MB each and want resizing before they go anywhere.
+
+| file | where it goes |
+| --- | --- |
+| `banner.jpg` (1600×640) | the mod page header, and the README's |
+| `banner-portal.jpg` | alternative header, same treatment |
+| `hero-planet.jpg` | a second image for the gallery |
+| `icon-512.png` | transparent mark, for anywhere square |
+| `wordmark.png` | transparent lockup, for a light-on-dark header |
+
+`NEXUS_MOD_PAGE.bbcode` opens with `[img]PASTE_BANNER_URL_HERE[/img]`. Nexus
+does not serve images from a repo, so upload `banner.jpg` to the mod's image
+gallery first, then paste the URL Nexus gives it over that placeholder. The
+token is deliberately not a valid URL: left unreplaced it breaks visibly on
+the page rather than quietly rendering nothing.
+
+The banner already carries the wordmark and the tagline, so the text title
+below it is deliberate duplication — it is what the page still says if the
+image fails to load.
+
 > Nexus's packaging page also lists `gameart.png` as required alongside
 > `info.json` and `index.js`. That page is *"How to package a **game**
 > extension"* and the art is the game tile. We are a `tool` extension and ship

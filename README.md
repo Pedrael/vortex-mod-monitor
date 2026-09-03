@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/branding/banner.jpg" alt="Event Horizon — the mods, the order, the journey" width="100%">
+</p>
+
 # Event Horizon
 
 > *Vortex is a black hole. Collections, rules, FOMOD selections, conflict overrides — they all get pulled in and never come out the same on the other side. Event Horizon is the boundary that captures everything **before** it crosses over.*
@@ -8,11 +12,11 @@ A [Vortex](https://www.nexusmods.com/about/vortex/) extension that captures a cu
 
 ---
 
-## Status — alpha, v0.1.0-alpha.2
+## Status — alpha, v0.1.0-alpha.20
 
 Everything described below is built and running. It has been exercised end to
 end against a real 954-mod Fallout 4 profile, on Windows and on Linux under
-umu/Proton. 848 tests across 83 files cover it.
+umu/Proton. 1,077 tests across 101 files cover it.
 
 What that does **not** mean:
 
