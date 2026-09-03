@@ -204,29 +204,20 @@ The banner already carries the wordmark and the tagline, so the text title
 below it is deliberate duplication — it is what the page still says if the
 image fails to load.
 
-#### Two things Nexus's BBCode does that will surprise you
-
-Both were found the hard way, on the live page, after the source looked
-perfectly reasonable.
+#### One thing Nexus's BBCode does that will surprise you
 
 **A block tag must open and close on the same line.** `[center]` opened on line
 1 and closed on line 6, spanning blank lines — valid BBCode by any normal
-reading, and Nexus never closed it. Everything downstream inherited the
-centring, so *every bullet list on the page* rendered centre-aligned. Keep
-`[center]`, `[size]` and friends on one line each; balanced tags are not
-enough, they have to be balanced per line.
+reading, and Nexus never closed it. Everything downstream inherited it, so
+*every bullet list on the page* rendered centre-aligned **and paragraph breaks
+stopped working**. Keep `[center]`, `[size]` and friends on one line each;
+balanced tags are not enough, they have to be balanced per line.
 
-**A paragraph break needs TWO blank lines.** One blank line renders as
-nothing at all, so paragraphs arrive welded together. This is why the source
-looks over-spaced when you read it: two blank lines between paragraphs is
-correct, and one is a bug you will not see until it is published.
-
-> Nexus's packaging page also lists `gameart.png` as required alongside
-> `info.json` and `index.js`. That page is *"How to package a **game**
-> extension"* and the art is the game tile. We are a `tool` extension and ship
-> no `gameart.png`. If review asks for one, that is the reason to push back —
-> but confirm rather than assume, because it is the one requirement here read
-> from a game-extension page.
+That one fault produced two symptoms, which is worth remembering because it
+cost a wrong fix: the missing paragraph gaps looked like a separate
+blank-line problem, and doubling every blank line "fixed" nothing while
+double-spacing the whole page. Single blank lines between paragraphs and two
+before a `[size=5]` heading are correct — once no block tag is leaking.
 
 ### Step 5 — request the browser listing
 
