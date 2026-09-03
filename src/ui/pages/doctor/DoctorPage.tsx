@@ -29,7 +29,7 @@ import { DoctorPanel } from "./DoctorPanel";
 import { evaluateHealth, healingBlockedReason } from "../../../core/doctor/health";
 import type { HealAction, HealthCheck, HealthReceiptView } from "../../../core/doctor/health";
 import { gatherObservations } from "../../../core/doctor/gather";
-import { describeHeal, healNeedsManifest, matchEhcollFile } from "../../../core/doctor/heal";
+import { describeHeal, healNeedsManifest } from "../../../core/doctor/heal";
 import { runHeal } from "../../../core/doctor/runHeal";
 import { getInstallSession } from "../install/installSession";
 import type { EventHorizonRoute } from "../../routes";
@@ -145,26 +145,24 @@ export function DoctorPage(props: DoctorPageProps): JSX.Element {
     setPkgSearched(false);
     void (async (): Promise<void> => {
       try {
-        const [{ getCollectionsDir }, fsp, path] = await Promise.all([
-          import("../../../core/paths"),
-          import("fs/promises"),
-          import("path"),
-        ]);
-        const dir = getCollectionsDir();
-        const files = await fsp.readdir(dir).catch(() => [] as string[]);
-        const match = matchEhcollFile(
-          files,
-          loaded.selected.packageName,
-          loaded.selected.packageVersion,
+        // Shared with My Collections' "check and continue": two callers
+        // disagreeing about which package belongs to a collection is exactly
+        // the bug a second hand-rolled copy produces.
+        const { locateCollectionPackage } = await import(
+          "../../../core/manifest/locatePackage"
         );
-        if (match === undefined) {
+        const found = await locateCollectionPackage({
+          packageName: loaded.selected.packageName,
+          packageVersion: loaded.selected.packageVersion,
+        });
+        if (found === undefined) {
           if (alive) setPkgSearched(true);
           return;
         }
         const { readEhcoll } = await import("../../../core/manifest/readEhcoll");
-        const result = await readEhcoll(path.join(dir, match));
+        const result = await readEhcoll(found.path);
         if (!alive) return;
-        setPkg({ path: path.join(dir, match), manifest: result.manifest });
+        setPkg({ path: found.path, manifest: result.manifest });
         setPkgSearched(true);
       } catch {
         // A package we cannot read is the same situation as one we cannot

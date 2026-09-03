@@ -305,6 +305,55 @@ function CollectionsList(props: CollectionsPageProps): JSX.Element {
     setRefreshTick((t) => t + 1);
   }, []);
 
+  /**
+   * Re-run the install for a collection already on this machine.
+   *
+   * There is no "resume" state to restore, and that is the design rather than
+   * a shortfall: the installer re-resolves every mod against what is actually
+   * on disk, by Nexus id and hash. So it finds what is missing, skips what is
+   * already correct, and picks up where the last run stopped — without
+   * trusting any record of what a previous run believed it had done.
+   *
+   * The point of the button is that the user does not have to go and find the
+   * .ehcoll again to get that. We already know which package this receipt came
+   * from; asking them to re-import a file we can locate ourselves is the kind
+   * of small indignity that makes a tool feel unfinished.
+   */
+  const handleContinueInstall = React.useCallback(
+    async (receipt: InstallReceipt): Promise<void> => {
+      try {
+        const [{ locateCollectionPackage }, { getInstallSession }] =
+          await Promise.all([
+            import("../../core/manifest/locatePackage"),
+            import("./install/installSession"),
+          ]);
+        let target = await locateCollectionPackage({
+          packageName: receipt.packageName,
+          packageVersion: receipt.packageVersion,
+        });
+
+        if (target === undefined) {
+          // Not in the collections folder — it may never have been built on
+          // this machine. Ask rather than give up.
+          const { pickEhcollFile } = await import("../../utils/utils");
+          const picked = await pickEhcollFile(api);
+          if (picked === undefined) return;
+          target = { path: picked, fileName: picked };
+        }
+
+        setSelected(undefined);
+        getInstallSession().pickFile(api, target.path);
+        props.onNavigate("install");
+      } catch (err) {
+        reportError(err, {
+          title: "Couldn't reopen this collection's package",
+          context: { step: "continue-install", packageId: receipt.packageId },
+        });
+      }
+    },
+    [api, props, reportError],
+  );
+
   React.useEffect(() => {
     let alive = true;
     void (async (): Promise<void> => {
@@ -630,6 +679,9 @@ function CollectionsList(props: CollectionsPageProps): JSX.Element {
 
       <ReceiptDetailModal
         receipt={selected}
+        onContinueInstall={(receipt): void => {
+          void handleContinueInstall(receipt);
+        }}
         onClose={(): void => setSelected(undefined)}
         onUninstalled={(): void => {
           setSelected(undefined);
@@ -757,6 +809,8 @@ function ReceiptDetailModal(props: {
   receipt: InstallReceipt | undefined;
   onClose: () => void;
   onUninstalled: () => void;
+  /** Hand this package back to the installer and go there. */
+  onContinueInstall: (receipt: InstallReceipt) => void;
 }): JSX.Element {
   const { receipt, onClose, onUninstalled } = props;
   const api = useApi();
@@ -891,6 +945,17 @@ function ReceiptDetailModal(props: {
               }}
             >
               Switch to profile
+            </Button>
+            <Button
+              intent="ghost"
+              disabled={busy}
+              title={
+                "Re-runs the install against this collection. Mods already " +
+                "correct are skipped, so it only fetches what is missing."
+              }
+              onClick={(): void => props.onContinueInstall(receipt)}
+            >
+              Check and continue
             </Button>
             <Button
               intent="ghost"
