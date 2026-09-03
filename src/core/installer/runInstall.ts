@@ -207,6 +207,7 @@ import {
   classifyModFailure,
   describeSystemicFailure,
 } from "./downloadFailureShape";
+import { dismissNoisyNotifications } from "./quietNotifications";
 import { replayArgs } from "./installerChoices";
 import {
   applyGameIni,
@@ -1001,6 +1002,13 @@ async function runInstallImpl(ctx: DriverContext): Promise<InstallResult> {
           onNotice: (line) => externalNotices.push(line),
           bundledPool,
         });
+        // Clear the prompts Vortex raises per multi-plugin mod. Swept here
+        // rather than once at the end: the point is that the user is not
+        // watching a wall of "Enable all" buttons grow for an hour, each of
+        // which is the WRONG answer during a collection install — we set
+        // plugin enablement from the manifest at the end.
+        dismissNoisyNotifications(ctx.api);
+
         ehLog("info", "install.mod.done", {
           i: i + 1,
           total,
@@ -1936,6 +1944,15 @@ async function runInstallImpl(ctx: DriverContext): Promise<InstallResult> {
     } catch {
       // A plugins.txt we cannot read is not a reason to fail an install that
       // otherwise succeeded — it only means this one check has no answer.
+    }
+
+    // Final sweep, at the same point Vortex's own collection post-processing
+    // does it: plugin enablement has just been set from the manifest, so any
+    // surviving "contains multiple plugins" prompt is answering a question
+    // that is now decided.
+    const cleared = dismissNoisyNotifications(ctx.api);
+    if (cleared > 0) {
+      ehLog("info", "notifications.dismissed", { count: cleared });
     }
 
     ehLog("info", "install.phase", { phase: "checking-mod-types" });
