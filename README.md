@@ -24,7 +24,7 @@ What that does **not** mean:
 - Reproduction is verified by hashing, not by launching the game. "The files
   match" is what we prove; "the game plays identically" is what you hope
   follows.
-- Two captured things are still recorded and never applied — see
+- One captured thing is still recorded and never applied — see
   [Known gaps](#known-gaps). Read that section before you rely on the word
   "deterministic".
 
@@ -89,13 +89,83 @@ downloads or extracts the rest, and installs them **one at a time**. Then:
 - **Pins** the curator's plugin order and restores ESL flags. Plugins the user
   has that the collection does not know about are integrated LOOT-style, not
   appended last.
-- **Replays the curator's FOMOD answers.** `installerChoices.ts` hands them to
-  Vortex's installer as `IChoiceType` on `start-install-download`, so a mod with
-  an installer arrives pre-filled with the curator's selections for the user to
-  confirm rather than re-derive.
+- **Replays the curator's FOMOD answers**, and asks once, before the driver
+  starts, whether to show them. `installerChoices.ts` hands them to Vortex's
+  installer as `IChoiceType` on `start-install-download`; `unattended` decides
+  whether Vortex opens each installer with the answers pre-filled or applies
+  them without asking. Silent is the default — a tester's run had a median
+  per-mod time of 4 ms against a 99th percentile of 491 **seconds**, all of it
+  a human reading dialogs. The modal has no preselected answer, because
+  choosing to differ from the curator has a consequence you cannot guess: the
+  Doctor repairs from the collection, so healing that mod later restores the
+  curator's answer over yours.
+- **Applies the collection's INI tweaks and game settings.** A mod's optional
+  `ini tweaks` are re-ticked additively — it never unticks one the user chose
+  — and the game INI is written once per release, never re-asserted.
 - **Writes a receipt**, which is the only record of cross-release lineage.
 
-An aborted install writes no receipt.
+Every ending leaves a trace. A success writes the receipt; a crash leaves a
+marker behind; a failed or cancelled run writes an attempt record saying which
+phase it stopped in and how far it got. All three surface in **My
+Collections** — before this, a run that stopped at 963 of 967 mods left a
+machine full of staged mods and a page that said you had none.
+
+### Refuses to start work it cannot finish
+
+An hour into a 900-mod install is the worst place to learn the machine was
+never able to do it. Two gates run before anything is written:
+
+- **A dead extractor blocks the install.** Only a fatal verdict — a broken
+  `list` with working extraction does not block, because the listing paths are
+  native-first — and a collection needing no unpacking is still allowed
+  through. It offers to install the Microsoft runtimes itself, then re-runs the
+  7-Zip self-test and reports what *that* said rather than trusting an exit
+  code.
+- **No deployment method blocks the install.** Vortex can stage every mod
+  perfectly and still have no way to link them into the game folder, which is
+  common under Proton. This asks Vortex its own question
+  (`getCurrentActivator`) and names the setting that fixes it. It only blocks
+  on a definite *no* — if the check itself cannot run, the install proceeds.
+
+Mid-run, one bad mod costs one mod rather than the run: failures are collected
+and installation continues. A *streak* is treated as systemic and stops
+immediately, and a failure that is a property of the machine rather than the
+mod — "no deployment method active" — stops on its first occurrence instead of
+repeating itself four hundred more times. Downloads retry with a backoff that
+reads the shape of the failure: a deleted file answers in under a second and
+is not worth waiting for, a rate limit hangs for twenty and is.
+
+### Collection Doctor
+
+Is this collection still what was installed? Measured against the **receipt**
+— the only artefact describing a state this machine actually reached, so it
+reports drift the user caused rather than drift the curator has.
+
+Seven checks (profile, mods present, mods enabled, staged files, plugin order,
+mod rules, LOOT rules), each in five states rather than pass/fail — `unknown`
+is never rendered as a pass, because "we did not check" is not "it is fine".
+Every finding that can be repaired names the pipeline step that repairs it, and
+those repairs re-run the *same* functions the install used. Healing is disabled
+while an install is running.
+
+An expensive deep scan hashes every staged file on request. Three of the six
+repairs need the `.ehcoll` on disk and say so on the button when it is missing,
+rather than silently doing nothing.
+
+### Checks your collection before you ship it
+
+The curator is the one person who cannot notice a mod Nexus has deleted: their
+copy is already on disk, so the collection builds and ships perfectly and fails
+only on somebody else's machine. The build page asks Nexus about every mod —
+one request per mod page, 780 for a 955-mod collection — and separates *file
+gone* (an old version tidied away, with the current file named) from *page
+gone* (usually deliberate). Old and archived files are listed too: they
+download today, and they are how a collection quietly stops working.
+
+A mod that can no longer be downloaded can be shipped as an **external
+dependency** instead — identified by hash rather than by a Nexus id the user
+cannot resolve — which puts it in the existing external-mods table with its
+bundle, link and instructions.
 
 ### Audit
 
@@ -110,8 +180,7 @@ Stated here rather than buried, because they bound the word "deterministic":
 
 | Gap | Consequence |
 | --- | --- |
-| **`fileOverrides` are recorded, not applied.** | A real collection carries 4,382 entries. Nobody has measured whether they change the outcome. |
-| **INI tweaks are recorded, not applied.** | The build warns the curator, so it is disclosed rather than silent. |
+| **`fileOverrides` are recorded, not applied.** | A real collection carries 4,382 entries. Nobody has measured whether they change the outcome. Only the build side reads the field; nothing on the install side does. |
 
 The driver also does not roll back. A failed run leaves what it installed in
 place and re-running picks up from there — deliberate, because a half-rolled-back
@@ -141,8 +210,8 @@ wrong. See [`docs/PUBLISHING.md`](docs/PUBLISHING.md).
 ## The Event Horizon page
 
 A React `mainPage` in the sidebar (global group — visible whatever game is
-active), with seven sections: **Dashboard**, **Install**, **My Collections**,
-**Build**, **Plugin Diffs**, **Mod Diffs**, **About**.
+active), with eight sections: **Dashboard**, **Install**, **My Collections**,
+**Doctor**, **Build**, **Plugin Diffs**, **Mod Diffs**, **About**.
 
 Five actions are also registered on Vortex's own toolbars: Export Mods To JSON
 and Compare Current Mods With JSON on `mod-icons`, Compare Plugins With TXT on

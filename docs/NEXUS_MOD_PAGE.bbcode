@@ -41,11 +41,12 @@ Resolves every mod against what you already have, downloads or extracts the rest
 [*][b]Verifies what landed.[/b] Every installed archive is hashed against the manifest and reported as [b]matches[/b], [b]differs[/b], [b]damaged[/b] or [b]unknown[/b]. Telling [i]differs[/i] from [i]damaged[/i] matters: only a damaged archive is fixed by downloading it again, and only that one isn't the curator's problem.
 [*][b]Applies the curator's mod rules and LOOT userlist.[/b] See the warning below — this one replaces yours.
 [*][b]Pins the curator's plugin order and restores ESL flags.[/b] Plugins you have that the collection doesn't know about are integrated LOOT-style, not dumped at the bottom.
-[*][b]Replays the curator's FOMOD answers.[/b] Mods with an installer come pre-filled with exactly what the curator chose — you confirm and move on, instead of guessing your way through a dozen option screens hoping you picked what they picked.
+[*][b]Replays the curator's FOMOD answers — and asks you first.[/b] Before the install starts you choose once: apply the curator's answers automatically, or open every installer with them pre-filled so you can watch and change them. Automatic is the default and it is [i]much[/i] faster — one tester's run spent under 5 ms per mod on the automatic path and up to eight minutes on a single dialog he was reading. Choosing to differ is fine, and the page tells you what it costs before you pick.
+[*][b]Applies the curator's INI tweaks and game settings.[/b] A mod's optional [i]ini tweaks[/i] get re-ticked exactly as the curator had them — additively, so it never unticks something you chose yourself. A tweak is invisible until the game runs differently, which is the worst kind of thing to silently lose.
 [*][b]Writes a receipt[/b], which is how it recognises an upgrade later instead of treating it as a fresh install.
 [/list]
 
-An aborted install writes no receipt, so a half-finished run never gets mistaken for a finished one.
+[b]Every ending leaves a trace.[/b] A finished install writes a receipt. A crash leaves a marker. A run that failed or was cancelled records which step it stopped at and how far it got — and all three show up under [b]My Collections[/b]. If an install stops at mod 900 of 967 you can see that, instead of finding an empty list and a machine full of mods.
 
 [b]Auditing[/b]
 Export a snapshot to JSON and diff it later. Diff a reference plugins.txt against your live one. Reports are browsable in-app.
@@ -60,6 +61,36 @@ Vortex bundles 7-Zip, and 7-Zip is spawned as an external process. Under a Wine/
 So Event Horizon reads its own packages with its own ZIP reader — no external process, nothing to fail in a prefix. Timeouts are platform-aware too, because a Proton prefix legitimately needs longer than Windows, and a fixed deadline turns a slow-but-healthy install into a fake hang.
 
 [b]The whole 950+ mod collection has been installed and verified on Linux under umu/Proton, not only on Windows.[/b] If you mod on a Steam Deck or a Linux desktop, this was built for you rather than tolerated on you.
+
+
+[size=5][b]It refuses to start work it cannot finish[/b][/size]
+
+An hour into a 900-mod install is the worst possible place to discover your machine was never able to do it. Two things are checked [b]before[/b] anything is written:
+
+[list]
+[*][b]A broken extractor stops the install[/b] — and offers to install the Microsoft runtimes for you, then re-tests and tells you what the [i]test[/i] said rather than trusting an installer's exit code.
+[*][b]No working deployment method stops the install.[/b] Vortex can stage every mod perfectly and still have no way to link them into your game folder — common under Proton — and it names the exact setting that fixes it. One tester lost 70 minutes to this before the check existed.
+[/list]
+
+While it runs, one bad mod costs one mod rather than the run. A [i]streak[/i] of failures is treated as a problem with the machine and stops immediately, and downloads are retried with a wait that matches the failure: a deleted file answers in under a second and is not worth waiting for, a rate limit hangs for twenty and is.
+
+
+[size=5][b]The Collection Doctor[/b][/size]
+
+[b]Is this collection still what was installed?[/b] Ask any time, and get an answer per aspect rather than a single green tick: your profile, mods present, mods enabled, staged files, plugin order, mod rules, LOOT rules.
+
+It measures against [b]what actually got installed on your machine[/b], not against the curator's disk — so it reports drift [i]you[/i] caused rather than drift that was never yours. Anything it can repair, it can repair on the spot, by re-running the same step the install used. An optional deep scan hashes every staged file when you want certainty rather than a quick answer.
+
+Checks it could not perform say so. "Not checked" is never shown as "fine".
+
+
+[size=5][b]For curators: it tells you what your users cannot download[/b][/size]
+
+You are the one person who cannot notice that Nexus has deleted a mod in your collection — your copy is already on disk, so it packs and ships perfectly and fails only on somebody else's machine, hundreds of mods into their install.
+
+The build page asks Nexus about every mod in your collection and separates [b]file gone[/b] (an author tidying up an old version — it names the current file) from [b]page gone[/b] (usually deliberate). It also lists files filed as old or archived: they download today, and they are exactly how a collection quietly stops working six months from now.
+
+A mod that can no longer be downloaded can be shipped as an [b]external dependency[/b] instead, with a bundle, a link, or instructions — so the collection stays installable.
 
 
 [size=5][b]⚠ Two things it will do that you should know about[/b][/size]
@@ -80,11 +111,11 @@ Without it, installing a large collection means one manual click per mod. It is 
 This is an [b]alpha[/b], and it is actively being worked on. What is coming:
 
 [list]
-[*][b]Applying file overrides.[/b] Captured in full today and preserved in every package — the remaining work is applying them on the user's side.
-[*][b]Applying INI tweaks.[/b] Same story: recorded now, applied next.
-[*][b]More UI polish.[/b] Clearer progress while a long install runs, better reporting when something needs your attention, and a calmer dashboard.
-[*][b]Undo an install.[/b] Today a failed run leaves what it installed in place and re-running picks up from there. A clean rollback is wanted.
+[*][b]Applying file overrides.[/b] Captured in full today and preserved in every package — the remaining work is applying them on the user's side. It is the last captured thing that is recorded and not yet used.
+[*][b]Resuming an install where it stopped.[/b] Re-running already picks up from what is on your disk, because it re-matches by hash rather than trusting a record. Making that a single button is the next step.
+[*][b]Undo an install.[/b] Today a failed run leaves what it installed in place. A clean rollback is wanted.
 [*][b]Richer drift reporting.[/b] Show exactly what changed between the curator's setup and yours, not merely that something did.
+[*][b]More UI polish.[/b] Clearer progress while a long install runs, and better reporting when something needs your attention.
 [/list]
 
 Requests and bug reports genuinely shape this list — see [b]Source and issues[/b] below.
