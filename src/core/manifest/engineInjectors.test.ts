@@ -12,18 +12,22 @@
  *
  * ─── THE ONE VORTEX CANNOT CARRY ───────────────────────────────────────
  * SSE Engine Fixes ships in two halves. Part 1 is an SKSE plugin, so it is an
- * ordinary mod. Part 2 is loose binaries that must be copied into the game
- * root by hand — the mod page says so, Vortex cannot install it, and therefore
- * no collection can contain it.
+ * ordinary mod. Part 2 is the preloader: ONE file, `d3dx9_42.dll`, which sits
+ * beside SkyrimSE.exe and is what loads Part 1.
  *
- * Verified on the real machine rather than assumed: the game root holds
- * `d3dx9_42.dll`, `tbb.dll` and `tbbmalloc.dll`, and Vortex's own dinput
- * deployment manifest does NOT list any of them. Meanwhile "Engine Fixes -
- * Main File" is in the collection staging `SKSE/Plugins/EngineFixes.dll` and
- * `EngineFixes_preload.txt`. The built collection shipped
- * `externalDependencies: []`.
+ * Verified from the installed mod rather than assumed. This first claimed Part
+ * 2 was d3dx9_42.dll + tbb.dll + tbbmalloc.dll, because all three sat in the
+ * curator's game root. The staging folder of "Engine Fixes - SKSE64 Preloader"
+ * holds exactly one file, 86.5 KB; the tbb DLLs came from something unrelated.
+ * Requiring the pair made the probe a silent false negative everywhere else.
  *
- * So a tester installs Part 1, it verifies perfectly, and it loads nothing.
+ * Vortex CAN carry it, which is the other correction: given the
+ * engine-injector mod type, Part 2 installs as a mod and ships with the
+ * collection. Most curators will not have done that, which is why the probe
+ * exists.
+ *
+ * Left unshipped and undeclared, a tester installs Part 1, it verifies
+ * perfectly, and it loads nothing.
  */
 import { describe, expect, it } from "vitest";
 
@@ -50,32 +54,46 @@ const gameDir = async (files: string[]): Promise<string> => {
 };
 
 describe("detecting Engine Fixes Part 2 in the game folder", () => {
-  it("finds it from the pair of binaries the curator really has", async () => {
-    // The exact three files observed in the real Skyrim AE root.
-    const dir = await gameDir(["d3dx9_42.dll", "tbb.dll", "tbbmalloc.dll"]);
+  it("fires on d3dx9_42.dll alone, because that IS the whole of Part 2", async () => {
+    // Read out of the installed mod's staging folder rather than assumed:
+    // "Engine Fixes - SKSE64 Preloader" contains exactly d3dx9_42.dll and
+    // nothing else.
+    const dir = await gameDir(["d3dx9_42.dll"]);
     const found = await detectExternalDependencies(dir, "skyrimse");
     const ef = found.find((d) => d.id === ENGINE_FIXES_PART2_ID);
     expect(ef).toBeDefined();
-    expect(ef!.files.map((f) => f.relPath).sort()).toEqual([
-      "d3dx9_42.dll",
-      "tbb.dll",
-      "tbbmalloc.dll",
-    ]);
+    expect(ef!.files.map((f) => f.relPath)).toEqual(["d3dx9_42.dll"]);
     expect(ef!.destination).toBe("<gameDir>");
   });
 
-  it("does not fire on either file alone", async () => {
-    // d3dx9_42.dll is a stock DirectX redistributable and tbb.dll ships with
-    // plenty of unrelated software. Declaring a prerequisite the curator never
-    // had sends every user chasing it.
-    for (const solo of ["d3dx9_42.dll", "tbb.dll"]) {
-      const dir = await gameDir([solo]);
-      const found = await detectExternalDependencies(dir, "skyrimse");
-      expect(
-        found.some((d) => d.id === ENGINE_FIXES_PART2_ID),
-        `fired on ${solo} alone`,
-      ).toBe(false);
-    }
+  it("does NOT need tbb.dll, which is not part of Engine Fixes at all", async () => {
+    // The original probe required d3dx9_42.dll AND tbb.dll. That was a silent
+    // false negative: on any machine with Part 2 and no tbb — the normal case
+    // — the probe could never fire. It looked correct only because the one
+    // machine it was written against happened to have tbb from something
+    // unrelated.
+    const dir = await gameDir(["d3dx9_42.dll"]);
+    const found = await detectExternalDependencies(dir, "skyrimse");
+    expect(found.some((d) => d.id === ENGINE_FIXES_PART2_ID)).toBe(true);
+  });
+
+  it("says nothing when the game folder has tbb but no preloader", async () => {
+    // The mirror: tbb.dll on its own is Intel Threading Building Blocks and
+    // says nothing whatsoever about Engine Fixes.
+    const dir = await gameDir(["tbb.dll", "tbbmalloc.dll"]);
+    const found = await detectExternalDependencies(dir, "skyrimse");
+    expect(found.some((d) => d.id === ENGINE_FIXES_PART2_ID)).toBe(false);
+  });
+
+  it("stops calling it a prerequisite once a mod ships it", async () => {
+    // The best outcome, and it must be silent: a curator who installs Part 2
+    // as a Vortex mod with the engine-injector type ships it WITH the
+    // collection, and the user does nothing.
+    const dir = await gameDir(["d3dx9_42.dll"]);
+    const found = await detectExternalDependencies(dir, "skyrimse", {
+      providedByMods: new Set(["d3dx9_42.dll"]),
+    });
+    expect(found.some((d) => d.id === ENGINE_FIXES_PART2_ID)).toBe(false);
   });
 
   it("stays out of other games", async () => {
@@ -93,6 +111,30 @@ describe("detecting Engine Fixes Part 2 in the game folder", () => {
     expect(ef.instructions).toMatch(/NOT into Data/i);
     expect(ef.instructions).toMatch(/cannot install it/i);
     expect(ef.instructionsUrl).toContain("17230");
+  });
+
+  it("keeps declaring a prereq the collection covers only PARTLY", async () => {
+    // The suppression rule was `some`: one required file provided silenced the
+    // whole probe. ENB needs d3d11.dll AND enbseries.ini, so a collection that
+    // ships the wrapper but not the preset would have had the entire
+    // dependency disappear rather than report the half still missing.
+    //
+    // Part 2 cannot test this — it is one file, so `some` and `every` agree —
+    // which is exactly how the change slipped through unprotected until a
+    // mutation run said so.
+    const dir = await gameDir(["d3d11.dll", "enbseries.ini"]);
+    const found = await detectExternalDependencies(dir, "skyrimse", {
+      providedByMods: new Set(["d3d11.dll"]),
+    });
+    expect(found.some((d) => d.id === "enb")).toBe(true);
+  });
+
+  it("suppresses once the collection covers ALL of it", async () => {
+    const dir = await gameDir(["d3d11.dll", "enbseries.ini"]);
+    const found = await detectExternalDependencies(dir, "skyrimse", {
+      providedByMods: new Set(["d3d11.dll", "enbseries.ini"]),
+    });
+    expect(found.some((d) => d.id === "enb")).toBe(false);
   });
 
   it("still suppresses anything the collection's own mods deploy", async () => {
@@ -154,6 +196,21 @@ describe("shipping Part 1 with no Part 2 anywhere", () => {
         deployedFiles: deployed("EngineFixes.dll"),
       }),
     ).toBeDefined();
+  });
+
+  it("says nothing when a MOD in the collection ships Part 2", () => {
+    // The reported bug, and the worst shape a warning can take: it fired
+    // BECAUSE the curator fixed the problem. They installed Part 2 as a Vortex
+    // mod with the engine-injector type, so the probe correctly stopped
+    // calling it a prerequisite — and this check, looking only at what was
+    // declared, then announced it was missing from their game folder.
+    expect(
+      describeMissingEngineFixesPart2({
+        gameId: "skyrimse",
+        declared: declared(),
+        deployedFiles: deployed("EngineFixes_preload.txt", "d3dx9_42.dll"),
+      }),
+    ).toBeUndefined();
   });
 
   it("stays out of other games", () => {

@@ -172,12 +172,27 @@ const PROBES: DependencyProbe[] = [
     // and EngineFixes_preload.txt, Part 2's three binaries sitting loose in the
     // game root, and externalDependencies shipping as [].
     //
-    // Corroboration: neither file proves anything alone. d3dx9_42.dll is a
-    // stock DirectX redistributable and tbb.dll is Intel Threading Building
-    // Blocks, which arrives with plenty of unrelated software. Both, in a
-    // Skyrim Special Edition root, are Part 2's payload.
-    required: ["d3dx9_42.dll", "tbb.dll"],
-    optional: ["tbbmalloc.dll"],
+    // ONE file, verified from the mod itself rather than assumed.
+    //
+    // This first required d3dx9_42.dll AND tbb.dll, on my belief that Part 2
+    // shipped both. It does not. Read out of the installed mod's staging
+    // folder: "Engine Fixes - SKSE64 Preloader" contains exactly
+    // `d3dx9_42.dll`, 86.5 KB, and nothing else. The tbb.dll and tbbmalloc.dll
+    // in that curator's game root came from something unrelated.
+    //
+    // The pair was not merely redundant, it was a silent false NEGATIVE: on
+    // any machine with Part 2 and no tbb.dll — the normal case — the probe
+    // could never fire. It appeared to work only because that one machine
+    // happened to have both.
+    //
+    // A lone d3dx9_42.dll is weaker evidence than the corroborated pairs
+    // below, and it is accepted here because Skyrim Special Edition is a
+    // DirectX 11 game: it neither ships nor loads a DX9 redistributable, and
+    // the whole trick of the preloader is to take a name the game will load
+    // anyway. In that folder the file is not there by accident. A false
+    // positive costs someone re-installing a mod they have; the false negative
+    // costs a collection that ships Part 1 alone and loads nothing.
+    required: ["d3dx9_42.dll"],
     instructionsUrl: "https://www.nexusmods.com/skyrimspecialedition/mods/17230",
     instructions:
       "Download the \"Part 2\" file from the Engine Fixes page and extract it " +
@@ -315,6 +330,9 @@ export function filesProvidedByMods(
  */
 export const ENGINE_FIXES_PART2_ID = "sse-engine-fixes-part2";
 
+/** The whole of Part 2, lowercased for basename matching. */
+const ENGINE_FIXES_PART2_FILE = "d3dx9_42.dll";
+
 /**
  * The collection ships half of Engine Fixes and cannot say where the other
  * half went.
@@ -350,6 +368,14 @@ export function describeMissingEngineFixesPart2(args: {
 
   if (args.declared.some((d) => d.id === ENGINE_FIXES_PART2_ID)) return undefined;
 
+  // A mod in the collection can supply Part 2, and that is the BEST outcome —
+  // it ships with the collection and the user does nothing. The curator who
+  // hit this had just achieved it: they installed Part 2 as a Vortex mod with
+  // the engine-injector type, so the probe correctly stopped calling it a
+  // prerequisite, and this check then announced it was missing from their game
+  // folder. It fired BECAUSE they fixed it.
+  if (args.deployedFiles.has(ENGINE_FIXES_PART2_FILE)) return undefined;
+
   return (
     `This collection installs SSE Engine Fixes Part 1, but Part 2 is not in ` +
     `your game folder, so it cannot be shipped as a prerequisite either. Part ` +
@@ -373,8 +399,15 @@ export async function detectExternalDependencies(
     if (probe.gameIds.length > 0 && !probe.gameIds.includes(gameId)) continue;
 
     // The collection already installs it -> not a prerequisite.
+    //
+    // EVERY, not SOME. A prerequisite the collection covers only PARTLY is
+    // still a prerequisite, and suppressing the whole probe because one of its
+    // files happened to be provided hides the rest. That is not hypothetical:
+    // it is how a curator who correctly started shipping one half of a
+    // dependency got told the other half was missing from their game folder,
+    // by a check downstream that saw nothing declared.
     if (
-      probe.required.some((rel) =>
+      probe.required.every((rel) =>
         options.providedByMods?.has(path.basename(rel).toLowerCase()) === true,
       )
     ) {

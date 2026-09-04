@@ -53,9 +53,9 @@ Start here when exploring this area:
 | `applyCachedHashes` | Function | `src/core/archiveHashCache.ts` | 295 |
 | `describeHashedCollisions` | Function | `src/core/manifest/collectionScope.ts` | 200 |
 | `describeScope` | Function | `src/core/manifest/collectionScope.ts` | 214 |
-| `describeMissingEngineFixesPart2` | Function | `src/core/manifest/externalDependencies.ts` | 334 |
-| `filesProvidedByDeployment` | Function | `src/core/manifest/externalDependencies.ts` | 272 |
-| `getGameDirectory` | Function | `src/core/manifest/externalDependencies.ts` | 223 |
+| `describeMissingEngineFixesPart2` | Function | `src/core/manifest/externalDependencies.ts` | 352 |
+| `filesProvidedByDeployment` | Function | `src/core/manifest/externalDependencies.ts` | 287 |
+| `getGameDirectory` | Function | `src/core/manifest/externalDependencies.ts` | 238 |
 | `countBy` | Function | `src/core/manifest/externalHints.ts` | 323 |
 | `downloadsFromState` | Function | `src/core/manifest/externalHints.ts` | 271 |
 | `modsFromState` | Function | `src/core/manifest/externalHints.ts` | 256 |
