@@ -47,7 +47,7 @@ Start here when exploring this area:
 | `HomePage` | Function | `src/ui/pages/HomePage.tsx` | 48 |
 | `ModDiffsPage` | Function | `src/ui/pages/ModDiffsPage.tsx` | 67 |
 | `PluginDiffsPage` | Function | `src/ui/pages/PluginDiffsPage.tsx` | 53 |
-| `BuildPage` | Function | `src/ui/pages/build/BuildPage.tsx` | 114 |
+| `BuildPage` | Function | `src/ui/pages/build/BuildPage.tsx` | 115 |
 | `InstallPage` | Function | `src/ui/pages/install/InstallPage.tsx` | 50 |
 | `listModDiffFiles` | Function | `src/core/modDiffStorage.ts` | 60 |
 | `readModDiffReport` | Function | `src/core/modDiffStorage.ts` | 95 |

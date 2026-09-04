@@ -150,7 +150,28 @@ export function findModsWithNoArchivePath(
  * before it, no mod has a hash and everything would look broken. For the
  * pre-hash warning use {@link findModsWithNoArchivePath}.
  */
-export function findRecoverableMods(mods: AuditorMod[]): {
+export function findRecoverableMods(
+  mods: AuditorMod[],
+  opts?: {
+    /**
+     * Mods the curator has chosen to ship as external.
+     *
+     * They do not need an archive at all — they are identified by the
+     * SHA-256 of their deployed files — so offering to re-download one is
+     * offering to fix something that is not broken. Worse, the usual reason to
+     * mark a mod external is that its Nexus page is GONE, so the download is
+     * guaranteed to fail and leave a warning about it.
+     *
+     * That is the bug this closes: a curator marked a dead mod as external,
+     * and was still told "1 archive could not be re-downloaded: Nexus returned
+     * no download id" on every build.
+     *
+     * Optional so the pure "which mods lack a hash" question still has a
+     * caller-free answer, but every UI caller passes it.
+     */
+    shipsAsExternal?: (mod: AuditorMod) => boolean;
+  },
+): {
   recoverable: RecoverableMod[];
   unattemptable: AuditorMod[];
 } {
@@ -159,6 +180,7 @@ export function findRecoverableMods(mods: AuditorMod[]): {
 
   for (const mod of mods) {
     if (mod.archiveSha256 !== undefined) continue;
+    if (opts?.shipsAsExternal?.(mod) === true) continue;
     const modId = Number(mod.nexusModId);
     const fileId = Number(mod.nexusFileId);
     if (Number.isInteger(modId) && modId > 0 && Number.isInteger(fileId) && fileId > 0) {

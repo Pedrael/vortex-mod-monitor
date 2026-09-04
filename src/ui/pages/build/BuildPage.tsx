@@ -56,6 +56,7 @@ import {
 } from "./postProcessingDecision";
 import type { PostProcessingChoice } from "./postProcessingDecision";
 import type { ExternalModConfigEntry } from "../../../core/manifest/collectionConfig";
+import { shipsAsExternal } from "../../../core/manifest/shipsAsExternal";
 import { findRecoverableMods } from "../../../core/archiveRecovery";
 import type {
   EhcollExternalDependency,
@@ -662,7 +663,12 @@ function BuildWizard(props: BuildWizardProps): JSX.Element {
         onDiscardDraft={handleDiscardDraft}
         onDismissDraftBanner={handleDismissDraftBanner}
         recoverableCount={
-          findRecoverableMods(formState.ctx.mods).recoverable.length
+          findRecoverableMods(formState.ctx.mods, {
+            // Same predicate the session uses, from the same live overrides,
+            // so the button's count and what it would actually do agree.
+            shipsAsExternal: (m) =>
+              shipsAsExternal(isNexusMod(m), formState.overrides[m.id]),
+          }).recoverable.length
         }
         onRecoverArchives={(): void => session.recoverArchives(api)}
         onCheckAvailability={(): void => session.checkNexusAvailability(api)}

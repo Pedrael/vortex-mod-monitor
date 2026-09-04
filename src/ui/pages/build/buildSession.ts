@@ -85,6 +85,8 @@ import {
   rememberArchiveHash,
   saveArchiveHashCache,
 } from "../../../core/archiveHashCache";
+import { shipsAsExternal } from "../../../core/manifest/shipsAsExternal";
+import { isNexusMod } from "./engine";
 import { describeMissingArchives, isMissingArchiveWarning } from "./engine";
 import {
   checkNexusAvailability,
@@ -845,7 +847,13 @@ class BuildSession {
     if (this.state.kind !== "form") return;
     const form = this.state;
 
-    const { recoverable } = findRecoverableMods(form.ctx.mods);
+    // The LIVE overrides, not the saved config. A curator who has just ticked
+    // "ships as external" and not yet triggered a persist would otherwise
+    // still be offered a re-download of the mod they just excused.
+    const { recoverable } = findRecoverableMods(form.ctx.mods, {
+      shipsAsExternal: (m) =>
+        shipsAsExternal(isNexusMod(m), form.overrides[m.id]),
+    });
     if (recoverable.length === 0) return;
 
     this.controller?.abort();

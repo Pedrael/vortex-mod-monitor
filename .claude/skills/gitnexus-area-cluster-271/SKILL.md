@@ -1,9 +1,9 @@
 ---
-name: gitnexus-area-cluster-268
-description: "Skill for the Cluster_268 area of Event-Horizon. 5 symbols across 2 files."
+name: gitnexus-area-cluster-271
+description: "Skill for the Cluster_271 area of Event-Horizon. 5 symbols across 2 files."
 ---
 
-# Cluster_268
+# Cluster_271
 
 5 symbols | 2 files | Cohesion: 80%
 
@@ -11,7 +11,7 @@ description: "Skill for the Cluster_268 area of Event-Horizon. 5 symbols across 
 
 - Working with code in `src/`
 - Understanding how opn, opn, opn work
-- Modifying cluster_268-related functionality
+- Modifying cluster_271-related functionality
 
 ## Key Files
 
@@ -42,6 +42,6 @@ description: "Skill for the Cluster_268 area of Event-Horizon. 5 symbols across 
 ## How to Explore
 
 1. `context({name: "opn"})` — see callers and callees
-2. `query({search_query: "cluster_268"})` — find related execution flows
+2. `query({search_query: "cluster_271"})` — find related execution flows
 3. Read key files listed above for implementation details
 4. `explain({target: "<file or symbol>"})` — persisted taint findings (source→sink data flows), when indexed with `--pdg`

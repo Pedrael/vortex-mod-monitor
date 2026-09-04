@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-manifest
-description: "Skill for the Manifest area of Event-Horizon. 322 symbols across 59 files."
+description: "Skill for the Manifest area of Event-Horizon. 332 symbols across 62 files."
 ---
 
 # Manifest
 
-322 symbols | 59 files | Cohesion: 81%
+332 symbols | 62 files | Cohesion: 80%
 
 ## When to Use
 

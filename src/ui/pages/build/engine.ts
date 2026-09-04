@@ -581,7 +581,17 @@ export async function loadBuildContext(
   // have had their say. The pre-hash probe above is an early estimate for the
   // log; this is the number the curator is told, and it is the one that shrinks
   // when archives are recovered.
-  const unidentified = mods.filter((m) => m.archiveSha256 === undefined);
+  // A mod the curator marked `treatAsExternal` is NOT unidentified: it ships,
+  // keyed by the SHA-256 of its deployed files, and `buildManifest` accepts it
+  // without an archive. Counting it here produced "1 Nexus mod cannot be
+  // packaged" for a mod that packages perfectly well — while the availability
+  // panel three inches below correctly labelled the same mod "ships as an
+  // external mod". Two answers to one question, on one screen.
+  const unidentified = mods.filter(
+    (m) =>
+      m.archiveSha256 === undefined &&
+      !shipsAsExternal(isNexusMod(m), collectionConfig.externalMods[m.id]),
+  );
 
   // Two external mods can be separate downloads of byte-identical archives, so
   // they only collide once a hash exists. buildManifest catches it, but not
