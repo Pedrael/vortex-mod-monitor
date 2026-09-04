@@ -1,16 +1,16 @@
 ---
 name: gitnexus-area-manifest
-description: "Skill for the Manifest area of Event-Horizon. 322 symbols across 59 files."
+description: "Skill for the Manifest area of Event-Horizon. 320 symbols across 59 files."
 ---
 
 # Manifest
 
-322 symbols | 59 files | Cohesion: 81%
+320 symbols | 59 files | Cohesion: 81%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how parseManifest, applyCachedDownloadIds, applyCachedHashes work
+- Understanding how parseManifest, buildManifest, applyCachedDownloadIds work
 - Modifying manifest-related functionality
 
 ## Key Files
@@ -33,10 +33,10 @@ description: "Skill for the Manifest area of Event-Horizon. 322 symbols across 5
 Start here when exploring this area:
 
 - **`parseManifest`** (Function) — `src/core/manifest/parseManifest.ts:143`
+- **`buildManifest`** (Function) — `src/core/manifest/buildManifest.ts:283`
 - **`applyCachedDownloadIds`** (Function) — `src/core/archiveHashCache.ts:272`
 - **`applyCachedHashes`** (Function) — `src/core/archiveHashCache.ts:295`
 - **`describeHashedCollisions`** (Function) — `src/core/manifest/collectionScope.ts:200`
-- **`describeScope`** (Function) — `src/core/manifest/collectionScope.ts:214`
 
 ## Key Symbols
 
@@ -49,13 +49,13 @@ Start here when exploring this area:
 | `PackageEhcollError` | Class | `src/core/manifest/packageZip.ts` | 114 |
 | `ReadEhcollError` | Class | `src/core/manifest/readEhcoll.ts` | 128 |
 | `parseManifest` | Function | `src/core/manifest/parseManifest.ts` | 143 |
+| `buildManifest` | Function | `src/core/manifest/buildManifest.ts` | 283 |
 | `applyCachedDownloadIds` | Function | `src/core/archiveHashCache.ts` | 272 |
 | `applyCachedHashes` | Function | `src/core/archiveHashCache.ts` | 295 |
 | `describeHashedCollisions` | Function | `src/core/manifest/collectionScope.ts` | 200 |
 | `describeScope` | Function | `src/core/manifest/collectionScope.ts` | 214 |
 | `describeMissingEngineFixesPart2` | Function | `src/core/manifest/externalDependencies.ts` | 381 |
 | `filesProvidedByDeployment` | Function | `src/core/manifest/externalDependencies.ts` | 316 |
-| `getGameDirectory` | Function | `src/core/manifest/externalDependencies.ts` | 238 |
 | `listRootBinaries` | Function | `src/core/manifest/externalDependencies.ts` | 280 |
 | `downloadsFromState` | Function | `src/core/manifest/externalHints.ts` | 271 |
 | `describeRootFolderReview` | Function | `src/core/manifest/rootFolderReview.ts` | 209 |

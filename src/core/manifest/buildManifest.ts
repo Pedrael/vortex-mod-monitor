@@ -259,7 +259,21 @@ export class BuildManifestError extends Error {
 }
 
 /** buildManifest's own, stricter notion: ids AND an explicit nexus source. */
-function isNexusMod(mod: AuditorMod): boolean {
+/**
+ * A STRICTER question than `isNexusSourced`, deliberately, and renamed to say
+ * so rather than share a name with it.
+ *
+ * The manifest additionally requires `source === "nexus"`: an entry claiming a
+ * Nexus origin is a promise that Nexus can serve it, and a mod carrying ids
+ * from some other importer is not that. Unifying this with the bundling gates'
+ * predicate was tried and reclassified every such mod — see
+ * `shipsAsExternal.ts` and `shipsAsExternal.test.ts`.
+ *
+ * It also does NOT test `typeof`, so a string id passes here and fails there.
+ * Left as-is: this branch is about provenance, and the ids are stringified
+ * into the compareKey either way.
+ */
+function isNexusSourcedForManifest(mod: AuditorMod): boolean {
   return (
     mod.source === "nexus" &&
     mod.nexusModId !== undefined &&
@@ -524,7 +538,7 @@ function buildModEntry(
   errors: string[],
   repackedModIds?: ReadonlySet<string>,
 ): EhcollMod | undefined {
-  if (!shipsAsExternal(isNexusMod(mod), spec)) {
+  if (!shipsAsExternal(isNexusSourcedForManifest(mod), spec)) {
     if (!mod.archiveSha256) {
       errors.push(
         `Mod ${label(mod)} has no archiveSha256. ` +

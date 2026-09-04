@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-installer
-description: "Skill for the Installer area of Event-Horizon. 314 symbols across 66 files."
+description: "Skill for the Installer area of Event-Horizon. 309 symbols across 65 files."
 ---
 
 # Installer
 
-314 symbols | 66 files | Cohesion: 84%
+309 symbols | 65 files | Cohesion: 85%
 
 ## When to Use
 
@@ -17,7 +17,7 @@ description: "Skill for the Installer area of Event-Horizon. 314 symbols across 
 
 | File | Symbols |
 |------|---------|
-| `src/core/installer/runInstall.ts` | buildAbortedResult, buildDisplayNameByModId, buildFailReceipt, buildManifestIndex, buildNexusModIdMap (+51) |
+| `src/core/installer/runInstall.ts` | buildAbortedResult, buildDisplayNameByModId, buildFailReceipt, buildManifestIndex, buildNexusModIdMap (+50) |
 | `src/core/installer/modInstall.ts` | uninstallMod, delayRespectingAbort, extractBundledFromEhcoll, installFromBundledArchive, installFromExistingDownload (+16) |
 | `src/core/installLedger.ts` | InstallLedgerError, deleteReceipt, expectString, getInstallLedgerDir, getReceiptPath (+11) |
 | `src/core/installer/applyUserlist.ts` | applyGroupDefinition, applyGroupRule, applyPluginEntry, applyPluginGroup, applyPluginRuleWithCollectionWins (+8) |

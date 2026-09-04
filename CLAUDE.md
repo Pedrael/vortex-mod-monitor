@@ -481,7 +481,7 @@ Run gated scripts from `package.json` when hooks remind you: `bearing.__gate.*` 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **Event-Horizon** (8300 symbols, 20271 relationships, 402 execution flows).
+This project is indexed by GitNexus as **Event-Horizon** (8304 symbols, 20270 relationships, 402 execution flows).
 
 > Index stale? Run `node .gitnexus/run.cjs analyze --index-only` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? Bootstrap with `npx`, `bunx`, or `pnpm dlx` — e.g. `bunx gitnexus@latest analyze` (npm 11 npx crash; #1939).
 
@@ -521,9 +521,9 @@ This project is indexed by GitNexus as **Event-Horizon** (8300 symbols, 20271 re
 | Rename / extract / split / refactor | `.claude/skills/gitnexus-refactoring/SKILL.md` |
 | Tools, resources, schema reference | `.claude/skills/gitnexus-guide/SKILL.md` |
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus-cli/SKILL.md` |
-| Work in the Build area (330 symbols) | `.claude/skills/gitnexus-area-build/SKILL.md` |
-| Work in the Manifest area (322 symbols) | `.claude/skills/gitnexus-area-manifest/SKILL.md` |
-| Work in the Installer area (314 symbols) | `.claude/skills/gitnexus-area-installer/SKILL.md` |
+| Work in the Build area (334 symbols) | `.claude/skills/gitnexus-area-build/SKILL.md` |
+| Work in the Manifest area (320 symbols) | `.claude/skills/gitnexus-area-manifest/SKILL.md` |
+| Work in the Installer area (309 symbols) | `.claude/skills/gitnexus-area-installer/SKILL.md` |
 | Work in the Actions area (85 symbols) | `.claude/skills/gitnexus-area-actions/SKILL.md` |
 | Work in the Install area (72 symbols) | `.claude/skills/gitnexus-area-install/SKILL.md` |
 | Work in the Resolver area (63 symbols) | `.claude/skills/gitnexus-area-resolver/SKILL.md` |

@@ -1,16 +1,16 @@
 ---
 name: gitnexus-area-actions
-description: "Skill for the Actions area of Event-Horizon. 85 symbols across 22 files."
+description: "Skill for the Actions area of Event-Horizon. 85 symbols across 23 files."
 ---
 
 # Actions
 
-85 symbols | 22 files | Cohesion: 73%
+85 symbols | 23 files | Cohesion: 72%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how createBuildPackageAction, matchEhcollFile, captureLoadOrder work
+- Understanding how createBuildPackageAction, captureDeploymentManifests, collectDistinctModTypes work
 - Modifying actions-related functionality
 
 ## Key Files
@@ -18,31 +18,33 @@ description: "Skill for the Actions area of Event-Horizon. 85 symbols across 22 
 | File | Symbols |
 |------|---------|
 | `src/actions/installCollectionAction.ts` | collectUserDecisions, formatDivergedConflictText, formatOrphanText, formatPromptUserText, pickConflictChoice (+24) |
-| `src/actions/buildPackageAction.ts` | BundleResolutionError, collectExternalMods, createBuildPackageAction, formatBytes, formatError (+11) |
+| `src/actions/buildPackageAction.ts` | BundleResolutionError, createBuildPackageAction, formatBytes, formatError, promptCuratorMetadata (+8) |
 | `src/utils/utils.ts` | exportDiffReport, pickJsonFile, pickTxtFile, pickModArchiveFile, openFile (+1) |
 | `src/core/getModsListForProfile.ts` | getActiveGameId, getActiveProfileId, getActiveProfileIdFromState, belongsToGame |
+| `src/core/deploymentManifest.ts` | captureDeploymentManifests, collectDistinctModTypes, normalizeManifest |
 | `src/core/manifest/packageFileName.ts` | buildOutputFileName, safePackageVersion, slugifyPackageName |
 | `src/actions/compareModsAction.ts` | createCompareModsAction, action, action |
 | `src/actions/comparePluginsAction.ts` | createComparePluginsAction, action, action |
 | `src/actions/exportModsAction.ts` | createExportModsAction, action, action |
 | `src/core/comparePlugins.ts` | exportPluginsDiffReport, getCurrentPluginsTxtPath, getLocalAppDataPath |
-| `src/core/manifest/collectionConfig.ts` | reconcileExternalModsConfig, toBuildManifestExternalMods |
 
 ## Entry Points
 
 Start here when exploring this area:
 
-- **`createBuildPackageAction`** (Function) — `src/actions/buildPackageAction.ts:116`
+- **`createBuildPackageAction`** (Function) — `src/actions/buildPackageAction.ts:117`
+- **`captureDeploymentManifests`** (Function) — `src/core/deploymentManifest.ts:133`
+- **`collectDistinctModTypes`** (Function) — `src/core/deploymentManifest.ts:53`
 - **`matchEhcollFile`** (Function) — `src/core/doctor/heal.ts:177`
 - **`captureLoadOrder`** (Function) — `src/core/loadOrder.ts:40`
-- **`reconcileExternalModsConfig`** (Function) — `src/core/manifest/collectionConfig.ts:323`
-- **`toBuildManifestExternalMods`** (Function) — `src/core/manifest/collectionConfig.ts:364`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `createBuildPackageAction` | Function | `src/actions/buildPackageAction.ts` | 116 |
+| `createBuildPackageAction` | Function | `src/actions/buildPackageAction.ts` | 117 |
+| `captureDeploymentManifests` | Function | `src/core/deploymentManifest.ts` | 133 |
+| `collectDistinctModTypes` | Function | `src/core/deploymentManifest.ts` | 53 |
 | `matchEhcollFile` | Function | `src/core/doctor/heal.ts` | 177 |
 | `captureLoadOrder` | Function | `src/core/loadOrder.ts` | 40 |
 | `reconcileExternalModsConfig` | Function | `src/core/manifest/collectionConfig.ts` | 323 |
@@ -60,8 +62,6 @@ Start here when exploring this area:
 | `getActiveGameId` | Function | `src/core/getModsListForProfile.ts` | 242 |
 | `getActiveProfileId` | Function | `src/core/getModsListForProfile.ts` | 247 |
 | `getActiveProfileIdFromState` | Function | `src/core/getModsListForProfile.ts` | 279 |
-| `belongsToGame` | Function | `src/core/getModsListForProfile.ts` | 284 |
-| `beginOp` | Function | `src/core/logging/ehLog.ts` | 153 |
 
 ## Execution Flows
 

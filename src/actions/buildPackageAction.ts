@@ -49,6 +49,7 @@
  *   - README / CHANGELOG markdown → rich editors writing the same fields.
  */
 
+import { isNexusSourced } from "../core/identity/nexusSourced";
 import { mayBundle } from "../core/manifest/shipsAsExternal";
 import * as fsp from "fs/promises";
 import * as path from "path";
@@ -615,14 +616,12 @@ function collectExternalMods(
     .map((mod) => ({ id: mod.id, name: mod.name }));
 }
 
-function isNexusMod(mod: AuditorMod): boolean {
-  return (
-    typeof mod.nexusModId === "number" &&
-    typeof mod.nexusFileId === "number" &&
-    mod.nexusModId > 0 &&
-    mod.nexusFileId > 0
-  );
-}
+/**
+ * Was a private, byte-identical copy of the predicate in
+ * `core/identity/nexusSourced.ts`. Two bundling gates decided "is this from
+ * Nexus" from two separate function bodies that nothing kept in step.
+ */
+const isNexusMod = isNexusSourced;
 
 /**
  * Walk the curator's per-mod overrides; for each entry flagged

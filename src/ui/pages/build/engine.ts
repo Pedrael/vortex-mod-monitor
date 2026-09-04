@@ -35,6 +35,7 @@ import {
 } from "../../../core/archiveHashing";
 import { captureDeploymentManifests } from "../../../core/deploymentManifest";
 import type { AuditorMod } from "../../../core/getModsListForProfile";
+import { isNexusSourced } from "../../../core/identity/nexusSourced";
 import {
   getActiveGameId,
   getActiveProfileIdFromState,
@@ -1597,14 +1598,14 @@ export function validateCuratorInput(input: CuratorInput): string | undefined {
 // Internals
 // ===========================================================================
 
-export function isNexusMod(mod: AuditorMod): boolean {
-  return (
-    typeof mod.nexusModId === "number" &&
-    typeof mod.nexusFileId === "number" &&
-    mod.nexusModId > 0 &&
-    mod.nexusFileId > 0
-  );
-}
+/**
+ * Re-exported so the eight call sites here keep their import.
+ *
+ * The body moved to `core/identity/nexusSourced.ts`: it was duplicated
+ * byte-for-byte in `buildPackageAction.ts`, which could not import it without
+ * an action reaching into a UI page.
+ */
+export const isNexusMod = isNexusSourced;
 
 function resolveBundledArchives(
   state: types.IState,
