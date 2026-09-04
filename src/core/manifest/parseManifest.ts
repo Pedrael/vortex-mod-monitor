@@ -1626,12 +1626,25 @@ function crossReferenceValidate(
  * to match exactly one mod. Heuristic: `nexus:<modId>:<fileId>` is fully
  * pinned (3 colon-separated segments); `nexus:<modId>` is partial.
  * `external:<sha256>` is fully pinned. `archive:<id>` is fully pinned.
+ *
+ * `external:` carries TWO shapes, which the comment here used to deny.
+ * `buildExternalMod` emits `external:<sha256>` for a mod identified by its
+ * archive and `external:staging:<stagingSetHash>` for one repacked from its
+ * staging folder — two lines apart in the same ternary. This function said
+ * "external: / archive: / id: are all single-segment-after-prefix" and passed
+ * the three-segment form anyway, because the regex only tests the prefix. The
+ * behaviour was right by accident and the stated rule was wrong, which is the
+ * worse of the two to leave in place: the next person to add an arity check
+ * would have written it from the comment.
  */
 function isFullyPinnedReference(reference: string): boolean {
   if (reference.startsWith("nexus:")) {
+    // nexus:<modId>:<fileId> is pinned; nexus:<modId> alone is a page
+    // reference and pins nothing.
     return reference.split(":").length === 3;
   }
-  // external: / archive: / id: are all single-segment-after-prefix.
+  // Both external shapes name a hash, so both are pinned. archive:/id: carry
+  // a single opaque segment.
   return /^(external|archive|id):/.test(reference);
 }
 

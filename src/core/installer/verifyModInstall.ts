@@ -190,7 +190,16 @@ export async function verifyModInstall(
     ((state as any)?.persistent?.mods?.[gameId]?.[vortexModId] ?? undefined) as
       | { installationPath?: string }
       | undefined;
-  if (mod === undefined || typeof mod.installationPath !== "string") {
+  // `.length` too, not just `typeof`. `path.join(installRoot, "")` returns
+  // installRoot ITSELF, so a mod whose installationPath is blank would have
+  // this walk the entire staging folder — every mod in the collection — and
+  // compare it against one mod's expected file list. Three of the six places
+  // that build a staging path guarded the length and three did not.
+  if (
+    mod === undefined ||
+    typeof mod.installationPath !== "string" ||
+    mod.installationPath.length === 0
+  ) {
     return { kind: "skip", reason: "vortex-mod-missing-from-state" };
   }
   const stagingRoot = path.join(installRoot, mod.installationPath);

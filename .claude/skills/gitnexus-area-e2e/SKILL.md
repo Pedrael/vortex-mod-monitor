@@ -26,7 +26,7 @@ description: "Skill for the E2e area of Event-Horizon. 8 symbols across 4 files.
 
 Start here when exploring this area:
 
-- **`runInstall`** (Function) — `src/core/installer/runInstall.ts:534`
+- **`runInstall`** (Function) — `src/core/installer/runInstall.ts:537`
 - **`makeFakeVortex`** (Function) — `test/e2e/fakeVortex.ts:44`
 - **`complete`** (Function) — `test/e2e/fakeVortex.ts:121`
 - **`nexusDownload`** (Function) — `test/e2e/fakeVortex.ts:238`
@@ -35,7 +35,7 @@ Start here when exploring this area:
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `runInstall` | Function | `src/core/installer/runInstall.ts` | 534 |
+| `runInstall` | Function | `src/core/installer/runInstall.ts` | 537 |
 | `makeFakeVortex` | Function | `test/e2e/fakeVortex.ts` | 44 |
 | `complete` | Function | `test/e2e/fakeVortex.ts` | 121 |
 | `nexusDownload` | Function | `test/e2e/fakeVortex.ts` | 238 |

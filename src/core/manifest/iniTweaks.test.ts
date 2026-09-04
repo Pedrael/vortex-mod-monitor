@@ -1,14 +1,22 @@
 /**
- * Vortex INI tweaks are recorded per mod and applied by nothing on the install
- * side: `manifest.iniTweaks` is a v1 placeholder and no installer code reads
- * `state.enabledINITweaks`. The .ini file itself ships like any other staged
- * file, so a collection with an enabled tweak looks complete while the setting
- * silently never switches on.
+ * The build must NOT claim that INI tweaks go unapplied.
  *
- * Latent on the profile that prompted this — three mods carry an `INI Tweaks`
- * folder and none are enabled — which is exactly why it needs a test rather
- * than a note.
- */
+ * This file used to assert the opposite, and it was wrong — while
+ * `applyIniTweaks.test.ts` sat in the same repo with nine tests proving the
+ * tweaks ARE applied. Two test files, one question, opposite answers.
+ *
+ * `applyIniTweaks.ts` reads `state.enabledINITweaks` and dispatches
+ * `setINITweakEnabled(gameId, modId, tweak, true)` for each one, called from
+ * `runInstallImpl`. The build's warning predated it and was never retired, so
+ * curators were told to tell their testers to go and tick by hand what the
+ * driver had already ticked — and anyone who complied could no longer tell
+ * their own ticks from the collection's.
+ *
+ * A test can lock in a false claim exactly as well as a true one. This is what
+ * that looks like when it happens.
+ */import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { buildManifest } from "./buildManifest";
@@ -54,7 +62,7 @@ const fomodWarnings = (warnings: string[]): string[] =>
   warnings.filter((w) => w.includes("FOMOD"));
 
 describe("enabled INI tweaks", () => {
-  it("warns that they are recorded but will not be applied", () => {
+  it("says nothing about INI tweaks, because they are applied", () => {
     const { warnings } = build([
       mod({
         id: "settings",
@@ -64,23 +72,39 @@ describe("enabled INI tweaks", () => {
         enabledINITweaks: ["Fallout4Custom-Ivy-PC-Tuning.ini"],
       }),
     ]);
-    const line = iniWarnings(warnings).join(" ");
-    expect(line).toMatch(/1 INI tweak/);
-    expect(line).toMatch(/Ivy'sPantiesSettings/);
-    expect(line).toMatch(/does not apply INI tweaks yet/);
-    // The curator needs the workaround, not just the bad news.
-    expect(line).toMatch(/by hand in Vortex/);
+    expect(iniWarnings(warnings)).toEqual([]);
   });
 
-  it("counts tweaks across mods, not just the mods", () => {
+  it("still says nothing when many mods carry many tweaks", () => {
     const { warnings } = build([
-      // Distinct bytes, or the two collide on identity and the build refuses
-      // them before it ever reaches the tweak check.
       mod({ id: "a", archiveSha256: "a".repeat(64), enabledINITweaks: ["one.ini", "two.ini"] }),
       mod({ id: "b", archiveSha256: "b".repeat(64), enabledINITweaks: ["three.ini"] }),
     ]);
-    const line = iniWarnings(warnings).join(" ");
-    expect(line).toMatch(/3 INI tweak\(s\) are enabled across 2 mod\(s\)/);
+    expect(iniWarnings(warnings)).toEqual([]);
+  });
+
+  it("has retired the sentence itself, not just stopped emitting it", () => {
+    // The wording is the thing that misled someone, so it must be gone from
+    // the source rather than merely unreachable.
+    const src = readFileSync(join(__dirname, "buildManifest.ts"), "utf8");
+    expect(src).not.toContain("does not apply INI tweaks yet");
+    expect(src).not.toContain("enable them by hand in Vortex");
+  });
+
+  it("keeps an applier to be right about", () => {
+    // If applyIniTweaks were ever deleted, the warning above would become true
+    // again and its absence would become the bug. Tie the two together.
+    const applier = readFileSync(
+      join(__dirname, "..", "installer", "applyIniTweaks.ts"),
+      "utf8",
+    );
+    expect(applier).toContain("state.enabledINITweaks");
+    expect(applier).toContain("setINITweakEnabled");
+    const driver = readFileSync(
+      join(__dirname, "..", "installer", "runInstall.ts"),
+      "utf8",
+    );
+    expect(driver).toContain("applyIniTweaks({");
   });
 
   it("says nothing when no tweak is enabled", () => {

@@ -411,29 +411,26 @@ export function buildManifest(input: BuildManifestInput): BuildManifestResult {
     );
   }
 
-  // Vortex INI tweaks are recorded per mod and applied by nothing on the
-  // install side yet — `manifest.iniTweaks` is a v1 placeholder, and no
-  // installer code reads `state.enabledINITweaks`. A curator who enabled one
-  // is shipping a game setting that will not reach anybody, and would have no
-  // way to know: the file itself ships (it is a staged file like any other),
-  // so the collection looks complete while the setting silently does not
-  // apply. Say it rather than let them find out from a bug report.
-  const withTweaks = mods.filter(
-    (m) => (m.state.enabledINITweaks ?? []).length > 0,
-  );
-  if (withTweaks.length > 0) {
-    const total = withTweaks.reduce(
-      (n, m) => n + (m.state.enabledINITweaks ?? []).length,
-      0,
-    );
-    warnings.push(
-      `${total} INI tweak(s) are enabled across ${withTweaks.length} mod(s) ` +
-        `(e.g. "${withTweaks[0]!.name}"). They are recorded in this ` +
-        `collection, but the installer does not apply INI tweaks yet — the ` +
-        `.ini files ship, the settings do not get switched on. Anyone ` +
-        `installing this will need to enable them by hand in Vortex.`,
-    );
-  }
+  // No warning about per-mod INI tweaks, and that is a CORRECTION.
+  //
+  // This used to tell the curator that the installer did not apply INI
+  // tweaks, that the .ini files shipped without their settings switched on,
+  // and that whoever installed the collection would have to go and enable
+  // each one manually. That stopped being true when `applyIniTweaks.ts` was
+  // written: it reads
+  // `state.enabledINITweaks` and dispatches `setINITweakEnabled(..., true)`
+  // for each one, from `runInstallImpl`. The sentence survived the feature
+  // that refuted it.
+  //
+  // The cost was not cosmetic. A curator read it and passed the instruction
+  // on, so testers were told to go and tick by hand what the driver had
+  // already ticked — and anyone who complied could not tell their manual
+  // ticks from the collection's.
+  //
+  // `manifest.iniTweaks` (the TOP-LEVEL array) is still an unused v1
+  // placeholder, and that is a different field from the per-mod ticks. It is
+  // not warned about here because nothing is captured into it either: an empty
+  // array cannot lose a setting.
 
   const manifest: EhcollManifest = {
     schemaVersion: SCHEMA_VERSION,

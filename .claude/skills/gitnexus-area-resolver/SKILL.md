@@ -1,16 +1,16 @@
 ---
 name: gitnexus-area-resolver
-description: "Skill for the Resolver area of Event-Horizon. 64 symbols across 9 files."
+description: "Skill for the Resolver area of Event-Horizon. 63 symbols across 8 files."
 ---
 
 # Resolver
 
-64 symbols | 9 files | Cohesion: 79%
+63 symbols | 8 files | Cohesion: 80%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how createInstallCollectionAction, enrichModsWithArchiveHashes, downloadsDirFor work
+- Understanding how createInstallCollectionAction, downloadsDirFor, scanAvailableDownloads work
 - Modifying resolver-related functionality
 
 ## Key Files
@@ -24,7 +24,6 @@ description: "Skill for the Resolver area of Event-Horizon. 64 symbols across 9 
 | `src/core/resolver/collectAvailableDownloads.test.ts` | action, engine, pipelines, read |
 | `src/core/resolver/gameVersionGuidance.ts` | compareVersions, parse, describe, gameVersionGuidance |
 | `src/core/resolver/scanAvailableDownloads.ts` | downloadsDirFor, scanAvailableDownloads |
-| `src/core/archiveHashing.ts` | enrichModsWithArchiveHashes |
 | `src/utils/utils.ts` | pickEhcollFile |
 
 ## Entry Points
@@ -32,17 +31,16 @@ description: "Skill for the Resolver area of Event-Horizon. 64 symbols across 9 
 Start here when exploring this area:
 
 - **`createInstallCollectionAction`** (Function) — `src/actions/installCollectionAction.ts:111`
-- **`enrichModsWithArchiveHashes`** (Function) — `src/core/archiveHashing.ts:183`
 - **`downloadsDirFor`** (Function) — `src/core/resolver/scanAvailableDownloads.ts:40`
 - **`scanAvailableDownloads`** (Function) — `src/core/resolver/scanAvailableDownloads.ts:57`
 - **`buildUserSideState`** (Function) — `src/core/resolver/userState.ts:120`
+- **`pickInstallTarget`** (Function) — `src/core/resolver/userState.ts:150`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
 | `createInstallCollectionAction` | Function | `src/actions/installCollectionAction.ts` | 111 |
-| `enrichModsWithArchiveHashes` | Function | `src/core/archiveHashing.ts` | 183 |
 | `downloadsDirFor` | Function | `src/core/resolver/scanAvailableDownloads.ts` | 40 |
 | `scanAvailableDownloads` | Function | `src/core/resolver/scanAvailableDownloads.ts` | 57 |
 | `buildUserSideState` | Function | `src/core/resolver/userState.ts` | 120 |
@@ -61,6 +59,7 @@ Start here when exploring this area:
 | `resolveInstallPlan` | Function | `src/core/resolver/resolveInstallPlan.ts` | 92 |
 | `compareVersions` | Function | `src/core/resolver/gameVersionGuidance.ts` | 167 |
 | `parse` | Function | `src/core/resolver/gameVersionGuidance.ts` | 168 |
+| `gameVersionGuidance` | Function | `src/core/resolver/gameVersionGuidance.ts` | 116 |
 
 ## Execution Flows
 

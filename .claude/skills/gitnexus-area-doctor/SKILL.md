@@ -32,7 +32,7 @@ Start here when exploring this area:
 - **`describeHeal`** (Function) — `src/core/doctor/heal.ts:59`
 - **`rebuildPluginOrder`** (Function) — `src/core/doctor/heal.ts:136`
 - **`runHeal`** (Function) — `src/core/doctor/runHeal.ts:86`
-- **`heal`** (Function) — `src/ui/pages/doctor/DoctorPage.tsx:270`
+- **`heal`** (Function) — `src/ui/pages/doctor/DoctorPage.tsx:273`
 
 ## Key Symbols
 
@@ -42,10 +42,10 @@ Start here when exploring this area:
 | `describeHeal` | Function | `src/core/doctor/heal.ts` | 59 |
 | `rebuildPluginOrder` | Function | `src/core/doctor/heal.ts` | 136 |
 | `runHeal` | Function | `src/core/doctor/runHeal.ts` | 86 |
-| `heal` | Function | `src/ui/pages/doctor/DoctorPage.tsx` | 270 |
+| `heal` | Function | `src/ui/pages/doctor/DoctorPage.tsx` | 273 |
 | `evaluateHealth` | Function | `src/core/doctor/health.ts` | 157 |
 | `healNeedsManifest` | Function | `src/core/doctor/heal.ts` | 39 |
-| `unavailableHeal` | Function | `src/ui/pages/doctor/DoctorPage.tsx` | 437 |
+| `unavailableHeal` | Function | `src/ui/pages/doctor/DoctorPage.tsx` | 440 |
 | `countModRules` | Function | `src/core/doctor/gather.ts` | 69 |
 | `readEnabledModIds` | Function | `src/core/doctor/gather.ts` | 52 |
 | `readInstalledModIds` | Function | `src/core/doctor/gather.ts` | 36 |

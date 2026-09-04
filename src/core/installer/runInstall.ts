@@ -299,7 +299,10 @@ async function detectDrift(args: {
         )?.persistent?.mods?.[gameId]?.[vortexModId] as
           | { installationPath?: string }
           | undefined;
-        return typeof mod?.installationPath === "string"
+        // Blank is not a folder: path.join(root, "") is root, which would
+        // point drift detection at the whole staging tree.
+        return typeof mod?.installationPath === "string" &&
+          mod.installationPath.length > 0
           ? path.join(installRoot, mod.installationPath)
           : undefined;
       },

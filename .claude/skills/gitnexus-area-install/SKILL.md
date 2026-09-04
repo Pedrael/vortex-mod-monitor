@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-install
-description: "Skill for the Install area of Event-Horizon. 78 symbols across 14 files."
+description: "Skill for the Install area of Event-Horizon. 72 symbols across 9 files."
 ---
 
 # Install
 
-78 symbols | 14 files | Cohesion: 78%
+72 symbols | 9 files | Cohesion: 82%
 
 ## When to Use
 
@@ -23,7 +23,6 @@ description: "Skill for the Install area of Event-Horizon. 78 symbols across 14 
 | `src/ui/pages/install/installProgress.ts` | describeElapsed, describeQuiet, estimateRemainingMs, formatDuration, trackPhase |
 | `src/ui/runtime/ehRuntime.ts` | notify, setBuildBusy, setInstallBusy |
 | `src/ui/pages/install/deploymentGate.test.ts` | bundle, confirmSession |
-| `src/ui/pages/install/engine.ts` | checkAbort, checkAbort |
 | `src/ui/pages/install/fomodModeWiring.test.ts` | atDecisions |
 | `src/ui/pages/install/InstallPage.tsx` | session |
 | `src/ui/pages/install/extractorGate.test.ts` | confirmSession |
@@ -42,7 +41,6 @@ Start here when exploring this area:
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `AbortError` | Class | `src/utils/abortError.ts` | 22 |
 | `reconcileMods` | Function | `src/ui/pages/install/steps.tsx` | 2991 |
 | `wizardReducer` | Function | `src/ui/pages/install/state.ts` | 196 |
 | `canProceedFromDecisions` | Function | `src/ui/pages/install/state.ts` | 408 |
@@ -60,23 +58,24 @@ Start here when exploring this area:
 | `trackPhase` | Function | `src/ui/pages/install/installProgress.ts` | 66 |
 | `InstallingStep` | Function | `src/ui/pages/install/steps.tsx` | 2189 |
 | `getInstallSession` | Function | `src/ui/pages/install/installSession.ts` | 843 |
-| `onAbort` | Function | `src/core/archiveHashing.ts` | 50 |
-| `applyLoadOrder` | Function | `src/core/installer/applyLoadOrder.ts` | 99 |
+| `isAbortError` | Function | `src/ui/pages/install/installSession.ts` | 856 |
+| `InstallSession` | Class | `src/ui/pages/install/installSession.ts` | 83 |
+| `BucketList` | Function | `src/ui/pages/install/steps.tsx` | 3814 |
 
 ## Execution Flows
 
 | Flow | Type | Steps |
 |------|------|-------|
-| `RunInstallImpl → AbortError` | cross_community | 6 |
 | `Heal → EHRuntime` | cross_community | 6 |
 | `Heal → Notify` | cross_community | 6 |
 | `Heal → GetSnapshot` | cross_community | 5 |
 | `DoneStep → Pill` | cross_community | 5 |
-| `Take → AbortError` | cross_community | 5 |
 | `Session → Notify` | cross_community | 5 |
 | `OnHashProgress → EHRuntime` | cross_community | 5 |
 | `OnHashProgress → Notify` | cross_community | 5 |
 | `OnPhase → EHRuntime` | cross_community | 5 |
+| `OnPhase → Notify` | cross_community | 5 |
+| `OnHashProgress → EHRuntime` | cross_community | 5 |
 
 ## How to Explore
 

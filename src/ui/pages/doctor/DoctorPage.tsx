@@ -249,7 +249,10 @@ export function DoctorPage(props: DoctorPageProps): JSX.Element {
             )?.persistent?.mods?.[gameId]?.[vortexModId] as
               | { installationPath?: string }
               | undefined;
-            return typeof mod?.installationPath === "string" && installRoot
+            // Blank is not a folder — see runInstall's stagingRootFor.
+        return typeof mod?.installationPath === "string" &&
+          mod.installationPath.length > 0 &&
+          installRoot
               ? path.join(installRoot, mod.installationPath)
               : undefined;
           },
