@@ -27,9 +27,9 @@ description: "Skill for the Components area of Event-Horizon. 14 symbols across 
 
 Start here when exploring this area:
 
-- **`EventHorizonMainPage`** (Function) — `src/ui/EventHorizonMainPage.tsx:63`
+- **`EventHorizonMainPage`** (Function) — `src/ui/EventHorizonMainPage.tsx:64`
 - **`ToastProvider`** (Function) — `src/ui/components/Toast.tsx:74`
-- **`ErrorProvider`** (Function) — `src/ui/errors/ErrorContext.tsx:84`
+- **`ErrorProvider`** (Function) — `src/ui/errors/ErrorContext.tsx:85`
 - **`ApiProvider`** (Function) — `src/ui/state/ApiContext.tsx:25`
 - **`EventHorizonStyles`** (Function) — `src/ui/theme/EventHorizonStyles.tsx:41`
 
@@ -37,9 +37,9 @@ Start here when exploring this area:
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `EventHorizonMainPage` | Function | `src/ui/EventHorizonMainPage.tsx` | 63 |
+| `EventHorizonMainPage` | Function | `src/ui/EventHorizonMainPage.tsx` | 64 |
 | `ToastProvider` | Function | `src/ui/components/Toast.tsx` | 74 |
-| `ErrorProvider` | Function | `src/ui/errors/ErrorContext.tsx` | 84 |
+| `ErrorProvider` | Function | `src/ui/errors/ErrorContext.tsx` | 85 |
 | `ApiProvider` | Function | `src/ui/state/ApiContext.tsx` | 25 |
 | `EventHorizonStyles` | Function | `src/ui/theme/EventHorizonStyles.tsx` | 41 |
 | `show` | Function | `src/ui/components/Toast.tsx` | 89 |

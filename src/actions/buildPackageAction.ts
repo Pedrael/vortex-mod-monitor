@@ -37,8 +37,10 @@
  *     the curator sees a fully-populated file the next time they
  *     hand-edit it.
  *   - For each external mod the curator flags `bundled: true`, the
- *     action resolves the source archive on disk via `getModArchivePath`
- *     and feeds it to `packageEhcoll` as a `BundledArchiveSpec`.
+ *     action resolves the source archive on disk via
+ *     `resolveModArchivePath` — which also finds an archive that was
+ *     re-downloaded after its own record died — and feeds it to
+ *     `packageEhcoll` as a `BundledArchiveSpec`.
  *
  * Phase 5 (future React page) replaces:
  *   - The curator metadata `showDialog` → form on the build panel.
@@ -55,7 +57,7 @@ import type { types } from "@nexusmods/vortex-api";
 
 import {
   enrichModsWithArchiveHashes,
-  getModArchivePath,
+  resolveModArchivePath,
 } from "../core/archiveHashing";
 import { captureDeploymentManifests } from "../core/deploymentManifest";
 import type { AuditorMod } from "../core/getModsListForProfile";
@@ -674,7 +676,7 @@ function resolveBundledArchives(
       continue;
     }
 
-    const sourcePath = getModArchivePath(state, mod.archiveId, gameId);
+    const sourcePath = resolveModArchivePath(state, mod, gameId);
     if (sourcePath === undefined) {
       errors.push(
         `External mod "${mod.name}" (id="${modId}") is flagged for bundling but its source archive ` +

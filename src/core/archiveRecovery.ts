@@ -42,7 +42,11 @@ import * as path from "path";
 
 import { selectors, types } from "@nexusmods/vortex-api";
 
-import { AbortError, getModArchivePath, hashFileSha256 } from "./archiveHashing";
+import {
+  AbortError,
+  hashFileSha256,
+  resolveModArchivePath,
+} from "./archiveHashing";
 import type { AuditorMod } from "./getModsListForProfile";
 
 /** A mod the build cannot identify, and the Nexus file that would fix it. */
@@ -113,10 +117,16 @@ export type RecoveryOptions = {
 /**
  * Mods whose archive Vortex cannot even point at, known BEFORE hashing.
  *
- * `getModArchivePath` reads state only — the mod's `archiveId`, then the
- * download record it names — so this costs nothing and can run the instant a
- * build starts. That matters: the alternative is discovering the same thing 15
- * minutes into a hashing pass, or 45 minutes in when the manifest refuses.
+ * `resolveModArchivePath` reads state only — the mod's `archiveId`, then the
+ * download record it names, then any download a previous recovery put the
+ * archive in — so this costs nothing and can run the instant a build starts.
+ * That matters: the alternative is discovering the same thing 15 minutes into a
+ * hashing pass, or 45 minutes in when the manifest refuses.
+ *
+ * The recovered half of that lookup only answers if the caller restored those
+ * links first (`applyCachedDownloadIds`). Without it a curator who has just
+ * re-fetched every missing archive is told, one second into the next build,
+ * that they are all still missing.
  *
  * It is a LOWER BOUND on the problem. A path that resolves can still point at
  * a file that has since been deleted, and only `stat` reveals that — those
@@ -129,7 +139,7 @@ export function findModsWithNoArchivePath(
   mods: AuditorMod[],
 ): AuditorMod[] {
   return mods.filter(
-    (mod) => getModArchivePath(state, mod.archiveId, gameId) === undefined,
+    (mod) => resolveModArchivePath(state, mod, gameId) === undefined,
   );
 }
 
@@ -306,15 +316,27 @@ export function applyRecovery(
   mods: AuditorMod[],
   report: RecoveryReport,
 ): AuditorMod[] {
-  const hashes = new Map<string, string>();
+  // Both facts, together. The hash makes the mod identifiable; the download id
+  // is the only thing that can still find its bytes, because the mod's own
+  // record is the one that died.
+  const found = new Map<string, { sha256: string; downloadId: string }>();
   for (const outcome of report.recovered) {
     if (outcome.kind === "recovered") {
-      hashes.set(outcome.mod.id, outcome.archiveSha256);
+      found.set(outcome.mod.id, {
+        sha256: outcome.archiveSha256,
+        downloadId: outcome.downloadId,
+      });
     }
   }
-  if (hashes.size === 0) return mods;
+  if (found.size === 0) return mods;
   return mods.map((mod) => {
-    const sha = hashes.get(mod.id);
-    return sha !== undefined ? { ...mod, archiveSha256: sha } : mod;
+    const hit = found.get(mod.id);
+    return hit !== undefined
+      ? {
+          ...mod,
+          archiveSha256: hit.sha256,
+          recoveredDownloadId: hit.downloadId,
+        }
+      : mod;
   });
 }

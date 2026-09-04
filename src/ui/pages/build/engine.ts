@@ -31,7 +31,7 @@ import type { types } from "@nexusmods/vortex-api";
 import {
   AbortError,
   enrichModsWithArchiveHashes,
-  getModArchivePath,
+  resolveModArchivePath,
 } from "../../../core/archiveHashing";
 import { captureDeploymentManifests } from "../../../core/deploymentManifest";
 import type { AuditorMod } from "../../../core/getModsListForProfile";
@@ -77,6 +77,7 @@ import type {
   GameVersionPolicy,
 } from "../../../types/ehcoll";
 import {
+  applyCachedDownloadIds,
   applyCachedHashes,
   loadArchiveHashCache,
   makeHashLookup,
@@ -387,10 +388,10 @@ export async function loadBuildContext(
   // collisions for free, because the superseded copy is the disabled one.
   const profileMods = getModsForProfile(state, gameId, profileId);
   const scope = scopeCollectionMods(profileMods);
-  const rawMods = scope.included;
+  const rawModsFromVortex = scope.included;
   op.step("mods-scoped", {
     inProfile: profileMods.length,
-    enabled: rawMods.length,
+    enabled: rawModsFromVortex.length,
     excludedDisabled: scope.excludedDisabled.length,
     collidingIdentities: scope.collidingIdentities.length,
     multipleEnabledInstalls: scope.multipleInstalls.length,
@@ -403,6 +404,15 @@ export async function loadBuildContext(
         }
       : {}),
   });
+
+  // Read before the question is asked, not after. A recovered archive sits in
+  // the download cache under an id of its own while the mod's record still
+  // names the dead one, and this file is the only place that link survives —
+  // so without it a successful recovery of 771 archives reports as 771 still
+  // missing, one second into the next build.
+  const ehDir = path.join(getVortexUserDataPath(), "event-horizon");
+  const hashCache = await loadArchiveHashCache(ehDir);
+  const rawMods = applyCachedDownloadIds(rawModsFromVortex, hashCache);
 
   // Costs nothing — pure state — and it answers in one second the question
   // that otherwise costs 15 minutes of hashing, or 45 minutes and a rejected
@@ -434,8 +444,6 @@ export async function loadBuildContext(
   const hashLogEvery = Math.max(25, Math.ceil(rawMods.length / 20));
   let lastLogged = 0;
   const hashStartedAt = Date.now();
-  const ehDir = path.join(getVortexUserDataPath(), "event-horizon");
-  const hashCache = await loadArchiveHashCache(ehDir);
   const hashReuse = makeHashLookup(hashCache);
   const { lookup, added } = hashReuse;
 
@@ -673,6 +681,44 @@ export async function loadBuildContext(
  * Tell the curator what a missing archive costs them, once, with a number —
  * rather than as N identical manifest errors after the build has run.
  */
+/**
+ * The phrases that let these two warnings be RECOGNISED again later.
+ *
+ * They are constants rather than inline prose because the one consumer that
+ * matters reads them back: "Re-download archives" replaces these warnings with
+ * freshly computed ones, and it can only do that if it can spot the old ones.
+ *
+ * That match used to be a hand-copied substring living in buildSession.ts. When
+ * this message was split into its Nexus and external halves, the copy was left
+ * describing a sentence that no longer existed anywhere — "no source archive in
+ * Vortex's download cache" is a blend of the two replacements and matches
+ * NEITHER. So nothing was ever removed, and the fresh warning was appended
+ * beside the stale one.
+ *
+ * The curator who found it had just re-downloaded 771 archives and was still
+ * told 771 were missing, with the true count sitting one line below.
+ *
+ * Splicing them INTO the message is what makes that unrepeatable: reword the
+ * constant and both the sentence and the matcher move together.
+ */
+const NEXUS_ARCHIVE_MISSING = "the archive is not in Vortex's download cache";
+
+const EXTERNAL_ARCHIVE_MISSING =
+  "no source archive and no Nexus source to fetch one from";
+
+/**
+ * Did this warning come from `describeMissingArchives`?
+ *
+ * Lives beside the producer deliberately — a predicate that travels with the
+ * strings it matches cannot drift away from them.
+ */
+export function isMissingArchiveWarning(warning: string): boolean {
+  return (
+    warning.includes(NEXUS_ARCHIVE_MISSING) ||
+    warning.includes(EXTERNAL_ARCHIVE_MISSING)
+  );
+}
+
 export function describeMissingArchives(missing: AuditorMod[]): string[] {
   if (missing.length === 0) return [];
 
@@ -691,16 +737,16 @@ export function describeMissingArchives(missing: AuditorMod[]): string[] {
   if (nexus.length > 0) {
     lines.push(
       `${nexus.length} Nexus mod${nexus.length === 1 ? "" : "s"} cannot be ` +
-        `packaged: a Nexus mod is identified by its archive's SHA-256 and the ` +
-        `archive is not in Vortex's download cache. Fetch them with ` +
+        `packaged: a Nexus mod is identified by its archive's SHA-256 and ` +
+        `${NEXUS_ARCHIVE_MISSING}. Fetch them with ` +
         `"Re-download archives" on the build form, or re-import them by hand.`,
     );
   }
 
   if (external.length > 0) {
     lines.push(
-      `${external.length} mod${external.length === 1 ? "" : "s"} have no source ` +
-        `archive and no Nexus source to fetch one from. They still ship — they ` +
+      `${external.length} mod${external.length === 1 ? "" : "s"} have ` +
+        `${EXTERNAL_ARCHIVE_MISSING}. They still ship — they ` +
         `are identified by the SHA-256 of their deployed files instead — but ` +
         `that identity is weaker: a user whose copy differs even slightly will ` +
         `not match it, and will be asked to supply the mod themselves. ` +
@@ -1001,7 +1047,7 @@ export async function runBuildPipeline(
       // born-external mod gets.
       isExternal: (m) =>
         shipsAsExternal(isNexusMod(m), collectionConfig.externalMods[m.id]),
-      archivePathFor: (m) => getModArchivePath(state, m.archiveId, gameId),
+      archivePathFor: (m) => resolveModArchivePath(state, m, gameId),
       listArchive: (p) => listArchiveContents(sevenZip, p),
       ...(signal !== undefined ? { signal } : {}),
     });
@@ -1477,7 +1523,7 @@ function resolveBundledArchives(
       continue;
     }
 
-    const sourcePath = getModArchivePath(state, mod.archiveId, gameId);
+    const sourcePath = resolveModArchivePath(state, mod, gameId);
     if (sourcePath === undefined) {
       errors.push(
         `External mod "${mod.name}" is flagged for bundling but its source archive cannot be located on disk.`,

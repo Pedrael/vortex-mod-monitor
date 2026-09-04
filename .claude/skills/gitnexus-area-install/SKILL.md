@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-install
-description: "Skill for the Install area of Event-Horizon. 86 symbols across 16 files."
+description: "Skill for the Install area of Event-Horizon. 78 symbols across 14 files."
 ---
 
 # Install
 
-86 symbols | 16 files | Cohesion: 76%
+78 symbols | 14 files | Cohesion: 78%
 
 ## When to Use
 
@@ -17,66 +17,66 @@ description: "Skill for the Install area of Event-Horizon. 86 symbols across 16 
 
 | File | Symbols |
 |------|---------|
-| `src/ui/pages/install/steps.tsx` | BucketList, CuratorReportsNotice, DamagedArchiveNotice, ExternalArchiveNotice, GameIniNotice (+27) |
+| `src/ui/pages/install/steps.tsx` | BucketList, CuratorReportsNotice, DamagedArchiveNotice, ExternalArchiveNotice, GameIniNotice (+22) |
 | `src/ui/pages/install/installSession.ts` | onHashProgress, onPhase, onHashProgress, onPhase, onProgress (+19) |
 | `src/ui/pages/install/state.ts` | wizardReducer, canProceedFromDecisions, countUndecidedConflicts, defaultConflictChoice, defaultOrphanChoice (+3) |
 | `src/ui/pages/install/installProgress.ts` | describeElapsed, describeQuiet, estimateRemainingMs, formatDuration, trackPhase |
-| `src/core/revealPath.ts` | describe, loadShell, openExternalUrl |
 | `src/ui/runtime/ehRuntime.ts` | notify, setBuildBusy, setInstallBusy |
+| `src/ui/pages/install/deploymentGate.test.ts` | bundle, confirmSession |
 | `src/ui/pages/install/engine.ts` | checkAbort, checkAbort |
-| `src/utils/abortError.ts` | AbortError |
-| `src/core/archiveHashing.ts` | onAbort |
-| `src/core/installer/applyLoadOrder.ts` | applyLoadOrder |
+| `src/ui/pages/install/fomodModeWiring.test.ts` | atDecisions |
+| `src/ui/pages/install/InstallPage.tsx` | session |
+| `src/ui/pages/install/extractorGate.test.ts` | confirmSession |
 
 ## Entry Points
 
 Start here when exploring this area:
 
-- **`reconcileMods`** (Function) — `src/ui/pages/install/steps.tsx:2726`
-- **`wizardReducer`** (Function) — `src/ui/pages/install/state.ts:177`
-- **`canProceedFromDecisions`** (Function) — `src/ui/pages/install/state.ts:373`
-- **`countUndecidedConflicts`** (Function) — `src/ui/pages/install/state.ts:400`
-- **`defaultConflictChoice`** (Function) — `src/ui/pages/install/state.ts:332`
+- **`reconcileMods`** (Function) — `src/ui/pages/install/steps.tsx:2991`
+- **`wizardReducer`** (Function) — `src/ui/pages/install/state.ts:196`
+- **`canProceedFromDecisions`** (Function) — `src/ui/pages/install/state.ts:408`
+- **`countUndecidedConflicts`** (Function) — `src/ui/pages/install/state.ts:435`
+- **`defaultConflictChoice`** (Function) — `src/ui/pages/install/state.ts:366`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
 | `AbortError` | Class | `src/utils/abortError.ts` | 22 |
-| `reconcileMods` | Function | `src/ui/pages/install/steps.tsx` | 2726 |
-| `wizardReducer` | Function | `src/ui/pages/install/state.ts` | 177 |
-| `canProceedFromDecisions` | Function | `src/ui/pages/install/state.ts` | 373 |
-| `countUndecidedConflicts` | Function | `src/ui/pages/install/state.ts` | 400 |
-| `defaultConflictChoice` | Function | `src/ui/pages/install/state.ts` | 332 |
-| `defaultOrphanChoice` | Function | `src/ui/pages/install/state.ts` | 350 |
-| `fillDefaultConflictChoices` | Function | `src/ui/pages/install/state.ts` | 416 |
-| `fillDefaultOrphanChoices` | Function | `src/ui/pages/install/state.ts` | 432 |
-| `selectConflictResolutions` | Function | `src/ui/pages/install/state.ts` | 318 |
-| `DecisionsStep` | Function | `src/ui/pages/install/steps.tsx` | 1060 |
+| `reconcileMods` | Function | `src/ui/pages/install/steps.tsx` | 2991 |
+| `wizardReducer` | Function | `src/ui/pages/install/state.ts` | 196 |
+| `canProceedFromDecisions` | Function | `src/ui/pages/install/state.ts` | 408 |
+| `countUndecidedConflicts` | Function | `src/ui/pages/install/state.ts` | 435 |
+| `defaultConflictChoice` | Function | `src/ui/pages/install/state.ts` | 366 |
+| `defaultOrphanChoice` | Function | `src/ui/pages/install/state.ts` | 384 |
+| `fillDefaultConflictChoices` | Function | `src/ui/pages/install/state.ts` | 451 |
+| `fillDefaultOrphanChoices` | Function | `src/ui/pages/install/state.ts` | 467 |
+| `selectConflictResolutions` | Function | `src/ui/pages/install/state.ts` | 352 |
+| `DecisionsStep` | Function | `src/ui/pages/install/steps.tsx` | 1067 |
 | `describeElapsed` | Function | `src/ui/pages/install/installProgress.ts` | 147 |
 | `describeQuiet` | Function | `src/ui/pages/install/installProgress.ts` | 114 |
 | `estimateRemainingMs` | Function | `src/ui/pages/install/installProgress.ts` | 89 |
 | `formatDuration` | Function | `src/ui/pages/install/installProgress.ts` | 132 |
 | `trackPhase` | Function | `src/ui/pages/install/installProgress.ts` | 66 |
-| `InstallingStep` | Function | `src/ui/pages/install/steps.tsx` | 1957 |
+| `InstallingStep` | Function | `src/ui/pages/install/steps.tsx` | 2189 |
+| `getInstallSession` | Function | `src/ui/pages/install/installSession.ts` | 843 |
 | `onAbort` | Function | `src/core/archiveHashing.ts` | 50 |
 | `applyLoadOrder` | Function | `src/core/installer/applyLoadOrder.ts` | 99 |
-| `checkAbort` | Function | `src/ui/pages/build/engine.ts` | 723 |
 
 ## Execution Flows
 
 | Flow | Type | Steps |
 |------|------|-------|
-| `RunInstall → AbortError` | cross_community | 6 |
-| `StartInstall → EHRuntime` | cross_community | 6 |
-| `StartInstall → Notify` | cross_community | 6 |
+| `RunInstallImpl → AbortError` | cross_community | 6 |
+| `Heal → EHRuntime` | cross_community | 6 |
+| `Heal → Notify` | cross_community | 6 |
+| `Heal → GetSnapshot` | cross_community | 5 |
 | `DoneStep → Pill` | cross_community | 5 |
-| `StartInstall → GetSnapshot` | cross_community | 5 |
 | `Take → AbortError` | cross_community | 5 |
 | `Session → Notify` | cross_community | 5 |
-| `ReleaseBuild → Notify` | cross_community | 5 |
 | `OnHashProgress → EHRuntime` | cross_community | 5 |
 | `OnHashProgress → Notify` | cross_community | 5 |
+| `OnPhase → EHRuntime` | cross_community | 5 |
 
 ## How to Explore
 

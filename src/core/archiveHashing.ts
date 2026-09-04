@@ -110,6 +110,36 @@ export function getModArchivePath(
   return path.join(baseDir, download.localPath);
 }
 
+/**
+ * A mod's archive on disk — INCLUDING one re-downloaded after its own record
+ * died.
+ *
+ * `getModArchivePath` alone answers "what does Vortex think this mod came
+ * from", and after a recovery that is the wrong question: the mod still points
+ * at the download record that went missing, while the bytes sit in the cache
+ * under a new id nobody consulted.
+ *
+ * The cost of asking the narrow question was silent and large. A curator
+ * recovered 771 archives, built, and got a package whose self-check had skipped
+ * 772 of 773 mods — reported as "archive missing from disk", which was by
+ * then false. Verification was off for the entire collection, and the report
+ * said so in words that read like a disk problem.
+ *
+ * Order matters: the mod's own record wins whenever it still resolves, because
+ * that is the archive it was actually installed from. The recovered id is a
+ * fallback, never an override.
+ */
+export function resolveModArchivePath(
+  state: types.IState,
+  mod: Pick<AuditorMod, "archiveId" | "recoveredDownloadId">,
+  gameId: string,
+): string | undefined {
+  return (
+    getModArchivePath(state, mod.archiveId, gameId) ??
+    getModArchivePath(state, mod.recoveredDownloadId, gameId)
+  );
+}
+
 export type EnrichOptions = {
   /**
    * Max concurrent archive hashes. Defaults to

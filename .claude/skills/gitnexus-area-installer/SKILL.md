@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-installer
-description: "Skill for the Installer area of Event-Horizon. 244 symbols across 45 files."
+description: "Skill for the Installer area of Event-Horizon. 287 symbols across 57 files."
 ---
 
 # Installer
 
-244 symbols | 45 files | Cohesion: 80%
+287 symbols | 57 files | Cohesion: 86%
 
 ## When to Use
 
@@ -17,14 +17,14 @@ description: "Skill for the Installer area of Event-Horizon. 244 symbols across 
 
 | File | Symbols |
 |------|---------|
-| `src/core/installer/runInstall.ts` | buildAbortedResult, buildDisplayNameByModId, buildFailReceipt, buildManifestIndex, buildNexusModIdMap (+50) |
-| `src/core/installer/modInstall.ts` | uninstallMod, extractBundledFromEhcoll, installFromBundledArchive, installFromExistingDownload, installFromLocalArchive (+13) |
+| `src/core/installer/runInstall.ts` | buildAbortedResult, buildDisplayNameByModId, buildFailReceipt, buildManifestIndex, buildNexusModIdMap (+51) |
+| `src/core/installer/modInstall.ts` | uninstallMod, delayRespectingAbort, extractBundledFromEhcoll, installFromBundledArchive, installFromExistingDownload (+16) |
 | `src/core/installLedger.ts` | InstallLedgerError, deleteReceipt, expectString, getInstallLedgerDir, getReceiptPath (+11) |
 | `src/core/installer/applyUserlist.ts` | applyGroupDefinition, applyGroupRule, applyPluginEntry, applyPluginGroup, applyPluginRuleWithCollectionWins (+8) |
 | `src/core/installer/checkNexusAccount.ts` | describeSelectorAvailability, probeNexusAccount, hasNexusSlice, nexusSlice, readNexusAccount (+4) |
 | `src/core/installer/installMarker.ts` | clearInstallMarker, getMarkerDir, listInterruptedInstalls, markerPath, parseMarker (+4) |
 | `src/core/installer/applyPluginOrder.ts` | describePluginOrderApplication, applyPluginOrder, dispatchRaw, readEnabledState, runLootSort (+3) |
-| `src/core/installer/profile.ts` | createFreshProfile, enableModInProfile, pickNonCollidingName, makeAbortError, switchToProfile (+3) |
+| `src/core/installer/profile.ts` | createFreshProfile, enableModInProfile, makeAbortError, pickNonCollidingName, switchToProfile (+3) |
 | `src/core/logging/ehLog.ts` | fail, ok, step, ehLog, enqueue (+3) |
 | `src/core/installer/bundledPrefetch.ts` | BundledPrefetchPool, dispose, prime, pump, runExtraction (+2) |
 
@@ -56,17 +56,18 @@ Start here when exploring this area:
 | `describePluginOrderDrift` | Function | `src/core/installer/checkPluginOrder.ts` | 113 |
 | `emptyPluginOrderDrift` | Function | `src/core/installer/checkPluginOrder.ts` | 55 |
 | `readUserPluginsTxt` | Function | `src/core/installer/checkPluginOrder.ts` | 163 |
+| `describeSevenZipHealth` | Function | `src/core/installer/checkSevenZipHealth.ts` | 136 |
+| `looksLikeWine` | Function | `src/core/installer/checkSevenZipHealth.ts` | 106 |
 | `buildCuratorReport` | Function | `src/core/installer/curatorReport.ts` | 90 |
-| `uninstallMod` | Function | `src/core/installer/modInstall.ts` | 403 |
-| `createFreshProfile` | Function | `src/core/installer/profile.ts` | 39 |
-| `enableModInProfile` | Function | `src/core/installer/profile.ts` | 190 |
-| `pickNonCollidingName` | Function | `src/core/installer/profile.ts` | 215 |
-| `captureUserRuleState` | Function | `src/core/installer/purgeUserRules.ts` | 74 |
+| `describeMissingDeploymentMethod` | Function | `src/core/installer/deploymentMethod.ts` | 86 |
+| `isDeploymentMethodMissing` | Function | `src/core/installer/deploymentMethod.ts` | 47 |
+| `classifyModFailure` | Function | `src/core/installer/downloadFailureShape.ts` | 71 |
 
 ## Execution Flows
 
 | Flow | Type | Steps |
 |------|------|-------|
+| `InstallNexusViaApi → GetEventHorizonRoot` | cross_community | 10 |
 | `ExecuteDecision → GetEventHorizonDir` | cross_community | 10 |
 | `ExecuteDivergedChoice → ResolveLogFile` | cross_community | 10 |
 | `OnDidInstall → GetVortexUserDataPath` | cross_community | 9 |
@@ -76,7 +77,6 @@ Start here when exploring this area:
 | `ExecutePromptUserChoice → ZipReadError` | cross_community | 9 |
 | `Init → GetVortexUserDataPath` | cross_community | 9 |
 | `ExecuteDivergedChoice → IsAwaitingUserInput` | cross_community | 8 |
-| `ExecuteDivergedChoice → Cleanup` | cross_community | 8 |
 
 ## How to Explore
 

@@ -1,16 +1,16 @@
 ---
 name: gitnexus-area-actions
-description: "Skill for the Actions area of Event-Horizon. 78 symbols across 16 files."
+description: "Skill for the Actions area of Event-Horizon. 84 symbols across 22 files."
 ---
 
 # Actions
 
-78 symbols | 16 files | Cohesion: 74%
+84 symbols | 22 files | Cohesion: 73%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how createBuildPackageAction, captureLoadOrder, reconcileExternalModsConfig work
+- Understanding how createBuildPackageAction, matchEhcollFile, captureLoadOrder work
 - Modifying actions-related functionality
 
 ## Key Files
@@ -18,50 +18,50 @@ description: "Skill for the Actions area of Event-Horizon. 78 symbols across 16 
 | File | Symbols |
 |------|---------|
 | `src/actions/installCollectionAction.ts` | collectUserDecisions, formatDivergedConflictText, formatOrphanText, formatPromptUserText, pickConflictChoice (+24) |
-| `src/actions/buildPackageAction.ts` | BundleResolutionError, buildOutputFileName, collectExternalMods, createBuildPackageAction, formatBytes (+13) |
+| `src/actions/buildPackageAction.ts` | BundleResolutionError, collectExternalMods, createBuildPackageAction, formatBytes, formatError (+11) |
 | `src/utils/utils.ts` | exportDiffReport, pickJsonFile, pickTxtFile, pickModArchiveFile, openFile (+1) |
 | `src/core/getModsListForProfile.ts` | getActiveGameId, getActiveProfileId, getActiveProfileIdFromState, belongsToGame |
+| `src/core/manifest/packageFileName.ts` | buildOutputFileName, safePackageVersion, slugifyPackageName |
 | `src/actions/compareModsAction.ts` | createCompareModsAction, action, action |
 | `src/actions/comparePluginsAction.ts` | createComparePluginsAction, action, action |
 | `src/actions/exportModsAction.ts` | createExportModsAction, action, action |
 | `src/core/comparePlugins.ts` | exportPluginsDiffReport, getCurrentPluginsTxtPath, getLocalAppDataPath |
 | `src/ui/pages/dashboard/data.ts` | formatGameLabel, readSystemStatus |
-| `src/core/loadOrder.ts` | captureLoadOrder |
 
 ## Entry Points
 
 Start here when exploring this area:
 
-- **`createBuildPackageAction`** (Function) — `src/actions/buildPackageAction.ts:109`
+- **`createBuildPackageAction`** (Function) — `src/actions/buildPackageAction.ts:116`
+- **`matchEhcollFile`** (Function) — `src/core/doctor/heal.ts:177`
 - **`captureLoadOrder`** (Function) — `src/core/loadOrder.ts:40`
-- **`reconcileExternalModsConfig`** (Function) — `src/core/manifest/collectionConfig.ts:288`
-- **`createCompareModsAction`** (Function) — `src/actions/compareModsAction.ts:21`
-- **`createComparePluginsAction`** (Function) — `src/actions/comparePluginsAction.ts:15`
+- **`toBuildManifestExternalMods`** (Function) — `src/core/manifest/collectionConfig.ts:338`
+- **`applyHint`** (Function) — `src/core/manifest/externalHints.ts:229`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `createBuildPackageAction` | Function | `src/actions/buildPackageAction.ts` | 109 |
+| `createBuildPackageAction` | Function | `src/actions/buildPackageAction.ts` | 116 |
+| `matchEhcollFile` | Function | `src/core/doctor/heal.ts` | 177 |
 | `captureLoadOrder` | Function | `src/core/loadOrder.ts` | 40 |
-| `reconcileExternalModsConfig` | Function | `src/core/manifest/collectionConfig.ts` | 288 |
+| `toBuildManifestExternalMods` | Function | `src/core/manifest/collectionConfig.ts` | 338 |
+| `applyHint` | Function | `src/core/manifest/externalHints.ts` | 229 |
+| `locateCollectionPackage` | Function | `src/core/manifest/locatePackage.ts` | 28 |
+| `buildOutputFileName` | Function | `src/core/manifest/packageFileName.ts` | 32 |
+| `safePackageVersion` | Function | `src/core/manifest/packageFileName.ts` | 27 |
+| `slugifyPackageName` | Function | `src/core/manifest/packageFileName.ts` | 15 |
 | `createCompareModsAction` | Function | `src/actions/compareModsAction.ts` | 21 |
 | `createComparePluginsAction` | Function | `src/actions/comparePluginsAction.ts` | 15 |
 | `createExportModsAction` | Function | `src/actions/exportModsAction.ts` | 17 |
 | `exportPluginsDiffReport` | Function | `src/core/comparePlugins.ts` | 186 |
 | `exportModsToJsonFile` | Function | `src/core/exportMods.ts` | 7 |
-| `getActiveGameId` | Function | `src/core/getModsListForProfile.ts` | 219 |
-| `getActiveProfileId` | Function | `src/core/getModsListForProfile.ts` | 224 |
-| `getActiveProfileIdFromState` | Function | `src/core/getModsListForProfile.ts` | 256 |
-| `belongsToGame` | Function | `src/core/getModsListForProfile.ts` | 261 |
+| `getActiveGameId` | Function | `src/core/getModsListForProfile.ts` | 234 |
+| `getActiveProfileId` | Function | `src/core/getModsListForProfile.ts` | 239 |
+| `getActiveProfileIdFromState` | Function | `src/core/getModsListForProfile.ts` | 271 |
+| `belongsToGame` | Function | `src/core/getModsListForProfile.ts` | 276 |
 | `beginOp` | Function | `src/core/logging/ehLog.ts` | 153 |
 | `getVortexUserDataPath` | Function | `src/core/paths.ts` | 38 |
-| `readSystemStatus` | Function | `src/ui/pages/dashboard/data.ts` | 133 |
-| `exportDiffReport` | Function | `src/utils/utils.ts` | 454 |
-| `pickJsonFile` | Function | `src/utils/utils.ts` | 70 |
-| `pickTxtFile` | Function | `src/utils/utils.ts` | 473 |
-| `pickModArchiveFile` | Function | `src/utils/utils.ts` | 113 |
-| `action` | Function | `src/actions/buildPackageAction.ts` | 335 |
 
 ## Execution Flows
 

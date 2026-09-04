@@ -46,6 +46,7 @@ Start here when exploring this area:
 
 | Flow | Type | Steps |
 |------|------|-------|
+| `InstallNexusViaApi → GetEventHorizonRoot` | cross_community | 10 |
 | `ExecuteDecision → GetEventHorizonDir` | cross_community | 10 |
 | `OnDidInstall → GetVortexUserDataPath` | cross_community | 9 |
 | `Init → GetVortexUserDataPath` | cross_community | 9 |
@@ -55,7 +56,6 @@ Start here when exploring this area:
 | `RouteOutlet → GetInstallLedgerDir` | cross_community | 7 |
 | `RouteOutlet → IsUuid` | cross_community | 7 |
 | `RouteOutlet → BelongsToGame` | cross_community | 7 |
-| `HomePage → ExpectString` | cross_community | 7 |
 
 ## How to Explore
 

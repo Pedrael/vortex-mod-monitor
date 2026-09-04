@@ -1,16 +1,16 @@
 ---
 name: gitnexus-area-manifest
-description: "Skill for the Manifest area of Event-Horizon. 319 symbols across 60 files."
+description: "Skill for the Manifest area of Event-Horizon. 320 symbols across 59 files."
 ---
 
 # Manifest
 
-319 symbols | 60 files | Cohesion: 79%
+320 symbols | 59 files | Cohesion: 79%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how parseManifest, buildManifest, extractZipEntryToFile work
+- Understanding how parseManifest, buildManifest, applyCachedDownloadIds work
 - Modifying manifest-related functionality
 
 ## Key Files
@@ -19,7 +19,7 @@ description: "Skill for the Manifest area of Event-Horizon. 319 symbols across 6
 |------|---------|
 | `src/core/manifest/parseManifest.ts` | ParseManifestError, crossReferenceValidate, describe, expectArray, expectBoolean (+47) |
 | `src/core/manifest/buildManifest.ts` | BuildManifestError, buildFileOverrides, buildLoadOrder, buildManifest, buildPackageMetadata (+17) |
-| `src/core/manifest/collectionConfig.ts` | isUuid, listNeverBuiltConfigs, listPublishedCollections, parseAndValidate, validateExternalDependencyEntries (+12) |
+| `src/core/manifest/collectionConfig.ts` | reconcileExternalModsConfig, isUuid, listNeverBuiltConfigs, listPublishedCollections, parseAndValidate (+13) |
 | `src/core/manifest/readZip.ts` | ZipReadError, extractZipEntryToFile, findDataOffset, findEntry, findZip64Extra (+11) |
 | `src/core/manifest/packageZip.ts` | isAbortLikeError, packageEhcoll, checkAbort, prepareStagingDir, runSevenZipAdd (+11) |
 | `src/core/manifest/externalHints.ts` | countBy, downloadsFromState, modsFromState, asMode, collectExternalHints (+8) |
@@ -33,28 +33,26 @@ description: "Skill for the Manifest area of Event-Horizon. 319 symbols across 6
 Start here when exploring this area:
 
 - **`parseManifest`** (Function) — `src/core/manifest/parseManifest.ts:143`
-- **`buildManifest`** (Function) — `src/core/manifest/buildManifest.ts:246`
-- **`extractZipEntryToFile`** (Function) — `src/core/manifest/readZip.ts:155`
-- **`listZipEntries`** (Function) — `src/core/manifest/readZip.ts:85`
-- **`readZipEntry`** (Function) — `src/core/manifest/readZip.ts:103`
+- **`buildManifest`** (Function) — `src/core/manifest/buildManifest.ts:269`
+- **`applyCachedDownloadIds`** (Function) — `src/core/archiveHashCache.ts:272`
+- **`applyCachedHashes`** (Function) — `src/core/archiveHashCache.ts:295`
+- **`reconcileExternalModsConfig`** (Function) — `src/core/manifest/collectionConfig.ts:297`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
 | `ParseManifestError` | Class | `src/core/manifest/parseManifest.ts` | 121 |
-| `BuildManifestError` | Class | `src/core/manifest/buildManifest.ts` | 230 |
+| `BuildManifestError` | Class | `src/core/manifest/buildManifest.ts` | 244 |
 | `ZipReadError` | Class | `src/core/manifest/readZip.ts` | 56 |
-| `CollectionConfigError` | Class | `src/core/manifest/collectionConfig.ts` | 212 |
+| `CollectionConfigError` | Class | `src/core/manifest/collectionConfig.ts` | 221 |
 | `PackageEhcollError` | Class | `src/core/manifest/packageZip.ts` | 114 |
 | `ReadEhcollError` | Class | `src/core/manifest/readEhcoll.ts` | 128 |
 | `parseManifest` | Function | `src/core/manifest/parseManifest.ts` | 143 |
-| `buildManifest` | Function | `src/core/manifest/buildManifest.ts` | 246 |
-| `extractZipEntryToFile` | Function | `src/core/manifest/readZip.ts` | 155 |
-| `listZipEntries` | Function | `src/core/manifest/readZip.ts` | 85 |
-| `readZipEntry` | Function | `src/core/manifest/readZip.ts` | 103 |
-| `captureDeploymentManifests` | Function | `src/core/deploymentManifest.ts` | 133 |
-| `collectDistinctModTypes` | Function | `src/core/deploymentManifest.ts` | 53 |
+| `buildManifest` | Function | `src/core/manifest/buildManifest.ts` | 269 |
+| `applyCachedDownloadIds` | Function | `src/core/archiveHashCache.ts` | 272 |
+| `applyCachedHashes` | Function | `src/core/archiveHashCache.ts` | 295 |
+| `reconcileExternalModsConfig` | Function | `src/core/manifest/collectionConfig.ts` | 297 |
 | `describeHashedCollisions` | Function | `src/core/manifest/collectionScope.ts` | 200 |
 | `describeScope` | Function | `src/core/manifest/collectionScope.ts` | 214 |
 | `filesProvidedByDeployment` | Function | `src/core/manifest/externalDependencies.ts` | 237 |
@@ -62,6 +60,8 @@ Start here when exploring this area:
 | `countBy` | Function | `src/core/manifest/externalHints.ts` | 323 |
 | `downloadsFromState` | Function | `src/core/manifest/externalHints.ts` | 271 |
 | `modsFromState` | Function | `src/core/manifest/externalHints.ts` | 256 |
+| `loadBuildContext` | Function | `src/ui/pages/build/engine.ts` | 345 |
+| `pickDefaultCollectionName` | Function | `src/ui/pages/build/engine.ts` | 1725 |
 
 ## Execution Flows
 

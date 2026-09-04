@@ -29,7 +29,7 @@ import * as path from "path";
 
 import type { types } from "@nexusmods/vortex-api";
 
-import { getModArchivePath } from "../archiveHashing";
+import { resolveModArchivePath } from "../archiveHashing";
 import type { AuditorMod } from "../getModsListForProfile";
 import { ehLog } from "../logging/ehLog";
 import type { SelfCheckReport } from "./selfCheckMod";
@@ -156,7 +156,7 @@ export async function runSelfChecks(
     opts?.onProgress?.(done, total, mod.name);
 
     const staged = (mod.stagingFiles ?? []).map((f) => ({ path: f.path, size: f.size }));
-    const archivePath = getModArchivePath(state, mod.archiveId, gameId);
+    const archivePath = resolveModArchivePath(state, mod, gameId);
 
     try {
       reports.push(
@@ -165,7 +165,9 @@ export async function runSelfChecks(
           modId: mod.id,
           modName: mod.name,
           archivePath,
-          hasArchiveRecord: mod.archiveId !== undefined,
+          hasArchiveRecord:
+            mod.archiveId !== undefined ||
+            mod.recoveredDownloadId !== undefined,
           staged,
           recordedChoices: mod.fomodSelections ?? [],
           readEntry,

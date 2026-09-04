@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-errors
-description: "Skill for the Errors area of Event-Horizon. 29 symbols across 6 files."
+description: "Skill for the Errors area of Event-Horizon. 32 symbols across 7 files."
 ---
 
 # Errors
 
-29 symbols | 6 files | Cohesion: 87%
+32 symbols | 7 files | Cohesion: 84%
 
 ## When to Use
 
@@ -20,6 +20,7 @@ description: "Skill for the Errors area of Event-Horizon. 29 symbols across 6 fi
 | `src/ui/errors/formatError.ts` | buildErrorReport, classify, classifyGenericError, classifyMultiError, classifyUnknown (+8) |
 | `src/ui/errors/ErrorReportModal.tsx` | BulletList, ErrorReportModal, handleCopy, handleSave, Section (+4) |
 | `src/ui/errors/ErrorContext.tsx` | onError, onRejection, report |
+| `src/ui/errors/foreignError.ts` | isForeignError, stackOf, describeForeignError |
 | `src/ui/pages/install/InstallPage.tsx` | handleCopy, copyTextToClipboard |
 | `src/ui/state/ApiContext.tsx` | useApiOptional |
 | `src/ui/errors/ErrorBoundary.tsx` | componentDidCatch |
@@ -31,7 +32,7 @@ Start here when exploring this area:
 - **`ErrorReportModal`** (Function) — `src/ui/errors/ErrorReportModal.tsx:38`
 - **`handleCopy`** (Function) — `src/ui/errors/ErrorReportModal.tsx:67`
 - **`handleSave`** (Function) — `src/ui/errors/ErrorReportModal.tsx:78`
-- **`buildErrorReport`** (Function) — `src/ui/errors/formatError.ts:134`
+- **`buildErrorReport`** (Function) — `src/ui/errors/formatError.ts:147`
 - **`useApiOptional`** (Function) — `src/ui/state/ApiContext.tsx:49`
 
 ## Key Symbols
@@ -41,12 +42,15 @@ Start here when exploring this area:
 | `ErrorReportModal` | Function | `src/ui/errors/ErrorReportModal.tsx` | 38 |
 | `handleCopy` | Function | `src/ui/errors/ErrorReportModal.tsx` | 67 |
 | `handleSave` | Function | `src/ui/errors/ErrorReportModal.tsx` | 78 |
-| `buildErrorReport` | Function | `src/ui/errors/formatError.ts` | 134 |
+| `buildErrorReport` | Function | `src/ui/errors/formatError.ts` | 147 |
 | `useApiOptional` | Function | `src/ui/state/ApiContext.tsx` | 49 |
-| `onError` | Function | `src/ui/errors/ErrorContext.tsx` | 121 |
-| `onRejection` | Function | `src/ui/errors/ErrorContext.tsx` | 132 |
-| `report` | Function | `src/ui/errors/ErrorContext.tsx` | 105 |
-| `formatError` | Function | `src/ui/errors/formatError.ts` | 111 |
+| `onError` | Function | `src/ui/errors/ErrorContext.tsx` | 128 |
+| `onRejection` | Function | `src/ui/errors/ErrorContext.tsx` | 141 |
+| `report` | Function | `src/ui/errors/ErrorContext.tsx` | 106 |
+| `isForeignError` | Function | `src/ui/errors/foreignError.ts` | 60 |
+| `stackOf` | Function | `src/ui/errors/foreignError.ts` | 41 |
+| `describeForeignError` | Function | `src/ui/errors/foreignError.ts` | 74 |
+| `formatError` | Function | `src/ui/errors/formatError.ts` | 112 |
 | `componentDidCatch` | Method | `src/ui/errors/ErrorBoundary.tsx` | 78 |
 | `BulletList` | Function | `src/ui/errors/ErrorReportModal.tsx` | 226 |
 | `Section` | Function | `src/ui/errors/ErrorReportModal.tsx` | 197 |
@@ -54,10 +58,7 @@ Start here when exploring this area:
 | `copyToClipboard` | Function | `src/ui/errors/ErrorReportModal.tsx` | 296 |
 | `saveReportToFile` | Function | `src/ui/errors/ErrorReportModal.tsx` | 320 |
 | `tryRequireElectron` | Function | `src/ui/errors/ErrorReportModal.tsx` | 287 |
-| `handleCopy` | Function | `src/ui/pages/install/InstallPage.tsx` | 318 |
-| `copyTextToClipboard` | Function | `src/ui/pages/install/InstallPage.tsx` | 380 |
-| `classify` | Function | `src/ui/errors/formatError.ts` | 197 |
-| `classifyGenericError` | Function | `src/ui/errors/formatError.ts` | 375 |
+| `handleCopy` | Function | `src/ui/pages/install/InstallPage.tsx` | 319 |
 
 ## Execution Flows
 
@@ -71,8 +72,8 @@ Start here when exploring this area:
 | `OnRejection → GuessGenericHints` | cross_community | 6 |
 | `OnRejection → GuessGenericTitle` | cross_community | 6 |
 | `OnRejection → CountProblems` | cross_community | 6 |
+| `OnError → StackOf` | cross_community | 5 |
 | `OnError → ManifestHints` | cross_community | 5 |
-| `OnRejection → ManifestHints` | cross_community | 5 |
 
 ## How to Explore
 

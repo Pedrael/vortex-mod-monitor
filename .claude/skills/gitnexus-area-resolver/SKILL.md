@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-resolver
-description: "Skill for the Resolver area of Event-Horizon. 68 symbols across 11 files."
+description: "Skill for the Resolver area of Event-Horizon. 64 symbols across 9 files."
 ---
 
 # Resolver
 
-68 symbols | 11 files | Cohesion: 80%
+64 symbols | 9 files | Cohesion: 79%
 
 ## When to Use
 
@@ -24,16 +24,15 @@ description: "Skill for the Resolver area of Event-Horizon. 68 symbols across 11
 | `src/core/resolver/collectAvailableDownloads.test.ts` | action, engine, pipelines, read |
 | `src/core/resolver/gameVersionGuidance.ts` | compareVersions, parse, describe, gameVersionGuidance |
 | `src/core/resolver/scanAvailableDownloads.ts` | downloadsDirFor, scanAvailableDownloads |
-| `test/e2e/installDriver.e2e.test.ts` | install, userState |
-| `test/e2e/verification.e2e.test.ts` | install, userState |
 | `src/core/archiveHashing.ts` | enrichModsWithArchiveHashes |
+| `src/utils/utils.ts` | pickEhcollFile |
 
 ## Entry Points
 
 Start here when exploring this area:
 
 - **`createInstallCollectionAction`** (Function) — `src/actions/installCollectionAction.ts:111`
-- **`enrichModsWithArchiveHashes`** (Function) — `src/core/archiveHashing.ts:153`
+- **`enrichModsWithArchiveHashes`** (Function) — `src/core/archiveHashing.ts:183`
 - **`downloadsDirFor`** (Function) — `src/core/resolver/scanAvailableDownloads.ts:40`
 - **`scanAvailableDownloads`** (Function) — `src/core/resolver/scanAvailableDownloads.ts:57`
 - **`buildUserSideState`** (Function) — `src/core/resolver/userState.ts:120`
@@ -43,7 +42,7 @@ Start here when exploring this area:
 | Symbol | Type | File | Line |
 |--------|------|------|------|
 | `createInstallCollectionAction` | Function | `src/actions/installCollectionAction.ts` | 111 |
-| `enrichModsWithArchiveHashes` | Function | `src/core/archiveHashing.ts` | 153 |
+| `enrichModsWithArchiveHashes` | Function | `src/core/archiveHashing.ts` | 183 |
 | `downloadsDirFor` | Function | `src/core/resolver/scanAvailableDownloads.ts` | 40 |
 | `scanAvailableDownloads` | Function | `src/core/resolver/scanAvailableDownloads.ts` | 57 |
 | `buildUserSideState` | Function | `src/core/resolver/userState.ts` | 120 |
@@ -54,12 +53,12 @@ Start here when exploring this area:
 | `resolveGameVersion` | Function | `src/core/resolver/userState.ts` | 204 |
 | `resolveProfileName` | Function | `src/core/resolver/userState.ts` | 297 |
 | `resolveVortexVersion` | Function | `src/core/resolver/userState.ts` | 197 |
-| `runLoadingPipeline` | Function | `src/ui/pages/install/engine.ts` | 104 |
-| `runLoadingPipelineWithReceipt` | Function | `src/ui/pages/install/engine.ts` | 263 |
-| `warnIfSevenZipBroken` | Function | `src/ui/pages/install/engine.ts` | 385 |
+| `runLoadingPipeline` | Function | `src/ui/pages/install/engine.ts` | 116 |
+| `runLoadingPipelineWithReceipt` | Function | `src/ui/pages/install/engine.ts` | 295 |
+| `warnIfSevenZipBroken` | Function | `src/ui/pages/install/engine.ts` | 437 |
 | `pickEhcollFile` | Function | `src/utils/utils.ts` | 98 |
-| `resolveInstallPlan` | Function | `src/core/resolver/resolveInstallPlan.ts` | 92 |
 | `resolveCompatibility` | Function | `src/core/resolver/resolveInstallPlan.ts` | 175 |
+| `resolveInstallPlan` | Function | `src/core/resolver/resolveInstallPlan.ts` | 92 |
 | `compareVersions` | Function | `src/core/resolver/gameVersionGuidance.ts` | 167 |
 | `parse` | Function | `src/core/resolver/gameVersionGuidance.ts` | 168 |
 
@@ -76,7 +75,7 @@ Start here when exploring this area:
 | `RunLoadingPipeline → IsDirectoryEntry` | cross_community | 4 |
 | `RunLoadingPipeline → NormalizePath` | cross_community | 4 |
 | `RunLoadingPipeline → ReadEhcollError` | cross_community | 4 |
-| `RunLoadingPipelineWithReceipt → AbortError` | cross_community | 4 |
+| `RunLoadingPipelineWithReceipt → BelongsToGame` | cross_community | 3 |
 
 ## How to Explore
 

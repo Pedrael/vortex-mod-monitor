@@ -74,6 +74,21 @@ export type AuditorMod = {
   nexusModId?: number | string;
   nexusFileId?: number | string;
   archiveId?: string;
+  /**
+   * A download record holding this mod's archive, when the mod's OWN record no
+   * longer does.
+   *
+   * "Re-download archives" fetches a missing archive without reinstalling the
+   * mod, and Vortex files that as a NEW download with a NEW id. Re-pointing the
+   * mod at it would mean writing to Vortex's own records, which this extension
+   * deliberately does not do (see archiveRecovery.ts) — so the link is kept
+   * here instead, and every curator-side lookup goes through
+   * `resolveModArchivePath` to honour it.
+   *
+   * Undefined for the overwhelming majority of mods: it means "recovered", not
+   * "has an archive".
+   */
+  recoveredDownloadId?: string;
   collectionIds?: string[];
 
   installerType?: string;

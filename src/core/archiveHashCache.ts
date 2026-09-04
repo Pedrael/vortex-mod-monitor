@@ -44,6 +44,15 @@ export type CachedArchiveHash = {
   size?: number;
   /** ISO timestamp, so a suspect entry can be aged out by hand. */
   recoveredAt: string;
+  /**
+   * The download record the recovered archive landed in.
+   *
+   * Without this the hash outlives the file: a later build can identify the mod
+   * but cannot open it, so every check that reads archive bytes silently
+   * degrades. Optional — entries written before this existed have no id,
+   * and they still serve their original purpose.
+   */
+  downloadId?: string;
 };
 
 export type ArchiveHashCache = {
@@ -228,6 +237,7 @@ export function rememberArchiveHash(
     sha256: string;
     size?: number;
     at: string;
+    downloadId?: string;
   },
 ): ArchiveHashCache {
   if (!isHex64(args.sha256)) return cache;
@@ -239,9 +249,42 @@ export function rememberArchiveHash(
         sha256: args.sha256,
         ...(args.size !== undefined ? { size: args.size } : {}),
         recoveredAt: args.at,
+        ...(args.downloadId !== undefined
+          ? { downloadId: args.downloadId }
+          : {}),
       },
     },
   };
+}
+
+/**
+ * Re-attach recovered download ids, and nothing else.
+ *
+ * Separate from `applyCachedHashes` because of WHEN it has to run. The build
+ * asks "are the source archives even still there?" in its first second, before
+ * committing to fifteen minutes of hashing — and at that moment the mods are
+ * raw from Vortex, so the only thing that knows a recovered archive exists is
+ * this cache. Restoring the hash there too would be wrong: a hash keyed by
+ * Nexus ids would then stand in for a file that is present and readable, and
+ * quietly outrank hashing the actual bytes.
+ *
+ * So this fills the link and leaves identity alone.
+ */
+export function applyCachedDownloadIds(
+  mods: AuditorMod[],
+  cache: ArchiveHashCache,
+): AuditorMod[] {
+  let changed = false;
+  const out = mods.map((mod) => {
+    if (mod.recoveredDownloadId !== undefined) return mod;
+    const key = cacheKeyForMod(mod);
+    if (key === undefined) return mod;
+    const hit = cache.entries[key];
+    if (hit?.downloadId === undefined) return mod;
+    changed = true;
+    return { ...mod, recoveredDownloadId: hit.downloadId };
+  });
+  return changed ? out : mods;
 }
 
 /**
@@ -262,7 +305,15 @@ export function applyCachedHashes(
     const hit = cache.entries[key];
     if (hit === undefined) return mod;
     filled += 1;
-    return { ...mod, archiveSha256: hit.sha256 };
+    // The download id travels with the hash. Restoring one without the other is
+    // what let a mod be identifiable and unreadable at the same time.
+    return {
+      ...mod,
+      archiveSha256: hit.sha256,
+      ...(hit.downloadId !== undefined
+        ? { recoveredDownloadId: hit.downloadId }
+        : {}),
+    };
   });
   return filled === 0 ? { mods, filled: 0 } : { mods: out, filled };
 }

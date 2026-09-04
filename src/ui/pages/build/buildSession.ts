@@ -85,7 +85,7 @@ import {
   rememberArchiveHash,
   saveArchiveHashCache,
 } from "../../../core/archiveHashCache";
-import { describeMissingArchives } from "./engine";
+import { describeMissingArchives, isMissingArchiveWarning } from "./engine";
 import {
   checkNexusAvailability,
   summarizeAvailability,
@@ -836,10 +836,14 @@ class BuildSession {
             ...form.ctx,
             mods,
             // The warning has to shrink, or the curator cannot tell it worked.
+            //
+            // Both halves are dropped and both are regenerated below, because
+            // `stillMissing` covers Nexus and external mods alike. Recognising
+            // them is `isMissingArchiveWarning`'s job, next to the strings it
+            // matches — the substring that used to live here had drifted out of
+            // sync with the message and silently matched nothing at all.
             scopeWarnings: [
-              ...form.ctx.scopeWarnings.filter(
-                (w) => !w.includes("no source archive in Vortex's download cache"),
-              ),
+              ...form.ctx.scopeWarnings.filter((w) => !isMissingArchiveWarning(w)),
               ...describeMissingArchives(stillMissing),
               ...(report.failed.length > 0
                 ? [
@@ -892,6 +896,9 @@ class BuildSession {
           sha256: outcome.archiveSha256,
           ...(outcome.size !== undefined ? { size: outcome.size } : {}),
           at: new Date().toISOString(),
+          // Where it landed, not just what it hashes to. A later build reads
+          // this to open the archive the mod's own record can no longer name.
+          downloadId: outcome.downloadId,
         }),
       );
     } catch (err) {
