@@ -221,6 +221,10 @@ export type BuildSessionState =
       verificationLevel: VerificationLevel;
       reverifyEverything: boolean;
       validationError?: string;
+      /** A re-read of the machine is in flight. */
+      refreshing?: boolean;
+      /** ISO time of the last successful re-read, so the form can say so. */
+      refreshedAt?: string;
       /**
        * ISO timestamp of the autosaved draft we restored from.
        * `undefined` after the user dismisses the banner or chooses
@@ -505,6 +509,75 @@ class BuildSession {
    * a no-op (we don't restart the pipeline). Callers should disable
    * their "Begin" button while not in idle/error.
    */
+/**
+   * Re-read the machine, keeping everything the curator has typed.
+   *
+   * The form is a SNAPSHOT taken when it opened, and acting on what it says
+   * usually means leaving it: the form reports a missing prerequisite, the
+   * curator goes to Vortex and installs it, comes back — and is looking at
+   * the scan from before they fixed it. There was no way to re-run it short of
+   * discarding the draft, which throws away the typing too.
+   *
+   * `ctx` is everything read from disk and Vortex; `curator`, `overrides`,
+   * `readme`, `changelog` and the verification settings are what the human
+   * entered. Only the first is replaced. `overrides` deliberately keeps the
+   * in-memory value rather than re-reading the config, because a decision made
+   * on this form and not yet persisted must survive a refresh — losing it
+   * would make the button feel like it undid their work.
+   */
+  refreshContext(api: types.IExtensionApi): void {
+    if (this.state.kind !== "form") return;
+    const form = this.state;
+    if (form.refreshing === true) return;
+
+    this.controller?.abort();
+    const controller = new AbortController();
+    this.controller = controller;
+    this.setState({ ...form, refreshing: true });
+
+    void (async (): Promise<void> => {
+      const startedAt = Date.now();
+      try {
+        const ctx = await loadBuildContext(api, { signal: controller.signal });
+        if (this.controller !== controller) return;
+        this.controller = undefined;
+        ehLog("info", "build.form-refreshed", {
+          ms: Date.now() - startedAt,
+          mods: ctx.mods.length,
+          externalDependencies: ctx.detectedDependencies.length,
+          warnings: ctx.scopeWarnings.length,
+        });
+        // Read the CURRENT state, not the captured `form`: the curator may
+        // have kept typing while this ran, and reinstating a snapshot from
+        // before their keystrokes is a worse bug than a stale scan.
+        const now = this.state;
+        if (now.kind !== "form") return;
+        this.setState({ ...now, ctx, refreshing: false, refreshedAt: new Date().toISOString() });
+      } catch (err) {
+        if (this.controller !== controller) return;
+        this.controller = undefined;
+        if (isAbortError(err)) {
+          const now = this.state;
+          if (now.kind === "form") this.setState({ ...now, refreshing: false });
+          return;
+        }
+        ehLog("warn", "build.form-refresh-failed", { err: String(err) });
+        const now = this.state;
+        if (now.kind !== "form") return;
+        // Keep the old ctx. A failed re-read is a stale form, which is what
+        // they already had; blanking it would be strictly worse.
+        this.setState({
+          ...now,
+          refreshing: false,
+          validationError:
+            `Could not re-read your mods: ` +
+            `${err instanceof Error ? err.message : String(err)}. The form still ` +
+            `shows the previous scan.`,
+        });
+      }
+    })();
+  }
+
   begin(api: types.IExtensionApi): void {
     if (this.state.kind !== "idle" && this.state.kind !== "error") return;
     this.controller?.abort();

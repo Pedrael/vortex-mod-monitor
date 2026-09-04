@@ -1,16 +1,16 @@
 ---
 name: gitnexus-area-manifest
-description: "Skill for the Manifest area of Event-Horizon. 320 symbols across 59 files."
+description: "Skill for the Manifest area of Event-Horizon. 321 symbols across 59 files."
 ---
 
 # Manifest
 
-320 symbols | 59 files | Cohesion: 80%
+321 symbols | 59 files | Cohesion: 80%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how parseManifest, buildManifest, applyCachedDownloadIds work
+- Understanding how parseManifest, applyCachedDownloadIds, applyCachedHashes work
 - Modifying manifest-related functionality
 
 ## Key Files
@@ -19,11 +19,11 @@ description: "Skill for the Manifest area of Event-Horizon. 320 symbols across 5
 |------|---------|
 | `src/core/manifest/parseManifest.ts` | ParseManifestError, crossReferenceValidate, describe, expectArray, expectBoolean (+47) |
 | `src/core/manifest/buildManifest.ts` | BuildManifestError, buildFileOverrides, buildLoadOrder, buildManifest, buildPackageMetadata (+17) |
-| `src/core/manifest/collectionConfig.ts` | reconcileExternalModsConfig, isUuid, listNeverBuiltConfigs, listPublishedCollections, parseAndValidate (+13) |
+| `src/core/manifest/collectionConfig.ts` | isUuid, listNeverBuiltConfigs, listPublishedCollections, parseAndValidate, validateExternalDependencyEntries (+12) |
 | `src/core/manifest/readZip.ts` | ZipReadError, extractZipEntryToFile, findDataOffset, findEntry, findZip64Extra (+11) |
 | `src/core/manifest/packageZip.ts` | isAbortLikeError, packageEhcoll, checkAbort, prepareStagingDir, safeRmDir (+11) |
+| `src/core/manifest/externalHints.ts` | countBy, downloadsFromState, modsFromState, asMode, collectExternalHints (+8) |
 | `src/core/manifest/readEhcoll.ts` | crossCheckBundled, prepareStagingDir, readEhcoll, safeRmDir, ReadEhcollError (+7) |
-| `src/core/manifest/externalHints.ts` | downloadsFromState, asMode, collectExternalHints, collectionHints, diagnoseHintSources (+6) |
 | `src/core/getModsListForProfile.ts` | assignInstallOrder, getModsForProfile, hasAnySelectedFomodChoices, normalizeCollectionIds, normalizeFomodSelections (+6) |
 | `src/core/manifest/sevenZip.ts` | assertOk, sevenZipAdd, sevenZipList, sevenZipSelfTest, add (+5) |
 | `src/core/manifest/parseModuleConfig.ts` | decodeModuleConfig, parseConditionals, parseFiles, parseGroup, parseModuleConfig (+3) |
@@ -33,10 +33,10 @@ description: "Skill for the Manifest area of Event-Horizon. 320 symbols across 5
 Start here when exploring this area:
 
 - **`parseManifest`** (Function) — `src/core/manifest/parseManifest.ts:143`
-- **`buildManifest`** (Function) — `src/core/manifest/buildManifest.ts:269`
 - **`applyCachedDownloadIds`** (Function) — `src/core/archiveHashCache.ts:272`
 - **`applyCachedHashes`** (Function) — `src/core/archiveHashCache.ts:295`
-- **`reconcileExternalModsConfig`** (Function) — `src/core/manifest/collectionConfig.ts:323`
+- **`describeHashedCollisions`** (Function) — `src/core/manifest/collectionScope.ts:200`
+- **`describeScope`** (Function) — `src/core/manifest/collectionScope.ts:214`
 
 ## Key Symbols
 
@@ -49,16 +49,16 @@ Start here when exploring this area:
 | `PackageEhcollError` | Class | `src/core/manifest/packageZip.ts` | 114 |
 | `ReadEhcollError` | Class | `src/core/manifest/readEhcoll.ts` | 128 |
 | `parseManifest` | Function | `src/core/manifest/parseManifest.ts` | 143 |
-| `buildManifest` | Function | `src/core/manifest/buildManifest.ts` | 269 |
 | `applyCachedDownloadIds` | Function | `src/core/archiveHashCache.ts` | 272 |
 | `applyCachedHashes` | Function | `src/core/archiveHashCache.ts` | 295 |
-| `reconcileExternalModsConfig` | Function | `src/core/manifest/collectionConfig.ts` | 323 |
 | `describeHashedCollisions` | Function | `src/core/manifest/collectionScope.ts` | 200 |
 | `describeScope` | Function | `src/core/manifest/collectionScope.ts` | 214 |
 | `describeMissingEngineFixesPart2` | Function | `src/core/manifest/externalDependencies.ts` | 334 |
 | `filesProvidedByDeployment` | Function | `src/core/manifest/externalDependencies.ts` | 272 |
 | `getGameDirectory` | Function | `src/core/manifest/externalDependencies.ts` | 223 |
+| `countBy` | Function | `src/core/manifest/externalHints.ts` | 323 |
 | `downloadsFromState` | Function | `src/core/manifest/externalHints.ts` | 271 |
+| `modsFromState` | Function | `src/core/manifest/externalHints.ts` | 256 |
 | `describeRootFolderReview` | Function | `src/core/manifest/rootFolderReview.ts` | 153 |
 | `describeScriptExtenderGap` | Function | `src/core/manifest/rootFolderReview.ts` | 102 |
 | `findRootFolderMods` | Function | `src/core/manifest/rootFolderReview.ts` | 55 |

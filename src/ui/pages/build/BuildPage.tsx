@@ -654,6 +654,11 @@ function BuildWizard(props: BuildWizardProps): JSX.Element {
         onTitleChange={setDraftTitle}
         onChange={handleChange}
         onBuild={onBuild}
+        onRefresh={(): void => session.refreshContext(api)}
+        refreshing={formState.refreshing === true}
+        {...(formState.refreshedAt !== undefined
+          ? { refreshedAt: formState.refreshedAt }
+          : {})}
         onDiscardDraft={handleDiscardDraft}
         onDismissDraftBanner={handleDismissDraftBanner}
         recoverableCount={
@@ -1271,6 +1276,16 @@ interface FormPanelProps {
   onTitleChange: (next: string) => void;
   onChange: (next: Partial<BuildFormState>) => void;
   onBuild: () => void;
+  /**
+   * Re-read Vortex and the game folder without losing what has been typed.
+   *
+   * Acting on this form usually means LEAVING it — it says a prerequisite is
+   * missing, you go and install it, you come back. Without this the form is
+   * still showing the scan from before you fixed the thing it asked for.
+   */
+  onRefresh: () => void;
+  refreshing: boolean;
+  refreshedAt?: string;
   onDiscardDraft: () => void;
   onDismissDraftBanner: () => void;
   /** How many mods could have their archive fetched back from Nexus. */
@@ -1479,6 +1494,30 @@ function FormPanel(props: FormPanelProps): JSX.Element {
         gap: "var(--eh-sp-4)",
       }}
     >
+      {/* Acting on this form usually means LEAVING it: it names a missing
+          prerequisite or an archive you have to fetch, you go to Vortex and
+          fix it, and you come back to the scan from before you did. The form
+          is a snapshot, and until now the only way to retake it was to discard
+          the draft — which threw away the typing with it. */}
+      <div className="eh-row" style={{ justifyContent: "flex-end" }}>
+        {props.refreshedAt !== undefined && !props.refreshing && (
+          <span className="eh-note">
+            re-read {formatRelativeTime(props.refreshedAt)}
+          </span>
+        )}
+        <Button
+          intent="ghost"
+          size="sm"
+          disabled={props.refreshing}
+          onClick={props.onRefresh}
+          title={
+            "Re-reads your mods, archives and game folder. Everything you " +
+            "have typed is kept."
+          }
+        >
+          {props.refreshing ? "Re-reading…" : "Refresh"}
+        </Button>
+      </div>
       {restoredAt !== undefined && (
         <DraftRestoredBanner
           savedAt={restoredAt}

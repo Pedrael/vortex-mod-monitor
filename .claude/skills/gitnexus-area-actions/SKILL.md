@@ -1,16 +1,16 @@
 ---
 name: gitnexus-area-actions
-description: "Skill for the Actions area of Event-Horizon. 84 symbols across 22 files."
+description: "Skill for the Actions area of Event-Horizon. 84 symbols across 21 files."
 ---
 
 # Actions
 
-84 symbols | 22 files | Cohesion: 73%
+84 symbols | 21 files | Cohesion: 73%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how createBuildPackageAction, matchEhcollFile, captureLoadOrder work
+- Understanding how createBuildPackageAction, matchEhcollFile, reconcileExternalModsConfig work
 - Modifying actions-related functionality
 
 ## Key Files
@@ -26,7 +26,7 @@ description: "Skill for the Actions area of Event-Horizon. 84 symbols across 22 
 | `src/actions/comparePluginsAction.ts` | createComparePluginsAction, action, action |
 | `src/actions/exportModsAction.ts` | createExportModsAction, action, action |
 | `src/core/comparePlugins.ts` | exportPluginsDiffReport, getCurrentPluginsTxtPath, getLocalAppDataPath |
-| `src/ui/pages/dashboard/data.ts` | formatGameLabel, readSystemStatus |
+| `src/core/manifest/collectionConfig.ts` | reconcileExternalModsConfig, toBuildManifestExternalMods |
 
 ## Entry Points
 
@@ -34,7 +34,7 @@ Start here when exploring this area:
 
 - **`createBuildPackageAction`** (Function) — `src/actions/buildPackageAction.ts:116`
 - **`matchEhcollFile`** (Function) — `src/core/doctor/heal.ts:177`
-- **`captureLoadOrder`** (Function) — `src/core/loadOrder.ts:40`
+- **`reconcileExternalModsConfig`** (Function) — `src/core/manifest/collectionConfig.ts:323`
 - **`toBuildManifestExternalMods`** (Function) — `src/core/manifest/collectionConfig.ts:364`
 - **`applyHint`** (Function) — `src/core/manifest/externalHints.ts:229`
 
@@ -44,7 +44,7 @@ Start here when exploring this area:
 |--------|------|------|------|
 | `createBuildPackageAction` | Function | `src/actions/buildPackageAction.ts` | 116 |
 | `matchEhcollFile` | Function | `src/core/doctor/heal.ts` | 177 |
-| `captureLoadOrder` | Function | `src/core/loadOrder.ts` | 40 |
+| `reconcileExternalModsConfig` | Function | `src/core/manifest/collectionConfig.ts` | 323 |
 | `toBuildManifestExternalMods` | Function | `src/core/manifest/collectionConfig.ts` | 364 |
 | `applyHint` | Function | `src/core/manifest/externalHints.ts` | 229 |
 | `locateCollectionPackage` | Function | `src/core/manifest/locatePackage.ts` | 28 |

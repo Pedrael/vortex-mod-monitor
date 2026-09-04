@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-install
-description: "Skill for the Install area of Event-Horizon. 72 symbols across 13 files."
+description: "Skill for the Install area of Event-Horizon. 78 symbols across 14 files."
 ---
 
 # Install
 
-72 symbols | 13 files | Cohesion: 79%
+78 symbols | 14 files | Cohesion: 78%
 
 ## When to Use
 
@@ -18,15 +18,15 @@ description: "Skill for the Install area of Event-Horizon. 72 symbols across 13 
 | File | Symbols |
 |------|---------|
 | `src/ui/pages/install/steps.tsx` | BucketList, CuratorReportsNotice, DamagedArchiveNotice, ExternalArchiveNotice, GameIniNotice (+22) |
-| `src/ui/pages/install/installSession.ts` | onHashProgress, onPhase, onHashProgress, onPhase, onProgress (+16) |
+| `src/ui/pages/install/installSession.ts` | onHashProgress, onPhase, onHashProgress, onPhase, onProgress (+19) |
 | `src/ui/pages/install/state.ts` | wizardReducer, canProceedFromDecisions, countUndecidedConflicts, defaultConflictChoice, defaultOrphanChoice (+3) |
 | `src/ui/pages/install/installProgress.ts` | describeElapsed, describeQuiet, estimateRemainingMs, formatDuration, trackPhase |
+| `src/ui/runtime/ehRuntime.ts` | notify, setBuildBusy, setInstallBusy |
 | `src/ui/pages/install/deploymentGate.test.ts` | bundle, confirmSession |
 | `src/ui/pages/install/engine.ts` | checkAbort, checkAbort |
 | `src/ui/pages/install/fomodModeWiring.test.ts` | atDecisions |
 | `src/ui/pages/install/InstallPage.tsx` | session |
 | `src/ui/pages/install/extractorGate.test.ts` | confirmSession |
-| `src/utils/abortError.ts` | AbortError |
 
 ## Entry Points
 
@@ -73,10 +73,10 @@ Start here when exploring this area:
 | `Heal → GetSnapshot` | cross_community | 5 |
 | `DoneStep → Pill` | cross_community | 5 |
 | `Take → AbortError` | cross_community | 5 |
+| `Session → Notify` | cross_community | 5 |
 | `OnHashProgress → EHRuntime` | cross_community | 5 |
 | `OnHashProgress → Notify` | cross_community | 5 |
 | `OnPhase → EHRuntime` | cross_community | 5 |
-| `OnPhase → Notify` | cross_community | 5 |
 
 ## How to Explore
 

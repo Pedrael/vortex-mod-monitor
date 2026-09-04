@@ -1121,9 +1121,15 @@ export function DraftCard(props: {
               <strong>Version:</strong> v{payload.curator.version || "—"}
             </div>
           )}
+        {/* Sized to match PublishedCard's action row. These were full-size
+            buttons while the published card next to them used `sm`, so two
+            cards in the same list carried visibly different weight for
+            equivalent actions. The SEPARATION and the ghost intent on Discard
+            both stay — see below. */}
         <div className="eh-row" style={{ marginTop: "var(--eh-sp-2)" }}>
           <Button
             intent="primary"
+            size="sm"
             onClick={props.onOpen}
             disabled={!draftMatchesGame}
             title={
@@ -1140,7 +1146,7 @@ export function DraftCard(props: {
               published card, which ends a release lineage rather than losing
               an afternoon's typing. */}
           <span className="eh-row__spacer" />
-          <Button intent="ghost" onClick={props.onDiscard}>
+          <Button intent="ghost" size="sm" onClick={props.onDiscard}>
             Discard draft
           </Button>
         </div>
