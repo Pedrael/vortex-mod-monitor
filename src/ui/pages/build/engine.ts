@@ -351,6 +351,31 @@ export async function recordPostProcessingDecision(args: {
   return saveCollectionConfig({ configDir, slug, config });
 }
 
+/**
+ * Overlay the curator's post-processing declarations onto the mod set.
+ *
+ * Takes the config as a PARAMETER rather than closing over it, and that is the
+ * point rather than a style choice. This started life as a `.map()` inside
+ * `runBuildPipeline` that read `collectionConfig` from the enclosing scope
+ * — seventeen lines before that variable was declared. TypeScript cannot
+ * prove execution order across a closure boundary, so it compiled cleanly and
+ * threw "Cannot access 'collectionConfig' before initialization" the moment a
+ * curator pressed Build. It caught the same mistake instantly elsewhere in
+ * this file, where the reference happened to be direct.
+ *
+ * As an argument, calling it too early is a compile error again.
+ */
+export function applyPostProcessedDeclarations(
+  mods: readonly AuditorMod[],
+  config: CollectionConfig,
+): AuditorMod[] {
+  return mods.map((m) =>
+    config.externalMods[m.id]?.postProcessed === true
+      ? { ...m, postProcessed: true }
+      : m,
+  );
+}
+
 export interface BuildOverrides {
   /** modId → override to apply on top of the existing config entry. */
   externalMods: Record<string, ExternalModConfigEntry>;
@@ -909,14 +934,7 @@ export async function runBuildPipeline(
   checkAbort();
   const state = api.getState();
   const { gameId } = context;
-  // The curator's own answers, applied once so every step downstream sees the
-  // same mod. Read from the persisted config rather than recomputed, because
-  // this is a DECLARATION — nothing on this machine can derive it.
-  let mods = context.mods.map((m) =>
-    collectionConfig.externalMods[m.id]?.postProcessed === true
-      ? { ...m, postProcessed: true }
-      : m,
-  );
+  let mods = context.mods;
 
   // ── 0. The profile may have moved since the form opened ────────────────
   // `loadBuildContext` runs once, in `begin()`. Every build after that reused
@@ -1004,6 +1022,11 @@ export async function runBuildPipeline(
       );
     }
   }
+
+  // AFTER the rename block, which can swap the whole config out: applying the
+  // curator's declarations to the old one would read answers that belong to a
+  // different collection.
+  mods = applyPostProcessedDeclarations(mods, collectionConfig);
 
   collectionConfig = {
     ...collectionConfig,

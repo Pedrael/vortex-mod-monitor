@@ -21,10 +21,10 @@ description: "Skill for the Manifest area of Event-Horizon. 323 symbols across 6
 | `src/core/manifest/collectionConfig.ts` | isUuid, listNeverBuiltConfigs, listPublishedCollections, parseAndValidate, validateExternalDependencyEntries (+12) |
 | `src/core/manifest/readZip.ts` | ZipReadError, extractZipEntryToFile, findDataOffset, findEntry, findZip64Extra (+11) |
 | `src/core/manifest/buildManifest.ts` | buildExternalMod, buildModEntry, buildModInstallSpec, buildModInstallState, buildNexusMod (+11) |
-| `src/core/manifest/packageZip.ts` | isAbortLikeError, packageEhcoll, checkAbort, prepareStagingDir, safeRmDir (+11) |
+| `src/core/manifest/packageZip.ts` | isAbortLikeError, packageEhcoll, checkAbort, prepareStagingDir, runSevenZipAdd (+11) |
 | `src/core/manifest/readEhcoll.ts` | crossCheckBundled, prepareStagingDir, readEhcoll, safeRmDir, ReadEhcollError (+7) |
 | `src/core/manifest/externalHints.ts` | downloadsFromState, asMode, collectExternalHints, collectionHints, diagnoseHintSources (+6) |
-| `src/core/manifest/sevenZip.ts` | assertOk, sevenZipAdd, sevenZipList, sevenZipSelfTest, add (+5) |
+| `src/core/manifest/sevenZip.ts` | assertOk, cancelOnAbort, sevenZipAdd, sevenZipExtractFull, sevenZipList (+5) |
 | `src/core/manifest/parseModuleConfig.ts` | decodeModuleConfig, parseConditionals, parseFiles, parseGroup, parseModuleConfig (+3) |
 | `src/ui/pages/build/BuildDashboard.tsx` | BuildDashboard, handleOpenDraft, DashboardHeader, DraftsRootHint, EmptyState (+2) |
 

@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-build
-description: "Skill for the Build area of Event-Horizon. 328 symbols across 67 files."
+description: "Skill for the Build area of Event-Horizon. 329 symbols across 67 files."
 ---
 
 # Build
 
-328 symbols | 67 files | Cohesion: 76%
+329 symbols | 67 files | Cohesion: 76%
 
 ## When to Use
 
@@ -20,7 +20,7 @@ description: "Skill for the Build area of Event-Horizon. 328 symbols across 67 f
 | `src/ui/pages/build/BuildPage.tsx` | AvailabilityPanel, BuildWizard, BuildingPanel, DraftRestoredBanner, ErrorPanel (+43) |
 | `src/ui/pages/build/buildSession.ts` | cancelLoading, cancelRecovering, getState, subscribe, onProgress (+27) |
 | `src/ui/pages/install/steps.tsx` | ConfirmStep, ConflictRow, DoneStep, ExternalDownloadGuide, FailureBody (+18) |
-| `src/ui/pages/build/engine.ts` | BundleResolutionError, buildOutputFileName, resolveDeploymentMethod, resolveVortexVersion, runBuildPipeline (+17) |
+| `src/ui/pages/build/engine.ts` | BundleResolutionError, applyPostProcessedDeclarations, buildOutputFileName, resolveDeploymentMethod, resolveVortexVersion (+18) |
 | `src/ui/pages/build/BuildDashboard.tsx` | DraftCard, slugsInUse, registry, handleDiscardDraft, handleCleanupUnbuilt (+13) |
 | `src/ui/pages/build/buildSessionRegistry.ts` | BuildSessionRegistry, getBuildSessionRegistry, ensure, get, makeHooks (+13) |
 | `src/ui/pages/CollectionsPage.tsx` | CollectionsList, handleContinueInstall, refresh, DetailTile, EmptyState (+8) |
@@ -42,7 +42,7 @@ Start here when exploring this area:
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `BundleResolutionError` | Class | `src/ui/pages/build/engine.ts` | 385 |
+| `BundleResolutionError` | Class | `src/ui/pages/build/engine.ts` | 410 |
 | `healingBlockedReason` | Function | `src/core/doctor/health.ts` | 497 |
 | `overallHealth` | Function | `src/core/doctor/health.ts` | 444 |
 | `describeInstallAttempt` | Function | `src/core/installer/attemptRecord.ts` | 169 |
