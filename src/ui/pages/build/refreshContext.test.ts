@@ -16,6 +16,9 @@
  *   - keystrokes made WHILE the re-read is in flight are not rolled back;
  *   - a failed re-read leaves the old scan rather than blanking the form.
  */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const loadBuildContext = vi.fn();
@@ -30,7 +33,7 @@ const ctx = (tag: string): Record<string, unknown> => ({
   tag,
   gameId: "skyrimse",
   profileId: "p1",
-  mods: [],
+  mods: [{ id: "m1" }],
   scopeWarnings: [],
   rootFolderReview: [],
   detectedDependencies: [],
@@ -198,5 +201,37 @@ describe("refreshing the build form", () => {
     s.refreshContext(api);
     await settle();
     expect(loadBuildContext).not.toHaveBeenCalled();
+  });
+});
+
+describe("a refresh re-reads, it does not trust", () => {
+  it("does the FULL pass, carrying no hashes over", async () => {
+    // Reuse was built and rejected. The archive fingerprint cache
+    // (path|size|mtime) already skips reading an archive that has not changed,
+    // so a re-read costs one stat per mod plus whatever genuinely moved — the
+    // measured 180s load was inflated by 763 archives that had JUST been
+    // re-downloaded and so had new mtimes.
+    //
+    // What reuse would also have skipped is noticing an archive was REPLACED,
+    // and re-downloading archives is a normal thing to do between opening this
+    // form and pressing Refresh. That is precisely when a carried-over hash is
+    // wrong, and a refresh that can hand back a stale identity is not one.
+    loadBuildContext.mockResolvedValueOnce(ctx("refreshed"));
+    const { s } = sessionOnForm();
+
+    s.refreshContext(api);
+    await settle();
+
+    expect(loadBuildContext).toHaveBeenCalledTimes(1);
+    const opts = (loadBuildContext.mock.calls[0]![1] ?? {}) as Record<string, unknown>;
+    expect(opts.reuseMods).toBeUndefined();
+    expect(Object.keys(opts)).toEqual(["signal"]);
+  });
+
+  it("leaves no reuse hatch anywhere in the loader", () => {
+    // A rejected option that stays in the codebase gets used by the next
+    // person who finds the button slow.
+    const engine = readFileSync(join(__dirname, "engine.ts"), "utf8");
+    expect(engine).not.toContain("reuseMods");
   });
 });

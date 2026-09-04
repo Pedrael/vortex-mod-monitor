@@ -538,6 +538,16 @@ class BuildSession {
     void (async (): Promise<void> => {
       const startedAt = Date.now();
       try {
+        // The FULL pass, deliberately: identical to opening the form.
+        //
+        // Carrying the previous hashes over was built and then rejected. The
+        // archive fingerprint cache (path|size|mtime) already skips reading an
+        // archive that has not changed, so the honest cost of a re-read is one
+        // stat per mod plus whatever genuinely moved. What reuse would ALSO
+        // skip is noticing that an archive was REPLACED — and re-downloading
+        // archives is a normal thing to do between opening this form and
+        // pressing Refresh, which is exactly when a carried-over hash would be
+        // wrong. A refresh that can return a stale identity is not a refresh.
         const ctx = await loadBuildContext(api, { signal: controller.signal });
         if (this.controller !== controller) return;
         this.controller = undefined;
