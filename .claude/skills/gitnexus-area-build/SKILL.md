@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-build
-description: "Skill for the Build area of Event-Horizon. 326 symbols across 64 files."
+description: "Skill for the Build area of Event-Horizon. 327 symbols across 63 files."
 ---
 
 # Build
 
-326 symbols | 64 files | Cohesion: 77%
+327 symbols | 63 files | Cohesion: 77%
 
 ## When to Use
 
@@ -42,7 +42,7 @@ Start here when exploring this area:
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `BundleResolutionError` | Class | `src/ui/pages/build/engine.ts` | 382 |
+| `BundleResolutionError` | Class | `src/ui/pages/build/engine.ts` | 384 |
 | `healingBlockedReason` | Function | `src/core/doctor/health.ts` | 497 |
 | `overallHealth` | Function | `src/core/doctor/health.ts` | 444 |
 | `describeInstallAttempt` | Function | `src/core/installer/attemptRecord.ts` | 169 |

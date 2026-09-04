@@ -17,6 +17,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   describeRootFolderReview,
+  describeUnaccountedRootBinaries,
   describeScriptExtenderGap,
   findRootFolderMods,
 } from "./rootFolderReview";
@@ -185,5 +186,96 @@ describe("a collection built on a script extender it does not contain", () => {
       declared: [],
     });
     expect(msg).toBeDefined();
+  });
+});
+
+describe("executable files nothing accounts for", () => {
+  const dep = (id: string, ...files: string[]): EhcollExternalDependency =>
+    ({
+      id,
+      name: id,
+      files: files.map((relPath) => ({ relPath, sha256: "x" })),
+    }) as unknown as EhcollExternalDependency;
+
+  // The real listing from a curator's Skyrim root, trimmed to executables.
+  const REAL = [
+    "bink2w64.dll",
+    "Galaxy64.dll",
+    "nircmd.exe",
+    "nircmdc.exe",
+    "QRes.exe",
+    "SkyrimSE.exe",
+    "SkyrimSELauncher.exe",
+    "tbb.dll",
+    "tbbmalloc.dll",
+    "unins000.exe",
+    "unins001.exe",
+  ];
+
+  it("drops what a mod already deploys", () => {
+    // d3dx9_42.dll became mod-provided the moment the curator installed Part 2
+    // as a Vortex mod. It must leave the list rather than be listed as a
+    // mystery.
+    const lines = describeUnaccountedRootBinaries({
+      rootBinaries: [...REAL, "d3dx9_42.dll"],
+      providedByMods: new Set(["d3dx9_42.dll"]),
+      declared: [],
+    });
+    expect(lines.join("\n")).not.toContain("d3dx9_42.dll");
+    expect(lines.join("\n")).toContain("tbb.dll");
+  });
+
+  it("drops what a declared prerequisite already covers", () => {
+    const lines = describeUnaccountedRootBinaries({
+      rootBinaries: ["d3dx9_42.dll", "tbb.dll"],
+      providedByMods: new Set(),
+      declared: [dep("sse-engine-fixes-part2", "d3dx9_42.dll")],
+    });
+    expect(lines.join("\n")).not.toContain("d3dx9_42.dll");
+    expect(lines.join("\n")).toContain("tbb.dll");
+  });
+
+  it("says nothing when everything is accounted for", () => {
+    expect(
+      describeUnaccountedRootBinaries({
+        rootBinaries: ["skse64_loader.exe"],
+        providedByMods: new Set(["skse64_loader.exe"]),
+        declared: [],
+      }),
+    ).toEqual([]);
+  });
+
+  it("makes no claim about what any file IS", () => {
+    // The whole reason this exists. Naming them would mean encoding a belief
+    // per file, which is what made a probe require tbb.dll as part of Engine
+    // Fixes and fail silently everywhere else.
+    const text = describeUnaccountedRootBinaries({
+      rootBinaries: REAL,
+      providedByMods: new Set(),
+      declared: [],
+    }).join("\n");
+    expect(text).not.toMatch(/engine fixes|skse|enb|preloader/i);
+    expect(text).toMatch(/cannot tell those apart/i);
+  });
+
+  it("admits most of them are harmless, so the list is not alarming", () => {
+    const text = describeUnaccountedRootBinaries({
+      rootBinaries: REAL,
+      providedByMods: new Set(),
+      declared: [],
+    }).join("\n");
+    expect(text).toMatch(/your own tools/i);
+    expect(text).toMatch(/nothing to do if you recognise them all/i);
+  });
+
+  it("caps the names but keeps the count honest", () => {
+    const many = Array.from({ length: 30 }, (_, i) => `thing${i}.dll`);
+    const text = describeUnaccountedRootBinaries({
+      rootBinaries: many,
+      providedByMods: new Set(),
+      declared: [],
+    }).join("\n");
+    expect(text).toContain("30 executable file(s)");
+    expect(text).toContain("and 18 more");
   });
 });

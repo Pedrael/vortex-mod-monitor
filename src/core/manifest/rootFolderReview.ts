@@ -145,6 +145,62 @@ export function describeScriptExtenderGap(args: {
 }
 
 /**
+ * Executable files beside the game exe that nothing in the collection accounts
+ * for.
+ *
+ * Purely informational, and deliberately so. Most of these are the game itself,
+ * its store client, or the curator's own tools, and Event Horizon cannot tell
+ * those apart from a wrapper the setup depends on. Saying which would mean
+ * encoding a belief about each file — the exact thing that made a probe
+ * requiring `tbb.dll` fail silently on every machine but one.
+ *
+ * So it states what is there and admits what it does not know. A curator reads
+ * the list in a second, recognises their own tools, and notices anything that
+ * should not be on it. Nothing is asked of them and nothing is remembered.
+ *
+ * Already-accounted files are removed rather than listed and excused: anything
+ * a mod deploys, and anything a declared prerequisite already covers.
+ */
+export function describeUnaccountedRootBinaries(args: {
+  /** Every .dll/.exe directly in the game folder. */
+  rootBinaries: readonly string[];
+  /** Lowercased basenames the collection's mods deploy. */
+  providedByMods: ReadonlySet<string>;
+  /** Prerequisites already declared, whose files are covered. */
+  declared: readonly EhcollExternalDependency[];
+}): string[] {
+  const covered = new Set<string>(args.providedByMods);
+  for (const dep of args.declared) {
+    for (const f of dep.files) {
+      covered.add(baseName(f.relPath).toLowerCase());
+    }
+  }
+
+  const unaccounted = args.rootBinaries.filter(
+    (f) => !covered.has(f.toLowerCase()),
+  );
+  if (unaccounted.length === 0) return [];
+
+  const shown = unaccounted.slice(0, 12).join(", ");
+  const more =
+    unaccounted.length > 12 ? `, and ${unaccounted.length - 12} more` : "";
+  return [
+    `${unaccounted.length} executable file(s) sit beside the game executable ` +
+      `that no mod here provides: ${shown}${more}.`,
+    `Most will be the game, its store client, or your own tools. Event ` +
+      `Horizon cannot tell those apart from something your setup depends on, ` +
+      `and anything in that second group will not reach users. Nothing to do ` +
+      `if you recognise them all.`,
+  ];
+}
+
+/** Last path segment, for a "/"- or "\\"-separated path. */
+function baseName(p: string): string {
+  const cut = p.replace(/\\/g, "/").lastIndexOf("/");
+  return cut === -1 ? p : p.slice(cut + 1);
+}
+
+/**
  * The review list, as prose for the build form.
  *
  * Always says something, including when the answer is "one mod". A list that

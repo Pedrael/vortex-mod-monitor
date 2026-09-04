@@ -262,6 +262,35 @@ async function findFile(
   }
 }
 
+/**
+ * Executable code sitting directly in the game folder.
+ *
+ * Knows nothing about SKSE, ENB or Engine Fixes — it is a directory listing
+ * filtered to .dll and .exe. That is the point: the PROBES above encode what I
+ * believe about specific mods, and a belief that is wrong fails silently
+ * everywhere. One of them required `tbb.dll` as part of Engine Fixes Part 2, on
+ * no better evidence than it being in the same folder, and so could never fire
+ * on a machine that did not also happen to have it.
+ *
+ * This cannot be wrong in that direction. It reports what is there; whether any
+ * of it matters is a question only the curator can answer, and they are not
+ * asked to — the list is informational.
+ *
+ * Top level only. Recursing would pull in Data/ and every mod in it.
+ */
+export async function listRootBinaries(gameDir: string): Promise<string[]> {
+  try {
+    const entries = await fsp.readdir(gameDir, { withFileTypes: true });
+    return entries
+      .filter((e) => e.isFile() && /\.(dll|exe)$/i.test(e.name))
+      .map((e) => e.name)
+      .sort((a, b) => a.localeCompare(b));
+  } catch {
+    // An unreadable game folder is not a finding.
+    return [];
+  }
+}
+
 export type DetectOptions = {
   signal?: AbortSignal;
   /** Reported per dependency so a slow hash is not a silent hang. */

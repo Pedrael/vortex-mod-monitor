@@ -69,6 +69,7 @@ import {
 } from "../../../core/manifest/bundleFromStaging";
 import {
   describeRootFolderReview,
+  describeUnaccountedRootBinaries,
   describeScriptExtenderGap,
   findRootFolderMods,
 } from "../../../core/manifest/rootFolderReview";
@@ -76,6 +77,7 @@ import {
   applyDependencyOverrides,
   describeMissingEngineFixesPart2,
   detectExternalDependencies,
+  listRootBinaries,
   filesProvidedByDeployment,
   getGameDirectory,
 } from "../../../core/manifest/externalDependencies";
@@ -663,6 +665,7 @@ export async function loadBuildContext(
   // the same question far more slowly and by inference.
   let detectedDependencies: EhcollExternalDependency[] = [];
   const dependencyWarnings: string[] = [];
+  let rootBinaryNotes: string[] = [];
   try {
     const gameDir = getGameDirectory(state, gameId);
     if (gameDir !== undefined) {
@@ -687,6 +690,16 @@ export async function loadBuildContext(
         declared: detectedDependencies,
       });
       if (seGap !== undefined) dependencyWarnings.push(seGap);
+
+      // Knows nothing about any particular mod: a directory listing filtered
+      // to executable code, minus whatever is already accounted for. The
+      // probes above can be wrong or missing; this cannot fail in that
+      // direction, because it makes no claim about what the files are.
+      rootBinaryNotes = describeUnaccountedRootBinaries({
+        rootBinaries: await listRootBinaries(gameDir),
+        providedByMods,
+        declared: detectedDependencies,
+      });
     }
     op.step("external-deps-detected", {
       gameDirKnown: getGameDirectory(state, gameId) !== undefined,
@@ -751,10 +764,13 @@ export async function loadBuildContext(
       // detected, only deduced from what the collection ships.
       ...dependencyWarnings,
     ],
-    rootFolderReview: describeRootFolderReview({
-      rootMods: findRootFolderMods(rawMods),
-      declared: detectedDependencies,
-    }),
+    rootFolderReview: [
+      ...describeRootFolderReview({
+        rootMods: findRootFolderMods(rawMods),
+        declared: detectedDependencies,
+      }),
+      ...rootBinaryNotes,
+    ],
     externalMods,
     collectionConfig,
     configPath: loaded.configPath,

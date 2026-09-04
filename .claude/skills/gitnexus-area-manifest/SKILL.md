@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-manifest
-description: "Skill for the Manifest area of Event-Horizon. 331 symbols across 62 files."
+description: "Skill for the Manifest area of Event-Horizon. 322 symbols across 59 files."
 ---
 
 # Manifest
 
-331 symbols | 62 files | Cohesion: 80%
+322 symbols | 59 files | Cohesion: 81%
 
 ## When to Use
 
@@ -22,8 +22,8 @@ description: "Skill for the Manifest area of Event-Horizon. 331 symbols across 6
 | `src/core/manifest/collectionConfig.ts` | isUuid, listNeverBuiltConfigs, listPublishedCollections, parseAndValidate, validateExternalDependencyEntries (+12) |
 | `src/core/manifest/readZip.ts` | ZipReadError, extractZipEntryToFile, findDataOffset, findEntry, findZip64Extra (+11) |
 | `src/core/manifest/packageZip.ts` | isAbortLikeError, packageEhcoll, checkAbort, prepareStagingDir, runSevenZipAdd (+11) |
-| `src/core/manifest/externalHints.ts` | countBy, downloadsFromState, modsFromState, asMode, collectExternalHints (+8) |
 | `src/core/manifest/readEhcoll.ts` | crossCheckBundled, prepareStagingDir, readEhcoll, safeRmDir, ReadEhcollError (+7) |
+| `src/core/manifest/externalHints.ts` | downloadsFromState, asMode, collectExternalHints, collectionHints, diagnoseHintSources (+6) |
 | `src/core/getModsListForProfile.ts` | assignInstallOrder, getModsForProfile, hasAnySelectedFomodChoices, normalizeCollectionIds, normalizeFomodSelections (+6) |
 | `src/core/manifest/sevenZip.ts` | assertOk, cancelOnAbort, sevenZipAdd, sevenZipExtractFull, sevenZipList (+5) |
 | `src/core/manifest/parseModuleConfig.ts` | decodeModuleConfig, parseConditionals, parseFiles, parseGroup, parseModuleConfig (+3) |
@@ -53,14 +53,14 @@ Start here when exploring this area:
 | `applyCachedHashes` | Function | `src/core/archiveHashCache.ts` | 295 |
 | `describeHashedCollisions` | Function | `src/core/manifest/collectionScope.ts` | 200 |
 | `describeScope` | Function | `src/core/manifest/collectionScope.ts` | 214 |
-| `describeMissingEngineFixesPart2` | Function | `src/core/manifest/externalDependencies.ts` | 352 |
-| `filesProvidedByDeployment` | Function | `src/core/manifest/externalDependencies.ts` | 287 |
+| `describeMissingEngineFixesPart2` | Function | `src/core/manifest/externalDependencies.ts` | 381 |
+| `filesProvidedByDeployment` | Function | `src/core/manifest/externalDependencies.ts` | 316 |
 | `getGameDirectory` | Function | `src/core/manifest/externalDependencies.ts` | 238 |
-| `countBy` | Function | `src/core/manifest/externalHints.ts` | 323 |
+| `listRootBinaries` | Function | `src/core/manifest/externalDependencies.ts` | 280 |
 | `downloadsFromState` | Function | `src/core/manifest/externalHints.ts` | 271 |
-| `modsFromState` | Function | `src/core/manifest/externalHints.ts` | 256 |
-| `describeRootFolderReview` | Function | `src/core/manifest/rootFolderReview.ts` | 153 |
+| `describeRootFolderReview` | Function | `src/core/manifest/rootFolderReview.ts` | 209 |
 | `describeScriptExtenderGap` | Function | `src/core/manifest/rootFolderReview.ts` | 102 |
+| `describeUnaccountedRootBinaries` | Function | `src/core/manifest/rootFolderReview.ts` | 163 |
 | `findRootFolderMods` | Function | `src/core/manifest/rootFolderReview.ts` | 55 |
 
 ## Execution Flows

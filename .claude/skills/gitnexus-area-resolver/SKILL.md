@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-resolver
-description: "Skill for the Resolver area of Event-Horizon. 64 symbols across 9 files."
+description: "Skill for the Resolver area of Event-Horizon. 71 symbols across 12 files."
 ---
 
 # Resolver
 
-64 symbols | 9 files | Cohesion: 79%
+71 symbols | 12 files | Cohesion: 76%
 
 ## When to Use
 
@@ -23,8 +23,9 @@ description: "Skill for the Resolver area of Event-Horizon. 64 symbols across 9 
 | `src/ui/pages/install/engine.ts` | profileExistsInState, runLoadingPipeline, runLoadingPipelineWithReceipt, warnIfSevenZipBroken |
 | `src/core/resolver/collectAvailableDownloads.test.ts` | action, engine, pipelines, read |
 | `src/core/resolver/gameVersionGuidance.ts` | compareVersions, parse, describe, gameVersionGuidance |
+| `src/core/archiveHashing.ts` | enrichModsWithArchiveHashes, hashFileSha256, cleanup |
+| `src/core/resolver/collectAvailableDownloads.ts` | belongsToGame, collectAvailableDownloads, readDownloadFiles |
 | `src/core/resolver/scanAvailableDownloads.ts` | downloadsDirFor, scanAvailableDownloads |
-| `src/core/archiveHashing.ts` | enrichModsWithArchiveHashes |
 | `src/utils/utils.ts` | pickEhcollFile |
 
 ## Entry Points
@@ -59,23 +60,23 @@ Start here when exploring this area:
 | `pickEhcollFile` | Function | `src/utils/utils.ts` | 98 |
 | `resolveCompatibility` | Function | `src/core/resolver/resolveInstallPlan.ts` | 175 |
 | `resolveInstallPlan` | Function | `src/core/resolver/resolveInstallPlan.ts` | 92 |
-| `compareVersions` | Function | `src/core/resolver/gameVersionGuidance.ts` | 167 |
-| `parse` | Function | `src/core/resolver/gameVersionGuidance.ts` | 168 |
+| `archiveFileCacheKey` | Function | `src/core/archiveHashCache.ts` | 82 |
+| `hashFileSha256` | Function | `src/core/archiveHashing.ts` | 38 |
 
 ## Execution Flows
 
 | Flow | Type | Steps |
 |------|------|-------|
+| `ExecutePromptUserChoice → ZipReadError` | cross_community | 9 |
 | `RunLoadingPipeline → ZipReadError` | cross_community | 8 |
+| `ExecutePromptUserChoice → FindZip64Extra` | cross_community | 7 |
 | `RouteOutlet → ResolveProfileName` | cross_community | 6 |
 | `RouteOutlet → ResolveVortexVersion` | cross_community | 6 |
 | `RunLoadingPipeline → FindZip64Extra` | cross_community | 6 |
+| `ExecutePromptUserChoice → NormalizeArchivePath` | cross_community | 5 |
+| `ExecutePromptUserChoice → Cleanup` | cross_community | 4 |
 | `RunLoadingPipelineWithReceipt → NormalizeRuleReference` | cross_community | 4 |
 | `RunLoadingPipelineWithReceipt → RulesSortKey` | cross_community | 4 |
-| `RunLoadingPipeline → IsDirectoryEntry` | cross_community | 4 |
-| `RunLoadingPipeline → NormalizePath` | cross_community | 4 |
-| `RunLoadingPipeline → ReadEhcollError` | cross_community | 4 |
-| `RunLoadingPipelineWithReceipt → BelongsToGame` | cross_community | 3 |
 
 ## How to Explore
 
