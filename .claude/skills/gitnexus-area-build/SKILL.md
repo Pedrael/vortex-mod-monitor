@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-build
-description: "Skill for the Build area of Event-Horizon. 319 symbols across 61 files."
+description: "Skill for the Build area of Event-Horizon. 318 symbols across 60 files."
 ---
 
 # Build
 
-319 symbols | 61 files | Cohesion: 77%
+318 symbols | 60 files | Cohesion: 77%
 
 ## When to Use
 
@@ -21,8 +21,8 @@ description: "Skill for the Build area of Event-Horizon. 319 symbols across 61 f
 | `src/ui/pages/build/buildSession.ts` | cancelLoading, cancelRecovering, getState, subscribe, begin (+26) |
 | `src/ui/pages/install/steps.tsx` | ConfirmStep, ConflictRow, DoneStep, ExternalDownloadGuide, FailureBody (+18) |
 | `src/ui/pages/build/engine.ts` | BundleResolutionError, buildOutputFileName, resolveDeploymentMethod, resolveVortexVersion, runBuildPipeline (+16) |
-| `src/ui/pages/build/BuildDashboard.tsx` | DraftCard, handleDiscardDraft, slugsInUse, registry, handleCleanupUnbuilt (+13) |
-| `src/ui/pages/build/buildSessionRegistry.ts` | BuildSessionRegistry, getBuildSessionRegistry, ensure, get, makeHooks (+13) |
+| `src/ui/pages/build/BuildDashboard.tsx` | DraftCard, slugsInUse, handleDiscardDraft, handleCleanupUnbuilt, handleDeletePublished (+13) |
+| `src/ui/pages/build/buildSessionRegistry.ts` | notifyStateChanged, emit, ensure, isAnyBusy, makeHooks (+13) |
 | `src/ui/pages/CollectionsPage.tsx` | CollectionsList, handleContinueInstall, refresh, DetailTile, EmptyState (+8) |
 | `src/ui/pages/HomePage.tsx` | CuratorPanel, Dashboard, DashboardBody, ErrorPanel, FooterRow (+7) |
 | `src/core/build/nexusAvailability.ts` | categoryOf, checkNexusAvailability, classifyFile, currentMainFile, fileIdOf (+6) |
@@ -42,7 +42,7 @@ Start here when exploring this area:
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `BundleResolutionError` | Class | `src/ui/pages/build/engine.ts` | 367 |
+| `BundleResolutionError` | Class | `src/ui/pages/build/engine.ts` | 382 |
 | `healingBlockedReason` | Function | `src/core/doctor/health.ts` | 497 |
 | `overallHealth` | Function | `src/core/doctor/health.ts` | 444 |
 | `describeInstallAttempt` | Function | `src/core/installer/attemptRecord.ts` | 169 |

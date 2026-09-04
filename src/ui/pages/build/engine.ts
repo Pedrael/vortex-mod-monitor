@@ -68,6 +68,11 @@ import {
   type RepackedBundle,
 } from "../../../core/manifest/bundleFromStaging";
 import {
+  describeRootFolderReview,
+  describeScriptExtenderGap,
+  findRootFolderMods,
+} from "../../../core/manifest/rootFolderReview";
+import {
   applyDependencyOverrides,
   describeMissingEngineFixesPart2,
   detectExternalDependencies,
@@ -179,6 +184,16 @@ export interface BuildContext {
    * {@link scopeCollectionMods}; empty on a tidy profile.
    */
   scopeWarnings: string[];
+  /**
+   * What this collection puts beside the game executable, stated as fact.
+   *
+   * Deliberately NOT a warning list: on a healthy 1753-mod profile it is one
+   * line naming SKSE. Its value is that a curator can look at it and notice
+   * something they expected is absent — which is the only reliable way to
+   * catch an engine injector Vortex is treating as an ordinary mod, because
+   * nothing in a staging folder distinguishes one from a tool.
+   */
+  rootFolderReview: string[];
   /**
    * Subset of `mods` that are external (not on Nexus). These are the
    * only mods the curator can flag as bundled.
@@ -663,6 +678,15 @@ export async function loadBuildContext(
         deployedFiles: providedByMods,
       });
       if (unpaired !== undefined) dependencyWarnings.push(unpaired);
+
+      // Provable, unlike injector detection: SKSE plugins with no SKSE is a
+      // collection that cannot work on any machine that lacks it already.
+      const seGap = describeScriptExtenderGap({
+        gameId,
+        mods: rawMods,
+        declared: detectedDependencies,
+      });
+      if (seGap !== undefined) dependencyWarnings.push(seGap);
     }
     op.step("external-deps-detected", {
       gameDirKnown: getGameDirectory(state, gameId) !== undefined,
@@ -727,6 +751,10 @@ export async function loadBuildContext(
       // detected, only deduced from what the collection ships.
       ...dependencyWarnings,
     ],
+    rootFolderReview: describeRootFolderReview({
+      rootMods: findRootFolderMods(rawMods),
+      declared: detectedDependencies,
+    }),
     externalMods,
     collectionConfig,
     configPath: loaded.configPath,

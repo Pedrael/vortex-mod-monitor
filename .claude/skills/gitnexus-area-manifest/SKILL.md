@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-manifest
-description: "Skill for the Manifest area of Event-Horizon. 327 symbols across 60 files."
+description: "Skill for the Manifest area of Event-Horizon. 320 symbols across 59 files."
 ---
 
 # Manifest
 
-327 symbols | 60 files | Cohesion: 80%
+320 symbols | 59 files | Cohesion: 80%
 
 ## When to Use
 
@@ -21,11 +21,11 @@ description: "Skill for the Manifest area of Event-Horizon. 327 symbols across 6
 | `src/core/manifest/buildManifest.ts` | BuildManifestError, buildFileOverrides, buildLoadOrder, buildManifest, buildPackageMetadata (+17) |
 | `src/core/manifest/collectionConfig.ts` | reconcileExternalModsConfig, isUuid, listNeverBuiltConfigs, listPublishedCollections, parseAndValidate (+13) |
 | `src/core/manifest/readZip.ts` | ZipReadError, extractZipEntryToFile, findDataOffset, findEntry, findZip64Extra (+11) |
-| `src/core/manifest/packageZip.ts` | isAbortLikeError, packageEhcoll, checkAbort, prepareStagingDir, runSevenZipAdd (+11) |
-| `src/core/manifest/externalHints.ts` | countBy, downloadsFromState, modsFromState, asMode, collectExternalHints (+8) |
+| `src/core/manifest/packageZip.ts` | isAbortLikeError, packageEhcoll, checkAbort, prepareStagingDir, safeRmDir (+11) |
 | `src/core/manifest/readEhcoll.ts` | crossCheckBundled, prepareStagingDir, readEhcoll, safeRmDir, ReadEhcollError (+7) |
+| `src/core/manifest/externalHints.ts` | downloadsFromState, asMode, collectExternalHints, collectionHints, diagnoseHintSources (+6) |
 | `src/core/getModsListForProfile.ts` | assignInstallOrder, getModsForProfile, hasAnySelectedFomodChoices, normalizeCollectionIds, normalizeFomodSelections (+6) |
-| `src/core/manifest/sevenZip.ts` | assertOk, cancelOnAbort, sevenZipAdd, sevenZipExtractFull, sevenZipList (+5) |
+| `src/core/manifest/sevenZip.ts` | assertOk, sevenZipAdd, sevenZipList, sevenZipSelfTest, add (+5) |
 | `src/core/manifest/parseModuleConfig.ts` | decodeModuleConfig, parseConditionals, parseFiles, parseGroup, parseModuleConfig (+3) |
 
 ## Entry Points
@@ -58,10 +58,10 @@ Start here when exploring this area:
 | `describeMissingEngineFixesPart2` | Function | `src/core/manifest/externalDependencies.ts` | 334 |
 | `filesProvidedByDeployment` | Function | `src/core/manifest/externalDependencies.ts` | 272 |
 | `getGameDirectory` | Function | `src/core/manifest/externalDependencies.ts` | 223 |
-| `countBy` | Function | `src/core/manifest/externalHints.ts` | 323 |
 | `downloadsFromState` | Function | `src/core/manifest/externalHints.ts` | 271 |
-| `modsFromState` | Function | `src/core/manifest/externalHints.ts` | 256 |
-| `loadBuildContext` | Function | `src/ui/pages/build/engine.ts` | 394 |
+| `describeRootFolderReview` | Function | `src/core/manifest/rootFolderReview.ts` | 153 |
+| `describeScriptExtenderGap` | Function | `src/core/manifest/rootFolderReview.ts` | 102 |
+| `findRootFolderMods` | Function | `src/core/manifest/rootFolderReview.ts` | 55 |
 
 ## Execution Flows
 

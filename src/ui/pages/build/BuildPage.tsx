@@ -1725,6 +1725,37 @@ function FormPanel(props: FormPanelProps): JSX.Element {
         )}
       </Card>
 
+      {/*
+        Facts, not a warning, and shown even when it is one line long.
+        A panel that hid itself when the list was short could not do its job:
+        the point is to let a curator notice something ABSENT from it. Nothing
+        in a staging folder distinguishes an engine injector from a tool —
+        tried against the real collection, it matched Pandora and Nemesis —
+        so this states what Vortex will do and leaves the judgement to the
+        person who knows their own load order.
+      */}
+      <Card title="Installs outside Data">
+        <div className="eh-stack eh-stack--xs">
+          {ctx.rootFolderReview.map((line, i) => (
+            <p
+              key={`${i}-${line.slice(0, 24)}`}
+              style={{
+                margin: 0,
+                color: line.startsWith("  •")
+                  ? "var(--eh-text-primary)"
+                  : "var(--eh-text-secondary)",
+                fontFamily: line.startsWith("  •")
+                  ? "var(--eh-font-mono)"
+                  : undefined,
+                fontSize: line.startsWith("  •") ? "0.9em" : undefined,
+              }}
+            >
+              {line}
+            </p>
+          ))}
+        </div>
+      </Card>
+
       <Card title="README (optional)">
         <textarea
           className="eh-input eh-input--textarea"
