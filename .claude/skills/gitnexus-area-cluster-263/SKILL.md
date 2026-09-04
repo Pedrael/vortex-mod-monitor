@@ -1,9 +1,9 @@
 ---
-name: gitnexus-area-cluster-258
-description: "Skill for the Cluster_258 area of Event-Horizon. 4 symbols across 2 files."
+name: gitnexus-area-cluster-263
+description: "Skill for the Cluster_263 area of Event-Horizon. 4 symbols across 2 files."
 ---
 
-# Cluster_258
+# Cluster_263
 
 4 symbols | 2 files | Cohesion: 60%
 
@@ -11,7 +11,7 @@ description: "Skill for the Cluster_258 area of Event-Horizon. 4 symbols across 
 
 - Working with code in `src/`
 - Understanding how openExternalUrl work
-- Modifying cluster_258-related functionality
+- Modifying cluster_263-related functionality
 
 ## Key Files
 
@@ -52,6 +52,6 @@ Start here when exploring this area:
 ## How to Explore
 
 1. `context({name: "openExternalUrl"})` — see callers and callees
-2. `query({search_query: "cluster_258"})` — find related execution flows
+2. `query({search_query: "cluster_263"})` — find related execution flows
 3. Read key files listed above for implementation details
 4. `explain({target: "<file or symbol>"})` — persisted taint findings (source→sink data flows), when indexed with `--pdg`

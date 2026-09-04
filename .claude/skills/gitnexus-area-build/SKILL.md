@@ -42,7 +42,7 @@ Start here when exploring this area:
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `BundleResolutionError` | Class | `src/ui/pages/build/engine.ts` | 366 |
+| `BundleResolutionError` | Class | `src/ui/pages/build/engine.ts` | 367 |
 | `healingBlockedReason` | Function | `src/core/doctor/health.ts` | 497 |
 | `overallHealth` | Function | `src/core/doctor/health.ts` | 444 |
 | `describeInstallAttempt` | Function | `src/core/installer/attemptRecord.ts` | 169 |

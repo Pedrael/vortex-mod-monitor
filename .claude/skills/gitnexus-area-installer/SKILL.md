@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-installer
-description: "Skill for the Installer area of Event-Horizon. 287 symbols across 57 files."
+description: "Skill for the Installer area of Event-Horizon. 295 symbols across 59 files."
 ---
 
 # Installer
 
-287 symbols | 57 files | Cohesion: 86%
+295 symbols | 59 files | Cohesion: 86%
 
 ## When to Use
 
@@ -35,8 +35,8 @@ Start here when exploring this area:
 - **`describeGameIniApplication`** (Function) — `src/core/installer/applyGameIni.ts:286`
 - **`shouldApplyGameIni`** (Function) — `src/core/installer/applyGameIni.ts:266`
 - **`describeIniTweaks`** (Function) — `src/core/installer/applyIniTweaks.ts:114`
-- **`describePluginFlagRepair`** (Function) — `src/core/installer/applyPluginLightFlags.ts:124`
-- **`describePluginOrderApplication`** (Function) — `src/core/installer/applyPluginOrder.ts:312`
+- **`applyModTypeChanges`** (Function) — `src/core/installer/applyModTypes.ts:118`
+- **`describeModTypeChanges`** (Function) — `src/core/installer/applyModTypes.ts:144`
 
 ## Key Symbols
 
@@ -47,6 +47,11 @@ Start here when exploring this area:
 | `describeGameIniApplication` | Function | `src/core/installer/applyGameIni.ts` | 286 |
 | `shouldApplyGameIni` | Function | `src/core/installer/applyGameIni.ts` | 266 |
 | `describeIniTweaks` | Function | `src/core/installer/applyIniTweaks.ts` | 114 |
+| `applyModTypeChanges` | Function | `src/core/installer/applyModTypes.ts` | 118 |
+| `describeModTypeChanges` | Function | `src/core/installer/applyModTypes.ts` | 144 |
+| `label` | Function | `src/core/installer/applyModTypes.ts` | 148 |
+| `planModTypeChanges` | Function | `src/core/installer/applyModTypes.ts` | 63 |
+| `readCurrentModTypes` | Function | `src/core/installer/applyModTypes.ts` | 91 |
 | `describePluginFlagRepair` | Function | `src/core/installer/applyPluginLightFlags.ts` | 124 |
 | `describePluginOrderApplication` | Function | `src/core/installer/applyPluginOrder.ts` | 312 |
 | `describeModTypeMismatches` | Function | `src/core/installer/checkModTypes.ts` | 83 |
@@ -57,11 +62,6 @@ Start here when exploring this area:
 | `emptyPluginOrderDrift` | Function | `src/core/installer/checkPluginOrder.ts` | 55 |
 | `readUserPluginsTxt` | Function | `src/core/installer/checkPluginOrder.ts` | 163 |
 | `describeSevenZipHealth` | Function | `src/core/installer/checkSevenZipHealth.ts` | 136 |
-| `looksLikeWine` | Function | `src/core/installer/checkSevenZipHealth.ts` | 106 |
-| `buildCuratorReport` | Function | `src/core/installer/curatorReport.ts` | 90 |
-| `describeMissingDeploymentMethod` | Function | `src/core/installer/deploymentMethod.ts` | 86 |
-| `isDeploymentMethodMissing` | Function | `src/core/installer/deploymentMethod.ts` | 47 |
-| `classifyModFailure` | Function | `src/core/installer/downloadFailureShape.ts` | 71 |
 
 ## Execution Flows
 

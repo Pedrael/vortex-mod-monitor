@@ -83,7 +83,7 @@
  * ──────────────────────────────────────────────────────────────────────
  */
 
-import { types, util } from "@nexusmods/vortex-api";
+import { actions, types, util } from "@nexusmods/vortex-api";
 
 import {
   InstallLedgerError,
@@ -218,6 +218,12 @@ import {
   describeModTypeMismatches,
   findModTypeMismatches,
 } from "./checkModTypes";
+import {
+  applyModTypeChanges,
+  describeModTypeChanges,
+  planModTypeChanges,
+  readCurrentModTypes,
+} from "./applyModTypes";
 import {
   summarizeVerifyFail,
   verifyModInstall,
@@ -1758,6 +1764,41 @@ async function runInstallImpl(ctx: DriverContext): Promise<InstallResult> {
     // strategy is the locked design and there's nothing to write.
     // The previous `pluginsTxt.ts` writer module has been deleted.
 
+    // ── 6b. put each mod back into the kind of mod the curator had ──
+    //
+    // Before the deploy, which is the only moment it is free: automatic
+    // deployment is off (the install gate enforces that), so nothing has been
+    // linked anywhere yet and the single deploy below puts every file in the
+    // right folder first time.
+    //
+    // Vortex derives modType from the archive, and for most mods that answer
+    // is right and this changes nothing. It cannot derive a type a human
+    // SET — SSE Engine Fixes Part 2 is loose binaries that belong in the game
+    // root and no rule recognises them, so a curator managing it through
+    // Vortex has to pick the type by hand. Re-deriving on this machine would
+    // answer "default" with total confidence and put the DLLs in Data, where
+    // nothing loads them and every file check still passes.
+    const modTypeChanges = applyModTypeChanges(
+      ctx.api,
+      plan.manifest.game.id,
+      planModTypeChanges({
+        installed: new Map(
+          installedMods.map((m) => [m.compareKey, m.vortexModId] as const),
+        ),
+        currentTypes: readCurrentModTypes(ctx.api, plan.manifest.game.id),
+        manifestMods: plan.manifest.mods,
+      }),
+      actions,
+    );
+    if (modTypeChanges.length > 0) {
+      ehLog("info", "install.mod-types-restored", {
+        count: modTypeChanges.length,
+        changes: modTypeChanges
+          .slice(0, 10)
+          .map((c) => ({ mod: c.name, from: c.from, to: c.to })),
+      });
+    }
+
     // ── 7. deploy ───────────────────────────────────────────────────
     reportProgress("deploying", 0, 1, "Deploying mods...");
 
@@ -1972,6 +2013,9 @@ async function runInstallImpl(ctx: DriverContext): Promise<InstallResult> {
     // the files deploy to a different folder while every file check passes,
     // and for a script extender that means the game simply launches without
     // it. Noticing is the whole contribution here.
+    // Still checked AFTER the deploy, and now it means something different:
+    // the corrections above already ran, so anything left is a type this
+    // machine would not accept rather than one nobody tried to set.
     const modTypeMismatches = findModTypeMismatches({
       api: ctx.api,
       gameId: plan.manifest.game.id,
@@ -2145,8 +2189,16 @@ async function runInstallImpl(ctx: DriverContext): Promise<InstallResult> {
       ...(gameIniApplication !== undefined
         ? { gameIniNotice: describeGameIniApplication(gameIniApplication) }
         : {}),
-      ...(modTypeMismatches.length > 0
-        ? { modTypeNotice: describeModTypeMismatches(modTypeMismatches) }
+      // Both halves of the same story: what was corrected, and what could not
+      // be. A user seeing a mod outside Data deserves the first, and the
+      // second is the one that still needs them to do something.
+      ...(modTypeChanges.length > 0 || modTypeMismatches.length > 0
+        ? {
+            modTypeNotice: [
+              ...describeModTypeChanges(modTypeChanges),
+              ...describeModTypeMismatches(modTypeMismatches),
+            ],
+          }
         : {}),
       ...(describeIniTweaks(iniTweakApplication).length > 0
         ? { iniTweakNotice: describeIniTweaks(iniTweakApplication) }

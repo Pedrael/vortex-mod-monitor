@@ -1,42 +1,47 @@
 ---
 name: gitnexus-area-cluster-264
-description: "Skill for the Cluster_264 area of Event-Horizon. 4 symbols across 1 files."
+description: "Skill for the Cluster_264 area of Event-Horizon. 5 symbols across 2 files."
 ---
 
 # Cluster_264
 
-4 symbols | 1 files | Cohesion: 80%
+5 symbols | 2 files | Cohesion: 80%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how captureUserlist work
+- Understanding how opn, opn, opn work
 - Modifying cluster_264-related functionality
 
 ## Key Files
 
 | File | Symbols |
 |------|---------|
-| `src/core/userlist.ts` | captureGroupEntries, capturePluginEntries, captureUserlist, readReferenceList |
-
-## Entry Points
-
-Start here when exploring this area:
-
-- **`captureUserlist`** (Function) — `src/core/userlist.ts:91`
+| `src/core/revealPath.test.ts` | opn, opn, opn, opn |
+| `src/core/revealPath.ts` | defaultOpn |
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `captureUserlist` | Function | `src/core/userlist.ts` | 91 |
-| `captureGroupEntries` | Function | `src/core/userlist.ts` | 153 |
-| `capturePluginEntries` | Function | `src/core/userlist.ts` | 115 |
-| `readReferenceList` | Function | `src/core/userlist.ts` | 180 |
+| `opn` | Function | `src/core/revealPath.test.ts` | 168 |
+| `opn` | Function | `src/core/revealPath.test.ts` | 48 |
+| `opn` | Function | `src/core/revealPath.test.ts` | 62 |
+| `opn` | Function | `src/core/revealPath.test.ts` | 72 |
+| `defaultOpn` | Function | `src/core/revealPath.ts` | 119 |
+
+## Execution Flows
+
+| Flow | Type | Steps |
+|------|------|-------|
+| `ExternalDownloadGuide → Opn` | cross_community | 4 |
+| `ExternalDownloadGuide → Opn` | cross_community | 4 |
+| `ExternalDownloadGuide → Opn` | cross_community | 4 |
+| `ExternalDownloadGuide → Opn` | cross_community | 4 |
 
 ## How to Explore
 
-1. `context({name: "captureUserlist"})` — see callers and callees
+1. `context({name: "opn"})` — see callers and callees
 2. `query({search_query: "cluster_264"})` — find related execution flows
 3. Read key files listed above for implementation details
 4. `explain({target: "<file or symbol>"})` — persisted taint findings (source→sink data flows), when indexed with `--pdg`

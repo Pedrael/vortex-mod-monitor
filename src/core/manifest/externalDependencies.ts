@@ -152,6 +152,41 @@ const PROBES: DependencyProbe[] = [
     version: SCRIPT_EXTENDER_VERSION,
   },
   {
+    id: "sse-engine-fixes-part2",
+    name: "SSE Engine Fixes (Part 2)",
+    category: "engine-injector",
+    gameIds: ["skyrimse"],
+    // ─── THE ONE THE CURATOR CANNOT SHIP ─────────────────────────────
+    // Engine Fixes comes in two halves that install completely differently.
+    // Part 1 is an ordinary SKSE plugin, so Vortex handles it and it rides in
+    // the collection like any other mod. Part 2 is a set of loose binaries
+    // that must sit next to the game executable, and Vortex CANNOT install it
+    // — the mod page says to copy the files in by hand, which is why it is
+    // not a mod on anybody's machine and why nothing in a collection accounts
+    // for it.
+    //
+    // The failure that follows is quiet. Part 1 ships, installs, verifies, and
+    // then does nothing, because the preloader proxy that is supposed to load
+    // it is absent. Measured on the real 1753-mod Skyrim collection: Part 1
+    // present as "Engine Fixes - Main File" staging SKSE/Plugins/EngineFixes.dll
+    // and EngineFixes_preload.txt, Part 2's three binaries sitting loose in the
+    // game root, and externalDependencies shipping as [].
+    //
+    // Corroboration: neither file proves anything alone. d3dx9_42.dll is a
+    // stock DirectX redistributable and tbb.dll is Intel Threading Building
+    // Blocks, which arrives with plenty of unrelated software. Both, in a
+    // Skyrim Special Edition root, are Part 2's payload.
+    required: ["d3dx9_42.dll", "tbb.dll"],
+    optional: ["tbbmalloc.dll"],
+    instructionsUrl: "https://www.nexusmods.com/skyrimspecialedition/mods/17230",
+    instructions:
+      "Download the \"Part 2\" file from the Engine Fixes page and extract it " +
+      "into the game folder, beside SkyrimSE.exe — NOT into Data, and not " +
+      "through Vortex, which cannot install it. Part 1 is already in this " +
+      "collection; on its own it loads nothing, so skipping this leaves you " +
+      "with a mod that is installed and inert.",
+  },
+  {
     id: "enb",
     name: "ENBSeries",
     category: "enb",
@@ -278,6 +313,54 @@ export function filesProvidedByMods(
  * Never throws for a per-probe problem: an unreadable file drops that file, and
  * a probe whose required set is incomplete is simply not reported.
  */
+export const ENGINE_FIXES_PART2_ID = "sse-engine-fixes-part2";
+
+/**
+ * The collection ships half of Engine Fixes and cannot say where the other
+ * half went.
+ *
+ * The probe above finds Part 2 in the CURATOR's game folder and declares it, so
+ * users are told to install it. This is the case the probe cannot help with:
+ * the curator does not have Part 2 either.
+ *
+ * That is not a hypothetical. Part 2 is hand-installed, so it survives nothing
+ * — a game reinstall, a move to another drive, a verify-files pass. The
+ * curator ends up running Part 1 alone, which loads nothing and reports
+ * nothing, and the collection then ships that same silence to everybody.
+ *
+ * Nothing else notices. Part 1 installs, stages and verifies perfectly; the
+ * mod is present and correct and inert. So this is the only place the pairing
+ * can be observed, and it is worth one line.
+ */
+export function describeMissingEngineFixesPart2(args: {
+  gameId: string;
+  declared: readonly EhcollExternalDependency[];
+  /** Lowercase basenames of every file the collection's mods deploy. */
+  deployedFiles: ReadonlySet<string>;
+}): string | undefined {
+  if (args.gameId !== "skyrimse") return undefined;
+
+  // Part 1's own marker. `EngineFixes_preload.txt` is the file that ASKS to be
+  // preloaded, so its presence is the mod stating the dependency itself —
+  // stronger evidence than matching on a mod name a curator may have renamed.
+  const shipsPartOne =
+    args.deployedFiles.has("enginefixes_preload.txt") ||
+    args.deployedFiles.has("enginefixes.dll");
+  if (!shipsPartOne) return undefined;
+
+  if (args.declared.some((d) => d.id === ENGINE_FIXES_PART2_ID)) return undefined;
+
+  return (
+    `This collection installs SSE Engine Fixes Part 1, but Part 2 is not in ` +
+    `your game folder, so it cannot be shipped as a prerequisite either. Part ` +
+    `1 is an SKSE plugin and it does nothing on its own: Part 2's d3dx9_42.dll ` +
+    `sits next to SkyrimSE.exe and is what loads it. Your own game is almost ` +
+    `certainly running without it too. Install Part 2 by hand from ` +
+    `https://www.nexusmods.com/skyrimspecialedition/mods/17230 — Vortex ` +
+    `cannot — then build again so users are told to do the same.`
+  );
+}
+
 export async function detectExternalDependencies(
   gameDir: string,
   gameId: string,

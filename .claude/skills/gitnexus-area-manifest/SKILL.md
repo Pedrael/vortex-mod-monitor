@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-manifest
-description: "Skill for the Manifest area of Event-Horizon. 326 symbols across 60 files."
+description: "Skill for the Manifest area of Event-Horizon. 327 symbols across 60 files."
 ---
 
 # Manifest
 
-326 symbols | 60 files | Cohesion: 80%
+327 symbols | 60 files | Cohesion: 80%
 
 ## When to Use
 
@@ -55,13 +55,13 @@ Start here when exploring this area:
 | `reconcileExternalModsConfig` | Function | `src/core/manifest/collectionConfig.ts` | 323 |
 | `describeHashedCollisions` | Function | `src/core/manifest/collectionScope.ts` | 200 |
 | `describeScope` | Function | `src/core/manifest/collectionScope.ts` | 214 |
-| `filesProvidedByDeployment` | Function | `src/core/manifest/externalDependencies.ts` | 237 |
-| `getGameDirectory` | Function | `src/core/manifest/externalDependencies.ts` | 188 |
+| `describeMissingEngineFixesPart2` | Function | `src/core/manifest/externalDependencies.ts` | 334 |
+| `filesProvidedByDeployment` | Function | `src/core/manifest/externalDependencies.ts` | 272 |
+| `getGameDirectory` | Function | `src/core/manifest/externalDependencies.ts` | 223 |
 | `countBy` | Function | `src/core/manifest/externalHints.ts` | 323 |
 | `downloadsFromState` | Function | `src/core/manifest/externalHints.ts` | 271 |
 | `modsFromState` | Function | `src/core/manifest/externalHints.ts` | 256 |
-| `loadBuildContext` | Function | `src/ui/pages/build/engine.ts` | 393 |
-| `pickDefaultCollectionName` | Function | `src/ui/pages/build/engine.ts` | 1789 |
+| `loadBuildContext` | Function | `src/ui/pages/build/engine.ts` | 394 |
 
 ## Execution Flows
 

@@ -69,6 +69,7 @@ import {
 } from "../../../core/manifest/bundleFromStaging";
 import {
   applyDependencyOverrides,
+  describeMissingEngineFixesPart2,
   detectExternalDependencies,
   filesProvidedByDeployment,
   getGameDirectory,
@@ -646,14 +647,22 @@ export async function loadBuildContext(
   // knows which mod won each file. Walking every staging folder would answer
   // the same question far more slowly and by inference.
   let detectedDependencies: EhcollExternalDependency[] = [];
+  const dependencyWarnings: string[] = [];
   try {
     const gameDir = getGameDirectory(state, gameId);
     if (gameDir !== undefined) {
       const deployed = await captureDeploymentManifests(api, state, gameId);
+      const providedByMods = filesProvidedByDeployment(deployed);
       detectedDependencies = await detectExternalDependencies(gameDir, gameId, {
         signal,
-        providedByMods: filesProvidedByDeployment(deployed),
+        providedByMods,
       });
+      const unpaired = describeMissingEngineFixesPart2({
+        gameId,
+        declared: detectedDependencies,
+        deployedFiles: providedByMods,
+      });
+      if (unpaired !== undefined) dependencyWarnings.push(unpaired);
     }
     op.step("external-deps-detected", {
       gameDirKnown: getGameDirectory(state, gameId) !== undefined,
@@ -714,6 +723,9 @@ export async function loadBuildContext(
       ...describeScope(scope),
       ...describeHashedCollisions(hashedCollisions),
       ...describeMissingArchives(unidentified),
+      // A prerequisite the curator does not have themselves cannot be
+      // detected, only deduced from what the collection ships.
+      ...dependencyWarnings,
     ],
     externalMods,
     collectionConfig,
