@@ -1059,6 +1059,10 @@ export function DraftCard(props: {
     payload.curator?.name ??
     "Untitled draft";
   const gameId = payload.gameId ?? env.key;
+  // The same fact the published card branches on, read from the same prop,
+  // so the two cards cannot start disagreeing about whether there is
+  // anything to do.
+  const hasUnbuiltChanges = props.linkedPublished?.profileChanged === true;
   const draftMatchesGame = activeGameId === gameId;
   const liveStatus = registrySessionStateKind ?? "idle";
   return (
@@ -1112,7 +1116,7 @@ export function DraftCard(props: {
             {props.linkedPublished.builtVersion !== undefined
               ? `v${props.linkedPublished.builtVersion}`
               : "the last build"}{" "}
-            — open this draft and build to include them.
+            — press Update and build to include them.
           </div>
         )}
         {payload.curator?.version !== undefined &&
@@ -1121,14 +1125,24 @@ export function DraftCard(props: {
               <strong>Version:</strong> v{payload.curator.version || "—"}
             </div>
           )}
-        {/* Sized to match PublishedCard's action row. These were full-size
-            buttons while the published card next to them used `sm`, so two
-            cards in the same list carried visibly different weight for
-            equivalent actions. The SEPARATION and the ghost intent on Discard
-            both stay — see below. */}
+        {/* One vocabulary across both card kinds.
+
+            These were full-size amber buttons beside a published card using
+            small ghost ones, so two cards in the same list shouted at
+            different volumes for equivalent actions — and said different words
+            for the same act. "Open" is what the button did; "Edit" is what the
+            published card calls the identical thing, and a dashboard that
+            names one act two ways makes the reader check whether they are
+            actually different.
+
+            The amber is not decoration and is not spent on "there is a draft
+            here". It marks that there is something to ACT on — mods moved
+            since the last build — which is exactly when the published card
+            turns its Edit into an amber Update. Nothing changed, nothing
+            loud. */}
         <div className="eh-row" style={{ marginTop: "var(--eh-sp-2)" }}>
           <Button
-            intent="primary"
+            intent={hasUnbuiltChanges ? "primary" : "ghost"}
             size="sm"
             onClick={props.onOpen}
             disabled={!draftMatchesGame}
@@ -1138,7 +1152,7 @@ export function DraftCard(props: {
                 : `Switch Vortex to ${gameId} to open this draft.`
             }
           >
-            Open
+            {hasUnbuiltChanges ? "Update" : "Edit"}
           </Button>
           {/* Kept away from Open — the two are one careless click apart
               otherwise, and a discarded draft is unrecoverable. Named for its

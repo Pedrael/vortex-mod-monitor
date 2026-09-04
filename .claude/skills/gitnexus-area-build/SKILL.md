@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-build
-description: "Skill for the Build area of Event-Horizon. 323 symbols across 63 files."
+description: "Skill for the Build area of Event-Horizon. 326 symbols across 64 files."
 ---
 
 # Build
 
-323 symbols | 63 files | Cohesion: 76%
+326 symbols | 64 files | Cohesion: 77%
 
 ## When to Use
 
