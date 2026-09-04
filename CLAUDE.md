@@ -481,7 +481,7 @@ Run gated scripts from `package.json` when hooks remind you: `bearing.__gate.*` 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **Event-Horizon** (8343 symbols, 20407 relationships, 401 execution flows).
+This project is indexed by GitNexus as **Event-Horizon** (8375 symbols, 20455 relationships, 401 execution flows).
 
 > Index stale? Run `node .gitnexus/run.cjs analyze --index-only` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? Bootstrap with `npx`, `bunx`, or `pnpm dlx` — e.g. `bunx gitnexus@latest analyze` (npm 11 npx crash; #1939).
 
@@ -538,8 +538,8 @@ This project is indexed by GitNexus as **Event-Horizon** (8343 symbols, 20407 re
 | Work in the Runtime area (8 symbols) | `.claude/skills/gitnexus-area-runtime/SKILL.md` |
 | Work in the Dashboard area (7 symbols) | `.claude/skills/gitnexus-area-dashboard/SKILL.md` |
 | Work in the Cluster_39 area (5 symbols) | `.claude/skills/gitnexus-area-cluster-39/SKILL.md` |
-| Work in the Cluster_268 area (5 symbols) | `.claude/skills/gitnexus-area-cluster-268/SKILL.md` |
-| Work in the Cluster_267 area (4 symbols) | `.claude/skills/gitnexus-area-cluster-267/SKILL.md` |
-| Work in the Cluster_274 area (4 symbols) | `.claude/skills/gitnexus-area-cluster-274/SKILL.md` |
+| Work in the Cluster_271 area (5 symbols) | `.claude/skills/gitnexus-area-cluster-271/SKILL.md` |
+| Work in the Cluster_270 area (4 symbols) | `.claude/skills/gitnexus-area-cluster-270/SKILL.md` |
+| Work in the Cluster_277 area (4 symbols) | `.claude/skills/gitnexus-area-cluster-277/SKILL.md` |
 
 <!-- gitnexus:end -->
