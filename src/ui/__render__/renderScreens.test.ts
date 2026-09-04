@@ -592,6 +592,31 @@ describe("render", () => {
         '13 mod(s) have 885 staged file(s) that differ from their archives — most often "CC_enclave_textures" (766). This is normal if you repack BA2s, clean plugins, or run the game before building.',
         "9 mod(s) could not be checked against their archive (archive missing from disk, or unreadable).",
       ],
+      // The decision panel, with the real shape of the finding: one mod that
+      // is obviously generator output, one that is obviously NOT. If the
+      // rendered page does not make those two look like different answers,
+      // the copy has failed at the only job it has.
+      postProcessingCandidates: [
+        {
+          modId: "mod-xlodgen",
+          modName: "sse-xlodgen-output-pbr",
+          unexplained: 1608,
+          examples: [
+            "Textures/Terrain/Valefrost/Valefrost.Terrain.HeightMap.-27.-7.23.26.-256.452.dds",
+            "Textures/Terrain/Tamriel/Tamriel.Terrain.HeightMap.4.-12.dds",
+            "Meshes/Terrain/Tamriel/Objects/Tamriel.32.-32.-32.BTO",
+          ],
+        },
+        {
+          modId: "mod-armour",
+          modName: "Immersive Armours",
+          unexplained: 2,
+          examples: [
+            "Data/Meshes/armour/hide/patched_cuirass.nif",
+            "Data/MyFix-Patch.esp",
+          ],
+        },
+      ],
     } as never;
 
     write(
@@ -601,6 +626,7 @@ describe("render", () => {
           result,
           onBuildAnother: () => undefined,
           onGoHome: () => undefined,
+          onDecidePostProcessing: async () => undefined,
         } as never),
       } as never),
     );

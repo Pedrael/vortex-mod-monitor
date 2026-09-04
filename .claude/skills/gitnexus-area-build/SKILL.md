@@ -1,86 +1,86 @@
 ---
 name: gitnexus-area-build
-description: "Skill for the Build area of Event-Horizon. 204 symbols across 34 files."
+description: "Skill for the Build area of Event-Horizon. 319 symbols across 61 files."
 ---
 
 # Build
 
-204 symbols | 34 files | Cohesion: 76%
+319 symbols | 61 files | Cohesion: 77%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how deleteDraft, getAppDataPath, getDraftPath work
+- Understanding how healingBlockedReason, overallHealth, describeInstallAttempt work
 - Modifying build-related functionality
 
 ## Key Files
 
 | File | Symbols |
 |------|---------|
-| `src/ui/pages/build/buildSession.ts` | begin, discardDraft, resumeIfDraftExists, onProgress, onProgress (+22) |
-| `src/ui/pages/build/BuildPage.tsx` | handle, handleDiscardDraft, handleChange, handleDismissDraftBanner, ExternalModsTable (+21) |
+| `src/ui/pages/build/BuildPage.tsx` | AvailabilityPanel, BuildWizard, BuildingPanel, DraftRestoredBanner, ErrorPanel (+43) |
+| `src/ui/pages/build/buildSession.ts` | cancelLoading, cancelRecovering, getState, subscribe, begin (+26) |
+| `src/ui/pages/install/steps.tsx` | ConfirmStep, ConflictRow, DoneStep, ExternalDownloadGuide, FailureBody (+18) |
 | `src/ui/pages/build/engine.ts` | BundleResolutionError, buildOutputFileName, resolveDeploymentMethod, resolveVortexVersion, runBuildPipeline (+16) |
+| `src/ui/pages/build/BuildDashboard.tsx` | DraftCard, handleDiscardDraft, slugsInUse, registry, handleCleanupUnbuilt (+13) |
 | `src/ui/pages/build/buildSessionRegistry.ts` | BuildSessionRegistry, getBuildSessionRegistry, ensure, get, makeHooks (+13) |
-| `src/ui/pages/build/BuildDashboard.tsx` | handleDiscardDraft, slugsInUse, registry, handleCleanupUnbuilt, handleDeletePublished (+12) |
+| `src/ui/pages/CollectionsPage.tsx` | CollectionsList, handleContinueInstall, refresh, DetailTile, EmptyState (+8) |
+| `src/ui/pages/HomePage.tsx` | CuratorPanel, Dashboard, DashboardBody, ErrorPanel, FooterRow (+7) |
 | `src/core/build/nexusAvailability.ts` | categoryOf, checkNexusAvailability, classifyFile, currentMainFile, fileIdOf (+6) |
 | `src/core/draftStorage.ts` | deleteDraft, getAppDataPath, getDraftPath, isPlainObject, loadDraft (+4) |
-| `src/core/archiveHashCache.ts` | archiveHashCacheKey, emptyArchiveHashCache, isHex64, loadArchiveHashCache, rememberArchiveHash (+4) |
-| `src/core/build/nexusAvailability.test.ts` | entry, f, f, f, entries (+3) |
-| `src/ui/pages/build/persistOverrides.ts` | flush, save, writeNow, configWithOverrides, createOverridePersister |
 
 ## Entry Points
 
 Start here when exploring this area:
 
-- **`deleteDraft`** (Function) — `src/core/draftStorage.ts:431`
-- **`getAppDataPath`** (Function) — `src/core/draftStorage.ts:457`
-- **`getDraftPath`** (Function) — `src/core/draftStorage.ts:101`
-- **`loadDraft`** (Function) — `src/core/draftStorage.ts:142`
-- **`saveDraft`** (Function) — `src/core/draftStorage.ts:399`
+- **`healingBlockedReason`** (Function) — `src/core/doctor/health.ts:497`
+- **`overallHealth`** (Function) — `src/core/doctor/health.ts:444`
+- **`describeInstallAttempt`** (Function) — `src/core/installer/attemptRecord.ts:169`
+- **`describeFomodModes`** (Function) — `src/core/installer/fomodReplayMode.ts:78`
+- **`s`** (Function) — `src/core/installer/fomodReplayMode.ts:84`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `BundleResolutionError` | Class | `src/ui/pages/build/engine.ts` | 318 |
-| `deleteDraft` | Function | `src/core/draftStorage.ts` | 431 |
-| `getAppDataPath` | Function | `src/core/draftStorage.ts` | 457 |
-| `getDraftPath` | Function | `src/core/draftStorage.ts` | 101 |
-| `loadDraft` | Function | `src/core/draftStorage.ts` | 142 |
-| `saveDraft` | Function | `src/core/draftStorage.ts` | 399 |
-| `handleDiscardDraft` | Function | `src/ui/pages/build/BuildDashboard.tsx` | 392 |
-| `captureDeploymentManifests` | Function | `src/core/deploymentManifest.ts` | 133 |
-| `collectDistinctModTypes` | Function | `src/core/deploymentManifest.ts` | 53 |
-| `describeExternalDrift` | Function | `src/core/manifest/bundleFromStaging.ts` | 351 |
-| `applyDependencyOverrides` | Function | `src/core/manifest/externalDependencies.ts` | 360 |
-| `describeUndeclared` | Function | `src/core/manifest/externalHints.ts` | 407 |
-| `describeMachineKept` | Function | `src/core/manifest/gameIni.ts` | 251 |
-| `slugsInUse` | Function | `src/ui/pages/build/BuildDashboard.tsx` | 285 |
-| `runBuildPipeline` | Function | `src/ui/pages/build/engine.ts` | 772 |
-| `slugify` | Function | `src/ui/pages/build/engine.ts` | 1827 |
-| `setPluginLightFlag` | Function | `src/core/manifest/pluginFlags.ts` | 101 |
-| `flush` | Function | `src/ui/pages/build/persistOverrides.ts` | 80 |
-| `save` | Function | `src/ui/pages/build/persistOverrides.ts` | 72 |
-| `writeNow` | Function | `src/ui/pages/build/persistOverrides.ts` | 58 |
+| `BundleResolutionError` | Class | `src/ui/pages/build/engine.ts` | 366 |
+| `healingBlockedReason` | Function | `src/core/doctor/health.ts` | 497 |
+| `overallHealth` | Function | `src/core/doctor/health.ts` | 444 |
+| `describeInstallAttempt` | Function | `src/core/installer/attemptRecord.ts` | 169 |
+| `describeFomodModes` | Function | `src/core/installer/fomodReplayMode.ts` | 78 |
+| `s` | Function | `src/core/installer/fomodReplayMode.ts` | 84 |
+| `mustAskReplayMode` | Function | `src/core/installer/fomodReplayMode.ts` | 183 |
+| `Button` | Function | `src/ui/components/Button.tsx` | 31 |
+| `Card` | Function | `src/ui/components/Card.tsx` | 31 |
+| `EventHorizonLogo` | Function | `src/ui/components/EventHorizonLogo.tsx` | 47 |
+| `HashingCard` | Function | `src/ui/components/HashingCard.tsx` | 49 |
+| `Modal` | Function | `src/ui/components/Modal.tsx` | 57 |
+| `Pill` | Function | `src/ui/components/Pill.tsx` | 19 |
+| `ProgressRing` | Function | `src/ui/components/ProgressRing.tsx` | 29 |
+| `renderLabel` | Function | `src/ui/components/ProgressRing.tsx` | 42 |
+| `StepDots` | Function | `src/ui/components/StepDots.tsx` | 31 |
+| `useToast` | Function | `src/ui/components/Toast.tsx` | 50 |
+| `useErrorReporter` | Function | `src/ui/errors/ErrorContext.tsx` | 49 |
+| `useKeyboardShortcut` | Function | `src/ui/hooks/useKeyboardShortcut.ts` | 35 |
+| `FailedAttempts` | Function | `src/ui/pages/CollectionsPage.tsx` | 202 |
 
 ## Execution Flows
 
 | Flow | Type | Steps |
 |------|------|-------|
 | `PublishedDetailsPanel → ZipReadError` | cross_community | 9 |
+| `RouteOutlet → InstallLedgerError` | cross_community | 8 |
 | `BuildWizard → GetVortexUserDataPath` | cross_community | 8 |
+| `RouteOutlet → GetInstallLedgerDir` | cross_community | 7 |
+| `RouteOutlet → IsUuid` | cross_community | 7 |
+| `RouteOutlet → BelongsToGame` | cross_community | 7 |
+| `HomePage → ExpectString` | cross_community | 7 |
 | `PublishedDetailsPanel → FindZip64Extra` | cross_community | 7 |
 | `LoadPublishedDetails → ZipReadError` | cross_community | 7 |
-| `BuildPage → NotifyStateChanged` | cross_community | 6 |
-| `Heal → EHRuntime` | cross_community | 6 |
-| `PublishedDetailsPanel → GetVortexUserDataPath` | cross_community | 6 |
-| `PublishedDetailsPanel → ReadEhcollError` | cross_community | 5 |
-| `BuildPage → IsPlainObject` | cross_community | 5 |
-| `BuildPage → MigrateV1Payload` | cross_community | 5 |
+| `RouteOutlet → GetActiveGameId` | cross_community | 6 |
 
 ## How to Explore
 
-1. `context({name: "deleteDraft"})` — see callers and callees
+1. `context({name: "healingBlockedReason"})` — see callers and callees
 2. `query({search_query: "build"})` — find related execution flows
 3. Read key files listed above for implementation details
 4. `explain({target: "<file or symbol>"})` — persisted taint findings (source→sink data flows), when indexed with `--pdg`

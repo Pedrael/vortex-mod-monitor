@@ -46,6 +46,7 @@ import { getCurrentPluginsTxtPath } from "../../../core/comparePlugins";
 import { buildManifest } from "../../../core/manifest/buildManifest";
 import { captureStagingFiles } from "../../../core/manifest/captureStagingFiles";
 import { runSelfChecks } from "../../../core/manifest/runSelfChecks";
+import type { PostProcessingCandidate } from "../../../core/manifest/runSelfChecks";
 import {
   captureGameIni,
   describeMachineKept,
@@ -282,6 +283,53 @@ export interface BuildPipelineResult {
    * verificationLevel is `"none"`.
    */
   stagingFileCount: number;
+  /**
+   * Mods whose staging holds files their archive cannot produce, undecided.
+   *
+   * Carried out of the pipeline as data rather than folded into `warnings`,
+   * because this is the one finding the curator has to ANSWER. A sentence can
+   * only be read; the Done card turns these into a per-mod decision with the
+   * offending paths shown, so the answer comes from looking rather than from
+   * agreeing with a paragraph.
+   */
+  postProcessingCandidates: PostProcessingCandidate[];
+}
+
+/**
+ * Record one post-processing decision, immediately.
+ *
+ * Written the moment the curator answers, not gathered up for the next build.
+ * The question is asked on the Done card — the curator has just been handed a
+ * finished package and is deciding whether to ship it — and an answer held in
+ * component state would be lost by the navigation that naturally follows.
+ *
+ * Goes through the same config file the build form writes, so a decision made
+ * here shows up as the mod's setting everywhere else, and survives a restart.
+ *
+ * Returns the saved path so the caller can say where the answer went.
+ */
+export async function recordPostProcessingDecision(args: {
+  collectionName: string;
+  modId: string;
+  patch: Partial<ExternalModConfigEntry>;
+}): Promise<string> {
+  const slug = slugify(args.collectionName);
+  const configDir = path.join(getCollectionsDir(), ".config");
+  const loaded = await loadOrCreateCollectionConfig({ configDir, slug });
+  const config: CollectionConfig = {
+    ...loaded.config,
+    externalMods: {
+      ...loaded.config.externalMods,
+      // Merged, never replaced: this mod may already carry a URL, a mode or
+      // instructions the curator typed into the build form, and a decision
+      // about its staging is no reason to lose any of it.
+      [args.modId]: {
+        ...loaded.config.externalMods[args.modId],
+        ...args.patch,
+      },
+    },
+  };
+  return saveCollectionConfig({ configDir, slug, config });
 }
 
 export interface BuildOverrides {
@@ -1148,6 +1196,7 @@ export async function runBuildPipeline(
   });
   const selfCheckOp = beginOp("build.self-check", { mods: mods.length });
   let selfCheckWarnings: string[] = [];
+  let postProcessingCandidates: PostProcessingCandidate[] = [];
   try {
     // Bundled mods ship the staging folder itself, so their archive IS their
     // staging and there is nothing to compare. Built from what was actually
@@ -1168,6 +1217,7 @@ export async function runBuildPipeline(
       },
     });
     selfCheckWarnings = selfCheck.warnings;
+    postProcessingCandidates = selfCheck.postProcessingCandidates;
     selfCheckOp.ok({
       replayed: selfCheck.summary.replayed,
       containment: selfCheck.summary.containment,
@@ -1438,6 +1488,7 @@ export async function runBuildPipeline(
   });
 
   return {
+    postProcessingCandidates,
     outputPath,
     outputBytes: result.outputBytes,
     outputSha256: result.outputSha256,
@@ -1480,7 +1531,7 @@ export function validateCuratorInput(input: CuratorInput): string | undefined {
 // Internals
 // ===========================================================================
 
-function isNexusMod(mod: AuditorMod): boolean {
+export function isNexusMod(mod: AuditorMod): boolean {
   return (
     typeof mod.nexusModId === "number" &&
     typeof mod.nexusFileId === "number" &&

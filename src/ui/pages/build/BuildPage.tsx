@@ -47,6 +47,14 @@ import type {
   AvailabilityFinding,
   AvailabilitySummary,
 } from "../../../core/build/nexusAvailability";
+import type { PostProcessingCandidate } from "../../../core/manifest/runSelfChecks";
+import { isNexusMod, recordPostProcessingDecision } from "./engine";
+import {
+  describeChoice,
+  describeDecisionIntro,
+  overrideForChoice,
+} from "./postProcessingDecision";
+import type { PostProcessingChoice } from "./postProcessingDecision";
 import type { ExternalModConfigEntry } from "../../../core/manifest/collectionConfig";
 import { findRecoverableMods } from "../../../core/archiveRecovery";
 import type {
@@ -543,6 +551,19 @@ function BuildWizard(props: BuildWizardProps): JSX.Element {
         <Header stepIndex={stepIndex} stepLabel={stepLabels[stepIndex]} />
         <DonePanel
           result={state.result}
+          onDecidePostProcessing={async (candidate, choice): Promise<void> => {
+            // The mod's own record decides whether bundling also needs
+            // `treatAsExternal` — a Nexus mod is not external until that says
+            // so, and `bundled` alone would be a decision the build ignores.
+            const mod = state.ctx.mods.find((m) => m.id === candidate.modId);
+            await recordPostProcessingDecision({
+              collectionName: state.curator.name,
+              modId: candidate.modId,
+              patch: overrideForChoice(choice, {
+                isNexusMod: mod !== undefined && isNexusMod(mod),
+              }),
+            });
+          }}
           onBuildAnother={(): void => {
             // Successful build — drop the session from the registry
             // and bounce back to the dashboard. Curators almost
@@ -2369,6 +2390,158 @@ function ExternalModsTable(
 // Building
 // ===========================================================================
 
+
+/**
+ * The one finding on the Done card that is a QUESTION rather than a notice.
+ *
+ * Everything else here can be read and ignored. This cannot: leaving a mod
+ * undecided ships a collection that fails on every machine that installs it.
+ *
+ * ─── BUILT TO BE SLOW TO ANSWER ────────────────────────────────────────
+ * There is no "mark all", no default selection, and the offending file names
+ * are on screen rather than behind a link. That is deliberate and it is the
+ * whole design. The cheap answer ("these are all mine") is always available,
+ * always plausible, and when wrong produces a collection that installs
+ * perfectly for everyone while silently omitting the files the curator added
+ * — no error, no warning, nothing in a diff. A curator who has to read six
+ * file names per mod will notice the patch they dropped in; one clicking a
+ * bulk action will not.
+ *
+ * So the friction is the feature. It costs a minute per mod, once.
+ */
+function PostProcessingDecisions(props: {
+  candidates: PostProcessingCandidate[];
+  /** Mods already answered in this session, so the list shrinks as they go. */
+  decided: ReadonlyMap<string, PostProcessingChoice>;
+  busy: string | undefined;
+  onDecide: (c: PostProcessingCandidate, choice: PostProcessingChoice) => void;
+}): JSX.Element | null {
+  const { candidates, decided, busy, onDecide } = props;
+  const open = candidates.filter((c) => !decided.has(c.modId));
+  if (candidates.length === 0) return null;
+
+  const intro = describeDecisionIntro(open.length);
+
+  return (
+    <div
+      style={{
+        padding: "var(--eh-sp-3)",
+        background: "rgba(255, 122, 122, 0.06)",
+        border: "1px solid var(--eh-danger, #ff7a7a)",
+        borderRadius: "var(--eh-radius-sm)",
+      }}
+      className="eh-stack eh-stack--sm"
+    >
+      {open.length === 0 ? (
+        <strong style={{ color: "var(--eh-text-primary)" }}>
+          All {candidates.length} answered. Build again to apply them.
+        </strong>
+      ) : (
+        <>
+          <strong style={{ color: "var(--eh-text-primary)" }}>{intro.title}</strong>
+          <p style={{ margin: 0, color: "var(--eh-text-secondary)" }}>{intro.what}</p>
+          <p style={{ margin: 0, color: "var(--eh-text-primary)" }}>
+            <strong>{intro.question}</strong>
+          </p>
+          <p style={{ margin: 0, color: "var(--eh-text-secondary)" }}>
+            {intro.ifIgnored}
+          </p>
+          {/* The warning against the cheap answer, styled so it is not skipped. */}
+          <p
+            style={{
+              margin: 0,
+              padding: "var(--eh-sp-2)",
+              borderLeft: "3px solid var(--eh-warning)",
+              color: "var(--eh-warning)",
+            }}
+          >
+            {intro.caution}
+          </p>
+        </>
+      )}
+
+      {candidates.map((c) => {
+        const answer = decided.get(c.modId);
+        return (
+          <div
+            key={c.modId}
+            style={{
+              padding: "var(--eh-sp-2)",
+              border: "1px solid var(--eh-border-subtle)",
+              borderRadius: "var(--eh-radius-sm)",
+              opacity: answer !== undefined ? 0.55 : 1,
+            }}
+            className="eh-stack eh-stack--xs"
+          >
+            <div style={{ color: "var(--eh-text-primary)" }}>
+              <strong>{c.modName}</strong>{" "}
+              <span style={{ color: "var(--eh-text-secondary)" }}>
+                {describeUnreproducible(c.unexplained)}
+              </span>
+            </div>
+
+            {/* Evidence, on screen. The decision is unanswerable without it. */}
+            {c.examples.length > 0 && (
+              <ul
+                style={{
+                  margin: 0,
+                  paddingLeft: "var(--eh-sp-4)",
+                  fontFamily: "var(--eh-font-mono)",
+                  fontSize: "0.85em",
+                  color: "var(--eh-text-secondary)",
+                }}
+              >
+                {c.examples.map((p: string) => (
+                  <li key={p}>{p}</li>
+                ))}
+                {c.unexplained > c.examples.length && (
+                  <li style={{ listStyle: "none", opacity: 0.7 }}>
+                    and {c.unexplained - c.examples.length} more
+                  </li>
+                )}
+              </ul>
+            )}
+
+            {answer !== undefined ? (
+              <span style={{ color: "var(--eh-text-secondary)" }}>
+                {describeChoice(answer, c.unexplained).label} — saved.
+              </span>
+            ) : (
+              <div className="eh-stack eh-stack--xs">
+                {(["declare", "bundle"] as PostProcessingChoice[]).map((k) => {
+                  const copy = describeChoice(k, c.unexplained);
+                  return (
+                    <div key={k} className="eh-stack eh-stack--xs">
+                      <Button
+                        intent="ghost"
+                        disabled={busy !== undefined}
+                        onClick={(): void => onDecide(c, k)}
+                      >
+                        {busy === c.modId ? "Saving..." : copy.label}
+                      </Button>
+                      <span
+                        className="eh-note"
+                        style={{ color: "var(--eh-text-secondary)" }}
+                      >
+                        {copy.consequence}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** "1608 files its archive cannot produce" — the fact, not a verdict. */
+function describeUnreproducible(n: number): string {
+  return `${n} file${n === 1 ? "" : "s"} its archive cannot produce`;
+}
+
 function BuildingPanel(props: {
   progress: BuildProgress;
   curator: CuratorInput;
@@ -2451,9 +2624,54 @@ export function DonePanel(props: {
   result: BuildPipelineResult;
   onBuildAnother: () => void;
   onGoHome: () => void;
+  /**
+   * Record one post-processing answer. Optional: the render harness and any
+   * caller without a live session pass nothing, and the panel then shows the
+   * finding without offering to act on it, which is still better than hiding
+   * it.
+   */
+  onDecidePostProcessing?: (
+    candidate: PostProcessingCandidate,
+    choice: PostProcessingChoice,
+  ) => Promise<void>;
 }): JSX.Element {
   const { result } = props;
   const showToast = useToast();
+
+  // Answered in THIS sitting. Not read back from the config, because the
+  // config is not reloaded here and a decision that appeared to vanish would
+  // read as a failed save.
+  const [decided, setDecided] = React.useState<
+    ReadonlyMap<string, PostProcessingChoice>
+  >(new Map());
+  const [decidingMod, setDecidingMod] = React.useState<string | undefined>();
+
+  const handleDecide = React.useCallback(
+    (candidate: PostProcessingCandidate, choice: PostProcessingChoice): void => {
+      const record = props.onDecidePostProcessing;
+      if (record === undefined) return;
+      setDecidingMod(candidate.modId);
+      void record(candidate, choice)
+        .then(() => {
+          setDecided((m) => new Map(m).set(candidate.modId, choice));
+        })
+        .catch((err: unknown) => {
+          // Never silently: an answer the curator believes is saved and is not
+          // is worse than one that visibly failed.
+          showToast({
+            intent: "danger",
+            title: "Couldn't save that decision",
+            message: err instanceof Error ? err.message : String(err),
+            // Sticky: a decision the curator believes is saved and is not is
+            // worse than one that visibly failed, and a 4-second toast on a
+            // page they are reading carefully is a notice they will miss.
+            ttl: 0,
+          });
+        })
+        .finally(() => setDecidingMod(undefined));
+    },
+    [props, showToast],
+  );
 
   const handleCopyHash = React.useCallback((): void => {
     void writeToClipboard(result.outputSha256).then((ok) => {
@@ -2573,6 +2791,17 @@ export function DonePanel(props: {
           </Button>
         </div>
         <DistributionHint />
+        {/*
+          Above the warnings, not inside them. Everything in that list can be
+          read and ignored; this is the only finding on the page that ships a
+          broken collection if it is left alone.
+        */}
+        <PostProcessingDecisions
+          candidates={result.postProcessingCandidates}
+          decided={decided}
+          busy={decidingMod}
+          onDecide={handleDecide}
+        />
         {/*
           OPEN by default. These are warnings about a package the curator is
           about to hand to strangers, and they were behind a disclosure that

@@ -5,7 +5,7 @@ description: "Skill for the Dashboard area of Event-Horizon. 7 symbols across 2 
 
 # Dashboard
 
-7 symbols | 2 files | Cohesion: 58%
+7 symbols | 2 files | Cohesion: 56%
 
 ## When to Use
 

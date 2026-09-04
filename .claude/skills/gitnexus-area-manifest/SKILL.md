@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-manifest
-description: "Skill for the Manifest area of Event-Horizon. 323 symbols across 60 files."
+description: "Skill for the Manifest area of Event-Horizon. 326 symbols across 60 files."
 ---
 
 # Manifest
 
-323 symbols | 60 files | Cohesion: 80%
+326 symbols | 60 files | Cohesion: 80%
 
 ## When to Use
 
@@ -60,8 +60,8 @@ Start here when exploring this area:
 | `countBy` | Function | `src/core/manifest/externalHints.ts` | 323 |
 | `downloadsFromState` | Function | `src/core/manifest/externalHints.ts` | 271 |
 | `modsFromState` | Function | `src/core/manifest/externalHints.ts` | 256 |
-| `loadBuildContext` | Function | `src/ui/pages/build/engine.ts` | 345 |
-| `pickDefaultCollectionName` | Function | `src/ui/pages/build/engine.ts` | 1738 |
+| `loadBuildContext` | Function | `src/ui/pages/build/engine.ts` | 393 |
+| `pickDefaultCollectionName` | Function | `src/ui/pages/build/engine.ts` | 1789 |
 
 ## Execution Flows
 

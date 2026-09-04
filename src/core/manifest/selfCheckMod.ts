@@ -57,6 +57,17 @@ export type SelfCheckReport = {
   /** Staged files whose bytes are not in the archive (post-install tooling). */
   unexplained: number;
   /**
+   * A few of those files, by path.
+   *
+   * The count alone cannot be acted on. A curator deciding whether 1608 files
+   * are their own xLODGen output or something that went wrong needs to SEE
+   * some of them, and asking them to go and look in the staging folder is how
+   * a decision gets made by guessing instead.
+   *
+   * Capped: this is evidence for a human, not a manifest.
+   */
+  unexplainedExamples: string[];
+  /**
    * Archive files with no staged counterpart that the archive's own shape does
    * not explain — the omission signal for mods with no FOMOD script to replay.
    * Leads for a human to check, never a verdict. Empty when the archive
@@ -114,6 +125,27 @@ function findModuleConfigEntry(listing: ArchiveListing): string | undefined {
  * `enrichModsWithArchiveHashes` treats a failed hash as "no hash" rather than
  * aborting the batch.
  */
+/** How many unexplained paths to keep for the curator to look at. */
+const UNEXPLAINED_EXAMPLES = 6;
+
+/**
+ * The count and the evidence together, so a caller cannot record one without
+ * the other. Eight return paths set this; a bare number at any of them would
+ * be a mod the decision UI could show no reason for.
+ */
+function unexplainedFacts(containment: {
+  unexplained: number;
+  verdicts: ReadonlyArray<{ kind: string; file: { path: string } }>;
+}): { unexplained: number; unexplainedExamples: string[] } {
+  return {
+    unexplained: containment.unexplained,
+    unexplainedExamples: containment.verdicts
+      .filter((v) => v.kind === "unexplained")
+      .slice(0, UNEXPLAINED_EXAMPLES)
+      .map((v) => v.file.path),
+  };
+}
+
 export async function selfCheckMod(input: SelfCheckInput): Promise<SelfCheckReport> {
   const notes: string[] = [];
   const base = {
@@ -121,6 +153,7 @@ export async function selfCheckMod(input: SelfCheckInput): Promise<SelfCheckRepo
     modName: input.modName,
     missing: [] as string[],
     unexplained: 0,
+    unexplainedExamples: [] as string[],
     omissionLeads: [] as OmissionLead[],
     stagedCount: input.staged.length,
     expectedCount: 0,
@@ -173,14 +206,14 @@ export async function selfCheckMod(input: SelfCheckInput): Promise<SelfCheckRepo
   const configEntry = findModuleConfigEntry(listing);
   if (configEntry === undefined) {
     notes.push("No FOMOD script in archive; expected file set unknown.");
-    return { ...withLeads, depth: "containment", notes, unexplained: containment.unexplained };
+    return { ...withLeads, depth: "containment", notes, ...unexplainedFacts(containment) };
   }
   if (input.recordedChoices.length === 0) {
     // Vortex records nothing when an install had no branching. The script's
     // unconditional files could still be derived, but a wrong "missing" claim
     // is worse than no claim, so this stays containment-only for now.
     notes.push("No recorded FOMOD choices; cannot derive the expected file set.");
-    return { ...withLeads, depth: "containment", notes, unexplained: containment.unexplained };
+    return { ...withLeads, depth: "containment", notes, ...unexplainedFacts(containment) };
   }
 
   let raw: Buffer | undefined;
@@ -190,7 +223,7 @@ export async function selfCheckMod(input: SelfCheckInput): Promise<SelfCheckRepo
     notes.push(`Could not read ${configEntry}: ${err instanceof Error ? err.message : String(err)}`);
   }
   if (raw === undefined) {
-    return { ...withLeads, depth: "containment", notes, unexplained: containment.unexplained };
+    return { ...withLeads, depth: "containment", notes, ...unexplainedFacts(containment) };
   }
 
   let expected;
@@ -203,7 +236,7 @@ export async function selfCheckMod(input: SelfCheckInput): Promise<SelfCheckRepo
       // A replay we do not fully understand must never accuse a folder of
       // missing files.
       notes.push("Replay confidence low; not reporting missing files.");
-      return { ...withLeads, depth: "containment", notes, unexplained: containment.unexplained };
+      return { ...withLeads, depth: "containment", notes, ...unexplainedFacts(containment) };
     }
     expected = expandFomodPlan(replay.sources, listing);
     if (expected.unmatchedSpecs.length > 0) {
@@ -211,11 +244,11 @@ export async function selfCheckMod(input: SelfCheckInput): Promise<SelfCheckRepo
         `${expected.unmatchedSpecs.length} FOMOD spec(s) matched nothing in the archive; ` +
           `not reporting missing files.`,
       );
-      return { ...withLeads, depth: "containment", notes, unexplained: containment.unexplained };
+      return { ...withLeads, depth: "containment", notes, ...unexplainedFacts(containment) };
     }
   } catch (err) {
     notes.push(`FOMOD replay failed: ${err instanceof Error ? err.message : String(err)}`);
-    return { ...withLeads, depth: "containment", notes, unexplained: containment.unexplained };
+    return { ...withLeads, depth: "containment", notes, ...unexplainedFacts(containment) };
   }
 
   const stagedPaths = new Set(input.staged.map((f) => f.path.toLowerCase()));
@@ -228,7 +261,7 @@ export async function selfCheckMod(input: SelfCheckInput): Promise<SelfCheckRepo
     depth: "replayed",
     notes,
     missing,
-    unexplained: containment.unexplained,
+    ...unexplainedFacts(containment),
     expectedCount: expected.files.length,
   };
 }

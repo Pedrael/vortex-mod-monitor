@@ -208,9 +208,9 @@ describe("summarizeSelfChecks", () => {
       confidence: "high" as const, reason: "3 of 4 installed",
     };
     const s = summarizeSelfChecks([
-      { modId: "1", modName: "a", depth: "replayed", notes: [], missing: ["x", "y"], unexplained: 0, omissionLeads: [], stagedCount: 5, expectedCount: 7 },
-      { modId: "2", modName: "b", depth: "containment", notes: [], missing: [], unexplained: 3, omissionLeads: [lead], stagedCount: 2, expectedCount: 0 },
-      { modId: "3", modName: "c", depth: "skipped", notes: [], missing: [], unexplained: 0, omissionLeads: [], stagedCount: 0, expectedCount: 0 },
+      { unexplainedExamples: [], modId: "1", modName: "a", depth: "replayed", notes: [], missing: ["x", "y"], unexplained: 0, omissionLeads: [], stagedCount: 5, expectedCount: 7 },
+      { unexplainedExamples: [], modId: "2", modName: "b", depth: "containment", notes: [], missing: [], unexplained: 3, omissionLeads: [lead], stagedCount: 2, expectedCount: 0 },
+      { unexplainedExamples: [], modId: "3", modName: "c", depth: "skipped", notes: [], missing: [], unexplained: 0, omissionLeads: [], stagedCount: 0, expectedCount: 0 },
     ]);
     expect(s).toEqual({
       replayed: 1, containment: 1, skipped: 1, modsWithMissing: 1, missingFiles: 2,

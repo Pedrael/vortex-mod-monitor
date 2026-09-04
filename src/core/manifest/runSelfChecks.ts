@@ -95,6 +95,43 @@ export type RunSelfChecksOptions = {
  *
  * Declared mods drop out entirely. That is the point of declaring.
  */
+/**
+ * One mod the curator has to decide about, with the evidence to decide on.
+ *
+ * A warning string can only be read. This can be acted on — which matters,
+ * because the decision is not "acknowledge this", it is "do your users need
+ * these files or not", and those have opposite answers and opposite fixes.
+ */
+export type PostProcessingCandidate = {
+  modId: string;
+  modName: string;
+  /** How many staged files the archive cannot produce. */
+  unexplained: number;
+  /** A few of them, by path, so the answer comes from looking. */
+  examples: string[];
+};
+
+/**
+ * The mods that still need an answer.
+ *
+ * Declared mods are gone from this list, which is what makes answering feel
+ * like progress rather than an annotation the curator has to keep re-reading.
+ */
+export function findPostProcessingCandidates(
+  reports: readonly SelfCheckReport[],
+  declared: ReadonlySet<string>,
+): PostProcessingCandidate[] {
+  return reports
+    .filter((r) => r.unexplained > 0 && !declared.has(r.modId))
+    .sort((a, b) => b.unexplained - a.unexplained)
+    .map((r) => ({
+      modId: r.modId,
+      modName: r.modName,
+      unexplained: r.unexplained,
+      examples: r.unexplainedExamples,
+    }));
+}
+
 export function describeUndeclaredPostProcessing(
   reports: readonly SelfCheckReport[],
   declared: ReadonlySet<string>,
@@ -139,8 +176,9 @@ export function describeDivergedMods(
     `BA2s, clean plugins, or run the game before building: those files are ` +
     `yours, not the archive's. Where a user's own copy of a file matches the ` +
     `archive, Event Horizon accepts it rather than trying to reproduce yours. ` +
-    `Files you ADDED are the case to watch — see the note below if there is ` +
-    `one, because a user's archive cannot produce those at all.`
+    `Files you ADDED are the case to watch: a user's archive cannot ` +
+    `produce those at all, so those mods are listed separately with the ` +
+    `file names, for you to decide what happens to them.`
   );
 }
 
@@ -149,6 +187,11 @@ export type SelfCheckRunResult = {
   summary: ReturnType<typeof summarizeSelfChecks>;
   /** Lines suitable for the build's warning list. Empty when nothing to say. */
   warnings: string[];
+  /**
+   * Mods whose staging holds files their archive cannot produce, and which the
+   * curator has not decided about yet. Rendered as a decision, not a warning.
+   */
+  postProcessingCandidates: PostProcessingCandidate[];
 };
 
 /**
@@ -198,7 +241,12 @@ export async function runSelfChecks(
   } catch (err) {
     // Outside Vortex (tests, smoke runs) there is no SevenZip. Not an error.
     ehLog("warn", "selfcheck.unavailable", { err });
-    return { reports: [], summary: summarizeSelfChecks([]), warnings: [] };
+    return {
+      reports: [],
+      summary: summarizeSelfChecks([]),
+      warnings: [],
+      postProcessingCandidates: [],
+    };
   }
   const readEntry = makeReadEntry(sevenZip);
 
@@ -311,11 +359,18 @@ export async function runSelfChecks(
   // archive, fails identically, and is recorded broken. Declaring the mod
   // post-processed is what tells the driver those files are yours; bundling it
   // ships them instead. Doing neither ships a collection that cannot verify.
+  const declaredIds = new Set(
+    mods.filter((m) => m.postProcessed === true).map((m) => m.id),
+  );
   const undeclaredWarning = describeUndeclaredPostProcessing(
     reports,
-    new Set(mods.filter((m) => m.postProcessed === true).map((m) => m.id)),
+    declaredIds,
   );
   if (undeclaredWarning !== undefined) warnings.push(undeclaredWarning);
+  const postProcessingCandidates = findPostProcessingCandidates(
+    reports,
+    declaredIds,
+  );
 
   if (summary.skipped > 0) {
     warnings.push(
@@ -382,5 +437,5 @@ export async function runSelfChecks(
       : {}),
   });
 
-  return { reports, summary, warnings };
+  return { reports, summary, warnings, postProcessingCandidates };
 }
