@@ -616,6 +616,42 @@ describe("render", () => {
             "Data/MyFix-Patch.esp",
           ],
         },
+        // Three more, taken from a real 57-mod report. Two candidates make
+        // any layout look fine; the complaint this fixture exists to expose
+        // is that consecutive mods ran together into one unreadable column,
+        // which only shows up once there are several in a row.
+        {
+          modId: "mod-eeos",
+          modName: "EEOS - Enemy Revolution of Skyrim-37228-2-02-1705594315",
+          unexplained: 6,
+          examples: [
+            "ApocalypseSpellsForNPCs_DISTR.ini",
+            "GrowlPerksAndSpellsForNPCs_DISTR.ini",
+            "ODINSpellsForNPCs_DISTR.ini",
+            "PotionsForNPCs_DISTR.ini",
+            "TriumvirateShadowSpellsForNPCs_DISTR.ini",
+            "VanillaShoutsForNPCs_DISTR.ini",
+          ],
+        },
+        {
+          modId: "mod-junipers",
+          modName: "3D Junipers - Trees and Berries-43852-0-2-1687771639",
+          unexplained: 3,
+          examples: [
+            "meshes/_byoh/plants/byohhouseingrdjuniper01.nif",
+            "meshes/plants/florajuniper01.nif",
+            "meshes/plants/juniper01.nif",
+          ],
+        },
+        {
+          modId: "mod-grid",
+          modName: "Grid Inventory 188733 1.4.1 2026-08-22T09-05Z L5WQbqhQB",
+          unexplained: 2,
+          examples: [
+            "SKSE/Plugins/GridInventory_icons.pak",
+            "SKSE/Plugins/GridInventory_ui.ini",
+          ],
+        },
       ],
     } as never;
 

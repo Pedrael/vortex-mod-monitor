@@ -2536,79 +2536,161 @@ function PostProcessingDecisions(props: {
         </>
       )}
 
-      {candidates.map((c) => {
-        const answer = decided.get(c.modId);
-        return (
-          <div
-            key={c.modId}
-            style={{
-              padding: "var(--eh-sp-2)",
-              border: "1px solid var(--eh-border-subtle)",
-              borderRadius: "var(--eh-radius-sm)",
-              opacity: answer !== undefined ? 0.55 : 1,
-            }}
-            className="eh-stack eh-stack--xs"
-          >
-            <div style={{ color: "var(--eh-text-primary)" }}>
-              <strong>{c.modName}</strong>{" "}
-              <span style={{ color: "var(--eh-text-secondary)" }}>
-                {describeUnreproducible(c.unexplained)}
-              </span>
-            </div>
-
-            {/* Evidence, on screen. The decision is unanswerable without it. */}
-            {c.examples.length > 0 && (
-              <ul
+      {/*
+        One card per mod, and the separation has to be real.
+        `--eh-border-subtle` is rgba(255,255,255,0.06) on a panel that is
+        already near-black, so the previous divider was invisible and 57 mods
+        ran together as a single column of text. Each card now sits on a
+        raised surface with a border that can actually be seen, because the
+        curator is answering these one at a time and needs to see where one
+        question ends and the next begins.
+      */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "var(--eh-sp-3)",
+          marginTop: "var(--eh-sp-2)",
+        }}
+      >
+        {candidates.map((c, i) => {
+          const answer = decided.get(c.modId);
+          const done = answer !== undefined;
+          return (
+            <div
+              key={c.modId}
+              style={{
+                padding: "var(--eh-sp-3)",
+                background: done
+                  ? "var(--eh-bg-base)"
+                  : "var(--eh-bg-raised)",
+                border: `1px solid ${
+                  done ? "var(--eh-border-subtle)" : "var(--eh-border-default)"
+                }`,
+                borderRadius: "var(--eh-radius-md)",
+                boxShadow: done ? "none" : "var(--eh-shadow-card)",
+                opacity: done ? 0.6 : 1,
+              }}
+              className="eh-stack eh-stack--sm"
+            >
+              {/* Header: which mod, how far through, and the count as a badge. */}
+              <div
                 style={{
-                  margin: 0,
-                  paddingLeft: "var(--eh-sp-4)",
-                  fontFamily: "var(--eh-font-mono)",
-                  fontSize: "0.85em",
-                  color: "var(--eh-text-secondary)",
+                  display: "flex",
+                  alignItems: "baseline",
+                  justifyContent: "space-between",
+                  gap: "var(--eh-sp-3)",
+                  flexWrap: "wrap",
                 }}
               >
-                {c.examples.map((p: string) => (
-                  <li key={p}>{p}</li>
-                ))}
-                {c.unexplained > c.examples.length && (
-                  <li style={{ listStyle: "none", opacity: 0.7 }}>
-                    and {c.unexplained - c.examples.length} more
-                  </li>
-                )}
-              </ul>
-            )}
-
-            {answer !== undefined ? (
-              <span style={{ color: "var(--eh-text-secondary)" }}>
-                {describeChoice(answer, c.unexplained).label} — saved.
-              </span>
-            ) : (
-              <div className="eh-stack eh-stack--xs">
-                {(["declare", "bundle"] as PostProcessingChoice[]).map((k) => {
-                  const copy = describeChoice(k, c.unexplained);
-                  return (
-                    <div key={k} className="eh-stack eh-stack--xs">
-                      <Button
-                        intent="ghost"
-                        disabled={busy !== undefined}
-                        onClick={(): void => onDecide(c, k)}
-                      >
-                        {busy === c.modId ? "Saving..." : copy.label}
-                      </Button>
-                      <span
-                        className="eh-note"
-                        style={{ color: "var(--eh-text-secondary)" }}
-                      >
-                        {copy.consequence}
-                      </span>
-                    </div>
-                  );
-                })}
+                <div
+                  style={{
+                    color: "var(--eh-text-primary)",
+                    fontSize: "var(--eh-text-md)",
+                    minWidth: 0,
+                    wordBreak: "break-word",
+                  }}
+                >
+                  <span
+                    style={{
+                      color: "var(--eh-text-muted)",
+                      fontVariantNumeric: "tabular-nums",
+                      marginRight: "var(--eh-sp-2)",
+                    }}
+                  >
+                    {i + 1}/{candidates.length}
+                  </span>
+                  <strong>{c.modName}</strong>
+                </div>
+                <span
+                  style={{
+                    flexShrink: 0,
+                    padding: "2px var(--eh-sp-2)",
+                    borderRadius: "var(--eh-radius-pill)",
+                    background: "var(--eh-warning-soft)",
+                    color: "var(--eh-warning)",
+                    fontSize: "var(--eh-text-xs)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {describeUnreproducible(c.unexplained)}
+                </span>
               </div>
-            )}
-          </div>
-        );
-      })}
+
+              {/* Evidence, on screen. The decision is unanswerable without it. */}
+              {c.examples.length > 0 && (
+                <ul
+                  style={{
+                    margin: 0,
+                    padding: "var(--eh-sp-2) var(--eh-sp-2) var(--eh-sp-2) var(--eh-sp-5)",
+                    background: "var(--eh-bg-deep)",
+                    borderRadius: "var(--eh-radius-sm)",
+                    fontFamily: "var(--eh-font-mono)",
+                    fontSize: "var(--eh-text-xs)",
+                    color: "var(--eh-text-secondary)",
+                  }}
+                >
+                  {c.examples.map((p: string) => (
+                    <li key={p}>{p}</li>
+                  ))}
+                  {c.unexplained > c.examples.length && (
+                    <li style={{ listStyle: "none", opacity: 0.7 }}>
+                      and {c.unexplained - c.examples.length} more
+                    </li>
+                  )}
+                </ul>
+              )}
+
+              {answer !== undefined ? (
+                <span style={{ color: "var(--eh-text-secondary)" }}>
+                  ✓ {describeChoice(answer, c.unexplained).label} — saved.
+                </span>
+              ) : (
+                // Side by side, so the two answers read as alternatives to
+                // weigh rather than a list to get through. They are not
+                // interchangeable and the layout should not imply they are.
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "repeat(auto-fit, minmax(260px, 1fr))",
+                    gap: "var(--eh-sp-2)",
+                  }}
+                >
+                  {(["declare", "bundle"] as PostProcessingChoice[]).map((k) => {
+                    const copy = describeChoice(k, c.unexplained);
+                    return (
+                      <div
+                        key={k}
+                        className="eh-stack eh-stack--xs"
+                        style={{
+                          padding: "var(--eh-sp-2)",
+                          border: "1px solid var(--eh-border-subtle)",
+                          borderRadius: "var(--eh-radius-sm)",
+                        }}
+                      >
+                        <Button
+                          intent="ghost"
+                          disabled={busy !== undefined}
+                          onClick={(): void => onDecide(c, k)}
+                        >
+                          {busy === c.modId ? "Saving..." : copy.label}
+                        </Button>
+                        <span
+                          className="eh-note"
+                          style={{ color: "var(--eh-text-secondary)" }}
+                        >
+                          {copy.consequence}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
