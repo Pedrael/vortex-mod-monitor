@@ -90,11 +90,18 @@ describe("the build form and the availability panel agree", () => {
     ) as string;
 
   it("computes 'unidentified' through shipsAsExternal", () => {
+    // The filter moved into `findUnidentifiedMods`, which takes the config as
+    // an argument — because as a closure it read `collectionConfig` before
+    // that variable existed and threw on every build-form open. Behaviour is
+    // the same; what changed is that TypeScript can now see the ordering.
     const body = src();
-    const at = body.indexOf("const unidentified = mods.filter(");
+    const at = body.indexOf("export function findUnidentifiedMods(");
     expect(at).toBeGreaterThan(-1);
-    const decl = body.slice(at, at + 320);
-    expect(decl).toContain("shipsAsExternal");
+    expect(body.slice(at, at + 400)).toContain("shipsAsExternal");
+  });
+
+  it("calls it rather than re-deriving the set inline", () => {
+    expect(src()).toContain("findUnidentifiedMods(mods, collectionConfig)");
   });
 
   it("has no bare archiveSha256-only test left in that decision", () => {

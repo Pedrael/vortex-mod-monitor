@@ -365,6 +365,31 @@ export async function recordPostProcessingDecision(args: {
  *
  * As an argument, calling it too early is a compile error again.
  */
+/**
+ * Mods that genuinely cannot be identified, config in hand.
+ *
+ * A mod the curator marked `treatAsExternal` is NOT unidentified: it ships,
+ * keyed by the SHA-256 of its deployed files, and `buildManifest` accepts it
+ * without an archive.
+ *
+ * Takes the config as a PARAMETER for the same reason as
+ * `applyPostProcessedDeclarations` below, and after the same bug. This was a
+ * `.filter()` whose callback read `collectionConfig` from the enclosing scope
+ * forty-two lines before it was declared, and it threw the moment a curator
+ * opened the build form. TypeScript cannot see through a closure; it can see
+ * an argument.
+ */
+export function findUnidentifiedMods(
+  mods: readonly AuditorMod[],
+  config: CollectionConfig,
+): AuditorMod[] {
+  return mods.filter(
+    (m) =>
+      m.archiveSha256 === undefined &&
+      !shipsAsExternal(isNexusMod(m), config.externalMods[m.id]),
+  );
+}
+
 export function applyPostProcessedDeclarations(
   mods: readonly AuditorMod[],
   config: CollectionConfig,
@@ -603,22 +628,6 @@ export async function loadBuildContext(
     });
   }
 
-  // What will ACTUALLY stop the manifest, now that both the disk and the cache
-  // have had their say. The pre-hash probe above is an early estimate for the
-  // log; this is the number the curator is told, and it is the one that shrinks
-  // when archives are recovered.
-  // A mod the curator marked `treatAsExternal` is NOT unidentified: it ships,
-  // keyed by the SHA-256 of its deployed files, and `buildManifest` accepts it
-  // without an archive. Counting it here produced "1 Nexus mod cannot be
-  // packaged" for a mod that packages perfectly well — while the availability
-  // panel three inches below correctly labelled the same mod "ships as an
-  // external mod". Two answers to one question, on one screen.
-  const unidentified = mods.filter(
-    (m) =>
-      m.archiveSha256 === undefined &&
-      !shipsAsExternal(isNexusMod(m), collectionConfig.externalMods[m.id]),
-  );
-
   // Two external mods can be separate downloads of byte-identical archives, so
   // they only collide once a hash exists. buildManifest catches it, but not
   // until after the staging pass — 31 minutes later on this profile.
@@ -659,6 +668,18 @@ export async function loadBuildContext(
   const slug = slugify(defaultName);
   const loaded = await loadOrCreateCollectionConfig({ configDir, slug });
   let collectionConfig = loaded.config;
+
+  // What will ACTUALLY stop the manifest, now that both the disk and the cache
+  // have had their say. The pre-hash probe above is an early estimate for the
+  // log; this is the number the curator is told, and it is the one that shrinks
+  // when archives are recovered.
+  // A mod the curator marked `treatAsExternal` is NOT unidentified: it ships,
+  // keyed by the SHA-256 of its deployed files, and `buildManifest` accepts it
+  // without an archive. Counting it here produced "1 Nexus mod cannot be
+  // packaged" for a mod that packages perfectly well — while the availability
+  // panel three inches below correctly labelled the same mod "ships as an
+  // external mod". Two answers to one question, on one screen.
+  const unidentified = findUnidentifiedMods(mods, collectionConfig);
 
   // Computed HERE, after the config is loaded, because it now depends on it.
   //
