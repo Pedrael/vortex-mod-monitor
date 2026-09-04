@@ -35,6 +35,7 @@ import { getInstallSession } from "../install/installSession";
 import type { EventHorizonRoute } from "../../routes";
 import type { InstallReceipt } from "../../../types/installLedger";
 import type { EhcollManifest } from "../../../types/ehcoll";
+import { stagingRootForModId } from "../../../core/stagingPath";
 
 export interface DoctorPageProps {
   onNavigate: (route: EventHorizonRoute) => void;
@@ -233,7 +234,6 @@ export function DoctorPage(props: DoctorPageProps): JSX.Element {
           manifestMods: pkg.manifest.mods,
         });
         const state = api.getState();
-        const installRoot = vortex.selectors.installPathForGame(state, gameId);
         const filesByKey = new Map(
           pkg.manifest.mods.map((m) => [m.compareKey, m.state.stagingFiles]),
         );
@@ -242,19 +242,9 @@ export function DoctorPage(props: DoctorPageProps): JSX.Element {
           manifestFilesFor: (key) => filesByKey.get(key),
           cacheDir: getVortexUserDataPath(),
           stagingRootFor: (vortexModId) => {
-            const mod = (
-              state as unknown as {
-                persistent?: { mods?: Record<string, Record<string, unknown>> };
-              }
-            )?.persistent?.mods?.[gameId]?.[vortexModId] as
-              | { installationPath?: string }
-              | undefined;
-            // Blank is not a folder — see runInstall's stagingRootFor.
-        return typeof mod?.installationPath === "string" &&
-          mod.installationPath.length > 0 &&
-          installRoot
-              ? path.join(installRoot, mod.installationPath)
-              : undefined;
+            // Identical to runInstall's callback, and now literally the
+            // same function rather than a second copy of the reasoning.
+            return stagingRootForModId(state, gameId, vortexModId);
           },
         });
         setDrifted(found.map((f) => f.compareKey));

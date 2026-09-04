@@ -8,6 +8,11 @@ import type { EhcollManifest } from "../../types/ehcoll";
 import { AbortError } from "../../utils/abortError";
 import { computeStagingSetHash } from "../manifest/stagingSetHash";
 import {
+  installRootFor,
+  installationPathFromState,
+  stagingRootFromFolder,
+} from "../stagingPath";
+import {
   getDefaultHashConcurrency,
   hashStagingFiles,
   walkStagingFolder,
@@ -147,8 +152,8 @@ export async function enrichInstalledModsWithStagingSetHashes(
     return out;
   }
 
-  const installRoot = selectors.installPathForGame(state, gameId);
-  if (!installRoot) {
+  const installRoot = installRootFor(state, gameId);
+  if (installRoot === undefined) {
     if (onWarn !== undefined) {
       onWarn(
         out[candidateIndices[0]!]!,
@@ -160,12 +165,6 @@ export async function enrichInstalledModsWithStagingSetHashes(
     return out;
   }
 
-  const modsByGame =
-    ((state as any)?.persistent?.mods?.[gameId] ?? {}) as Record<
-      string,
-      { installationPath?: string } | undefined
-    >;
-
   const workers = hashConcurrency ?? getDefaultHashConcurrency();
 
   const total = candidateIndices.length;
@@ -175,11 +174,8 @@ export async function enrichInstalledModsWithStagingSetHashes(
     if (signal?.aborted) throw new AbortError();
     const mod = out[i]!;
 
-    const installationPath = modsByGame[mod.id]?.installationPath;
-    if (
-      installationPath === undefined ||
-      installationPath.length === 0
-    ) {
+    const installationPath = installationPathFromState(state, gameId, mod.id);
+    if (installationPath === undefined) {
       onWarn?.(
         mod,
         `Mod "${mod.name}" has no installationPath in Vortex state. ` +
@@ -190,7 +186,15 @@ export async function enrichInstalledModsWithStagingSetHashes(
       continue;
     }
 
-    const stagingRoot = path.join(installRoot, installationPath);
+    // Guarded above, but joined through the shared helper anyway: the
+    // point of one resolver is that no site decides for itself what a
+    // usable folder name is.
+    const stagingRoot = stagingRootFromFolder(installRoot, installationPath);
+    if (stagingRoot === undefined) {
+      done += 1;
+      onProgress?.(done, total, mod);
+      continue;
+    }
     try {
       const files = await walkStagingFolder(stagingRoot, signal);
       if (files.length === 0) {

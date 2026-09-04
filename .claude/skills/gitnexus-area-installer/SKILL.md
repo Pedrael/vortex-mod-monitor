@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-installer
-description: "Skill for the Installer area of Event-Horizon. 309 symbols across 65 files."
+description: "Skill for the Installer area of Event-Horizon. 287 symbols across 55 files."
 ---
 
 # Installer
 
-309 symbols | 65 files | Cohesion: 85%
+287 symbols | 55 files | Cohesion: 87%
 
 ## When to Use
 
@@ -44,7 +44,6 @@ Start here when exploring this area:
 |--------|------|------|------|
 | `BundledPrefetchPool` | Class | `src/core/installer/bundledPrefetch.ts` | 101 |
 | `InstallLedgerError` | Class | `src/core/installLedger.ts` | 71 |
-| `AbortError` | Class | `src/utils/abortError.ts` | 22 |
 | `describeGameIniApplication` | Function | `src/core/installer/applyGameIni.ts` | 286 |
 | `shouldApplyGameIni` | Function | `src/core/installer/applyGameIni.ts` | 266 |
 | `describeIniTweaks` | Function | `src/core/installer/applyIniTweaks.ts` | 114 |
@@ -62,6 +61,7 @@ Start here when exploring this area:
 | `describePluginOrderDrift` | Function | `src/core/installer/checkPluginOrder.ts` | 113 |
 | `emptyPluginOrderDrift` | Function | `src/core/installer/checkPluginOrder.ts` | 55 |
 | `readUserPluginsTxt` | Function | `src/core/installer/checkPluginOrder.ts` | 163 |
+| `describeSevenZipHealth` | Function | `src/core/installer/checkSevenZipHealth.ts` | 136 |
 
 ## Execution Flows
 

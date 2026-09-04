@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-resolver
-description: "Skill for the Resolver area of Event-Horizon. 63 symbols across 8 files."
+description: "Skill for the Resolver area of Event-Horizon. 65 symbols across 8 files."
 ---
 
 # Resolver
 
-63 symbols | 8 files | Cohesion: 80%
+65 symbols | 8 files | Cohesion: 80%
 
 ## When to Use
 
@@ -20,7 +20,7 @@ description: "Skill for the Resolver area of Event-Horizon. 63 symbols across 8 
 | `src/core/resolver/resolveInstallPlan.ts` | bundledZipPath, extractExtension, findDownloadBySha, findInstalledByNexusExact, findInstalledByNexusFileMismatch (+23) |
 | `src/core/resolver/userState.ts` | buildSuggestedProfileName, buildUserSideState, pickInstallTarget, previousInstallFromReceipt, readDisabledExtensionsMap (+9) |
 | `src/actions/installCollectionAction.ts` | createInstallCollectionAction, formatError, isPlanInstallable, logPlanSummary, profileExistsInState (+1) |
-| `src/ui/pages/install/engine.ts` | profileExistsInState, runLoadingPipeline, runLoadingPipelineWithReceipt, warnIfSevenZipBroken |
+| `src/ui/pages/install/engine.ts` | profileExistsInState, runLoadingPipeline, checkAbort, runLoadingPipelineWithReceipt, checkAbort (+1) |
 | `src/core/resolver/collectAvailableDownloads.test.ts` | action, engine, pipelines, read |
 | `src/core/resolver/gameVersionGuidance.ts` | compareVersions, parse, describe, gameVersionGuidance |
 | `src/core/resolver/scanAvailableDownloads.ts` | downloadsDirFor, scanAvailableDownloads |
@@ -52,14 +52,14 @@ Start here when exploring this area:
 | `resolveProfileName` | Function | `src/core/resolver/userState.ts` | 297 |
 | `resolveVortexVersion` | Function | `src/core/resolver/userState.ts` | 197 |
 | `runLoadingPipeline` | Function | `src/ui/pages/install/engine.ts` | 116 |
+| `checkAbort` | Function | `src/ui/pages/install/engine.ts` | 123 |
 | `runLoadingPipelineWithReceipt` | Function | `src/ui/pages/install/engine.ts` | 295 |
+| `checkAbort` | Function | `src/ui/pages/install/engine.ts` | 316 |
 | `warnIfSevenZipBroken` | Function | `src/ui/pages/install/engine.ts` | 437 |
 | `pickEhcollFile` | Function | `src/utils/utils.ts` | 98 |
 | `resolveCompatibility` | Function | `src/core/resolver/resolveInstallPlan.ts` | 175 |
 | `resolveInstallPlan` | Function | `src/core/resolver/resolveInstallPlan.ts` | 92 |
 | `compareVersions` | Function | `src/core/resolver/gameVersionGuidance.ts` | 167 |
-| `parse` | Function | `src/core/resolver/gameVersionGuidance.ts` | 168 |
-| `gameVersionGuidance` | Function | `src/core/resolver/gameVersionGuidance.ts` | 116 |
 
 ## Execution Flows
 

@@ -1,16 +1,16 @@
 ---
 name: gitnexus-area-manifest
-description: "Skill for the Manifest area of Event-Horizon. 320 symbols across 59 files."
+description: "Skill for the Manifest area of Event-Horizon. 336 symbols across 68 files."
 ---
 
 # Manifest
 
-320 symbols | 59 files | Cohesion: 81%
+336 symbols | 68 files | Cohesion: 81%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how parseManifest, buildManifest, applyCachedDownloadIds work
+- Understanding how parseManifest, archiveFileCacheKey, enrichModsWithArchiveHashes work
 - Modifying manifest-related functionality
 
 ## Key Files
@@ -24,44 +24,44 @@ description: "Skill for the Manifest area of Event-Horizon. 320 symbols across 5
 | `src/core/manifest/packageZip.ts` | isAbortLikeError, packageEhcoll, checkAbort, prepareStagingDir, runSevenZipAdd (+11) |
 | `src/core/manifest/readEhcoll.ts` | crossCheckBundled, prepareStagingDir, readEhcoll, safeRmDir, ReadEhcollError (+7) |
 | `src/core/manifest/externalHints.ts` | downloadsFromState, asMode, collectExternalHints, collectionHints, diagnoseHintSources (+6) |
-| `src/core/getModsListForProfile.ts` | assignInstallOrder, getModsForProfile, hasAnySelectedFomodChoices, normalizeCollectionIds, normalizeFomodSelections (+6) |
 | `src/core/manifest/sevenZip.ts` | assertOk, cancelOnAbort, sevenZipAdd, sevenZipExtractFull, sevenZipList (+5) |
 | `src/core/manifest/parseModuleConfig.ts` | decodeModuleConfig, parseConditionals, parseFiles, parseGroup, parseModuleConfig (+3) |
+| `src/core/manifest/collectionScope.ts` | describeHashedCollisions, describeScope, findHashedIdentityCollisions, groupBy, normalizeInstallName (+2) |
 
 ## Entry Points
 
 Start here when exploring this area:
 
 - **`parseManifest`** (Function) — `src/core/manifest/parseManifest.ts:143`
-- **`buildManifest`** (Function) — `src/core/manifest/buildManifest.ts:283`
-- **`applyCachedDownloadIds`** (Function) — `src/core/archiveHashCache.ts:272`
-- **`applyCachedHashes`** (Function) — `src/core/archiveHashCache.ts:295`
-- **`describeHashedCollisions`** (Function) — `src/core/manifest/collectionScope.ts:200`
+- **`archiveFileCacheKey`** (Function) — `src/core/archiveHashCache.ts:82`
+- **`enrichModsWithArchiveHashes`** (Function) — `src/core/archiveHashing.ts:183`
+- **`hashFileSha256`** (Function) — `src/core/archiveHashing.ts:38`
+- **`cleanup`** (Function) — `src/core/archiveHashing.ts:58`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
 | `ParseManifestError` | Class | `src/core/manifest/parseManifest.ts` | 121 |
+| `AbortError` | Class | `src/utils/abortError.ts` | 22 |
 | `BuildManifestError` | Class | `src/core/manifest/buildManifest.ts` | 244 |
 | `ZipReadError` | Class | `src/core/manifest/readZip.ts` | 56 |
 | `CollectionConfigError` | Class | `src/core/manifest/collectionConfig.ts` | 247 |
 | `PackageEhcollError` | Class | `src/core/manifest/packageZip.ts` | 114 |
 | `ReadEhcollError` | Class | `src/core/manifest/readEhcoll.ts` | 128 |
 | `parseManifest` | Function | `src/core/manifest/parseManifest.ts` | 143 |
-| `buildManifest` | Function | `src/core/manifest/buildManifest.ts` | 283 |
-| `applyCachedDownloadIds` | Function | `src/core/archiveHashCache.ts` | 272 |
-| `applyCachedHashes` | Function | `src/core/archiveHashCache.ts` | 295 |
-| `describeHashedCollisions` | Function | `src/core/manifest/collectionScope.ts` | 200 |
-| `describeScope` | Function | `src/core/manifest/collectionScope.ts` | 214 |
-| `describeMissingEngineFixesPart2` | Function | `src/core/manifest/externalDependencies.ts` | 381 |
-| `filesProvidedByDeployment` | Function | `src/core/manifest/externalDependencies.ts` | 316 |
-| `listRootBinaries` | Function | `src/core/manifest/externalDependencies.ts` | 280 |
-| `downloadsFromState` | Function | `src/core/manifest/externalHints.ts` | 271 |
-| `describeRootFolderReview` | Function | `src/core/manifest/rootFolderReview.ts` | 209 |
-| `describeScriptExtenderGap` | Function | `src/core/manifest/rootFolderReview.ts` | 102 |
-| `describeUnaccountedRootBinaries` | Function | `src/core/manifest/rootFolderReview.ts` | 163 |
-| `findRootFolderMods` | Function | `src/core/manifest/rootFolderReview.ts` | 55 |
+| `archiveFileCacheKey` | Function | `src/core/archiveHashCache.ts` | 82 |
+| `enrichModsWithArchiveHashes` | Function | `src/core/archiveHashing.ts` | 183 |
+| `hashFileSha256` | Function | `src/core/archiveHashing.ts` | 38 |
+| `cleanup` | Function | `src/core/archiveHashing.ts` | 58 |
+| `onAbort` | Function | `src/core/archiveHashing.ts` | 50 |
+| `recoverMissingArchives` | Function | `src/core/archiveRecovery.ts` | 247 |
+| `applyLoadOrder` | Function | `src/core/installer/applyLoadOrder.ts` | 99 |
+| `checkArchiveIdentity` | Function | `src/core/installer/checkArchiveIdentity.ts` | 83 |
+| `verifyModInstall` | Function | `src/core/installer/verifyModInstall.ts` | 164 |
+| `repackBundledExternals` | Function | `src/core/manifest/bundleFromStaging.ts` | 114 |
+| `captureStagingFiles` | Function | `src/core/manifest/captureStagingFiles.ts` | 94 |
+| `getDefaultHashConcurrency` | Function | `src/core/manifest/stagingFileWalker.ts` | 51 |
 
 ## Execution Flows
 
@@ -76,7 +76,7 @@ Start here when exploring this area:
 | `LoadPublishedDetails → ZipReadError` | cross_community | 7 |
 | `RunSelfChecks → GetVortexUserDataPath` | cross_community | 7 |
 | `CurrentFingerprint → GetVortexUserDataPath` | cross_community | 7 |
-| `RunLoadingPipeline → FindZip64Extra` | cross_community | 6 |
+| `RunInstallImpl → AbortError` | cross_community | 6 |
 
 ## How to Explore
 

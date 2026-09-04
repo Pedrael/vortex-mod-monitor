@@ -45,6 +45,7 @@ import { declaresAlternatives } from "./omissionLeads";
 import { sevenZipAdd, type SevenZipApi } from "./sevenZip";
 import type { AuditorMod } from "../getModsListForProfile";
 import type { CollectionConfig } from "./collectionConfig";
+import { installRootFor, stagingRootFromFolder } from "../stagingPath";
 
 /** One repacked mod: where the new archive is, and what it hashes to. */
 export type RepackedBundle = {
@@ -133,7 +134,7 @@ export async function repackBundledExternals(args: {
     return { mods, bundles: [], warnings: [] };
   }
 
-  const installRoot = selectors.installPathForGame(state, gameId);
+  const installRoot = installRootFor(state, gameId);
   if (!installRoot) {
     return {
       mods,
@@ -157,15 +158,18 @@ export async function repackBundledExternals(args: {
     done += 1;
     options.onProgress?.(done, wanted.length, mod.name);
 
-    const folder = mod.installationPath;
-    if (folder === undefined || folder.length === 0) {
+    const stagingDirFor = stagingRootFromFolder(
+      installRoot,
+      mod.installationPath,
+    );
+    if (stagingDirFor === undefined) {
       warnings.push(
         `"${mod.name}" is flagged for bundling but Vortex records no staging ` +
           `folder for it, so its current files cannot be packed.`,
       );
       continue;
     }
-    const stagingDir = path.join(installRoot, folder);
+    const stagingDir = stagingDirFor;
 
     try {
       const size = await directorySize(stagingDir);
@@ -283,7 +287,9 @@ export async function detectExternalDrift(args: {
   listArchive: (archivePath: string) => Promise<{ entries: Array<{ path: string }> }>;
   signal?: AbortSignal;
 }): Promise<ExternalDrift[]> {
-  const installRoot = selectors.installPathForGame(args.state, args.gameId);
+  // Availability gate only — this function compares captured stagingFiles
+  // against archive entries and never touches disk.
+  const installRoot = installRootFor(args.state, args.gameId);
   if (!installRoot) return [];
 
   const out: ExternalDrift[] = [];

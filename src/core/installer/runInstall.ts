@@ -84,6 +84,7 @@
  */
 
 import { actions, types, util } from "@nexusmods/vortex-api";
+import { stagingRootForModId } from "../stagingPath";
 
 import {
   InstallLedgerError,
@@ -275,8 +276,9 @@ async function detectDrift(args: {
     if (candidates.length === 0) return undefined;
 
     const state = ctx.api.getState();
-    const installRoot = selectors.installPathForGame(state, gameId);
-    if (!installRoot) return undefined;
+    // No local installRoot: stagingRootForModId resolves it and answers
+    // undefined when it cannot, so a second gate here would only be another
+    // place to get the falsy check wrong.
 
     // The manifest's list for each mod, which is what the recorded hash was
     // built from. Candidates were selected for having an UNCHANGED compareKey,
@@ -292,19 +294,7 @@ async function detectDrift(args: {
       cacheDir: ctx.appDataPath,
       ...(ctx.abortSignal !== undefined ? { signal: ctx.abortSignal } : {}),
       stagingRootFor: (vortexModId) => {
-        const mod = (
-          state as unknown as {
-            persistent?: { mods?: Record<string, Record<string, unknown>> };
-          }
-        )?.persistent?.mods?.[gameId]?.[vortexModId] as
-          | { installationPath?: string }
-          | undefined;
-        // Blank is not a folder: path.join(root, "") is root, which would
-        // point drift detection at the whole staging tree.
-        return typeof mod?.installationPath === "string" &&
-          mod.installationPath.length > 0
-          ? path.join(installRoot, mod.installationPath)
-          : undefined;
+        return stagingRootForModId(state, gameId, vortexModId);
       },
       onProgress: (done, total, name) => {
         args.reportProgress(

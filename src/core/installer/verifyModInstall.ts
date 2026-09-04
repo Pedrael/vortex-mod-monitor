@@ -10,6 +10,11 @@ import type {
 } from "../../types/ehcoll";
 import { hashFileSha256 } from "../archiveHashing";
 import { AbortError } from "../../utils/abortError";
+import {
+  installRootFor,
+  installationPathFromState,
+  stagingRootFromFolder,
+} from "../stagingPath";
 import { getDefaultHashConcurrency } from "../manifest/stagingFileWalker";
 import { pMap } from "../../utils/pMap";
 
@@ -181,28 +186,21 @@ export async function verifyModInstall(
   if (signal?.aborted) throw new AbortError();
 
   const state = api.getState();
-  const installRoot = selectors.installPathForGame(state, gameId);
-  if (!installRoot) {
+  // The two skip reasons are different diagnoses and are kept apart, so this
+  // uses the pieces rather than `stagingRootForModId`, which collapses both
+  // into undefined.
+  const installRoot = installRootFor(state, gameId);
+  if (installRoot === undefined) {
     return { kind: "skip", reason: "install-path-unresolvable" };
   }
 
-  const mod =
-    ((state as any)?.persistent?.mods?.[gameId]?.[vortexModId] ?? undefined) as
-      | { installationPath?: string }
-      | undefined;
-  // `.length` too, not just `typeof`. `path.join(installRoot, "")` returns
-  // installRoot ITSELF, so a mod whose installationPath is blank would have
-  // this walk the entire staging folder — every mod in the collection — and
-  // compare it against one mod's expected file list. Three of the six places
-  // that build a staging path guarded the length and three did not.
-  if (
-    mod === undefined ||
-    typeof mod.installationPath !== "string" ||
-    mod.installationPath.length === 0
-  ) {
+  const stagingRoot = stagingRootFromFolder(
+    installRoot,
+    installationPathFromState(state, gameId, vortexModId),
+  );
+  if (stagingRoot === undefined) {
     return { kind: "skip", reason: "vortex-mod-missing-from-state" };
   }
-  const stagingRoot = path.join(installRoot, mod.installationPath);
 
   const onDisk = await collectOnDiskFiles(stagingRoot, signal);
   if (signal?.aborted) throw new AbortError();

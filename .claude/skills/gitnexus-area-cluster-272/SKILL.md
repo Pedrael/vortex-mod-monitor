@@ -1,9 +1,9 @@
 ---
-name: gitnexus-area-cluster-274
-description: "Skill for the Cluster_274 area of Event-Horizon. 4 symbols across 1 files."
+name: gitnexus-area-cluster-272
+description: "Skill for the Cluster_272 area of Event-Horizon. 4 symbols across 1 files."
 ---
 
-# Cluster_274
+# Cluster_272
 
 4 symbols | 1 files | Cohesion: 80%
 
@@ -11,7 +11,7 @@ description: "Skill for the Cluster_274 area of Event-Horizon. 4 symbols across 
 
 - Working with code in `src/`
 - Understanding how captureUserlist work
-- Modifying cluster_274-related functionality
+- Modifying cluster_272-related functionality
 
 ## Key Files
 
@@ -37,6 +37,6 @@ Start here when exploring this area:
 ## How to Explore
 
 1. `context({name: "captureUserlist"})` — see callers and callees
-2. `query({search_query: "cluster_274"})` — find related execution flows
+2. `query({search_query: "cluster_272"})` — find related execution flows
 3. Read key files listed above for implementation details
 4. `explain({target: "<file or symbol>"})` — persisted taint findings (source→sink data flows), when indexed with `--pdg`

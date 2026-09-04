@@ -7,6 +7,7 @@ import type { types } from "@nexusmods/vortex-api";
 import type { AuditorMod } from "../getModsListForProfile";
 import type { EhcollStagingFile, VerificationLevel } from "../../types/ehcoll";
 import { AbortError } from "../../utils/abortError";
+import { installRootFor, installationPathFromState, stagingRootFromFolder } from "../stagingPath";
 import {
   getDefaultHashConcurrency,
   hashStagingFiles,
@@ -116,8 +117,8 @@ export async function captureStagingFiles(
     throw new AbortError();
   }
 
-  const installRoot = selectors.installPathForGame(state, gameId);
-  if (!installRoot) {
+  const installRoot = installRootFor(state, gameId);
+  if (installRoot === undefined) {
     if (onWarn !== undefined && mods.length > 0) {
       onWarn(
         mods[0]!,
@@ -128,12 +129,6 @@ export async function captureStagingFiles(
     return mods.map((m) => ({ ...m }));
   }
 
-  const modsByGame =
-    ((state as any)?.persistent?.mods?.[gameId] ?? {}) as Record<
-      string,
-      { installationPath?: string } | undefined
-    >;
-
   const out: StagingEnrichedAuditorMod[] = new Array(mods.length);
   let done = 0;
 
@@ -142,8 +137,8 @@ export async function captureStagingFiles(
     const mod = mods[i]!;
     const enriched: StagingEnrichedAuditorMod = { ...mod };
 
-    const installationPath = modsByGame[mod.id]?.installationPath;
-    if (installationPath !== undefined && installationPath.length > 0) {
+    const installationPath = installationPathFromState(state, gameId, mod.id);
+    if (installationPath !== undefined) {
       enriched.installationPath = installationPath;
     }
 
@@ -160,7 +155,16 @@ export async function captureStagingFiles(
       continue;
     }
 
-    const stagingRoot = path.join(installRoot, enriched.installationPath);
+    const stagingRoot = stagingRootFromFolder(
+      installRoot,
+      enriched.installationPath,
+    );
+    if (stagingRoot === undefined) {
+      out[i] = enriched;
+      done += 1;
+      onProgress?.(done, mods.length, mod);
+      continue;
+    }
 
     try {
       const files = await walkStagingFolder(stagingRoot, signal);
