@@ -111,6 +111,8 @@ import {
   type BuildProgress,
   type CuratorInput,
 } from "./engine";
+import { nexusCompareKey } from "../../../core/identity/compareKey";
+import { isNexusSourced } from "../../../core/identity/nexusSourced";
 
 // ───────────────────────────────────────────────────────────────────────
 // Types
@@ -760,12 +762,15 @@ class BuildSession {
 
     const entries: AvailabilityEntry[] = [];
     for (const mod of form.ctx.mods) {
-      const modId = Number(mod.nexusModId);
-      const fileId = Number(mod.nexusFileId);
-      if (!Number.isFinite(modId) || !Number.isFinite(fileId)) continue;
-      if (modId <= 0 || fileId <= 0) continue;
+      // Was a fourth spelling of "is this from Nexus" (Number() + isFinite +
+      // > 0) AND the only site that coerced the ids before building the key,
+      // so a non-canonical numeric id would have produced `nexus:7:...` where
+      // the manifest wrote `nexus:007:...`.
+      if (!isNexusSourced(mod)) continue;
+      const modId = mod.nexusModId as number;
+      const fileId = mod.nexusFileId as number;
       entries.push({
-        compareKey: `nexus:${modId}:${fileId}`,
+        compareKey: nexusCompareKey(modId, fileId),
         name: mod.name,
         modId,
         fileId,

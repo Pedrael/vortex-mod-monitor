@@ -35,6 +35,7 @@ import * as fsp from "fs/promises";
 import * as path from "path";
 
 import type { AuditorMod } from "./getModsListForProfile";
+import { nexusCompareKey } from "./identity/compareKey";
 
 export const ARCHIVE_HASH_CACHE_FILE = "archive-hashes.json";
 
@@ -159,7 +160,9 @@ export function archiveHashCacheKey(
   nexusModId: string | number,
   nexusFileId: string | number,
 ): string {
-  return `nexus:${String(nexusModId)}:${String(nexusFileId)}`;
+  // The same identity the manifest uses — now literally, rather than by a
+  // convention two files each spelled out.
+  return nexusCompareKey(nexusModId, nexusFileId);
 }
 
 function cacheKeyForMod(mod: AuditorMod): string | undefined {

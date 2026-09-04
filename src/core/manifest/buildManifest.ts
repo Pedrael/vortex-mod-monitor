@@ -32,6 +32,14 @@ import type { CapturedUserlist } from "../userlist";
 import { parsePluginsTxt } from "../comparePlugins";
 import { computeStagingSetHash } from "./stagingSetHash";
 import type { ExportedModsSnapshot } from "../../utils/utils";
+import {
+  archiveReference,
+  externalArchiveCompareKey,
+  externalStagingCompareKey,
+  nexusCompareKey,
+  nexusFileReference,
+  nexusModReference,
+} from "../identity/compareKey";
 import type {
   EhcollExternalDependency,
   EhcollGameIni,
@@ -560,7 +568,7 @@ function buildNexusMod(
   mod: AuditorMod,
   gameId: SupportedGameId,
 ): NexusEhcollMod {
-  const compareKey = `nexus:${mod.nexusModId}:${mod.nexusFileId}`;
+  const compareKey = nexusCompareKey(mod.nexusModId!, mod.nexusFileId!);
 
   const source: NexusModSource = {
     kind: "nexus",
@@ -651,10 +659,10 @@ function buildExternalMod(
   const wasRepacked = repackedModIds?.has(mod.id) === true;
   const compareKey =
     wasRepacked && stagingSetHash !== undefined
-      ? `external:staging:${stagingSetHash}`
+      ? externalStagingCompareKey(stagingSetHash)
       : archiveSha !== undefined
-        ? `external:${archiveSha}`
-        : `external:staging:${stagingSetHash!}`;
+        ? externalArchiveCompareKey(archiveSha)
+        : externalStagingCompareKey(stagingSetHash!);
 
   const source: ExternalModSource = {
     kind: "external",
@@ -838,10 +846,10 @@ function synthesizeRuleReference(
   unresolved: string[],
 ): string | undefined {
   if (ref.nexusModId && ref.nexusFileId) {
-    return `nexus:${ref.nexusModId}:${ref.nexusFileId}`;
+    return nexusFileReference(ref.nexusModId, ref.nexusFileId);
   }
   if (ref.nexusModId) {
-    return `nexus:${ref.nexusModId}`;
+    return nexusModReference(ref.nexusModId);
   }
 
   if (ref.id) {
@@ -850,7 +858,7 @@ function synthesizeRuleReference(
   }
 
   if (ref.archiveId) {
-    return `archive:${ref.archiveId}`;
+    return archiveReference(ref.archiveId);
   }
 
   // Name the TARGET, not the owner: "which mod is missing" is the actionable

@@ -29,6 +29,7 @@ import type { EhcollManifest } from "../../types/ehcoll";
 import type { InstallReceipt } from "../../types/installLedger";
 import { rebuildPluginOrder } from "./heal";
 import type { HealAction } from "./health";
+import { nexusModIdOfCompareKey } from "../identity/compareKey";
 
 export type HealOutcome =
   /** Done. `summary` is shown to the user. */
@@ -67,9 +68,8 @@ function resolveModMaps(receipt: InstallReceipt): {
 
   for (const mod of receipt.mods) {
     modIdByCompareKey.set(mod.compareKey, mod.vortexModId);
-    const parts = mod.compareKey.split(":");
-    if (parts[0] !== "nexus" || parts[1] === undefined) continue;
-    const nexusModId = parts[1];
+    const nexusModId = nexusModIdOfCompareKey(mod.compareKey);
+    if (nexusModId === undefined) continue;
     modIdByNexusModId.set(nexusModId, mod.vortexModId);
     seenNexusIds.set(nexusModId, (seenNexusIds.get(nexusModId) ?? 0) + 1);
   }

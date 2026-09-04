@@ -72,6 +72,7 @@ import type {
   FomodSelectionGroup,
   FomodSelectionStep,
 } from "../getModsListForProfile";
+import { isFullyPinnedReference as isFullyPinnedModReference } from "../identity/compareKey";
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -1637,16 +1638,7 @@ function crossReferenceValidate(
  * worse of the two to leave in place: the next person to add an arity check
  * would have written it from the comment.
  */
-function isFullyPinnedReference(reference: string): boolean {
-  if (reference.startsWith("nexus:")) {
-    // nexus:<modId>:<fileId> is pinned; nexus:<modId> alone is a page
-    // reference and pins nothing.
-    return reference.split(":").length === 3;
-  }
-  // Both external shapes name a hash, so both are pinned. archive:/id: carry
-  // a single opaque segment.
-  return /^(external|archive|id):/.test(reference);
-}
+const isFullyPinnedReference = isFullyPinnedModReference;
 
 // ---------------------------------------------------------------------------
 // JSON parsing helper

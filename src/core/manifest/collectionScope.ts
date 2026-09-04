@@ -50,6 +50,7 @@
 import { createHash } from "crypto";
 
 import type { AuditorMod } from "../getModsListForProfile";
+import { externalArchiveCompareKey, nexusCompareKey } from "../identity/compareKey";
 
 export type CollectionScope = {
   /** Mods that belong in the collection: the profile's enabled mods. */
@@ -155,14 +156,17 @@ export function scopeCollectionMods(mods: AuditorMod[]): CollectionScope {
     // Exact identity — what buildManifest's compareKey rejects.
     collidingIdentities: groupBy(included, (m) =>
       m.nexusModId !== undefined && m.nexusFileId !== undefined
-        ? `nexus:${String(m.nexusModId)}:${String(m.nexusFileId)}`
+        ? nexusCompareKey(m.nexusModId, m.nexusFileId)
         : undefined,
     ),
     // The same mod, installed twice and both left on. Keyed by page id AND
     // normalised name, because one page hosts many genuinely distinct files.
     multipleInstalls: groupBy(included, (m) =>
       m.nexusModId !== undefined
-        ? `nexus:${String(m.nexusModId)}|${normalizeInstallName(m)}`
+        // NOT a compareKey despite the prefix: a grouping key for spotting
+      // several installs of one mod PAGE. Pipe-delimited so it can never
+      // be parsed as one by mistake.
+      ? `nexus:${String(m.nexusModId)}|${normalizeInstallName(m)}`
         : undefined,
     ),
   };
@@ -191,9 +195,11 @@ export function findHashedIdentityCollisions(
 ): DuplicateInstallGroup[] {
   return groupBy(mods, (m) => {
     if (m.nexusModId !== undefined && m.nexusFileId !== undefined) {
-      return `nexus:${String(m.nexusModId)}:${String(m.nexusFileId)}`;
+      return nexusCompareKey(m.nexusModId, m.nexusFileId);
     }
-    return m.archiveSha256 !== undefined ? `external:${m.archiveSha256}` : undefined;
+    return m.archiveSha256 !== undefined
+      ? externalArchiveCompareKey(m.archiveSha256)
+      : undefined;
   });
 }
 

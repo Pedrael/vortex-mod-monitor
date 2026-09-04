@@ -47,6 +47,7 @@ import { actions, types } from "@nexusmods/vortex-api";
 
 import type { EhcollRule, ModRuleType } from "../../types/ehcoll";
 import { AbortError } from "../../utils/abortError";
+import { parseModReference } from "../identity/compareKey";
 
 /**
  * Inputs the caller computes once before the apply phase. Keyed maps
@@ -179,8 +180,7 @@ export function applyModRules(input: ApplyModRulesInput): ApplyModRulesResult {
         source: rule.source,
         reference: rule.reference,
         reason:
-          rule.reference.startsWith("nexus:") &&
-          rule.reference.split(":").length === 2
+          parseModReference(rule.reference).kind === "nexus-mod"
             ? partialPinReason(rule.reference, input)
             : `Reference "${rule.reference}" did not resolve to any installed mod.`,
       });
@@ -263,7 +263,8 @@ export function applyModRules(input: ApplyModRulesInput): ApplyModRulesResult {
  * send the curator looking for a missing mod that is actually present twice.
  */
 function partialPinReason(reference: string, input: ApplyModRulesInput): string {
-  const nexusModId = reference.split(":")[1] ?? "";
+  const parsed = parseModReference(reference);
+  const nexusModId = parsed.kind === "nexus-mod" ? parsed.nexusModId : "";
   if (input.ambiguousNexusModIds?.has(nexusModId) === true) {
     return (
       `Partial Nexus pin "${reference}" matches more than one installed mod ` +
@@ -299,13 +300,11 @@ function resolveReferenceToModId(
   // wrong answer that looks like the collection simply does not work, and one
   // nobody would think to look for. A reported skip is recoverable; a silent
   // mis-application is not.
-  if (reference.startsWith("nexus:")) {
-    const parts = reference.split(":");
-    if (parts.length === 2) {
-      const nexusModId = parts[1]!;
-      if (input.ambiguousNexusModIds?.has(nexusModId) === true) return undefined;
-      return input.modIdByNexusModId.get(nexusModId);
-    }
+  const parsed = parseModReference(reference);
+  if (parsed.kind === "nexus-mod") {
+    const { nexusModId } = parsed;
+    if (input.ambiguousNexusModIds?.has(nexusModId) === true) return undefined;
+    return input.modIdByNexusModId.get(nexusModId);
   }
 
   return undefined;
