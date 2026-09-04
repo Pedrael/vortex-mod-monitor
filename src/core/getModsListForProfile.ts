@@ -89,6 +89,14 @@ export type AuditorMod = {
    * "has an archive".
    */
   recoveredDownloadId?: string;
+  /**
+   * The curator declared this mod's staging deliberately post-processed.
+   *
+   * Not read from Vortex — it is the curator's own answer, applied from the
+   * collection config on the way into the build. See
+   * `ExternalModConfigEntry.postProcessed`.
+   */
+  postProcessed?: boolean;
   collectionIds?: string[];
 
   installerType?: string;

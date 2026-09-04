@@ -57,7 +57,7 @@ Start here when exploring this area:
 | `describeMachineKept` | Function | `src/core/manifest/gameIni.ts` | 251 |
 | `slugsInUse` | Function | `src/ui/pages/build/BuildDashboard.tsx` | 285 |
 | `runBuildPipeline` | Function | `src/ui/pages/build/engine.ts` | 772 |
-| `slugify` | Function | `src/ui/pages/build/engine.ts` | 1814 |
+| `slugify` | Function | `src/ui/pages/build/engine.ts` | 1827 |
 | `setPluginLightFlag` | Function | `src/core/manifest/pluginFlags.ts` | 101 |
 | `flush` | Function | `src/ui/pages/build/persistOverrides.ts` | 80 |
 | `save` | Function | `src/ui/pages/build/persistOverrides.ts` | 72 |

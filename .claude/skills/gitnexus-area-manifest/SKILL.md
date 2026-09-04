@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-manifest
-description: "Skill for the Manifest area of Event-Horizon. 320 symbols across 59 files."
+description: "Skill for the Manifest area of Event-Horizon. 323 symbols across 60 files."
 ---
 
 # Manifest
 
-320 symbols | 59 files | Cohesion: 79%
+323 symbols | 60 files | Cohesion: 80%
 
 ## When to Use
 
@@ -25,7 +25,7 @@ description: "Skill for the Manifest area of Event-Horizon. 320 symbols across 5
 | `src/core/manifest/externalHints.ts` | countBy, downloadsFromState, modsFromState, asMode, collectExternalHints (+8) |
 | `src/core/manifest/readEhcoll.ts` | crossCheckBundled, prepareStagingDir, readEhcoll, safeRmDir, ReadEhcollError (+7) |
 | `src/core/getModsListForProfile.ts` | assignInstallOrder, getModsForProfile, hasAnySelectedFomodChoices, normalizeCollectionIds, normalizeFomodSelections (+6) |
-| `src/core/manifest/sevenZip.ts` | assertOk, resolveSevenZip, sevenZipAdd, sevenZipList, sevenZipSelfTest (+5) |
+| `src/core/manifest/sevenZip.ts` | assertOk, cancelOnAbort, sevenZipAdd, sevenZipExtractFull, sevenZipList (+5) |
 | `src/core/manifest/parseModuleConfig.ts` | decodeModuleConfig, parseConditionals, parseFiles, parseGroup, parseModuleConfig (+3) |
 
 ## Entry Points
@@ -36,7 +36,7 @@ Start here when exploring this area:
 - **`buildManifest`** (Function) — `src/core/manifest/buildManifest.ts:269`
 - **`applyCachedDownloadIds`** (Function) — `src/core/archiveHashCache.ts:272`
 - **`applyCachedHashes`** (Function) — `src/core/archiveHashCache.ts:295`
-- **`reconcileExternalModsConfig`** (Function) — `src/core/manifest/collectionConfig.ts:297`
+- **`reconcileExternalModsConfig`** (Function) — `src/core/manifest/collectionConfig.ts:323`
 
 ## Key Symbols
 
@@ -45,14 +45,14 @@ Start here when exploring this area:
 | `ParseManifestError` | Class | `src/core/manifest/parseManifest.ts` | 121 |
 | `BuildManifestError` | Class | `src/core/manifest/buildManifest.ts` | 244 |
 | `ZipReadError` | Class | `src/core/manifest/readZip.ts` | 56 |
-| `CollectionConfigError` | Class | `src/core/manifest/collectionConfig.ts` | 221 |
+| `CollectionConfigError` | Class | `src/core/manifest/collectionConfig.ts` | 247 |
 | `PackageEhcollError` | Class | `src/core/manifest/packageZip.ts` | 114 |
 | `ReadEhcollError` | Class | `src/core/manifest/readEhcoll.ts` | 128 |
 | `parseManifest` | Function | `src/core/manifest/parseManifest.ts` | 143 |
 | `buildManifest` | Function | `src/core/manifest/buildManifest.ts` | 269 |
 | `applyCachedDownloadIds` | Function | `src/core/archiveHashCache.ts` | 272 |
 | `applyCachedHashes` | Function | `src/core/archiveHashCache.ts` | 295 |
-| `reconcileExternalModsConfig` | Function | `src/core/manifest/collectionConfig.ts` | 297 |
+| `reconcileExternalModsConfig` | Function | `src/core/manifest/collectionConfig.ts` | 323 |
 | `describeHashedCollisions` | Function | `src/core/manifest/collectionScope.ts` | 200 |
 | `describeScope` | Function | `src/core/manifest/collectionScope.ts` | 214 |
 | `filesProvidedByDeployment` | Function | `src/core/manifest/externalDependencies.ts` | 237 |
@@ -61,7 +61,7 @@ Start here when exploring this area:
 | `downloadsFromState` | Function | `src/core/manifest/externalHints.ts` | 271 |
 | `modsFromState` | Function | `src/core/manifest/externalHints.ts` | 256 |
 | `loadBuildContext` | Function | `src/ui/pages/build/engine.ts` | 345 |
-| `pickDefaultCollectionName` | Function | `src/ui/pages/build/engine.ts` | 1725 |
+| `pickDefaultCollectionName` | Function | `src/ui/pages/build/engine.ts` | 1738 |
 
 ## Execution Flows
 

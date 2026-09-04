@@ -40,6 +40,23 @@ import type { SevenZipApi } from "./sevenZip";
 export type RunSelfChecksOptions = {
   signal?: AbortSignal;
   onProgress?: (done: number, total: number, modName: string) => void;
+  /**
+   * Mods whose shipped archive IS their staging folder.
+   *
+   * A bundled mod is repacked from staging by `repackBundledExternals` and
+   * re-keyed to the new archive's hash, so its staging and its archive are the
+   * same bytes by construction — divergence is not merely unlikely, it is
+   * impossible. Comparing one means comparing it against a download that is
+   * not what ships for it, and every difference found is a false positive.
+   *
+   * It cost a real report its credibility: `sse_bodyslides_sd` was listed as
+   * bundled AND as one of the three worst diverged mods in the same build,
+   * over 144 files that could not have been wrong.
+   *
+   * Absent means "compare everything" — the honest default for a caller
+   * that does not know which mods those are.
+   */
+  shipsOwnBytes?: (mod: AuditorMod) => boolean;
 };
 
 /**
@@ -63,6 +80,45 @@ export type RunSelfChecksOptions = {
  *
  * Pure, so the policy can be tested without running a build.
  */
+/**
+ * The mods that will fail on every user's machine, and what to do about it.
+ *
+ * The only finding in this file that is not advisory. A staged file the
+ * archive cannot produce is a file no user can ever have, so it fails
+ * verification, gets reinstalled from the same archive, fails identically and
+ * the mod is recorded broken """ + D + u""" permanently, whatever the user does.
+ *
+ * Declaring the mod post-processed tells the driver those files are the
+ * curator's; bundling it ships them instead. Doing neither ships a collection
+ * that cannot verify, which is why this names the mods rather than counting
+ * them: the curator has to go and act on each one.
+ *
+ * Declared mods drop out entirely. That is the point of declaring.
+ */
+export function describeUndeclaredPostProcessing(
+  reports: readonly SelfCheckReport[],
+  declared: ReadonlySet<string>,
+): string | undefined {
+  const undeclared = reports
+    .filter((r) => r.unexplained > 0 && !declared.has(r.modId))
+    .sort((a, b) => b.unexplained - a.unexplained);
+  if (undeclared.length === 0) return undefined;
+
+  const names = undeclared
+    .slice(0, 3)
+    .map((r) => `"${r.modName}" (${r.unexplained})`)
+    .join(", ");
+  return (
+    `${undeclared.length} mod(s) have staged file(s) their archive cannot ` +
+    `produce and are NOT declared post-processed """ + D + u""" ${names}. A user ` +
+    `installing from those archives can never have those files, so each mod ` +
+    `will fail its integrity check, be reinstalled once, fail again and be ` +
+    `recorded as broken. Set "postProcessed": true on them in the collection ` +
+    `config if the edits are deliberate, or mark them Bundled to ship your ` +
+    `copy instead.`
+  );
+}
+
 export function describeDivergedMods(
   reports: readonly SelfCheckReport[],
 ): string | undefined {
@@ -81,10 +137,10 @@ export function describeDivergedMods(
     `${diverged.length} mod(s) have ${files} staged file(s) that differ from ` +
     `their archives — most often ${examples}. This is normal if you repack ` +
     `BA2s, clean plugins, or run the game before building: those files are ` +
-    `yours, not the archive's. It is recorded because a user installing this ` +
-    `collection cannot check them against the archive, so Event Horizon will ` +
-    `accept whatever a clean install produces for them rather than trying to ` +
-    `reproduce your copy.`
+    `yours, not the archive's. Where a user's own copy of a file matches the ` +
+    `archive, Event Horizon accepts it rather than trying to reproduce yours. ` +
+    `Files you ADDED are the case to watch — see the note below if there is ` +
+    `one, because a user's archive cannot produce those at all.`
   );
 }
 
@@ -146,11 +202,19 @@ export async function runSelfChecks(
   }
   const readEntry = makeReadEntry(sevenZip);
 
+  // Split rather than skipped inside the loop: these are not mods we FAILED to
+  // check, they are mods the check has no question to ask about, and folding
+  // them into `skipped` would report them as archives that could not be read.
+  const shipsOwnBytes = opts?.shipsOwnBytes;
+  const comparable =
+    shipsOwnBytes === undefined ? mods : mods.filter((m) => !shipsOwnBytes(m));
+  const ownBytesCount = mods.length - comparable.length;
+
   const reports: SelfCheckReport[] = [];
-  const total = mods.length;
+  const total = comparable.length;
   let done = 0;
 
-  for (const mod of mods) {
+  for (const mod of comparable) {
     if (opts?.signal?.aborted === true) break;
     done += 1;
     opts?.onProgress?.(done, total, mod.name);
@@ -240,10 +304,33 @@ export async function runSelfChecks(
   const divergedWarning = describeDivergedMods(reports);
   if (divergedWarning !== undefined) warnings.push(divergedWarning);
 
+  // The one finding here that is not advisory.
+  //
+  // A staged file the archive cannot produce is a file no user can ever have,
+  // so every one of them fails verification, is reinstalled from the same
+  // archive, fails identically, and is recorded broken. Declaring the mod
+  // post-processed is what tells the driver those files are yours; bundling it
+  // ships them instead. Doing neither ships a collection that cannot verify.
+  const undeclaredWarning = describeUndeclaredPostProcessing(
+    reports,
+    new Set(mods.filter((m) => m.postProcessed === true).map((m) => m.id)),
+  );
+  if (undeclaredWarning !== undefined) warnings.push(undeclaredWarning);
+
   if (summary.skipped > 0) {
     warnings.push(
       `${summary.skipped} mod(s) could not be checked against their archive ` +
         `(archive missing from disk, or unreadable).`,
+    );
+  }
+
+  if (ownBytesCount > 0) {
+    // Said out loud rather than silently omitted: a curator reading a count of
+    // checked mods should be able to account for every mod in the collection.
+    warnings.push(
+      `${ownBytesCount} bundled mod(s) were not compared against an archive — ` +
+        `they ship your staging folder itself, so there is nothing for them ` +
+        `to differ from.`,
     );
   }
 

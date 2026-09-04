@@ -57,13 +57,36 @@ export type ReinstallJudgement =
    */
   | { kind: "curator-diverged"; explained: number; why: string }
   /**
+   * The curator declared this mod post-processed, and the files the user lacks
+   * are ones the archive cannot produce.
+   *
+   * Distinct from `curator-diverged`, which is about files that EXIST on both
+   * sides with different bytes. This is about files that exist only on the
+   * curator's disk — generator output written into a mod folder — where a
+   * reinstall is not merely wasted but can never succeed.
+   */
+  | { kind: "curator-only"; excused: number; why: string }
+  /**
    * We could not consult the archive, so we cannot tell. Falls back to
    * reinstalling — the behaviour that existed before this check — rather than
    * pretending an absent second opinion is a clean bill of health.
    */
   | { kind: "undecidable"; why: string };
 
+/** Last path segment, for a "/"-separated archive or staging path. */
+function baseName(p: string): string {
+  const cut = p.replace(/\\/g, "/").lastIndexOf("/");
+  return cut === -1 ? p : p.slice(cut + 1);
+}
+
 export type JudgeInput = {
+  /**
+   * The curator declared this mod's staging deliberately post-processed.
+   *
+   * Changes ONE thing: absent files are put to the archive instead of being
+   * refused outright. See `ExternalModConfigEntry.postProcessed`.
+   */
+  postProcessed?: boolean;
   /** Files the curator recorded that the user does not have. */
   missingFiles: string[];
   /** Files present on both sides whose content differs. */
@@ -90,7 +113,7 @@ export async function judgeReinstall(
   // file the curator recorded and the user lacks is an omission regardless of
   // any post-processing — and that is the failure this project was built to
   // catch. Never explained away.
-  if (input.missingFiles.length > 0) {
+  if (input.missingFiles.length > 0 && input.postProcessed !== true) {
     return {
       kind: "reinstall",
       why: `${input.missingFiles.length} file(s) the curator recorded are absent`,
@@ -100,7 +123,16 @@ export async function judgeReinstall(
     };
   }
 
-  if (input.differingPaths.length === 0) {
+  // A DECLARED post-processed mod is the one case where the archive has
+  // something to say about presence: if it cannot produce a file, no reinstall
+  // can either, and the failure is permanent rather than repairable.
+  //
+  // The declaration does not excuse the whole mod. Files the archive DOES
+  // contain must still arrive — that is the bug this project exists to catch,
+  // and a curator flagging a mod is not claiming Vortex cannot drop its files.
+  // So the flag buys a QUESTION, not an exemption.
+
+  if (input.differingPaths.length === 0 && input.missingFiles.length === 0) {
     return {
       kind: "reinstall",
       why: "verification failed with no file detail",
@@ -142,6 +174,34 @@ export async function judgeReinstall(
     };
   }
 
+  // Missing files, for a declared post-processed mod. Matched by NAME, not by
+  // content: the file is not on disk, so there are no bytes to checksum.
+  //
+  // Conservative in the only direction that matters. A name the archive does
+  // not contain anywhere is provably unreproducible; a name it does contain
+  // might be the real omission, so it is sent for reinstall exactly as before.
+  // FOMOD installers relocate files, which is why the comparison is on the
+  // basename rather than the full path.
+  const excusedMissing: string[] = [];
+  if (input.missingFiles.length > 0) {
+    const archiveNames = new Set(
+      listing.entries.map((e) => baseName(e.path).toLowerCase()),
+    );
+    const reproducible = input.missingFiles.filter((rel) =>
+      archiveNames.has(baseName(rel).toLowerCase()),
+    );
+    if (reproducible.length > 0) {
+      return {
+        kind: "reinstall",
+        why:
+          `${reproducible.length} of ${input.missingFiles.length} absent ` +
+          `file(s) ARE in the archive, so they should have installed`,
+        archiveConsulted: true,
+      };
+    }
+    excusedMissing.push(...input.missingFiles);
+  }
+
   const refs: StagedFileRef[] = [];
   for (const rel of input.differingPaths) {
     if (input.signal?.aborted) {
@@ -174,6 +234,24 @@ export async function judgeReinstall(
   // report. Acting on it means skipping a repair, and sizes agreeing while
   // checksums were available on neither side is too thin a reason to do that.
   if (result.matched === refs.length) {
+    if (excusedMissing.length > 0) {
+      // Reported as its own verdict rather than folded into the one above:
+      // "the curator's copy was modified" and "the curator has files the
+      // archive never had" are different facts, and a curator reading the
+      // report should be able to tell which one their collection did.
+      const also =
+        refs.length > 0
+          ? `, and its ${refs.length} differing file(s) match the archive`
+          : "";
+      return {
+        kind: "curator-only",
+        excused: excusedMissing.length,
+        why:
+          `${excusedMissing.length} absent file(s) are not in the archive at ` +
+          `all, and this mod is declared post-processed${also} — no ` +
+          `reinstall could produce them`,
+      };
+    }
     return {
       kind: "curator-diverged",
       explained: result.matched,

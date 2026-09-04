@@ -794,7 +794,14 @@ export async function runBuildPipeline(
   checkAbort();
   const state = api.getState();
   const { gameId } = context;
-  let mods = context.mods;
+  // The curator's own answers, applied once so every step downstream sees the
+  // same mod. Read from the persisted config rather than recomputed, because
+  // this is a DECLARATION — nothing on this machine can derive it.
+  let mods = context.mods.map((m) =>
+    collectionConfig.externalMods[m.id]?.postProcessed === true
+      ? { ...m, postProcessed: true }
+      : m,
+  );
 
   // ── 0. The profile may have moved since the form opened ────────────────
   // `loadBuildContext` runs once, in `begin()`. Every build after that reused
@@ -1142,7 +1149,13 @@ export async function runBuildPipeline(
   const selfCheckOp = beginOp("build.self-check", { mods: mods.length });
   let selfCheckWarnings: string[] = [];
   try {
+    // Bundled mods ship the staging folder itself, so their archive IS their
+    // staging and there is nothing to compare. Built from what was actually
+    // repacked, not from the curator's intent, so a bundling that silently did
+    // not happen still gets checked.
+    const repackedIds = new Set(repackedBundles.map((b) => b.modId));
     const selfCheck = await runSelfChecks(state, gameId, mods, {
+      shipsOwnBytes: (m) => repackedIds.has(m.id),
       ...(signal !== undefined ? { signal } : {}),
       onProgress: (done, total, modName) => {
         onProgress?.({

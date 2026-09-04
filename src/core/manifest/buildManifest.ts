@@ -713,6 +713,9 @@ function buildModInstallState(
       mod.stagingFiles && mod.stagingFiles.length > 0
         ? mod.stagingFiles
         : undefined,
+    // Only when true. A `false` in every entry of a 950-mod manifest is 950
+    // lines saying nothing.
+    ...(mod.postProcessed === true ? { postProcessed: true } : {}),
   };
 }
 

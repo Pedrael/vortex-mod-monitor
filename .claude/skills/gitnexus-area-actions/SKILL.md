@@ -35,7 +35,7 @@ Start here when exploring this area:
 - **`createBuildPackageAction`** (Function) — `src/actions/buildPackageAction.ts:116`
 - **`matchEhcollFile`** (Function) — `src/core/doctor/heal.ts:177`
 - **`captureLoadOrder`** (Function) — `src/core/loadOrder.ts:40`
-- **`toBuildManifestExternalMods`** (Function) — `src/core/manifest/collectionConfig.ts:338`
+- **`toBuildManifestExternalMods`** (Function) — `src/core/manifest/collectionConfig.ts:364`
 - **`applyHint`** (Function) — `src/core/manifest/externalHints.ts:229`
 
 ## Key Symbols
@@ -45,7 +45,7 @@ Start here when exploring this area:
 | `createBuildPackageAction` | Function | `src/actions/buildPackageAction.ts` | 116 |
 | `matchEhcollFile` | Function | `src/core/doctor/heal.ts` | 177 |
 | `captureLoadOrder` | Function | `src/core/loadOrder.ts` | 40 |
-| `toBuildManifestExternalMods` | Function | `src/core/manifest/collectionConfig.ts` | 338 |
+| `toBuildManifestExternalMods` | Function | `src/core/manifest/collectionConfig.ts` | 364 |
 | `applyHint` | Function | `src/core/manifest/externalHints.ts` | 229 |
 | `locateCollectionPackage` | Function | `src/core/manifest/locatePackage.ts` | 28 |
 | `buildOutputFileName` | Function | `src/core/manifest/packageFileName.ts` | 32 |
@@ -56,10 +56,10 @@ Start here when exploring this area:
 | `createExportModsAction` | Function | `src/actions/exportModsAction.ts` | 17 |
 | `exportPluginsDiffReport` | Function | `src/core/comparePlugins.ts` | 186 |
 | `exportModsToJsonFile` | Function | `src/core/exportMods.ts` | 7 |
-| `getActiveGameId` | Function | `src/core/getModsListForProfile.ts` | 234 |
-| `getActiveProfileId` | Function | `src/core/getModsListForProfile.ts` | 239 |
-| `getActiveProfileIdFromState` | Function | `src/core/getModsListForProfile.ts` | 271 |
-| `belongsToGame` | Function | `src/core/getModsListForProfile.ts` | 276 |
+| `getActiveGameId` | Function | `src/core/getModsListForProfile.ts` | 242 |
+| `getActiveProfileId` | Function | `src/core/getModsListForProfile.ts` | 247 |
+| `getActiveProfileIdFromState` | Function | `src/core/getModsListForProfile.ts` | 279 |
+| `belongsToGame` | Function | `src/core/getModsListForProfile.ts` | 284 |
 | `beginOp` | Function | `src/core/logging/ehLog.ts` | 153 |
 | `getVortexUserDataPath` | Function | `src/core/paths.ts` | 38 |
 

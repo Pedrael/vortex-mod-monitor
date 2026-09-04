@@ -1282,6 +1282,12 @@ async function runInstallImpl(ctx: DriverContext): Promise<InstallResult> {
           ],
           stagingRoot: verifyResult.stagingRoot,
           archivePath: archivePathForMod(ctx.api, plan.manifest.game.id, installEntry),
+          // The curator's declaration travels in the manifest. Without it the
+          // judge refuses absent files outright, which is right for every mod
+          // that did not opt in.
+          ...(manifestEntry?.state?.postProcessed === true
+            ? { postProcessed: true }
+            : {}),
           ...(ctx.abortSignal !== undefined ? { signal: ctx.abortSignal } : {}),
         });
 
@@ -1291,7 +1297,10 @@ async function runInstallImpl(ctx: DriverContext): Promise<InstallResult> {
           why: judgement.why,
         });
 
-        if (judgement.kind === "curator-diverged") {
+        if (
+          judgement.kind === "curator-diverged" ||
+          judgement.kind === "curator-only"
+        ) {
           // The user's files ARE the archive's. Reinstalling would reproduce
           // exactly what is on disk, so it is pure cost. Recorded as ok, with
           // the divergence noted rather than hidden — the curator wants to

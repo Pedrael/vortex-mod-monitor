@@ -81,12 +81,27 @@ describe("telling the curator what diverged", () => {
   });
 
   it("says what it MEANS for the people installing it", () => {
-    // The consequence is the point: the installer will accept whatever a
-    // clean install produces for these files rather than reproduce the
-    // curator's copy. A curator who wants their repack shipped needs to know
-    // that, and it is not guessable from "N files differ".
+    // The consequence is the point, and it is not guessable from "N files
+    // differ". A curator who wants their repack shipped needs to know the
+    // installer will take the user's own copy where it matches the archive.
     const text = describeDivergedMods([report("Repacked", 9)])!;
-    expect(text).toMatch(/cannot check them against the archive/i);
-    expect(text).toMatch(/accept whatever a clean install produces/i);
+    expect(text).toMatch(/matches the archive/i);
+    expect(text).toMatch(/accepts it rather than trying to reproduce yours/i);
+  });
+
+  it("does not promise acceptance for files the archive cannot produce", () => {
+    // This line used to end "Event Horizon will accept whatever a clean
+    // install produces for them rather than trying to reproduce your copy" —
+    // stated flatly, for every diverged file. It is only true of files that
+    // EXIST on both sides with different bytes, which judgeReinstall settles
+    // against the archive.
+    //
+    // A file the curator ADDED is the opposite case: no user's archive can
+    // produce it, so it fails, is reinstalled, fails identically and the mod
+    // is recorded broken. Reading a blanket reassurance here is how a curator
+    // ships that without knowing.
+    const text = describeDivergedMods([report("Repacked", 9)])!;
+    expect(text).toMatch(/files you added/i);
+    expect(text).toMatch(/cannot produce/i);
   });
 });

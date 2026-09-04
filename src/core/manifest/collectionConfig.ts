@@ -83,6 +83,32 @@ export type ExternalModConfigEntry = {
   treatAsExternal?: boolean;
   /** When true, the source archive ships inside the `.ehcoll` at `bundled/<sha256>.<ext>`. Default false. */
   bundled?: boolean;
+  /**
+   * "I post-processed this mod's staging myself, and that is deliberate."
+   *
+   * Some mods are edited in place after install — xLODGen and DynDOLOD
+   * outputs written into a mod folder, BA2 repacks, cleaned plugins. The
+   * staging folder then holds files the mod's own archive cannot produce, and
+   * a user installing from that archive can NEVER have them.
+   *
+   * Without this flag those files are recorded as required. Every client then
+   * fails verification, gets reinstalled from the same archive, fails
+   * identically, and the mod is recorded broken — a permanent false
+   * failure that no amount of retrying can clear.
+   *
+   * Setting it says: hold users to the files my archive can produce, and treat
+   * the rest as mine. It is DECLARED rather than inferred on purpose. A mod
+   * with unreproducible files that you did NOT flag is a mod where something
+   * happened you did not intend, and that deserves to fail loudly rather than
+   * be quietly waved through.
+   *
+   * It does not weaken anything else: the archive still identifies the mod,
+   * every file the archive DOES produce is still verified, and files differing
+   * in content are already handled without this flag by `judgeReinstall`.
+   *
+   * Meaningless on a bundled mod, which ships its staging verbatim.
+   */
+  postProcessed?: boolean;
   /** Free-form text shown to the user when the mod isn't bundled. */
   instructions?: string;
   /**
@@ -780,6 +806,13 @@ const EXTERNAL_MOD_FIELDS: {
     return raw;
   },
   treatAsExternal: (raw, path, errors) => {
+    if (typeof raw !== "boolean") {
+      errors.push(`${path} must be a boolean.`);
+      return undefined;
+    }
+    return raw;
+  },
+  postProcessed: (raw, path, errors) => {
     if (typeof raw !== "boolean") {
       errors.push(`${path} must be a boolean.`);
       return undefined;

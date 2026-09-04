@@ -432,6 +432,18 @@ export type ModInstallState = {
   /** INI tweak filenames the curator enabled on this mod. */
   enabledINITweaks?: string[];
   /**
+   * The curator declared this mod's staging as deliberately post-processed.
+   *
+   * Set from `ExternalModConfigEntry.postProcessed` at build time. Read by the
+   * user-side verifier: files the curator recorded that are ABSENT on the
+   * user's side stop being a hard failure for this mod, because the archive
+   * the user installed from provably cannot produce them.
+   *
+   * Absent means not declared, never "false by default from an older build":
+   * both read the same here, and both mean the ordinary strict check applies.
+   */
+  postProcessed?: boolean;
+  /**
    * Snapshot of the curator's staging folder for this mod, captured at
    * build time. Used by the user-side {@link verifyModInstall} check to
    * detect Vortex's "lost file" / truncation / corruption bugs after a
