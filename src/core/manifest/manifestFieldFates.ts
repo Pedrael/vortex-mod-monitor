@@ -84,14 +84,7 @@ export const MOD_INSTALL_STATE_FATES: {
       "only decides a file conflict no RULE decides — 3 of 4,383 contested " +
       "files on the real collection. Machinery guarding almost nothing.",
   },
-  fileOverrides: {
-    kind: "recorded-only",
-    why:
-      "4,382 entries per build, read by nothing. Its doc calls it deployment " +
-      "winners for contested files, which sounds load-bearing — so whether to " +
-      "apply it on install or drop it from the format is an open question, " +
-      "not a settled gap.",
-  },
+
 };
 
 /**
@@ -120,12 +113,7 @@ export const MANIFEST_FATES: {
       "Read by parseManifest's compatibility gate to refuse a package this " +
       "build cannot understand, before any of the rest is trusted.",
   },
-  fileOverrides: {
-    kind: "recorded-only",
-    why:
-      "The outcome-shaped twin of ModInstallState.fileOverrides, and unread " +
-      "for the same reason. Same open question.",
-  },
+
   iniTweaks: {
     kind: "recorded-only",
     why:

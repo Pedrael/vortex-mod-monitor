@@ -302,8 +302,7 @@ export default function createBuildPackageAction(
         version: curator.version,
         mods: manifest.mods.length,
         rules: manifest.rules.length,
-        fileOverrides: manifest.fileOverrides.length,
-        plugins: manifest.plugins.order.length,
+          plugins: manifest.plugins.order.length,
         loadOrder: manifest.loadOrder.length,
         userlistPlugins: manifest.userlist.plugins.length,
         userlistGroups: manifest.userlist.groups.length,
@@ -315,7 +314,7 @@ export default function createBuildPackageAction(
       console.log(
         `[Vortex Event Horizon] Built collection package | ${curator.name} v${curator.version} | ` +
           `mods=${manifest.mods.length} | rules=${manifest.rules.length} | ` +
-          `fileOverrides=${manifest.fileOverrides.length} | plugins=${manifest.plugins.order.length} | ` +
+          `plugins=${manifest.plugins.order.length} | ` +
           `loadOrder=${manifest.loadOrder.length} | ` +
           `userlist={plugins:${manifest.userlist.plugins.length},groups:${manifest.userlist.groups.length}} | ` +
           `bundled=${result.bundledCount} | bytes=${result.outputBytes} | ` +

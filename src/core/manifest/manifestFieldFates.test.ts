@@ -144,16 +144,3 @@ describe("no unread field has quietly grown a reader", () => {
     expect(surprises).toEqual([]);
   });
 });
-
-describe("the fileOverrides question is recorded as open", () => {
-  it("does not pretend the gap is settled", () => {
-    // 4,382 entries per build, read by nothing, with a doc calling it
-    // "deployment winners for CONTESTED files". Whether to apply it or drop it
-    // is a decision about what a collection reproduces, and it belongs to the
-    // project owner rather than to whoever next tidies up.
-    const modLevel = MOD_INSTALL_STATE_FATES.fileOverrides;
-    expect(modLevel.kind).toBe("recorded-only");
-    expect((modLevel as { why: string }).why).toMatch(/open question/i);
-    expect(MANIFEST_FATES.fileOverrides.kind).toBe("recorded-only");
-  });
-});

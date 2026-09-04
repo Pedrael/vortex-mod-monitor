@@ -1536,7 +1536,6 @@ export async function runBuildPipeline(
     bundled: result.bundledCount,
     mods: manifest.mods.length,
     rules: manifest.rules.length,
-    fileOverrides: manifest.fileOverrides.length,
     plugins: manifest.plugins.order.length,
     loadOrder: manifest.loadOrder.length,
     userlistPlugins: manifest.userlist.plugins.length,

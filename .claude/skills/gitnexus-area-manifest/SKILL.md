@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-manifest
-description: "Skill for the Manifest area of Event-Horizon. 330 symbols across 69 files."
+description: "Skill for the Manifest area of Event-Horizon. 323 symbols across 68 files."
 ---
 
 # Manifest
 
-330 symbols | 69 files | Cohesion: 80%
+323 symbols | 68 files | Cohesion: 80%
 
 ## When to Use
 
@@ -17,10 +17,10 @@ description: "Skill for the Manifest area of Event-Horizon. 330 symbols across 6
 
 | File | Symbols |
 |------|---------|
-| `src/core/manifest/parseManifest.ts` | ParseManifestError, describe, expectArray, expectBoolean, expectEnum (+45) |
-| `src/core/manifest/buildManifest.ts` | BuildManifestError, buildFileOverrides, buildLoadOrder, buildManifest, buildPackageMetadata (+14) |
+| `src/core/manifest/parseManifest.ts` | ParseManifestError, describe, expectArray, expectBoolean, expectEnum (+43) |
 | `src/core/manifest/collectionConfig.ts` | isUuid, listNeverBuiltConfigs, listPublishedCollections, parseAndValidate, validateExternalDependencyEntries (+12) |
 | `src/core/manifest/readZip.ts` | ZipReadError, extractZipEntryToFile, findDataOffset, findEntry, findZip64Extra (+11) |
+| `src/core/manifest/buildManifest.ts` | buildExternalMod, buildModEntry, buildModInstallSpec, buildModInstallState, buildNexusMod (+11) |
 | `src/core/manifest/packageZip.ts` | isAbortLikeError, packageEhcoll, checkAbort, prepareStagingDir, safeRmDir (+11) |
 | `src/core/manifest/readEhcoll.ts` | crossCheckBundled, prepareStagingDir, readEhcoll, safeRmDir, ReadEhcollError (+7) |
 | `src/core/manifest/externalHints.ts` | downloadsFromState, asMode, collectExternalHints, collectionHints, diagnoseHintSources (+6) |
@@ -32,7 +32,7 @@ description: "Skill for the Manifest area of Event-Horizon. 330 symbols across 6
 
 Start here when exploring this area:
 
-- **`parseManifest`** (Function) — `src/core/manifest/parseManifest.ts:144`
+- **`parseManifest`** (Function) — `src/core/manifest/parseManifest.ts:143`
 - **`archiveFileCacheKey`** (Function) — `src/core/archiveHashCache.ts:83`
 - **`enrichModsWithArchiveHashes`** (Function) — `src/core/archiveHashing.ts:183`
 - **`hashFileSha256`** (Function) — `src/core/archiveHashing.ts:38`
@@ -42,14 +42,14 @@ Start here when exploring this area:
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `ParseManifestError` | Class | `src/core/manifest/parseManifest.ts` | 122 |
+| `ParseManifestError` | Class | `src/core/manifest/parseManifest.ts` | 121 |
 | `AbortError` | Class | `src/utils/abortError.ts` | 22 |
-| `BuildManifestError` | Class | `src/core/manifest/buildManifest.ts` | 252 |
 | `ZipReadError` | Class | `src/core/manifest/readZip.ts` | 56 |
+| `BuildManifestError` | Class | `src/core/manifest/buildManifest.ts` | 251 |
 | `CollectionConfigError` | Class | `src/core/manifest/collectionConfig.ts` | 247 |
 | `PackageEhcollError` | Class | `src/core/manifest/packageZip.ts` | 114 |
 | `ReadEhcollError` | Class | `src/core/manifest/readEhcoll.ts` | 128 |
-| `parseManifest` | Function | `src/core/manifest/parseManifest.ts` | 144 |
+| `parseManifest` | Function | `src/core/manifest/parseManifest.ts` | 143 |
 | `archiveFileCacheKey` | Function | `src/core/archiveHashCache.ts` | 83 |
 | `enrichModsWithArchiveHashes` | Function | `src/core/archiveHashing.ts` | 183 |
 | `hashFileSha256` | Function | `src/core/archiveHashing.ts` | 38 |

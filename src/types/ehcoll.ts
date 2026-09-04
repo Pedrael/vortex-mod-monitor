@@ -43,22 +43,6 @@ export type EhcollManifest = {
   vortex: VortexMetadata;
   mods: EhcollMod[];
   rules: EhcollRule[];
-  /**
-   * Deployment winners for CONTESTED files only.
-   *
-   * A file that exactly one mod in this collection ships has no conflict to
-   * record: the winner is that mod, and which mod ships which file is already
-   * here in every mod's `stagingFiles`. Writing those out restated the
-   * manifest to itself — measured on a real 954-mod collection, 46,062 of
-   * 50,444 entries, 31% of a 21MB manifest.
-   *
-   * So absence has a MEANING and a consumer must honour it: a deployed path
-   * with no entry here was provided by one mod, and that mod won. An entry
-   * appears when two or more mods ship the path, or when nothing captured who
-   * ships it (verification level `none`) — in which case the winner is not
-   * derivable and is recorded rather than guessed.
-   */
-  fileOverrides: EhcollFileOverride[];
   plugins: EhcollPlugins;
   /**
    * Curator's per-game LoadOrder snapshot — Vortex's
@@ -422,13 +406,6 @@ export type ModInstallState = {
   deploymentPriority: number;
   /** Vortex modtype. Empty string is the default modtype. */
   modType?: string;
-  /**
-   * Per-mod file overrides — paths the curator explicitly told Vortex
-   * to deploy from this mod even when other mods provide the same path.
-   * Mirrors `AuditorMod.fileOverrides`. Distinct from the top-level
-   * {@link EhcollFileOverride} array, which describes the *outcome*.
-   */
-  fileOverrides?: string[];
   /** INI tweak filenames the curator enabled on this mod. */
   enabledINITweaks?: string[];
   /**
@@ -517,27 +494,6 @@ export type ModRuleType =
   | "recommends"
   | "conflicts"
   | "provides";
-
-// ---------------------------------------------------------------------------
-// File overrides (top-level — derived from deployment manifest)
-// ---------------------------------------------------------------------------
-
-/**
- * Curator-side conflict-resolution OUTCOME for a single file path: which
- * mod deployed it, which mods lost. Distinct from per-mod
- * {@link ModInstallState.fileOverrides} (curator INTENT).
- *
- * Both are captured so the installer can detect drift between the curator's
- * intent and the curator's actual deployed state.
- */
-export type EhcollFileOverride = {
-  /** Path relative to the deployment target. POSIX-style separators. */
-  filePath: string;
-  /** `compareKey` of the mod that won this file on the curator's machine. */
-  winningMod: string;
-  /** `compareKey` list of mods that also provide this file but lost. */
-  losingMods: string[];
-};
 
 // ---------------------------------------------------------------------------
 // Plugins (Bethesda plugins.txt content)

@@ -37,7 +37,6 @@
 
 import type {
   EhcollExternalDependency,
-  EhcollFileOverride,
   EhcollIniTweak,
   EhcollLoadOrderEntry,
   EhcollManifest,
@@ -173,7 +172,6 @@ export function parseManifest(raw: string): ParseManifestResult {
   const vortex = validateVortex(obj.vortex, errors);
   const mods = validateMods(obj.mods, errors);
   const rules = validateRules(obj.rules, errors);
-  const fileOverrides = validateFileOverrides(obj.fileOverrides, errors);
   const plugins = validatePlugins(obj.plugins, errors);
   // loadOrder is back-filled to [] when missing so older v1 manifests
   // (written before slice 6c added the field) parse cleanly. Schema
@@ -204,7 +202,6 @@ export function parseManifest(raw: string): ParseManifestResult {
     {
       mods: mods!,
       rules: rules!,
-      fileOverrides: fileOverrides!,
       loadOrder: loadOrder!,
       userlist: userlist!,
       plugins: plugins!.order,
@@ -219,7 +216,6 @@ export function parseManifest(raw: string): ParseManifestResult {
     vortex: vortex!,
     mods: mods!,
     rules: rules!,
-    fileOverrides: fileOverrides!,
     plugins: plugins!,
     loadOrder: loadOrder!,
     userlist: userlist!,
@@ -985,59 +981,6 @@ function validateRuleEntry(
   };
 }
 
-// ---------------------------------------------------------------------------
-// File overrides
-// ---------------------------------------------------------------------------
-
-function validateFileOverrides(
-  raw: unknown,
-  errors: string[],
-): EhcollFileOverride[] | undefined {
-  const arr = expectArray(raw, "fileOverrides", errors);
-  if (arr === undefined) return undefined;
-  const overrides: EhcollFileOverride[] = [];
-  arr.forEach((entry, i) => {
-    const override = validateFileOverrideEntry(
-      entry,
-      `fileOverrides[${i}]`,
-      errors,
-    );
-    if (override !== undefined) overrides.push(override);
-  });
-  return overrides;
-}
-
-function validateFileOverrideEntry(
-  raw: unknown,
-  path: string,
-  errors: string[],
-): EhcollFileOverride | undefined {
-  if (!isObject(raw)) {
-    errors.push(`${path} must be an object, got ${describe(raw)}.`);
-    return undefined;
-  }
-  const obj = raw as Record<string, unknown>;
-  const filePath = expectNonEmptyString(
-    obj.filePath,
-    `${path}.filePath`,
-    errors,
-  );
-  const winningMod = expectNonEmptyString(
-    obj.winningMod,
-    `${path}.winningMod`,
-    errors,
-  );
-  const losingMods = expectStringArray(
-    obj.losingMods,
-    `${path}.losingMods`,
-    errors,
-  );
-
-  if (filePath === undefined || winningMod === undefined || losingMods === undefined) {
-    return undefined;
-  }
-  return { filePath, winningMod, losingMods };
-}
 
 // ---------------------------------------------------------------------------
 // Plugins
@@ -1470,8 +1413,7 @@ function crossReferenceValidate(
   parts: {
     mods: EhcollMod[];
     rules: EhcollRule[];
-    fileOverrides: EhcollFileOverride[];
-    loadOrder: EhcollLoadOrderEntry[];
+      loadOrder: EhcollLoadOrderEntry[];
     userlist: EhcollUserlist;
     plugins: EhcollPluginEntry[];
   },
@@ -1601,25 +1543,6 @@ function crossReferenceValidate(
     });
   }
 
-  // File-override references.
-  for (let i = 0; i < parts.fileOverrides.length; i++) {
-    const fo = parts.fileOverrides[i]!;
-    if (!compareKeys.has(fo.winningMod)) {
-      warnings.push(
-        `fileOverrides[${i}].winningMod "${fo.winningMod}" does not match ` +
-          `any mod's compareKey. The override will be ignored at install time.`,
-      );
-    }
-    fo.losingMods.forEach((loser, j) => {
-      if (!compareKeys.has(loser)) {
-        warnings.push(
-          `fileOverrides[${i}].losingMods[${j}] "${loser}" does not match ` +
-            `any mod's compareKey. The loser is informational only and won't ` +
-            `block the install.`,
-        );
-      }
-    });
-  }
 }
 
 /**
