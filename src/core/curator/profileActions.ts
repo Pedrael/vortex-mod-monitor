@@ -55,6 +55,14 @@ export type CuratorMod = {
   /** Vortex's endorsement state: "Undecided" | "Endorsed" | "Abstained". */
   endorsed?: string;
   /**
+   * Vortex's download id for the archive this mod was installed from.
+   *
+   * The cleanup planner's whole safety rule reads this: an archive any mod
+   * points at is never deletable, because the build hashes it. Absent means
+   * Vortex tracks no source, which protects nothing.
+   */
+  archiveId?: string;
+  /**
    * OUR flag: the version the curator froze this mod at.
    *
    * Vortex has no mod pin concept — the only `pinned` in its API is for tools

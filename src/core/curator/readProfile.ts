@@ -68,7 +68,11 @@ export function readCuratorMods(
 
   const out: CuratorMod[] = [];
   for (const [modId, raw] of Object.entries(byGame)) {
-    const mod = raw as { attributes?: Record<string, unknown>; type?: unknown };
+    const mod = raw as {
+      attributes?: Record<string, unknown>;
+      type?: unknown;
+      archiveId?: unknown;
+    };
     const attributes = mod?.attributes ?? {};
     out.push({
       id: modId,
@@ -85,6 +89,7 @@ export function readCuratorMods(
       ...opt("newestFileId", asNumber(attributes.newestFileId)),
       ...opt("endorsed", asString(attributes.endorsed)),
       ...opt("frozenAtVersion", asString(attributes[FROZEN_ATTRIBUTE])),
+      ...opt("archiveId", asString(mod?.archiveId)),
     });
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));

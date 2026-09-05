@@ -162,3 +162,25 @@ describe("which mods the active profile has on", () => {
     expect(readEnabledModIds(withProfile({}), "fallout4").size).toBe(0);
   });
 });
+
+describe("the archive reference the cleanup depends on", () => {
+  it("reads archiveId off the mod record, not its attributes", () => {
+    // Vortex stores it on the mod itself. Reading attributes.archiveId would
+    // find nothing and make every archive look deletable.
+    const [m] = readCuratorMods(
+      state({ a: { archiveId: "dl-77", attributes: { name: "A" } } }),
+      "skyrimse",
+      new Set(),
+    );
+    expect(m!.archiveId).toBe("dl-77");
+  });
+
+  it("leaves it absent for a mod Vortex tracks no source for", () => {
+    const [m] = readCuratorMods(
+      state({ a: { attributes: {} } }),
+      "skyrimse",
+      new Set(),
+    );
+    expect("archiveId" in m!).toBe(false);
+  });
+});
