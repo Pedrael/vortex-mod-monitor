@@ -47,6 +47,11 @@ import { getCurrentPluginsTxtPath } from "../../../core/comparePlugins";
 import { buildManifest } from "../../../core/manifest/buildManifest";
 import { captureStagingFiles } from "../../../core/manifest/captureStagingFiles";
 import { runSelfChecks } from "../../../core/manifest/runSelfChecks";
+import type { MirrorFileSpec } from "../../../core/manifest/packageZip";
+import {
+  installRootFor,
+  stagingRootFromFolder,
+} from "../../../core/stagingPath";
 import type { PostProcessingCandidate } from "../../../core/manifest/runSelfChecks";
 import {
   captureGameIni,
@@ -390,14 +395,65 @@ export function findUnidentifiedMods(
  *
  * As an argument, calling it too early is a compile error again.
  */
+/**
+ * One mod's config answers, overlaid onto it.
+ *
+ * Both flags come from the same place and neither exists in Vortex, so they
+ * are applied together rather than by two passes that could disagree about
+ * which mods they saw.
+ */
+function declarationsFor(
+  entry: ExternalModConfigEntry | undefined,
+  mod: AuditorMod,
+): AuditorMod {
+  if (entry?.postProcessed !== true && entry?.mirrored !== true) return mod;
+  return {
+    ...mod,
+    ...(entry.postProcessed === true ? { postProcessed: true } : {}),
+    ...(entry.mirrored === true ? { mirrored: true } : {}),
+  };
+}
+
+/**
+ * Absolute source paths for every staged file of every mirrored mod.
+ *
+ * Content-addressed on the way out, so the same cleaned plugin shared by two
+ * mods is carried once. A file with no recorded hash is skipped rather than
+ * shipped: the install side verifies each blob against its own name before
+ * writing it, and a blob that cannot be verified could never be used.
+ */
+export function collectMirrorPayload(
+  state: types.IState,
+  gameId: string,
+  mods: readonly AuditorMod[],
+): MirrorFileSpec[] {
+  const installRoot = installRootFor(state, gameId);
+  if (installRoot === undefined) return [];
+
+  const out: MirrorFileSpec[] = [];
+  const seen = new Set<string>();
+  for (const mod of mods) {
+    if (mod.mirrored !== true) continue;
+    const root = stagingRootFromFolder(installRoot, mod.installationPath);
+    if (root === undefined) continue;
+    for (const file of mod.stagingFiles ?? []) {
+      if (file.sha256 === undefined || seen.has(file.sha256)) continue;
+      seen.add(file.sha256);
+      out.push({
+        sourcePath: path.join(root, ...file.path.split("/")),
+        sha256: file.sha256,
+      });
+    }
+  }
+  return out;
+}
+
 export function applyPostProcessedDeclarations(
   mods: readonly AuditorMod[],
   config: CollectionConfig,
 ): AuditorMod[] {
   return mods.map((m) =>
-    config.externalMods[m.id]?.postProcessed === true
-      ? { ...m, postProcessed: true }
-      : m,
+          declarationsFor(config.externalMods[m.id], m),
   );
 }
 
@@ -1517,9 +1573,28 @@ export async function runBuildPipeline(
   const outputFileName = buildOutputFileName(curator.name, curator.version);
   const outputPath = path.join(outputDir, outputFileName);
   onProgress?.({ phase: "packaging" });
+  // The bytes a mirrored mod's archive cannot be trusted to reproduce.
+  //
+  // Every staged file, not just the ones the self-check called unexplained.
+  // That check matches on SIZE alone here — the build passes staged refs with
+  // no crc — so "explained" is a coincidence away from being wrong, and a
+  // payload chosen on it would leave the user's mirror unable to finish for a
+  // file we decided not to carry. Shipping the whole folder's files is bigger
+  // and cannot be wrong, and only mods the curator explicitly asked to mirror
+  // pay for it. Narrowing this needs real content matching, not a smaller
+  // guess — see the note in mirrorStaging.ts.
+  const mirrorFiles = collectMirrorPayload(state, gameId, mods);
+  if (mirrorFiles.length > 0) {
+    beginOp("build.mirror-payload", {
+      files: mirrorFiles.length,
+      mods: mods.filter((m) => m.mirrored === true).length,
+    }).ok({});
+  }
+
   const result: PackageEhcollResult = await packageEhcoll({
     manifest,
     bundledArchives,
+    mirrorFiles,
     readme: overrides.readme.length > 0 ? overrides.readme : undefined,
     changelog: overrides.changelog.length > 0 ? overrides.changelog : undefined,
     outputPath,

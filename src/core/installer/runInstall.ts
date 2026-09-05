@@ -135,6 +135,12 @@ import {
 import { clearInstallMarker, writeInstallMarker } from "./installMarker";
 import { ehLog } from "../logging/ehLog";
 import { judgeReinstall } from "./judgeReinstall";
+import { applyMirrorPlan, describeMirrorOutcome } from "./applyMirrors";
+import { planMirror } from "./mirrorStaging";
+import {
+  hashStagingFiles,
+  walkStagingFolder,
+} from "../manifest/stagingFileWalker";
 import { buildCuratorReport } from "./curatorReport";
 import * as path from "path";
 import { selectors } from "@nexusmods/vortex-api";
@@ -1789,6 +1795,81 @@ async function runInstallImpl(ctx: DriverContext): Promise<InstallResult> {
         changes: modTypeChanges
           .slice(0, 10)
           .map((c) => ({ mod: c.name, from: c.from, to: c.to })),
+      });
+    }
+
+    // ── 6c. mirror the curator's staging folder, where they asked for it ──
+    //
+    // Same slot as the modType restore above, and for the same reason: the
+    // deploy has not run, so staging is still the only copy. Correcting it
+    // here means the deploy carries the corrected bytes out. After the deploy
+    // we would be fixing staging while the game folder kept the version we
+    // had just decided was wrong.
+    //
+    // A mod is mirrored only when its curator answered for it — this never
+    // fires on its own.
+    const mirrorLines: string[] = [];
+    const mirrorFailures: string[] = [];
+    for (const mod of plan.manifest.mods) {
+      if (mod.state.mirrored !== true) continue;
+      if (ctx.abortSignal?.aborted === true) break;
+      const vortexModId = installedMods.find(
+        (m) => m.compareKey === mod.compareKey,
+      )?.vortexModId;
+      if (vortexModId === undefined) continue;
+
+      const stagingRoot = stagingRootForModId(
+        ctx.api.getState(),
+        plan.manifest.game.id,
+        vortexModId,
+      );
+      if (stagingRoot === undefined) continue;
+
+      try {
+        const current = await hashStagingFiles(
+          stagingRoot,
+          await walkStagingFolder(stagingRoot, ctx.abortSignal),
+          "thorough",
+          undefined,
+          ctx.abortSignal,
+          () => undefined,
+        );
+        const mirrorPlan = planMirror({
+          target: mod.state.stagingFiles ?? [],
+          current,
+        });
+        const outcome = await applyMirrorPlan({
+          stagingRoot,
+          ehcollPath: ctx.ehcollZipPath,
+          plan: mirrorPlan,
+          ...(ctx.abortSignal !== undefined
+            ? { signal: ctx.abortSignal }
+            : {}),
+        });
+        const line = describeMirrorOutcome(mod.name, outcome);
+        if (line !== undefined) mirrorLines.push(line);
+        if (outcome.failures.length > 0) mirrorFailures.push(mod.name);
+        if (mirrorPlan.removalWithheld !== undefined) {
+          ehLog("info", "install.mirror-removal-withheld", {
+            mod: mod.name,
+            extra: mirrorPlan.removalWithheld.count,
+          });
+        }
+      } catch (err) {
+        // One mod's mirror failing is not the install's problem: the mod is
+        // installed, it simply does not match the curator's copy, and saying
+        // so is more use than aborting everything around it.
+        mirrorFailures.push(mod.name);
+        mirrorLines.push(
+          `"${mod.name}": could not be mirrored — ${formatError(err)}`,
+        );
+      }
+    }
+    if (mirrorLines.length > 0) {
+      ehLog("info", "install.mirrors-applied", {
+        mods: mirrorLines.length,
+        failed: mirrorFailures.length,
+        lines: mirrorLines.slice(0, 10),
       });
     }
 

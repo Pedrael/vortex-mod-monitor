@@ -84,6 +84,15 @@ export type ExternalModConfigEntry = {
   /** When true, the source archive ships inside the `.ehcoll` at `bundled/<sha256>.<ext>`. Default false. */
   bundled?: boolean;
   /**
+   * Reproduce this mod's staging folder on the user's machine, exactly.
+   *
+   * The third answer to "my staging differs from my archive", and the one that
+   * costs the least: the mod still installs from its own Nexus archive, and
+   * afterwards the differences are reconciled from bytes carried in the
+   * package. `bundled` replaces the archive; this corrects what it produced.
+   */
+  mirrored?: boolean;
+  /**
    * "I post-processed this mod's staging myself, and that is deliberate."
    *
    * Some mods are edited in place after install — xLODGen and DynDOLOD
@@ -799,6 +808,13 @@ const EXTERNAL_MOD_FIELDS: {
   instructions: (raw, path, errors) => expectStringField(raw, path, errors),
   url: (raw, path, errors) => expectStringField(raw, path, errors),
   bundled: (raw, path, errors) => {
+    if (typeof raw !== "boolean") {
+      errors.push(`${path} must be a boolean.`);
+      return undefined;
+    }
+    return raw;
+  },
+  mirrored: (raw, path, errors) => {
     if (typeof raw !== "boolean") {
       errors.push(`${path} must be a boolean.`);
       return undefined;

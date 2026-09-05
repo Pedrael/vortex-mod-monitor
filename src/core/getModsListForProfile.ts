@@ -97,6 +97,13 @@ export type AuditorMod = {
    * `ExternalModConfigEntry.postProcessed`.
    */
   postProcessed?: boolean;
+  /**
+   * The curator asked for this mod's staging folder to be reproduced exactly.
+   *
+   * Overlaid from the collection config at build time, like `postProcessed` —
+   * Vortex has no such concept, so it never arrives from the profile.
+   */
+  mirrored?: boolean;
   collectionIds?: string[];
 
   installerType?: string;

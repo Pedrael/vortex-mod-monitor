@@ -800,6 +800,10 @@ function validateInstallState(
     obj.modType === undefined
       ? undefined
       : expectString(obj.modType, `${path}.modType`, errors);
+  const mirrored =
+    obj.mirrored === undefined
+      ? undefined
+      : expectBoolean(obj.mirrored, `${path}.mirrored`, errors);
   const enabledINITweaks =
     obj.enabledINITweaks === undefined
       ? undefined
@@ -830,6 +834,7 @@ function validateInstallState(
     installOrder,
     deploymentPriority,
     ...(modType !== undefined ? { modType } : {}),
+    ...(mirrored !== undefined ? { mirrored } : {}),
     ...(enabledINITweaks !== undefined ? { enabledINITweaks } : {}),
     ...(stagingFiles !== undefined ? { stagingFiles } : {}),
   };

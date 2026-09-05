@@ -723,6 +723,7 @@ function buildModInstallState(
     // Only when true. A `false` in every entry of a 950-mod manifest is 950
     // lines saying nothing.
     ...(mod.postProcessed === true ? { postProcessed: true } : {}),
+    ...(mod.mirrored === true ? { mirrored: true } : {}),
   };
 }
 

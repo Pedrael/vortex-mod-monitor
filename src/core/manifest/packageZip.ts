@@ -59,9 +59,27 @@ export type BundledArchiveSpec = {
   sha256: string;
 };
 
+export type MirrorFileSpec = {
+  /** Absolute path to the curator's file on disk. */
+  sourcePath: string;
+  /** Its SHA-256, which is also its name inside the package. */
+  sha256: string;
+};
+
 export type PackageEhcollInput = {
   manifest: EhcollManifest;
   bundledArchives: BundledArchiveSpec[];
+  /**
+   * Curator files a mirrored mod's archive cannot produce, staged at
+   * `mirror/<sha256>`.
+   *
+   * Content-addressed and therefore deduplicated by construction: the same
+   * cleaned plugin shared by two mods is carried once. No path is recorded
+   * here because none is needed — the manifest's `stagingFiles` already says
+   * where each hash belongs, and a second copy of that mapping is a second
+   * thing to keep in sync.
+   */
+  mirrorFiles?: MirrorFileSpec[];
   /** Optional README markdown. Written as `README.md` at the package root. */
   readme?: string;
   /** Optional CHANGELOG markdown. Written as `CHANGELOG.md` at the package root. */
@@ -164,7 +182,12 @@ export async function packageEhcoll(
     checkAbort();
     await writeOptionalMarkdown(stagingDir, "CHANGELOG.md", input.changelog);
 
-    await stageBundledArchives(
+    await stageMirrorFiles(
+    stagingDir,
+    input.mirrorFiles ?? [],
+    signal,
+  );
+  await stageBundledArchives(
       stagingDir,
       input.bundledArchives,
       input.verifyHashes === true,
@@ -366,6 +389,31 @@ async function stageBundledArchives(
     const dst = path.join(bundledDir, fileName);
 
     await stageOne(archive.sourcePath, dst);
+  }
+}
+
+/**
+ * Stage every mirrored file into `stagingDir/mirror/<sha256>`.
+ *
+ * Deduplicated on the way in: two mods that both carry the same cleaned
+ * plugin name the same blob, and staging it twice would fail on EEXIST for a
+ * reason that has nothing wrong with it.
+ */
+async function stageMirrorFiles(
+  stagingDir: string,
+  files: readonly MirrorFileSpec[],
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  if (files.length === 0) return;
+  const mirrorDir = path.join(stagingDir, "mirror");
+  await fsp.mkdir(mirrorDir, { recursive: true });
+
+  const staged = new Set<string>();
+  for (const file of files) {
+    if (signal?.aborted) throw new AbortError("Packaging cancelled by user");
+    if (staged.has(file.sha256)) continue;
+    staged.add(file.sha256);
+    await stageOne(file.sourcePath, path.join(mirrorDir, file.sha256));
   }
 }
 

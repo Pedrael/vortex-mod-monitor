@@ -60,6 +60,7 @@ export const MOD_INSTALL_STATE_FATES: {
   readonly [K in keyof Required<ModInstallState>]: FieldFate;
 } = {
   modType: { kind: "applied", by: "core/installer/applyModTypes.ts" },
+  mirrored: { kind: "applied", by: "core/installer/runInstall.ts" },
   enabledINITweaks: { kind: "applied", by: "core/installer/applyIniTweaks.ts" },
   postProcessed: { kind: "applied", by: "core/installer/judgeReinstall.ts" },
   stagingFiles: { kind: "applied", by: "core/installer/verifyModInstall.ts" },

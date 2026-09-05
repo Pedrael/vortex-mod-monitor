@@ -406,6 +406,19 @@ export type ModInstallState = {
   deploymentPriority: number;
   /** Vortex modtype. Empty string is the default modtype. */
   modType?: string;
+  /**
+   * Reproduce this mod's staging folder exactly, after installing its archive.
+   *
+   * Set when the curator answered "mirror" for a mod whose staging their
+   * archive cannot reproduce — a cleaned plugin, a repacked BA2, a patch
+   * dropped in by hand. The target is `stagingFiles` on this same state; the
+   * bytes the archive cannot supply ride in the package at `mirror/<sha256>`.
+   *
+   * Only meaningful alongside a `thorough` capture: without per-file hashes
+   * there is nothing to reconcile against, and `planMirror` says so rather
+   * than guessing.
+   */
+  mirrored?: boolean;
   /** INI tweak filenames the curator enabled on this mod. */
   enabledINITweaks?: string[];
   /**
