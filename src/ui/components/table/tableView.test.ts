@@ -13,7 +13,9 @@ import {
   compareCells,
   compareForSort,
   describeTableView,
+  describeTarget,
   distinctValues,
+  effectiveTarget,
   matchesFilter,
   type ColumnSpec,
   type ViewRow,
@@ -187,5 +189,68 @@ describe("dropdown values", () => {
     // A "(unknown)" entry in a dropdown would filter to rows the exact match
     // can never select.
     expect(distinctValues(rows, "version")).toEqual(["1.9", "1.10"]);
+  });
+});
+
+describe("what a button above the table acts on", () => {
+  const matched = ["a", "b", "c"];
+
+  it("acts on the filtered rows when nothing is ticked", () => {
+    // The bug this fixes: "Update 126 mod(s)" over a table filtered to 80.
+    const t = effectiveTarget({ matched, total: 10, selected: new Set() });
+    expect(t).toEqual({ ids: ["a", "b", "c"], from: "filtered" });
+  });
+
+  it("says 'all' only when nothing was filtered out", () => {
+    const t = effectiveTarget({ matched, total: 3, selected: new Set() });
+    expect(t.from).toBe("all");
+  });
+
+  it("lets ticks win outright once any row is ticked", () => {
+    const t = effectiveTarget({ matched, total: 10, selected: new Set(["b"]) });
+    expect(t).toEqual({ ids: ["b"], from: "ticked" });
+  });
+
+  it("keeps ticks the filter no longer shows", () => {
+    // Selection deliberately survives a filter change — search SKSE, tick
+    // three, search ENB, tick two, act on five. Intersecting with the current
+    // filter would silently drop the first three.
+    const t = effectiveTarget({
+      matched: ["a"],
+      total: 10,
+      selected: new Set(["a", "off-screen"]),
+    });
+    expect(t.ids).toHaveLength(2);
+    expect(t.ids).toContain("off-screen");
+  });
+
+  it("lists visible ticks first, so acting matches reading", () => {
+    const t = effectiveTarget({
+      matched: ["a", "b"],
+      total: 10,
+      selected: new Set(["gone", "b", "a"]),
+    });
+    expect(t.ids).toEqual(["a", "b", "gone"]);
+  });
+
+  it("acts on nothing when nothing matched and nothing is ticked", () => {
+    const t = effectiveTarget({ matched: [], total: 10, selected: new Set() });
+    expect(t).toEqual({ ids: [], from: "filtered" });
+  });
+});
+
+describe("how the button words it", () => {
+  it("names the basis, not just the count", () => {
+    expect(
+      describeTarget({ ids: ["a", "b"], from: "ticked" }, "mod"),
+    ).toBe("2 ticked mods");
+    expect(
+      describeTarget({ ids: ["a", "b"], from: "filtered" }, "mod"),
+    ).toBe("2 filtered mods");
+    expect(describeTarget({ ids: ["a", "b"], from: "all" }, "mod")).toBe("2 mods");
+  });
+
+  it("does not say '1 mods'", () => {
+    expect(describeTarget({ ids: ["a"], from: "all" }, "mod")).toBe("1 mod");
   });
 });

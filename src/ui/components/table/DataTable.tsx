@@ -30,9 +30,11 @@ import {
   applyTableView,
   describeTableView,
   distinctValues,
+  effectiveTarget,
   type CellValue,
   type ColumnSpec,
   type SortState,
+  type TargetSet,
   type ViewRow,
 } from "./tableView";
 
@@ -42,6 +44,9 @@ export type Column<T> = ColumnSpec & {
   /** Optional richer rendering. Falls back to the value itself. */
   render?: (row: T) => React.ReactNode;
 };
+
+/** One shared empty set, so an unselected table does not churn identities. */
+const EMPTY: ReadonlySet<string> = new Set<string>();
 
 const cellStyle: React.CSSProperties = {
   padding: "var(--eh-sp-1) var(--eh-sp-2)",
@@ -103,6 +108,15 @@ export function DataTable<T>(props: {
   /** A trailing cell of buttons for one row. */
   actions?: (row: T) => React.ReactNode;
   maxHeight?: number;
+  /**
+   * What a button above this table should act on, whenever it changes.
+   *
+   * Ticks if any are set, otherwise everything the filters matched. Fires on
+   * every change so the caller's button can carry the live count instead of
+   * the total — "Update 126 mod(s)" over a table filtered to 80 is the bug
+   * this exists to close.
+   */
+  onTarget?: (target: TargetSet) => void;
 }): JSX.Element {
   const { rows, idOf, columns, selection, actions } = props;
   const noun = props.noun ?? "item";
@@ -110,6 +124,14 @@ export function DataTable<T>(props: {
   const [filters, setFilters] = React.useState<Record<string, string>>({});
   const [sort, setSort] = React.useState<SortState | undefined>(undefined);
   const [showAll, setShowAll] = React.useState(false);
+  /**
+   * The last row the curator clicked, for shift-click ranges.
+   *
+   * An id rather than an index: the index of a row changes under a sort or a
+   * filter, so an anchor held as a number silently comes to mean a different
+   * mod between two clicks.
+   */
+  const [anchor, setAnchor] = React.useState<string | undefined>(undefined);
 
   // Project once per change of the data, not once per keystroke of a filter.
   const { viewRows, byId } = React.useMemo(() => {
@@ -150,6 +172,33 @@ export function DataTable<T>(props: {
 
   const filtersOn = Object.values(filters).some((v) => v.trim() !== "");
 
+  const target = React.useMemo(
+    () =>
+      effectiveTarget({
+        matched: matchedIds,
+        total: rows.length,
+        selected: selection?.selected ?? EMPTY,
+      }),
+    [matchedIds, rows.length, selection?.selected],
+  );
+
+  /**
+   * Report the target upward, keyed on its CONTENT.
+   *
+   * A caller that passes an inline arrow gets a new function identity every
+   * render; an effect depending on that identity would fire every render,
+   * set the parent's state, and render again — forever. Depending on the ids
+   * instead makes the callback's identity irrelevant, so no caller can loop
+   * this by forgetting to memoize.
+   */
+  const targetKey = `${target.from}:${target.ids.join(",")}`;
+  const onTargetRef = React.useRef(props.onTarget);
+  onTargetRef.current = props.onTarget;
+  React.useEffect(() => {
+    onTargetRef.current?.(target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetKey]);
+
   /**
    * What the header checkbox actually does, said in full.
    *
@@ -168,11 +217,47 @@ export function DataTable<T>(props: {
     return <>{props.empty}</>;
   }
 
-  const toggleRow = (id: string): void => {
+  /**
+   * One click on a row, with shift extending from the last one.
+   *
+   * The whole row is the target, not the six-pixel checkbox — picking forty
+   * mods out of nineteen hundred through a tick box is the thing that was
+   * "so hard". Shift applies the clicked row's NEW state across the range,
+   * so a shift-click can clear a block as well as fill one.
+   */
+  const clickRow = (id: string, event: React.MouseEvent): void => {
     if (selection === undefined) return;
+    // A click meant for a button, a filter box or a dropdown is not a
+    // selection. Checkboxes are excluded from the exclusion: they ARE this.
+    const el = event.target as HTMLElement;
+    if (
+      el.closest !== undefined &&
+      el.closest('button, a, select, textarea, input:not([type="checkbox"])') !==
+        null
+    ) {
+      return;
+    }
+
+    const willSelect = !selection.selected.has(id);
     const next = new Set(selection.selected);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
+    const order = view.rows.map((r) => r.id);
+    const to = order.indexOf(id);
+    const from = anchor === undefined ? -1 : order.indexOf(anchor);
+
+    if (event.shiftKey && from !== -1 && to !== -1) {
+      const [lo, hi] = from < to ? [from, to] : [to, from];
+      for (let i = lo; i <= hi; i += 1) {
+        const rowId = order[i]!;
+        if (willSelect) next.add(rowId);
+        else next.delete(rowId);
+      }
+    } else if (willSelect) {
+      next.add(id);
+    } else {
+      next.delete(id);
+    }
+
+    setAnchor(id);
     selection.onChange(next);
   };
 
@@ -230,12 +315,33 @@ export function DataTable<T>(props: {
             Show all {view.matched.toLocaleString()}
           </button>
         )}
-        {selection !== undefined && selection.selected.size > 0 && (
-          <span style={{ color: "var(--eh-text-muted)" }}>
-            {selection.selected.size.toLocaleString()} ticked
-            {filtersOn ? " (some may be outside this filter)" : ""}
-          </span>
-        )}
+        {selection !== undefined &&
+          (selection.selected.size > 0 ? (
+            <>
+              <span style={{ color: "var(--eh-text-muted)" }}>
+                {selection.selected.size.toLocaleString()} ticked
+                {filtersOn ? " (some may be outside this filter)" : ""}
+              </span>
+              <button
+                type="button"
+                onClick={(): void => selection.onChange(EMPTY)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "var(--eh-accent)",
+                  cursor: "pointer",
+                  padding: 0,
+                  font: "inherit",
+                }}
+              >
+                Clear ticks
+              </button>
+            </>
+          ) : (
+            <span style={{ color: "var(--eh-text-muted)" }}>
+              Click a row to tick it · shift-click for a range
+            </span>
+          ))}
       </div>
 
       <div
@@ -342,13 +448,32 @@ export function DataTable<T>(props: {
             {view.rows.map((viewRow) => {
               const row = byId.get(viewRow.id)!;
               return (
-                <tr key={viewRow.id}>
+                <tr
+                  key={viewRow.id}
+                  onClick={
+                    selection === undefined
+                      ? undefined
+                      : (e): void => clickRow(viewRow.id, e)
+                  }
+                  style={
+                    selection === undefined
+                      ? undefined
+                      : {
+                          cursor: "pointer",
+                          background: selection.selected.has(viewRow.id)
+                            ? "var(--eh-bg-raised)"
+                            : undefined,
+                        }
+                  }
+                >
                   {selection !== undefined && (
                     <td style={{ ...cellStyle, width: 32 }}>
                       <input
                         type="checkbox"
                         checked={selection.selected.has(viewRow.id)}
-                        onChange={(): void => toggleRow(viewRow.id)}
+                        // The row's own click handler does the work, including
+                        // the shift-range case a change event cannot see.
+                        onChange={(): void => undefined}
                       />
                     </td>
                   )}

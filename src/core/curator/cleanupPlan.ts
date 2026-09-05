@@ -229,41 +229,64 @@ export function formatSize(bytes: number): string {
   return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
+
 /**
- * The report a curator reads before anything is deleted.
+ * ──────────────────────────────────────────────────────────────────────
+ * The two acts a curator decides separately.
  *
- * Leads with what will be REMOVED rather than what will be freed. A cleanup
- * screen that opens with a number is selling; this one has to be read.
+ * One plan came back holding both, and the view showed them as one flow —
+ * which made the safe thing look dangerous and the dangerous thing look
+ * routine. They are not the same act:
+ *
+ * - An ORPHAN archive is a download no installed mod points at, with a newer
+ *   version of that same mod present. Deleting it changes nothing about the
+ *   setup, and it is where nearly all the space is.
+ * - Removing an OLD INSTALL changes the setup. It needs the curator's
+ *   judgment, because a lower Nexus file id is not proof of an older version
+ *   — one page ships a main file and its optional patches under one mod id.
+ *   Its archive only becomes free afterwards, which is why the order matters.
+ *
+ * Splitting them is the whole readability fix: two questions with different
+ * answers, asked separately.
+ * ──────────────────────────────────────────────────────────────────────
  */
-export function describeCleanupPlan(plan: CleanupPlan): string[] {
-  const lines: string[] = [];
-  if (plan.removeMods.length === 0 && plan.deleteArchives.length === 0) {
-    lines.push("Nothing to clean up — no superseded installs, no loose archives.");
-  } else {
-    lines.push(
-      `${plan.removeMods.length} old mod install(s) would be removed through ` +
-        `Vortex, then ${plan.deleteArchives.length} archive(s) deleted ` +
-        `permanently, freeing ${formatSize(plan.bytesFreed)}.`,
-    );
-    lines.push(
-      "The order matters: a mod entry is what holds a reference to its " +
-        "archive, so the installs go first and the archives become deletable " +
-        "as a result.",
-    );
-  }
-  if (plan.keptReferenced > 0) {
-    lines.push(
-      `${plan.keptReferenced} archive(s) are left alone because a mod still ` +
-        `points at them. Event Horizon hashes those when you build.`,
-    );
-  }
-  if (plan.unclearOrphans.length > 0) {
-    lines.push(
-      `${plan.unclearOrphans.length} archive(s) (${formatSize(plan.unclearBytes)}) ` +
-        `belong to mods you have no version of installed. They could be ` +
-        `leftovers, or downloads you have not installed yet — they look ` +
-        `identical from here, so they are NOT included. Delete those by hand.`,
-    );
-  }
-  return lines;
+
+/** Archives already free — deletable without removing anything first. */
+export function orphanArchives(plan: CleanupPlan): ArchiveRemoval[] {
+  return plan.deleteArchives.filter((a) => a.reason === "orphan-superseded");
+}
+
+/** Archives that only become free once this plan's removals have happened. */
+export function archivesFreedByRemoval(plan: CleanupPlan): ArchiveRemoval[] {
+  return plan.deleteArchives.filter((a) => a.reason === "freed-by-removal");
+}
+
+/**
+ * A plan carrying exactly the removals and archives given, bytes recomputed.
+ *
+ * `bytesFreed` is recomputed rather than carried over, because a narrowed
+ * plan that kept the original total would put a number on the Apply button
+ * that no longer describes what Apply does — the one place a stale figure is
+ * read as a promise.
+ */
+export function cleanupSubset(args: {
+  plan: CleanupPlan;
+  removeMods: readonly ModRemoval[];
+  deleteArchives: readonly ArchiveRemoval[];
+}): CleanupPlan {
+  const { plan, removeMods, deleteArchives } = args;
+  return {
+    ...plan,
+    removeMods: [...removeMods],
+    deleteArchives: [...deleteArchives],
+    bytesFreed: deleteArchives.reduce((n, a) => n + a.entry.bytes, 0),
+  };
+}
+
+/** Keep only the archives the curator ticked. */
+export function tickedArchives(
+  archives: readonly ArchiveRemoval[],
+  ids: ReadonlySet<string>,
+): ArchiveRemoval[] {
+  return archives.filter((a) => ids.has(a.entry.id));
 }

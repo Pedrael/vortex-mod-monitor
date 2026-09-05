@@ -718,6 +718,7 @@ describe("render", () => {
       // the newer one may be offered an update — offering both would install
       // 8.2 twice. The older shows up under "older installs" instead.
       "shadow-old": {
+        archiveId: "dl-shadow-old",
         attributes: {
           name: "Animated Armoury 7.0",
           version: "7.0",
@@ -728,6 +729,7 @@ describe("render", () => {
         },
       },
       "shadow-new": {
+        archiveId: "dl-shadow-new",
         attributes: {
           name: "Animated Armoury 8.1",
           version: "8.1",
@@ -757,6 +759,7 @@ describe("render", () => {
         `${1 + (i % 40)}`;
       const fileId = 1000 + i;
       modsById[`bulk-${i}`] = {
+        archiveId: `dl-bulk-${i}`,
         attributes: {
           name,
           version: `${1 + (i % 9)}.${i % 10}`,
@@ -772,9 +775,60 @@ describe("render", () => {
         },
       };
     }
+    /**
+     * A download folder shaped like the real one: mostly archives an install
+     * still points at, a long tail of superseded leftovers, and a handful of
+     * things downloaded and never installed.
+     */
+    const files: Record<string, unknown> = {};
+    const dl = (
+      id: string,
+      localPath: string,
+      size: number,
+      nexus?: { modId: number; fileId: number },
+    ): void => {
+      files[id] = {
+        localPath,
+        size,
+        state: "finished",
+        game: ["skyrimse"],
+        ...(nexus === undefined
+          ? {}
+          : { modInfo: { nexus: { ids: { modId: nexus.modId, fileId: nexus.fileId } } } }),
+      };
+    };
+    for (let i = 0; i < 1895; i += 1) {
+      // In use — referenced by bulk-i, so never a candidate.
+      dl(`dl-bulk-${i}`, `Mod ${i}-${100000 + i}-current.7z`, 40 * 1024 ** 2, {
+        modId: 100000 + i,
+        fileId: 1000 + i,
+      });
+      // Every third mod also has an older archive nobody points at any more.
+      if (i % 3 === 0) {
+        dl(
+          `dl-old-${i}`,
+          `Mod ${i}-${100000 + i}-older.7z`,
+          (30 + (i % 200)) * 1024 ** 2,
+          { modId: 100000 + i, fileId: 900 + i },
+        );
+      }
+    }
+    dl("dl-shadow-old", "Animated Armoury-47213-7-0.7z", 220 * 1024 ** 2, {
+      modId: 47213,
+      fileId: 700,
+    });
+    dl("dl-shadow-new", "Animated Armoury-47213-8-1.7z", 240 * 1024 ** 2, {
+      modId: 47213,
+      fileId: 810,
+    });
+    // Downloaded on purpose, never installed. Must never be pre-selected.
+    dl("dl-never-1", "Skyrim Realistic Overhaul 1.8-968-1-8.part1.rar", 3.4 * 1024 ** 3);
+    dl("dl-never-2", "Noble Skyrim Full Pack-15305-1-6.7z", 2.1 * 1024 ** 3);
+
     const state = {
       persistent: {
         mods: { skyrimse: modsById },
+        downloads: { files },
         profiles: {
           p1: {
             gameId: "skyrimse",

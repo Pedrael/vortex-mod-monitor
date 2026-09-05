@@ -41,10 +41,13 @@ export type { Column } from "./table/DataTable";
 export {
   applyTableView,
   describeTableView,
+  describeTarget,
+  effectiveTarget,
   distinctValues,
   type CellValue,
   type ColumnSpec,
   type SortState,
   type TableView,
+  type TargetSet,
   type ViewRow,
 } from "./table/tableView";

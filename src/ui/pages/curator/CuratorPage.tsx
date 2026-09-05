@@ -53,11 +53,15 @@ import {
   endorseIsLong,
 } from "../../../core/curator/endorsePace";
 import {
-  describeCleanupPlan,
+  archivesFreedByRemoval,
+  cleanupSubset,
   findSupersededMods,
   formatSize,
+  orphanArchives,
   planCleanup,
+  tickedArchives,
   type CleanupPlan,
+  type DownloadEntry,
 } from "../../../core/curator/cleanupPlan";
 import {
   describeCleanupOutcome,
@@ -70,7 +74,16 @@ import {
   updateOneAndWait,
 } from "../../../core/curator/updateOneMod";
 import { verifyUpdatedMod } from "../../../core/curator/verifyAfterUpdate";
-import { Button, Card, DataTable, Page, Pill, type Column } from "../../components";
+import {
+  Button,
+  Card,
+  DataTable,
+  Page,
+  Pill,
+  describeTarget,
+  type Column,
+  type TargetSet,
+} from "../../components";
 import { useApi } from "../../state";
 import { ErrorBoundary } from "../../errors";
 
@@ -382,10 +395,44 @@ function CuratorBody(): JSX.Element {
   );
   const [typeValue, setTypeValue] = React.useState("");
   /**
-   * The dry run. Deletion is only reachable once a plan is on screen — the
-   * report IS the confirmation, and there is no path to Apply without it.
+   * ─── ONE TICK SET PER TABLE ────────────────────────────────────────
+   * Each table answers a different question, so a tick in one must not mean
+   * anything in another. Held here rather than inside `DataTable` so the
+   * buttons above each table can act on them.
    */
-  const [cleanup, setCleanup] = React.useState<CleanupPlan | undefined>(undefined);
+  const [updateSel, setUpdateSel] = React.useState<ReadonlySet<string>>(new Set());
+  const [frozenSel, setFrozenSel] = React.useState<ReadonlySet<string>>(new Set());
+  const [dupSel, setDupSel] = React.useState<ReadonlySet<string>>(new Set());
+  const [archiveSel, setArchiveSel] = React.useState<ReadonlySet<string>>(new Set());
+
+  /**
+   * What each table's button acts on: ticks if any, else the filtered rows.
+   *
+   * `undefined` until the table has reported once, and the fallback below is
+   * "everything" — so the label is right on the very first render instead of
+   * flashing zero before the effect lands.
+   */
+  const [updateAim, setUpdateAim] = React.useState<TargetSet | undefined>();
+  const [frozenAim, setFrozenAim] = React.useState<TargetSet | undefined>();
+  const [dupAim, setDupAim] = React.useState<TargetSet | undefined>();
+  const [archiveAim, setArchiveAim] = React.useState<TargetSet | undefined>();
+
+  /**
+   * Every finished download, read straight from Vortex's state.
+   *
+   * There used to be a "Scan for old versions" button in front of this, and
+   * it protected nothing: `readDownloads` reads Redux, touches no disk and
+   * deletes nothing. All the button did was hide both lists behind a step
+   * whose purpose nobody could see — which is most of why this section was
+   * unreadable. The gate that matters is Apply, and that one is still here.
+   *
+   * Keyed on `tick` like `mods`, so both cleanup questions and the profile
+   * always describe the same moment.
+   */
+  const downloads = React.useMemo<readonly DownloadEntry[]>(
+    () => (gameId === undefined ? [] : readDownloads(api.getState(), gameId)),
+    [api, gameId, tick],
+  );
   /**
    * Old installs the curator has TICKED for removal.
    *
@@ -398,6 +445,60 @@ function CuratorBody(): JSX.Element {
     () => findSupersededMods(mods),
     [mods],
   );
+
+  /**
+   * Two plans from one scan, because they are two different acts.
+   *
+   * `orphanPlan` assumes NO removals, so its orphans are archives that are
+   * already free — deletable on their own. `retirePlan` assumes the ticked
+   * removals, and the archives it frees are only free AFTER those happen.
+   * Deriving both from the same `downloads` is what stops the two cards
+   * describing different disks.
+   */
+  const orphanPlan = React.useMemo(
+    () => planCleanup({ mods, downloads }),
+    [mods, downloads],
+  );
+  const retirePlan = React.useMemo(
+    () => planCleanup({ mods, downloads, removeModIds: retire }),
+    [mods, downloads, retire],
+  );
+  const orphans = React.useMemo(() => orphanArchives(orphanPlan), [orphanPlan]);
+
+  /** The duplicate groups the button will really add: ticks, else filtered. */
+  const dupGroups = React.useMemo(() => {
+    const ids = new Set(dupAim?.ids ?? duplicates.map((g) => String(g.nexusModId)));
+    return duplicates.filter((g) => ids.has(String(g.nexusModId)));
+  }, [duplicates, dupAim]);
+
+  /** The archives the delete button will really remove, and their weight. */
+  const archiveRemovals = React.useMemo(
+    () =>
+      archiveAim === undefined
+        ? orphans
+        : tickedArchives(orphans, new Set(archiveAim.ids)),
+    [orphans, archiveAim],
+  );
+  const archiveBytes = React.useMemo(
+    () => archiveRemovals.reduce((n, a) => n + a.entry.bytes, 0),
+    [archiveRemovals],
+  );
+  /** What retiring the ticked installs frees, once they are gone. */
+  const freedByRetiring = React.useMemo(
+    () =>
+      archivesFreedByRemoval(retirePlan).reduce((n, a) => n + a.entry.bytes, 0),
+    [retirePlan],
+  );
+
+  /** The rows each button will really act on. */
+  const updateRows = React.useMemo(() => {
+    const ids = new Set(updateAim?.ids ?? updatable.map((c) => c.mod.id));
+    return updatable.filter((c) => ids.has(c.mod.id));
+  }, [updatable, updateAim]);
+  const frozenRows = React.useMemo(() => {
+    const ids = new Set(frozenAim?.ids ?? frozen.map((f) => f.mod.id));
+    return frozen.filter((f) => ids.has(f.mod.id));
+  }, [frozen, frozenAim]);
 
   const setFrozen = (mod: CuratorMod, version: string | undefined): void => {
     const { key, value } = freezeAttribute(version);
@@ -474,7 +575,7 @@ function CuratorBody(): JSX.Element {
    * has. Vortex's own bulk update starts them together, which is why it loses
    * files.
    */
-  const updateAll = async (): Promise<void> => {
+  const updateAll = async (candidates: UpdateRow[]): Promise<void> => {
     // Narrowed here rather than relied on from the guard below: this function
     // is defined above it, so the compiler cannot see that check — the same
     // shape as the closure bugs that crashed two releases of the build page.
@@ -485,7 +586,7 @@ function CuratorBody(): JSX.Element {
     const installedIds = new Map<string, string>();
     const controller = new AbortController();
     const report = await runBulkUpdate({
-      candidates: updatable,
+      candidates,
       signal: controller.signal,
       onProgress: (n, total, m) =>
         setProgress(`Updating ${n + 1} of ${total} — ${m.name}`),
@@ -654,32 +755,21 @@ function CuratorBody(): JSX.Element {
     setTick((t) => t + 1);
   };
 
-  const scanForCleanup = (): void => {
-    const game = gameId;
-    if (game === undefined) return;
-    const state0 = api.getState();
-    setCleanup(
-      planCleanup({
-        mods: readCuratorMods(state0, game, readEnabledModIds(state0, game)),
-        downloads: readDownloads(state0, game),
-        removeModIds: retire,
-      }),
-    );
-    setLines([]);
-  };
+
 
   /**
    * Apply the plan that is on screen — never a freshly computed one.
    *
-   * Re-planning at apply time would act on something the curator never read,
-   * which is the whole point of the dry run.
+   * The caller passes the very object the table rendered from, so what runs
+   * is what was read. Re-planning here would act on something the curator
+   * never saw, which is the whole point of the dry run.
    */
-  const applyCleanup = async (): Promise<void> => {
+  const applyCleanup = async (plan: CleanupPlan): Promise<void> => {
     const game = gameId;
-    if (game === undefined || cleanup === undefined) return;
+    if (game === undefined) return;
     setBusy("cleanup");
     const outcome = await runCleanup({
-      plan: cleanup,
+      plan,
       onProgress: (n, total, what) => setProgress(`${what} (${n + 1}/${total})`),
       removeMod: async (vortexModId) => {
         await uninstallMod(api, { gameId: game, modId: vortexModId });
@@ -705,7 +795,8 @@ function CuratorBody(): JSX.Element {
     setBusy(undefined);
     setProgress(undefined);
     setLines(describeCleanupOutcome(outcome));
-    setCleanup(undefined);
+    setRetire(new Set());
+    setArchiveSel(new Set());
     setTick((t) => t + 1);
   };
 
@@ -745,12 +836,15 @@ function CuratorBody(): JSX.Element {
         </Button>
         <Button
           intent="primary"
-          disabled={busy !== undefined || updatable.length === 0}
-          onClick={(): void => void updateAll()}
+          disabled={busy !== undefined || updateRows.length === 0}
+          onClick={(): void => void updateAll(updateRows)}
         >
           {busy === "update"
             ? "Updating..."
-            : `Update ${updatable.length} mod(s), one at a time`}
+            : `Update ${describeTarget(
+                updateAim ?? { ids: updatable.map((c) => c.mod.id), from: "all" },
+                "mod",
+              )}, one at a time`}
         </Button>
         <Button
           intent="ghost"
@@ -834,6 +928,8 @@ function CuratorBody(): JSX.Element {
           columns={UPDATE_COLUMNS}
           noun="update"
           limit={200}
+          selection={{ selected: updateSel, onChange: setUpdateSel }}
+          onTarget={setUpdateAim}
           empty={
             <p style={{ color: "var(--eh-text-secondary)", margin: 0 }}>
               Nothing to update, as far as Vortex currently knows. Re-check
@@ -885,6 +981,24 @@ function CuratorBody(): JSX.Element {
           "version moves anyway, it is reported here rather than hidden."
         }
       >
+        {frozen.length > 0 && (
+          <div style={{ marginBottom: "var(--eh-sp-2)" }}>
+            <Button
+              size="sm"
+              intent="ghost"
+              disabled={busy !== undefined || frozenRows.length === 0}
+              onClick={(): void => {
+                for (const f of frozenRows) setFrozen(f.mod, undefined);
+                setFrozenSel(new Set());
+              }}
+            >
+              Unfreeze {describeTarget(
+                frozenAim ?? { ids: frozen.map((f) => f.mod.id), from: "all" },
+                "mod",
+              )}
+            </Button>
+          </div>
+        )}
         <DataTable
           rows={frozen}
           idOf={frozenId}
@@ -892,6 +1006,8 @@ function CuratorBody(): JSX.Element {
           noun="frozen mod"
           limit={200}
           maxHeight={320}
+          selection={{ selected: frozenSel, onChange: setFrozenSel }}
+          onTarget={setFrozenAim}
           empty={
             <p style={{ color: "var(--eh-text-secondary)", margin: 0 }}>
               Nothing frozen. Freeze a mod when its current version is the one
@@ -995,27 +1111,158 @@ function CuratorBody(): JSX.Element {
       </Section>
 
       <Section
-        title="Disk cleanup"
+        title="Disk cleanup — 1. Orphaned archives"
         note={
-          "Vortex never deletes anything, so every version you have ever " +
-          "downloaded is still here. Scan produces a plan; nothing is touched " +
-          "until you read it and press Apply."
+          "Downloaded files that no installed mod points at, where a newer " +
+          "version of the same mod IS installed. Deleting these changes " +
+          "nothing about your setup — it is only disk. This is where almost " +
+          "all the space is."
         }
       >
-        {retireCandidates.length > 0 && (
-          <div style={{ marginBottom: "var(--eh-sp-2)" }}>
-            <p
+        {orphans.length === 0 ? (
+          <p style={{ color: "var(--eh-text-secondary)", margin: 0 }}>
+            No orphaned archives. Every download is either in use by an
+            installed mod, or is something with no installed version at all.
+          </p>
+        ) : (
+          <>
+            <div
               style={{
-                margin: "0 0 var(--eh-sp-1)",
-                color: "var(--eh-text-secondary)",
-                fontSize: "var(--eh-text-sm)",
+                display: "flex",
+                gap: "var(--eh-sp-2)",
+                flexWrap: "wrap",
+                marginBottom: "var(--eh-sp-2)",
               }}
             >
-              {retireCandidates.length} install(s) share a Nexus page with a
-              newer file. That is not proof one is an old VERSION — a page also
-              ships optional patches under the same mod id — so tick only the
-              ones you know are stale.
-            </p>
+              <Button
+                intent="danger"
+                disabled={busy !== undefined || archiveRemovals.length === 0}
+                onClick={(): void =>
+                  void applyCleanup(
+                    cleanupSubset({
+                      plan: orphanPlan,
+                      removeMods: [],
+                      deleteArchives: archiveRemovals,
+                    }),
+                  )
+                }
+              >
+                {busy === "cleanup"
+                  ? "Deleting..."
+                  : `Delete ${describeTarget(
+                      archiveAim ?? { ids: orphans.map((a) => a.entry.id), from: "all" },
+                      "archive",
+                    )} — frees ${formatSize(archiveBytes)}`}
+              </Button>
+              <span
+                style={{
+                  alignSelf: "center",
+                  color: "var(--eh-text-secondary)",
+                  fontSize: "var(--eh-text-sm)",
+                }}
+              >
+                Deletes the files permanently. Nothing is uninstalled.
+              </span>
+            </div>
+            <DataTable
+              rows={orphans}
+              idOf={archiveId}
+              columns={ARCHIVE_COLUMNS}
+              noun="archive"
+              limit={200}
+              maxHeight={320}
+              selection={{ selected: archiveSel, onChange: setArchiveSel }}
+              onTarget={setArchiveAim}
+            />
+          </>
+        )}
+
+        {orphanPlan.keptReferenced > 0 && (
+          <p
+            style={{
+              margin: "var(--eh-sp-2) 0 0",
+              color: "var(--eh-text-muted)",
+              fontSize: "var(--eh-text-sm)",
+            }}
+          >
+            {num(orphanPlan.keptReferenced)} archive(s) are not listed because
+            an installed mod still points at them. Event Horizon hashes those
+            when you build, so they are never candidates here.
+          </p>
+        )}
+
+        {orphanPlan.unclearOrphans.length > 0 && (
+          <p
+            style={{
+              margin: "var(--eh-sp-2) 0 0",
+              padding: "var(--eh-sp-2)",
+              borderLeft: "3px solid var(--eh-info)",
+              color: "var(--eh-text-secondary)",
+              fontSize: "var(--eh-text-sm)",
+            }}
+          >
+            {num(orphanPlan.unclearOrphans.length)} more download(s) worth{" "}
+            {formatSize(orphanPlan.unclearBytes)} have NO version of that mod
+            installed. Those are not listed above and never selected: a file
+            you downloaded on purpose and have not installed yet looks exactly
+            like a leftover from here.
+          </p>
+        )}
+      </Section>
+
+      <Section
+        title="Disk cleanup — 2. Old mod installs"
+        note={
+          "This one changes your setup, so nothing is pre-ticked. A lower " +
+          "Nexus file id is NOT proof of an older version — one page ships a " +
+          "main file and its optional patches under the same mod id — so tick " +
+          "only the installs you know are stale. Their archives are freed too."
+        }
+      >
+        {retireCandidates.length === 0 ? (
+          <p style={{ color: "var(--eh-text-secondary)", margin: 0 }}>
+            No install shares a Nexus page with a newer file.
+          </p>
+        ) : (
+          <>
+            <div
+              style={{
+                display: "flex",
+                gap: "var(--eh-sp-2)",
+                flexWrap: "wrap",
+                marginBottom: "var(--eh-sp-2)",
+              }}
+            >
+              <Button
+                intent="danger"
+                disabled={busy !== undefined || retirePlan.removeMods.length === 0}
+                onClick={(): void =>
+                  void applyCleanup(
+                    cleanupSubset({
+                      plan: retirePlan,
+                      removeMods: retirePlan.removeMods,
+                      deleteArchives: archivesFreedByRemoval(retirePlan),
+                    }),
+                  )
+                }
+              >
+                {busy === "cleanup"
+                  ? "Removing..."
+                  : retirePlan.removeMods.length === 0
+                    ? "Tick the installs you want removed"
+                    : `Remove ${num(retirePlan.removeMods.length)} ticked ` +
+                      `install(s) — frees ${formatSize(freedByRetiring)}`}
+              </Button>
+              {retire.size > 0 && (
+                <Button
+                  intent="ghost"
+                  disabled={busy !== undefined}
+                  onClick={(): void => setRetire(new Set())}
+                >
+                  Clear ticks
+                </Button>
+              )}
+            </div>
             <DataTable
               rows={retireCandidates}
               idOf={retireId}
@@ -1025,67 +1272,7 @@ function CuratorBody(): JSX.Element {
               maxHeight={320}
               selection={{ selected: retire, onChange: setRetire }}
             />
-          </div>
-        )}
-
-        <div style={{ display: "flex", gap: "var(--eh-sp-2)", flexWrap: "wrap" }}>
-          <Button intent="ghost" disabled={busy !== undefined} onClick={scanForCleanup}>
-            Scan for old versions
-          </Button>
-          {cleanup !== undefined && (
-            <Button
-              intent="danger"
-              disabled={
-                busy !== undefined ||
-                (cleanup.removeMods.length === 0 &&
-                  cleanup.deleteArchives.length === 0)
-              }
-              onClick={(): void => void applyCleanup()}
-            >
-              {busy === "cleanup"
-                ? "Cleaning..."
-                : `Apply — delete ${formatSize(cleanup.bytesFreed)} permanently`}
-            </Button>
-          )}
-        </div>
-
-        {cleanup !== undefined && (
-          <div style={{ marginTop: "var(--eh-sp-2)" }}>
-            {describeCleanupPlan(cleanup).map((line) => (
-              <p
-                key={line}
-                style={{
-                  margin: "0 0 var(--eh-sp-2)",
-                  color: "var(--eh-text-secondary)",
-                }}
-              >
-                {line}
-              </p>
-            ))}
-
-            {cleanup.removeMods.length > 0 && (
-              <DataTable
-                rows={cleanup.removeMods}
-                idOf={removalId}
-                columns={REMOVAL_COLUMNS}
-                noun="install"
-                limit={200}
-                maxHeight={240}
-              />
-            )}
-            {cleanup.deleteArchives.length > 0 && (
-              <div style={{ marginTop: "var(--eh-sp-2)" }}>
-                <DataTable
-                  rows={cleanup.deleteArchives}
-                  idOf={archiveId}
-                  columns={ARCHIVE_COLUMNS}
-                  noun="archive"
-                  limit={200}
-                  maxHeight={240}
-                />
-              </div>
-            )}
-          </div>
+          </>
         )}
       </Section>
 
@@ -1097,6 +1284,32 @@ function CuratorBody(): JSX.Element {
           "so those are shown as something to look at rather than a verdict."
         }
       >
+        {duplicates.length > 0 && (
+          <div style={{ marginBottom: "var(--eh-sp-2)" }}>
+            <Button
+              size="sm"
+              intent="ghost"
+              disabled={dupGroups.length === 0}
+              onClick={(): void => {
+                // Into the main selection, where Disable / Reinstall / Set
+                // kind already live. Deliberately NOT "delete the older one":
+                // two files from one page can be a main plus an optional, and
+                // this page does not guess which of those it is looking at.
+                const next = new Set(selected);
+                for (const group of dupGroups) {
+                  for (const m of group.mods) next.add(m.id);
+                }
+                setSelected(next);
+                setDupSel(new Set());
+              }}
+            >
+              Add {describeTarget(
+                dupAim ?? { ids: duplicates.map((g) => String(g.nexusModId)), from: "all" },
+                "group",
+              )} to the selection above
+            </Button>
+          </div>
+        )}
         <DataTable
           rows={duplicates}
           idOf={duplicateId}
@@ -1104,6 +1317,8 @@ function CuratorBody(): JSX.Element {
           noun="group"
           limit={200}
           maxHeight={320}
+          selection={{ selected: dupSel, onChange: setDupSel }}
+          onTarget={setDupAim}
           empty={
             <p style={{ color: "var(--eh-text-secondary)", margin: 0 }}>
               No mod is installed twice.

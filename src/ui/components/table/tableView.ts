@@ -239,3 +239,64 @@ export function describeTableView(view: TableView, noun = "item"): string {
     ? `${head} — showing the first ${view.rows.length.toLocaleString()}`
     : head;
 }
+
+/**
+ * ──────────────────────────────────────────────────────────────────────
+ * What a button above a table actually acts on.
+ *
+ * "Update 126 mod(s)" over a table filtered down to 80 is a lie, and it is
+ * the dangerous kind: the curator narrowed the list precisely because they
+ * did not want the other 46, and the button ignored them.
+ *
+ * ─── TICKS WIN, EVEN THE ONES OFF SCREEN ───────────────────────────────
+ * Selection deliberately survives a filter change — search SKSE, tick three,
+ * search ENB, tick two, act on five — so a target derived from "ticked AND
+ * currently visible" would silently drop the first three. If anything is
+ * ticked, the ticks ARE the target, whole.
+ *
+ * With nothing ticked the target is what the filters matched, which is what
+ * the curator is looking at. `from` distinguishes the three cases so the
+ * button can name which one it is; a button that says "80" without saying
+ * why is the same ambiguity one number further along.
+ * ──────────────────────────────────────────────────────────────────────
+ */
+export type TargetSet = {
+  ids: string[];
+  /** `ticked` — explicit picks. `filtered` — the narrowed list. `all` — everything. */
+  from: "ticked" | "filtered" | "all";
+};
+
+export function effectiveTarget(args: {
+  /** Ids the filters kept, in display order. */
+  matched: readonly string[];
+  /** How many rows exist before filtering. */
+  total: number;
+  selected: ReadonlySet<string>;
+}): TargetSet {
+  const { matched, total, selected } = args;
+  if (selected.size > 0) {
+    // Display order where we have it, so acting matches reading; ticks that
+    // no longer match the filter still count, and follow after.
+    const inOrder = matched.filter((id) => selected.has(id));
+    const offScreen = [...selected].filter((id) => !inOrder.includes(id));
+    return { ids: [...inOrder, ...offScreen], from: "ticked" };
+  }
+  return {
+    ids: [...matched],
+    from: matched.length < total ? "filtered" : "all",
+  };
+}
+
+/**
+ * The target as a button says it.
+ *
+ * Names the basis, not just the count — "80 filtered mods" and "80 mods" are
+ * different claims about what happens next.
+ */
+export function describeTarget(target: TargetSet, noun = "item"): string {
+  const n = target.ids.length.toLocaleString();
+  const word = `${noun}${target.ids.length === 1 ? "" : "s"}`;
+  if (target.from === "ticked") return `${n} ticked ${word}`;
+  if (target.from === "filtered") return `${n} filtered ${word}`;
+  return `${n} ${word}`;
+}

@@ -8,8 +8,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  describeCleanupPlan,
+  archivesFreedByRemoval,
+  cleanupSubset,
   findSupersededMods,
+  orphanArchives,
+  tickedArchives,
   formatSize,
   planCleanup,
   type DownloadEntry,
@@ -162,42 +165,6 @@ describe("what may be deleted", () => {
   });
 });
 
-describe("the report read before anything is deleted", () => {
-  it("explains why the order is what it is", () => {
-    const plan = planCleanup({
-      mods: [
-        mod("old", { archiveId: "a", nexusModId: 7, nexusFileId: 1 }),
-        mod("new", { archiveId: "b", nexusModId: 7, nexusFileId: 2 }),
-      ],
-      downloads: [dl("a"), dl("b")],
-      removeModIds: new Set(["old"]),
-    });
-    const text = describeCleanupPlan(plan).join(" ");
-    expect(text).toContain("installs go first");
-    expect(text).toContain("permanently");
-  });
-
-  it("names the archives it is deliberately not touching", () => {
-    const plan = planCleanup({
-      mods: [],
-      downloads: [dl("mystery", { nexusModId: 99, bytes: 3 * 1024 ** 3 })],
-    });
-    const text = describeCleanupPlan(plan).join(" ");
-    expect(text).toContain("not installed yet");
-    expect(text).toContain("NOT included");
-  });
-
-  it("says so plainly when there is nothing to do", () => {
-    expect(
-      describeCleanupPlan(planCleanup({ mods: [], downloads: [] })).join(" "),
-    ).toContain("Nothing to clean up");
-  });
-
-  it("formats sizes a person can read", () => {
-    expect(formatSize(3.61 * 1024 ** 3)).toBe("3.61 GB");
-    expect(formatSize(700 * 1024 ** 2)).toBe("700 MB");
-  });
-});
 
 describe("the two ways this used to delete the wrong thing", () => {
   it("never plans a removal the curator did not tick", () => {
@@ -249,5 +216,66 @@ describe("the two ways this used to delete the wrong thing", () => {
       downloads: [dl("keep"), dl("stale", { nexusModId: 7 })],
     });
     expect(plan.deleteArchives.map((a) => a.entry.id)).toEqual(["stale"]);
+  });
+});
+
+describe("splitting the plan into the two acts", () => {
+  const mods = [
+    mod("old", { nexusModId: 7, nexusFileId: 70, archiveId: "arc-old" }),
+    mod("new", { nexusModId: 7, nexusFileId: 80, archiveId: "arc-new" }),
+  ];
+  const downloads: DownloadEntry[] = [
+    { id: "arc-old", fileName: "Mod-7-0.7z", bytes: 100, nexusModId: 7 },
+    { id: "arc-new", fileName: "Mod-8-0.7z", bytes: 200, nexusModId: 7 },
+    { id: "arc-loose", fileName: "Mod-6-0.7z", bytes: 400, nexusModId: 7 },
+  ];
+
+  it("calls an already-free archive an orphan, needing no removal", () => {
+    // arc-loose is referenced by nothing and mod 7 is still installed.
+    const plan = planCleanup({ mods, downloads });
+    expect(orphanArchives(plan).map((a) => a.entry.id)).toEqual(["arc-loose"]);
+    expect(archivesFreedByRemoval(plan)).toEqual([]);
+  });
+
+  it("keeps an archive freed by a removal out of the orphan list", () => {
+    // Ticking "old" for removal frees arc-old — but only AFTER the removal,
+    // so it must not appear in the card that deletes archives on their own.
+    const plan = planCleanup({ mods, downloads, removeModIds: new Set(["old"]) });
+    expect(archivesFreedByRemoval(plan).map((a) => a.entry.id)).toEqual(["arc-old"]);
+    expect(orphanArchives(plan).map((a) => a.entry.id)).toEqual(["arc-loose"]);
+  });
+
+  it("recomputes the bytes a narrowed plan actually frees", () => {
+    // The number on an Apply button is a promise about what Apply does. A
+    // subset that carried the original total would overstate it.
+    const plan = planCleanup({ mods, downloads });
+    const subset = cleanupSubset({
+      plan,
+      removeMods: [],
+      deleteArchives: orphanArchives(plan),
+    });
+    expect(plan.bytesFreed).toBe(400);
+    expect(subset.bytesFreed).toBe(400);
+
+    const none = cleanupSubset({ plan, removeMods: [], deleteArchives: [] });
+    expect(none.bytesFreed).toBe(0);
+  });
+
+  it("narrows to exactly what was ticked", () => {
+    const plan = planCleanup({ mods, downloads });
+    expect(tickedArchives(orphanArchives(plan), new Set(["arc-loose"]))).toHaveLength(1);
+    expect(tickedArchives(orphanArchives(plan), new Set(["nothing"]))).toEqual([]);
+  });
+
+  it("never lets the archive card carry a removal", () => {
+    // The two cards are separate ACTS. An archive-only apply that quietly
+    // uninstalled a mod would be the worst possible surprise here.
+    const plan = planCleanup({ mods, downloads, removeModIds: new Set(["old"]) });
+    const archivesOnly = cleanupSubset({
+      plan,
+      removeMods: [],
+      deleteArchives: orphanArchives(plan),
+    });
+    expect(archivesOnly.removeMods).toEqual([]);
   });
 });
