@@ -10,6 +10,8 @@
  * The lists are the product. The buttons are what you do after reading them.
  */
 
+import * as fsp from "fs/promises";
+
 import * as React from "react";
 import { actions as vortexActions, selectors } from "@nexusmods/vortex-api";
 
@@ -30,6 +32,7 @@ import {
   installFromExistingDownload,
   uninstallMod,
 } from "../../../core/installer/modInstall";
+import { getModArchivePath } from "../../../core/archiveHashing";
 import { describeBulkUpdate, runBulkUpdate } from "../../../core/curator/bulkUpdate";
 import {
   describeEnableChanges,
@@ -43,6 +46,17 @@ import {
   restorationFor,
 } from "../../../core/curator/reinstallMod";
 import { runSequentially } from "../../../core/curator/runSequentially";
+import {
+  describeCleanupPlan,
+  formatSize,
+  planCleanup,
+  type CleanupPlan,
+} from "../../../core/curator/cleanupPlan";
+import {
+  describeCleanupOutcome,
+  readDownloads,
+  runCleanup,
+} from "../../../core/curator/runCleanup";
 import { FROZEN_ATTRIBUTE } from "../../../core/curator/readProfile";
 import {
   installedIdentityReader,
@@ -211,6 +225,11 @@ function CuratorBody(): JSX.Element {
       return next;
     });
   const [typeValue, setTypeValue] = React.useState("");
+  /**
+   * The dry run. Deletion is only reachable once a plan is on screen — the
+   * report IS the confirmation, and there is no path to Apply without it.
+   */
+  const [cleanup, setCleanup] = React.useState<CleanupPlan | undefined>(undefined);
 
   const setFrozen = (mod: CuratorMod, version: string | undefined): void => {
     const { key, value } = freezeAttribute(version);
@@ -457,6 +476,51 @@ function CuratorBody(): JSX.Element {
         vortexActions.setModType(game, change.mod.id, change.to) as never,
       );
     }
+    setTick((t) => t + 1);
+  };
+
+  const scanForCleanup = (): void => {
+    const game = gameId;
+    if (game === undefined) return;
+    const state0 = api.getState();
+    setCleanup(
+      planCleanup({
+        mods: readCuratorMods(state0, game, readEnabledModIds(state0, game)),
+        downloads: readDownloads(state0, game),
+      }),
+    );
+    setLines([]);
+  };
+
+  /**
+   * Apply the plan that is on screen — never a freshly computed one.
+   *
+   * Re-planning at apply time would act on something the curator never read,
+   * which is the whole point of the dry run.
+   */
+  const applyCleanup = async (): Promise<void> => {
+    const game = gameId;
+    if (game === undefined || cleanup === undefined) return;
+    setBusy("cleanup");
+    const outcome = await runCleanup({
+      plan: cleanup,
+      onProgress: (n, total, what) => setProgress(`${what} (${n + 1}/${total})`),
+      removeMod: async (vortexModId) => {
+        await uninstallMod(api, { gameId: game, modId: vortexModId });
+      },
+      deleteArchive: async (dlEntry) => {
+        const full = getModArchivePath(api.getState(), dlEntry.id, game);
+        if (full === undefined) {
+          throw new Error("its path on disk could not be resolved");
+        }
+        await fsp.rm(full, { force: true });
+        api.store?.dispatch(vortexActions.removeDownload(dlEntry.id) as never);
+      },
+    });
+    setBusy(undefined);
+    setProgress(undefined);
+    setLines(describeCleanupOutcome(outcome));
+    setCleanup(undefined);
     setTick((t) => t + 1);
   };
 
@@ -722,6 +786,89 @@ function CuratorBody(): JSX.Element {
             </label>
           ))}
         </div>
+      </Section>
+
+      <Section
+        title="Disk cleanup"
+        note={
+          "Vortex never deletes anything, so every version you have ever " +
+          "downloaded is still here. Scan produces a plan; nothing is touched " +
+          "until you read it and press Apply."
+        }
+      >
+        <div style={{ display: "flex", gap: "var(--eh-sp-2)", flexWrap: "wrap" }}>
+          <Button intent="ghost" disabled={busy !== undefined} onClick={scanForCleanup}>
+            Scan for old versions
+          </Button>
+          {cleanup !== undefined && (
+            <Button
+              intent="danger"
+              disabled={
+                busy !== undefined ||
+                (cleanup.removeMods.length === 0 &&
+                  cleanup.deleteArchives.length === 0)
+              }
+              onClick={(): void => void applyCleanup()}
+            >
+              {busy === "cleanup"
+                ? "Cleaning..."
+                : `Apply — delete ${formatSize(cleanup.bytesFreed)} permanently`}
+            </Button>
+          )}
+        </div>
+
+        {cleanup !== undefined && (
+          <div style={{ marginTop: "var(--eh-sp-2)" }}>
+            {describeCleanupPlan(cleanup).map((line) => (
+              <p
+                key={line}
+                style={{
+                  margin: "0 0 var(--eh-sp-2)",
+                  color: "var(--eh-text-secondary)",
+                }}
+              >
+                {line}
+              </p>
+            ))}
+
+            <div style={{ maxHeight: 260, overflowY: "auto" }}>
+              {cleanup.removeMods.map((r) => (
+                <div key={r.mod.id} style={rowStyle}>
+                  <span style={{ color: "var(--eh-text-primary)", minWidth: 0 }}>
+                    {r.mod.name}
+                  </span>
+                  <span
+                    style={{
+                      color: "var(--eh-text-muted)",
+                      fontSize: "var(--eh-text-xs)",
+                    }}
+                  >
+                    superseded by {r.supersededBy.name}
+                  </span>
+                  <Pill intent="warning">install removed</Pill>
+                </div>
+              ))}
+              {cleanup.deleteArchives.map((a) => (
+                <div key={a.entry.id} style={rowStyle}>
+                  <span
+                    style={{
+                      color: "var(--eh-text-primary)",
+                      minWidth: 0,
+                      fontFamily: "var(--eh-font-mono)",
+                      fontSize: "var(--eh-text-xs)",
+                    }}
+                  >
+                    {a.entry.fileName}
+                  </span>
+                  <span style={{ color: "var(--eh-text-muted)" }}>
+                    {formatSize(a.entry.bytes)}
+                  </span>
+                  <Pill intent="danger">deleted</Pill>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </Section>
 
       <Section
