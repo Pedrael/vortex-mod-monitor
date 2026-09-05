@@ -192,3 +192,63 @@ describe("the panel heading describes both shapes", () => {
     expect(what).toContain("changed");
   });
 });
+
+describe("the mirror choice", () => {
+  it("sets only `mirrored`, never treatAsExternal", () => {
+    // A mirrored mod is a NORMAL Nexus mod that gets corrected after install.
+    // Flagging it external would stop the archive being downloaded at all,
+    // which is the one thing this choice exists to preserve — the author's
+    // download, and the bytes we then only have to correct rather than carry.
+    expect(overrideForChoice("mirror", { isNexusMod: true })).toEqual({
+      mirrored: true,
+    });
+    expect(overrideForChoice("mirror", { isNexusMod: false })).toEqual({
+      mirrored: true,
+    });
+  });
+
+  it("still bundles as external, so the two stay distinguishable", () => {
+    expect(overrideForChoice("bundle", { isNexusMod: true })).toMatchObject({
+      bundled: true,
+      treatAsExternal: true,
+    });
+  });
+
+  it("promises the user's folder ends up identical, not that they skip the download", () => {
+    const copy = describeChoice("mirror", 3);
+    expect(copy.consequence).toContain("still download this mod from Nexus");
+    expect(copy.consequence).toContain("identical");
+  });
+});
+
+describe("the panel offers mirroring first, and only when it works", () => {
+  const src = readFileSync(join(__dirname, "BuildPage.tsx"), "utf8");
+  const body = src.slice(
+    src.indexOf("function PostProcessingDecisions"),
+    src.indexOf("function BuildingPanel"),
+  );
+
+  it("lists mirror ahead of declare and bundle", () => {
+    expect(body).toContain('["mirror", "declare", "bundle"]');
+  });
+
+  it("blocks it when the build recorded no hashes to reconcile against", () => {
+    expect(body).toContain('k === "mirror" && !c.canMirror');
+    expect(body).toContain("Needs a Thorough build");
+  });
+});
+
+describe("the mirror copy matches what the build actually packs", () => {
+  it("does not claim only the differences are carried", () => {
+    // `collectMirrorPayload` ships every staged file of a mirrored mod,
+    // because the self-check matches on size alone here and a narrower
+    // payload could leave the user unable to finish. The copy said the
+    // opposite for one render.
+    const c = describeChoice("mirror", 12).consequence;
+    expect(c).not.toMatch(/only the differences|rather than the whole mod/i);
+  });
+
+  it("admits the download gets bigger, like bundling does", () => {
+    expect(describeChoice("mirror", 12).consequence).toMatch(/bigger/i);
+  });
+});

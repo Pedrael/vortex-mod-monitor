@@ -2680,8 +2680,14 @@ function PostProcessingDecisions(props: {
                     gap: "var(--eh-sp-2)",
                   }}
                 >
-                  {(["declare", "bundle"] as PostProcessingChoice[]).map((k) => {
+                  {(
+                    ["mirror", "declare", "bundle"] as PostProcessingChoice[]
+                  ).map((k) => {
                     const copy = describeChoice(k, c.unexplained, countKinds(c.files));
+                    // Mirroring reconciles against per-file hashes, which a
+                    // `fast` build never recorded. Showing it as pickable then
+                    // would take an answer the build cannot honour.
+                    const blocked = k === "mirror" && !c.canMirror;
                     return (
                       <div
                         key={k}
@@ -2693,8 +2699,8 @@ function PostProcessingDecisions(props: {
                         }}
                       >
                         <Button
-                          intent="ghost"
-                          disabled={busy !== undefined}
+                          intent={k === "mirror" ? "primary" : "ghost"}
+                          disabled={busy !== undefined || blocked}
                           onClick={(): void => onDecide(c, k)}
                         >
                           {busy === c.modId ? "Saving..." : copy.label}
@@ -2703,7 +2709,9 @@ function PostProcessingDecisions(props: {
                           className="eh-note"
                           style={{ color: "var(--eh-text-secondary)" }}
                         >
-                          {copy.consequence}
+                          {blocked
+                            ? "Needs a Thorough build — this one recorded file sizes only, so there is nothing to reconcile against."
+                            : copy.consequence}
                         </span>
                       </div>
                     );

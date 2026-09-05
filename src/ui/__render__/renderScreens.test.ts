@@ -601,6 +601,7 @@ describe("render", () => {
           modId: "mod-xlodgen",
           modName: "sse-xlodgen-output-pbr",
           unexplained: 1608,
+          canMirror: true,
           files: [
             { path: "Textures/Terrain/Valefrost/Valefrost.Terrain.HeightMap.-27.-7.23.26.-256.452.dds", kind: "changed", delta: 24576 },
             { path: "Textures/Terrain/Tamriel/Tamriel.Terrain.HeightMap.4.-12.dds", kind: "added" },
@@ -611,6 +612,7 @@ describe("render", () => {
           modId: "mod-armour",
           modName: "Immersive Armours",
           unexplained: 2,
+          canMirror: true,
           files: [
             { path: "Data/Meshes/armour/hide/patched_cuirass.nif", kind: "changed", delta: 24576 },
             { path: "Data/MyFix-Patch.esp", kind: "added" },
@@ -624,6 +626,7 @@ describe("render", () => {
           modId: "mod-eeos",
           modName: "EEOS - Enemy Revolution of Skyrim-37228-2-02-1705594315",
           unexplained: 6,
+          canMirror: true,
           files: [
             { path: "ApocalypseSpellsForNPCs_DISTR.ini", kind: "changed", delta: 24576 },
             { path: "GrowlPerksAndSpellsForNPCs_DISTR.ini", kind: "added" },
@@ -637,6 +640,7 @@ describe("render", () => {
           modId: "mod-junipers",
           modName: "3D Junipers - Trees and Berries-43852-0-2-1687771639",
           unexplained: 3,
+          canMirror: true,
           files: [
             { path: "meshes/_byoh/plants/byohhouseingrdjuniper01.nif", kind: "changed", delta: 24576 },
             { path: "meshes/plants/florajuniper01.nif", kind: "added" },
@@ -647,6 +651,7 @@ describe("render", () => {
           modId: "mod-grid",
           modName: "Grid Inventory 188733 1.4.1 2026-08-22T09-05Z L5WQbqhQB",
           unexplained: 2,
+          canMirror: false,
           files: [
             { path: "SKSE/Plugins/GridInventory_icons.pak", kind: "changed", delta: 24576 },
             { path: "SKSE/Plugins/GridInventory_ui.ini", kind: "added" },

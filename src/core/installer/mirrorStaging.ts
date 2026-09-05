@@ -174,6 +174,38 @@ export function planMirror(args: {
 }
 
 /**
+ * Did this mirror leave the folder EXACTLY equal to the curator's?
+ *
+ * The receipt records a drift reference only for mods whose state we proved,
+ * and mirroring is the one path that can prove one after verification already
+ * failed — verification runs before the mirror and compares the archive's
+ * output against the curator's files, which is the very difference mirroring
+ * removes. Without this the mods most likely to be disturbed later would be
+ * the only ones with no oracle, and a wiped mirror would go unnoticed.
+ *
+ * All three conditions, because each covers a way the folder can be closer
+ * without being identical:
+ *
+ *   - nothing unverifiable — every target file had a hash to check against;
+ *   - nothing failed       — every write landed and was verified on arrival;
+ *   - no removal withheld  — no extra files were left in place.
+ *
+ * Any one of them and the disk is merely nearer the target, and a drift
+ * reference for a disk nobody proved is the fiction the receipt rules refuse
+ * everywhere else.
+ */
+export function mirrorProvesTarget(
+  plan: MirrorPlan,
+  outcome: { failures: readonly unknown[] },
+): boolean {
+  return (
+    plan.unverifiable.length === 0 &&
+    plan.removalWithheld === undefined &&
+    outcome.failures.length === 0
+  );
+}
+
+/**
  * What the plan will do, for the install report and the receipt.
  *
  * Returns `undefined` when the folder already matches — the common case once a

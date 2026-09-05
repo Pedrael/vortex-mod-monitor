@@ -116,6 +116,15 @@ export type PostProcessingCandidate = {
    * and those have opposite consequences.
    */
   files: UnexplainedFile[];
+  /**
+   * Whether this mod CAN be mirrored.
+   *
+   * Mirroring reconciles against per-file hashes, and a build at `fast`
+   * verification records sizes only. Offering the choice then would accept an
+   * answer the build cannot honour — the curator would tick it, ship, and the
+   * user's folder would be reconciled against nothing.
+   */
+  canMirror: boolean;
 };
 
 /**
@@ -127,6 +136,8 @@ export type PostProcessingCandidate = {
 export function findPostProcessingCandidates(
   reports: readonly SelfCheckReport[],
   declared: ReadonlySet<string>,
+  /** Mod ids whose staging was captured with a hash for every file. */
+  mirrorable: ReadonlySet<string> = new Set(),
 ): PostProcessingCandidate[] {
   return reports
     .filter((r) => r.unexplained > 0 && !declared.has(r.modId))
@@ -136,6 +147,7 @@ export function findPostProcessingCandidates(
       modName: r.modName,
       unexplained: r.unexplained,
       files: r.unexplainedExamples,
+      canMirror: mirrorable.has(r.modId),
     }));
 }
 
@@ -374,9 +386,22 @@ export async function runSelfChecks(
     declaredIds,
   );
   if (undeclaredWarning !== undefined) warnings.push(undeclaredWarning);
+  // A mod can only be mirrored when every one of its staged files carries a
+  // hash — i.e. when the build ran `thorough`. Offering the choice otherwise
+  // accepts an answer the build cannot honour.
+  const mirrorable = new Set(
+    mods
+      .filter(
+        (m) =>
+          (m.stagingFiles?.length ?? 0) > 0 &&
+          m.stagingFiles!.every((f) => f.sha256 !== undefined),
+      )
+      .map((m) => m.id),
+  );
   const postProcessingCandidates = findPostProcessingCandidates(
     reports,
     declaredIds,
+    mirrorable,
   );
 
   if (summary.skipped > 0) {

@@ -35,6 +35,14 @@
 import type { ExternalModConfigEntry } from "../../../core/manifest/collectionConfig";
 
 export type PostProcessingChoice =
+  /**
+   * Reproduce this mod's staging folder on the user's machine exactly.
+   *
+   * The mod still installs from its own Nexus archive; afterwards the
+   * differences are reconciled from bytes carried in the package. Right for
+   * almost everything, which is why it is offered first.
+   */
+  | "mirror"
   /** The files are the curator's own. Users install the archive without them. */
   | "declare"
   /** The files matter. Pack the staging folder and ship it. */
@@ -53,6 +61,13 @@ export function overrideForChoice(
   choice: PostProcessingChoice,
   opts: { isNexusMod: boolean },
 ): Partial<ExternalModConfigEntry> {
+  if (choice === "mirror") {
+    // Deliberately NOT treatAsExternal. A mirrored mod is a normal Nexus mod
+    // that gets corrected after install — flagging it external would stop the
+    // archive being downloaded at all, which is the one thing this choice
+    // exists to preserve.
+    return { mirrored: true };
+  }
   if (choice === "declare") {
     return { postProcessed: true };
   }
@@ -118,6 +133,22 @@ export function describeChoice(
   kinds?: { added: number; changed: number },
 ): ChoiceCopy {
   const n = `${fileCount} file${fileCount === 1 ? "" : "s"}`;
+  if (choice === "mirror") {
+    return {
+      label: "Reproduce my version — users get exactly this",
+      // Says the cost out loud. The package carries this mod's files so it
+      // can do the replacing, which makes mirroring HEAVIER than bundling,
+      // not lighter — the thing it buys is that the mod stays a real Nexus
+      // mod: the author keeps the download, and updates and rules still work
+      // on it. An earlier draft claimed "only the differences ride in the
+      // package", which described a narrowing the build does not do.
+      consequence:
+        `Users still download this mod from Nexus, then the collection puts ` +
+        `your version of the ${n} in place — their folder ends up identical ` +
+        `to yours. The package carries this mod's files to do that, so the ` +
+        `download is bigger.`,
+    };
+  }
   if (choice === "declare") {
     return {
       label: "These files are mine — users don't need them",

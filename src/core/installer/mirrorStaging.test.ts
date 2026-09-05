@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import {
   describeMirrorPlan,
   filesNeedingPayload,
+  mirrorProvesTarget,
   planMirror,
 } from "./mirrorStaging";
 import type { EhcollStagingFile } from "../../types/ehcoll";
@@ -157,5 +158,44 @@ describe("what the package has to carry", () => {
     // Shipping bytes we cannot verify on arrival defeats the point.
     const need = filesNeedingPayload([f("NoHash.esp", undefined)], new Set());
     expect(need).toEqual([]);
+  });
+});
+
+describe("when a mirror proves the folder matches", () => {
+  const clean = () =>
+    planMirror({ target: [f("x.esp", A)], current: [f("x.esp", B)] });
+  const ok = { failures: [] as unknown[] };
+
+  it("proves it when everything was checked, written and cleaned up", () => {
+    expect(mirrorProvesTarget(clean(), ok)).toBe(true);
+  });
+
+  it("refuses when a file could not be written", () => {
+    // The folder is nearer the target, not equal to it. A drift reference
+    // here would make every future check compare against a fiction.
+    expect(mirrorProvesTarget(clean(), { failures: ["x.esp"] })).toBe(false);
+  });
+
+  it("refuses when a target file had no hash to check", () => {
+    const plan = planMirror({
+      target: [f("x.esp", A), f("nohash.dds", undefined)],
+      current: [],
+    });
+    expect(mirrorProvesTarget(plan, ok)).toBe(false);
+  });
+
+  it("refuses when extra files were left in place", () => {
+    const plan = planMirror({
+      target: [f("x.esp", A), f("nohash.dds", undefined)],
+      current: [f("x.esp", A), f("extra.esp", B)],
+    });
+    expect(plan.removalWithheld).toBeDefined();
+    expect(mirrorProvesTarget(plan, ok)).toBe(false);
+  });
+
+  it("proves it for a folder that already matched", () => {
+    // Nothing to do is still a proof: every file was hash-compared.
+    const plan = planMirror({ target: [f("x.esp", A)], current: [f("x.esp", A)] });
+    expect(mirrorProvesTarget(plan, ok)).toBe(true);
   });
 });

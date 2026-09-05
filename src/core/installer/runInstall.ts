@@ -136,7 +136,7 @@ import { clearInstallMarker, writeInstallMarker } from "./installMarker";
 import { ehLog } from "../logging/ehLog";
 import { judgeReinstall } from "./judgeReinstall";
 import { applyMirrorPlan, describeMirrorOutcome } from "./applyMirrors";
-import { planMirror } from "./mirrorStaging";
+import { mirrorProvesTarget, planMirror } from "./mirrorStaging";
 import {
   hashStagingFiles,
   walkStagingFolder,
@@ -1849,6 +1849,28 @@ async function runInstallImpl(ctx: DriverContext): Promise<InstallResult> {
         const line = describeMirrorOutcome(mod.name, outcome);
         if (line !== undefined) mirrorLines.push(line);
         if (outcome.failures.length > 0) mirrorFailures.push(mod.name);
+
+        // A clean mirror is a PROOF, and without recording it the mod gets no
+        // drift reference at all.
+        //
+        // `stagingSetHashFor` only writes one for a mod whose verification
+        // passed — and a mirrored mod fails verification by construction,
+        // because verification runs before this and compares the archive's
+        // output against the curator's files, which is exactly the difference
+        // mirroring exists to remove. So without this the receipt would carry
+        // no oracle for precisely the mods most likely to be disturbed later,
+        // and Doctor could never notice a reinstall had wiped one.
+        //
+        // The claim is only legitimate when the folder now equals the target
+        // EXACTLY: nothing unverifiable (every file had a hash to check),
+        // nothing failed (every write landed and was hash-checked on arrival),
+        // and no removal withheld (no extra files left behind). Any one of
+        // those and the disk is merely closer, not identical, and a drift
+        // reference for a disk we did not prove is the fiction the receipt
+        // rules already refuse elsewhere.
+        if (mirrorProvesTarget(mirrorPlan, outcome)) {
+          noteVerifiedOk(mod.compareKey, mod.state.stagingFiles);
+        }
         if (mirrorPlan.removalWithheld !== undefined) {
           ehLog("info", "install.mirror-removal-withheld", {
             mod: mod.name,
