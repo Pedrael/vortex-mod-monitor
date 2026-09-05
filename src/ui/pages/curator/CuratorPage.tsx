@@ -26,7 +26,24 @@ import {
   readCuratorMods,
   readEnabledModIds,
 } from "../../../core/curator/readProfile";
+import {
+  installFromExistingDownload,
+  uninstallMod,
+} from "../../../core/installer/modInstall";
 import { describeBulkUpdate, runBulkUpdate } from "../../../core/curator/bulkUpdate";
+import {
+  describeEnableChanges,
+  describeTypeChanges,
+  planEnableChanges,
+  planTypeChanges,
+} from "../../../core/curator/bulkToggles";
+import {
+  captureForReinstall,
+  reinstallArgs,
+  restorationFor,
+} from "../../../core/curator/reinstallMod";
+import { runSequentially } from "../../../core/curator/runSequentially";
+import { FROZEN_ATTRIBUTE } from "../../../core/curator/readProfile";
 import {
   installedIdentityReader,
   updateOneAndWait,
@@ -181,6 +198,19 @@ function CuratorBody(): JSX.Element {
   const ext = api as unknown as NexusExt;
   /** Vortex gives an updated mod a NEW id; verification must use that one. */
   const installedIds = React.useRef(new Map<string, string>());
+  const [selected, setSelected] = React.useState<ReadonlySet<string>>(new Set());
+  const chosen = React.useMemo(
+    () => mods.filter((m) => selected.has(m.id)),
+    [mods, selected],
+  );
+  const toggle = (id: string): void =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const [typeValue, setTypeValue] = React.useState("");
 
   const setFrozen = (mod: CuratorMod, version: string | undefined): void => {
     const { key, value } = freezeAttribute(version);
@@ -296,6 +326,137 @@ function CuratorBody(): JSX.Element {
     setBusy(undefined);
     setProgress(undefined);
     setLines(describeBulkUpdate(report));
+    setTick((t) => t + 1);
+  };
+
+  /**
+   * Reinstall the mods that lost files, one at a time.
+   *
+   * The repair for what the update check finds. Everything the uninstall
+   * would destroy — FOMOD answers, modType, enabled state, the freeze — is
+   * read BEFORE it happens and put back after, or the mod returns as a
+   * default install of the same archive: silently different from what the
+   * curator had.
+   */
+  const reinstall = async (targets: readonly CuratorMod[]): Promise<void> => {
+    const game = gameId;
+    if (game === undefined || targets.length === 0) return;
+    setBusy("reinstall");
+    setLines([]);
+    const state0 = api.getState();
+    const enabledNow = readEnabledModIds(state0, game);
+
+    const report = await runSequentially<CuratorMod>({
+      items: targets,
+      onProgress: (n, total, m) =>
+        setProgress(`Reinstalling ${n + 1} of ${total} — ${m.name}`),
+      act: async (m) => {
+        const preserved = captureForReinstall(
+          api.getState(),
+          game,
+          m.id,
+          enabledNow,
+          FROZEN_ATTRIBUTE,
+        );
+        await uninstallMod(api, { gameId: game, modId: m.id });
+        const { vortexModId } = await installFromExistingDownload(api, {
+          gameId: game,
+          ...reinstallArgs(preserved),
+        } as never);
+        installedIds.current.set(m.id, vortexModId);
+
+        const fresh = readCuratorMods(
+          api.getState(),
+          game,
+          new Set(),
+        ).find((x) => x.id === vortexModId);
+        const restore = restorationFor(preserved, {
+          modType: fresh?.modType ?? "",
+        });
+        if (restore.setModType !== undefined) {
+          api.store?.dispatch(
+            vortexActions.setModType(game, vortexModId, restore.setModType) as never,
+          );
+        }
+        if (restore.setFrozenAtVersion !== undefined) {
+          api.store?.dispatch(
+            vortexActions.setModAttribute(
+              game,
+              vortexModId,
+              FROZEN_ATTRIBUTE,
+              restore.setFrozenAtVersion,
+            ) as never,
+          );
+        }
+        const profileId = (
+          api.getState() as unknown as {
+            settings?: { profiles?: { activeProfileId?: string } };
+          }
+        )?.settings?.profiles?.activeProfileId;
+        if (profileId !== undefined) {
+          api.store?.dispatch(
+            vortexActions.setModEnabled(
+              profileId,
+              vortexModId,
+              restore.enable,
+            ) as never,
+          );
+        }
+      },
+      verify: async (m) =>
+        verifyUpdatedMod({
+          state: api.getState(),
+          gameId: game,
+          vortexModId: installedIds.current.get(m.id) ?? m.id,
+        }),
+    });
+
+    setBusy(undefined);
+    setProgress(undefined);
+    setLines(
+      describeBulkUpdate({
+        cancelled: report.cancelled,
+        outcomes: report.outcomes.map((o) =>
+          o.kind === "done"
+            ? { kind: "updated" as const, mod: o.item }
+            : o.kind === "files-dropped"
+              ? { kind: "files-dropped" as const, mod: o.item, missing: o.missing }
+              : o.kind === "failed"
+                ? { kind: "failed" as const, mod: o.item, why: o.why }
+                : { kind: "unverified" as const, mod: o.item, why: o.why },
+        ),
+      }),
+    );
+    setTick((t) => t + 1);
+  };
+
+  const setEnabledFor = (targets: readonly CuratorMod[], to: boolean): void => {
+    const profileId = (
+      api.getState() as unknown as {
+        settings?: { profiles?: { activeProfileId?: string } };
+      }
+    )?.settings?.profiles?.activeProfileId;
+    const changes = planEnableChanges(targets, to);
+    setNote(describeEnableChanges(changes));
+    if (profileId === undefined) return;
+    for (const change of changes) {
+      api.store?.dispatch(
+        vortexActions.setModEnabled(profileId, change.mod.id, change.to) as never,
+      );
+    }
+    setTick((t) => t + 1);
+  };
+
+  const setTypeFor = (targets: readonly CuratorMod[], to: string): void => {
+    const game = gameId;
+    if (game === undefined) return;
+    const changes = planTypeChanges(targets, to);
+    setNote(describeTypeChanges(changes));
+    for (const change of changes) {
+      api.store?.dispatch(
+        vortexActions.setModType(game, change.mod.id, change.to) as never,
+      );
+    }
     setTick((t) => t + 1);
   };
 
@@ -469,6 +630,98 @@ function CuratorBody(): JSX.Element {
             </div>
           ))
         )}
+      </Section>
+
+      <Section
+        title={`Selected (${chosen.length} of ${mods.length})`}
+        note={
+          "Tick mods below, then act on all of them at once. Enabling and " +
+          "setting a kind are state writes — Vortex re-deploys once at the " +
+          "end. Reinstalling moves files, so it runs one mod at a time and " +
+          "checks each against its archive before starting the next."
+        }
+      >
+        <div
+          style={{ display: "flex", gap: "var(--eh-sp-2)", flexWrap: "wrap" }}
+        >
+          <Button
+            size="sm"
+            intent="ghost"
+            disabled={busy !== undefined || chosen.length === 0}
+            onClick={(): void => setEnabledFor(chosen, true)}
+          >
+            Enable
+          </Button>
+          <Button
+            size="sm"
+            intent="ghost"
+            disabled={busy !== undefined || chosen.length === 0}
+            onClick={(): void => setEnabledFor(chosen, false)}
+          >
+            Disable
+          </Button>
+          <Button
+            size="sm"
+            intent="ghost"
+            disabled={busy !== undefined || chosen.length === 0}
+            onClick={(): void => void reinstall(chosen)}
+          >
+            {busy === "reinstall"
+              ? "Reinstalling..."
+              : `Reinstall ${chosen.length}`}
+          </Button>
+          <input
+            aria-label="Mod kind"
+            placeholder="mod kind, e.g. dinput"
+            value={typeValue}
+            onChange={(e): void => setTypeValue(e.target.value)}
+            style={{
+              background: "var(--eh-bg-deep)",
+              border: "1px solid var(--eh-border-default)",
+              borderRadius: "var(--eh-radius-sm)",
+              color: "var(--eh-text-primary)",
+              padding: "var(--eh-sp-1) var(--eh-sp-2)",
+              fontFamily: "var(--eh-font-mono)",
+              fontSize: "var(--eh-text-xs)",
+            }}
+          />
+          <Button
+            size="sm"
+            intent="ghost"
+            disabled={busy !== undefined || chosen.length === 0}
+            onClick={(): void => setTypeFor(chosen, typeValue)}
+          >
+            Set kind
+          </Button>
+          <Button
+            size="sm"
+            intent="ghost"
+            disabled={selected.size === 0}
+            onClick={(): void => setSelected(new Set())}
+          >
+            Clear
+          </Button>
+        </div>
+
+        <div style={{ maxHeight: 320, overflowY: "auto", marginTop: "var(--eh-sp-2)" }}>
+          {mods.map((m) => (
+            <label
+              key={m.id}
+              style={{ ...rowStyle, cursor: "pointer", justifyContent: "flex-start" }}
+            >
+              <input
+                type="checkbox"
+                checked={selected.has(m.id)}
+                onChange={(): void => toggle(m.id)}
+              />
+              <span style={{ color: "var(--eh-text-primary)", minWidth: 0 }}>
+                {m.name}
+              </span>
+              {m.modType !== "" && <Pill intent="neutral">{m.modType}</Pill>}
+              {!m.enabled && <Pill intent="warning">disabled</Pill>}
+            </label>
+          ))}
+        </div>
       </Section>
 
       <Section
