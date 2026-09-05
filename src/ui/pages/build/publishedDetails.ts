@@ -23,6 +23,10 @@ import * as fsp from "fs/promises";
 import * as path from "path";
 
 import { readEhcoll } from "../../../core/manifest/readEhcoll";
+import {
+  summarizeBuiltMods,
+  type BuiltModSummary,
+} from "../../../core/curator/collectionDiff";
 import type { PublishedCollectionSummary } from "../../../core/manifest/collectionConfig";
 import type { CollectionConfig } from "../../../core/manifest/collectionConfig";
 
@@ -59,6 +63,14 @@ export type PublishedDetails = {
     verificationLevel: string;
     author: string;
   };
+  /**
+   * The shipped mod list, projected to what a diff needs.
+   *
+   * Lean on purpose: the manifest's own entries carry `state.stagingFiles`,
+   * which on a 963-mod collection is every file of every mod, and this is held
+   * in a React state while a details panel is open.
+   */
+  shippedMods?: BuiltModSummary[];
   /**
    * Why `shipped` is absent, when it is. A missing package is an ordinary
    * state (the curator moved or deleted it), not an error to hide.
@@ -187,6 +199,7 @@ export async function loadPublishedDetails(args: {
       verificationLevel: m.package.verificationLevel ?? "none",
       author: m.package.author,
     };
+    details.shippedMods = summarizeBuiltMods(m.mods);
   } catch (err) {
     details.shippedNote = `Could not read ${newest.fileName}: ${
       err instanceof Error ? err.message : String(err)

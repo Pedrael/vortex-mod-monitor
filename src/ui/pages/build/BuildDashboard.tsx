@@ -36,6 +36,14 @@
  * have to switch profiles to edit.
  */
 
+import { selectors } from "@nexusmods/vortex-api";
+
+import {
+  describeCollectionDiff,
+  diffCollectionAgainstProfile,
+  isUnchanged,
+} from "../../../core/curator/collectionDiff";
+import { useApiOptional } from "../../state";
 import * as React from "react";
 import { util } from "@nexusmods/vortex-api";
 import * as path from "path";
@@ -1231,6 +1239,35 @@ function PublishedDetailsPanel(props: {
 }): JSX.Element {
   const [details, setDetails] = React.useState<PublishedDetails | undefined>();
   const [error, setError] = React.useState<string | undefined>();
+  const api = useApiOptional();
+
+  /**
+   * What a rebuild would ship, against what the last one did.
+   *
+   * The card already knew the profile had MOVED — `upToDate` is a boolean —
+   * and could say nothing about how. This is the how, computed only while the
+   * details are open so a dashboard listing ten collections does not diff ten
+   * manifests against the profile on every render.
+   */
+  const diff = React.useMemo(() => {
+    const shippedMods = details?.shippedMods;
+    if (shippedMods === undefined || api === undefined) return undefined;
+    try {
+      const state = api.getState();
+      const gameId = selectors.activeGameId(state);
+      if (typeof gameId !== "string" || gameId === "") return undefined;
+      const profileId = getActiveProfileIdFromState(state, gameId);
+      if (profileId === undefined) return undefined;
+      return diffCollectionAgainstProfile({
+        built: shippedMods,
+        current: getModsForProfile(state, gameId, profileId),
+      });
+    } catch {
+      // A diff that cannot be computed is simply not shown. It is context for
+      // a decision, never a gate on making one.
+      return undefined;
+    }
+  }, [details, api]);
 
   React.useEffect(() => {
     let alive = true;
@@ -1285,6 +1322,61 @@ function PublishedDetailsPanel(props: {
             v{s.version} — {s.mods} mods, {s.plugins} plugins
             {s.bundledArchives > 0 ? `, ${s.bundledArchives} bundled archives` : ""}
           </DetailRow>
+          {diff !== undefined && (
+            <div
+              style={{
+                marginTop: "var(--eh-sp-2)",
+                marginBottom: "var(--eh-sp-2)",
+                padding: "var(--eh-sp-2)",
+                background: "var(--eh-bg-deep)",
+                borderRadius: "var(--eh-radius-sm)",
+              }}
+            >
+              <div
+                style={{
+                  color: isUnchanged(diff)
+                    ? "var(--eh-text-secondary)"
+                    : "var(--eh-warning)",
+                  marginBottom: isUnchanged(diff) ? 0 : "var(--eh-sp-2)",
+                }}
+              >
+                {describeCollectionDiff(diff)}
+              </div>
+              {!isUnchanged(diff) && (
+                <div
+                  style={{
+                    fontFamily: "var(--eh-font-mono)",
+                    fontSize: "var(--eh-text-xs)",
+                    maxHeight: 220,
+                    overflowY: "auto",
+                  }}
+                >
+                  {diff.added.slice(0, 40).map((e) => (
+                    <div key={`+${e.name}`} style={{ color: "var(--eh-success)" }}>
+                      + {e.name}
+                      {e.version !== undefined ? ` ${e.version}` : ""}
+                    </div>
+                  ))}
+                  {diff.removed.slice(0, 40).map((e) => (
+                    <div key={`-${e.name}`} style={{ color: "var(--eh-danger)" }}>
+                      &minus; {e.name}
+                      {e.version !== undefined ? ` ${e.version}` : ""}
+                    </div>
+                  ))}
+                  {diff.updated.slice(0, 40).map((e) => (
+                    <div key={`~${e.name}`} style={{ color: "var(--eh-warning)" }}>
+                      ~ {e.name} {e.fromVersion} &rarr; {e.toVersion}
+                    </div>
+                  ))}
+                  {diff.toggled.slice(0, 40).map((e) => (
+                    <div key={`t${e.name}`} style={{ color: "var(--eh-text-secondary)" }}>
+                      {e.nowEnabled ? "on " : "off"} {e.name}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           <DetailRow label="Requires">
             {s.gameId} {s.gameVersion === "unknown" ? "(no version recorded)" : s.gameVersion}
             {s.gameVersion !== "unknown" &&
