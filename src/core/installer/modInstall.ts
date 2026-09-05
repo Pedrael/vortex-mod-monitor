@@ -44,6 +44,8 @@ import * as fsp from "fs/promises";
 import * as os from "os";
 import * as path from "path";
 
+import { getModArchivePath } from "../archiveHashing";
+
 import { util } from "@nexusmods/vortex-api";
 import type { types } from "@nexusmods/vortex-api";
 
@@ -479,6 +481,7 @@ export async function installFromLocalArchive(
     gameId: args.gameId,
     matchArchiveId: undefined,
     acceptAny: true,
+    acceptIf: installedFromArchive(api, args.gameId, args.archivePath),
     signal: args.signal,
   });
 
@@ -506,6 +509,44 @@ export async function installFromLocalArchive(
 
   const result = await Promise.race([callbackPromise, completed.promise]);
   return { vortexModId: result.modId };
+}
+
+/**
+ * Is the mod Vortex just installed the one we asked it to install?
+ *
+ * Compares by the archive it came from. Vortex records `archiveId` on every
+ * mod it installs and `getModArchivePath` turns that into the file on disk, so
+ * the comparison is against the exact archive path the caller handed to
+ * `start-install` rather than against a name we hoped would match.
+ *
+ * Unresolvable means NO. That is deliberate and it is the safer direction:
+ * this predicate only runs on the fallback leg, which is only reached when
+ * Vortex's synchronous callback has already failed, so the choice is between a
+ * visible timeout and silently adopting a mod we cannot identify.
+ */
+function installedFromArchive(
+  api: types.IExtensionApi,
+  gameId: string,
+  archivePath: string,
+): (modId: string) => boolean {
+  const wanted = path.basename(archivePath).toLowerCase();
+  return (modId: string): boolean => {
+    try {
+      const state = api.getState();
+      const mod = (
+        state as unknown as {
+          persistent?: {
+            mods?: Record<string, Record<string, { archiveId?: string }>>;
+          };
+        }
+      )?.persistent?.mods?.[gameId]?.[modId];
+      const resolved = getModArchivePath(state, mod?.archiveId, gameId);
+      if (resolved === undefined) return false;
+      return path.basename(resolved).toLowerCase() === wanted;
+    } catch {
+      return false;
+    }
+  };
 }
 
 /**
@@ -663,9 +704,11 @@ export async function installFromBundledArchive(
       // start-install registers a NEW archiveId we cannot know in
       // advance. acceptAny: true makes the did-install-mod listener a
       // real fallback for Vortex builds where the synchronous callback
-      // below isn't invoked reliably.
+      // below isn't invoked reliably — gated on identity, because
+      // "any install for this game" includes one the user started.
       matchArchiveId: undefined,
       acceptAny: true,
+      acceptIf: installedFromArchive(api, args.gameId, extractedPath),
       signal: args.signal,
     });
 
@@ -762,16 +805,36 @@ function waitForInstallCompletion(
      * for `opts.gameId` regardless of archiveId. Cannot be combined
      * with `matchArchiveId`.
      *
-     * SAFETY: this mode is only sound when callers guarantee at most
-     * one install pipeline is running globally for `opts.gameId` —
-     * otherwise we can race and resolve with a modId that belongs to
-     * a *different* concurrent install. Today that invariant is held
-     * by EHRuntime (see src/ui/runtime/ehRuntime.ts), which serializes
-     * EH's build/install pipelines, AND by the install driver itself
-     * which installs mods sequentially. If you ever want parallel
-     * installs, do NOT use acceptAny.
+     * SAFETY: on its own this mode resolves on ANY install finishing for
+     * `opts.gameId`, including one Vortex is performing for somebody else —
+     * whereupon the caller is handed a modId for a mod it never installed.
+     *
+     * This note used to say the danger was covered because EHRuntime
+     * "serializes EH's build/install pipelines". It does not. EHRuntime is two
+     * booleans and a listener set — no lock, no queue — and its own header
+     * says concurrent operations are deliberately NOT forbidden, only
+     * discouraged with a banner and a disabled button the user can dismiss. A
+     * safety argument naming a guarantee that does not exist is worse than no
+     * note, because the next caller extends this mode on the strength of it.
+     *
+     * The real protection is {@link acceptIf}: pass a predicate that confirms
+     * the installed mod is the one you asked for. The driver's own sequencing
+     * still means EH cannot race ITSELF; the predicate covers the user
+     * starting an install in Vortex's UI while ours runs.
      */
     acceptAny?: boolean;
+    /**
+     * With `acceptAny`, decide whether a finished install is really ours.
+     *
+     * Called with the modId Vortex just installed. Returning false ignores the
+     * event and keeps waiting — a foreign install must not settle our promise.
+     *
+     * Returning false for everything ends in a timeout, which is the intended
+     * shape: this mode is already the FALLBACK leg of a race against Vortex's
+     * synchronous callback, so reaching it at all means the fast path failed.
+     * A visible timeout beats silently adopting the wrong mod.
+     */
+    acceptIf?: (modId: string, archiveId: string) => boolean;
     /**
      * If provided, the promise rejects with an `AbortError` as soon
      * as the signal aborts. The synchronous `start-install` callback
@@ -1030,6 +1093,12 @@ function waitForInstallCompletion(
     noteProgress();
 
     if (acceptAny) {
+      // Identity gate. Without it "the first install to finish" can be a mod
+      // the user started in Vortex's own UI, and the caller would verify and
+      // record somebody else's mod as the one it just installed.
+      if (opts.acceptIf !== undefined && !opts.acceptIf(modId, archiveId)) {
+        return;
+      }
       settled = true;
       cleanup();
       resolveFn({ modId, archiveId });
