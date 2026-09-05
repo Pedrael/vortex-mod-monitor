@@ -35,6 +35,7 @@
  */
 
 import type { CuratorMod, UpdateCandidate } from "./profileActions";
+import { runSequentially } from "./runSequentially";
 
 /** What happened to one mod. */
 export type UpdateOutcome =
@@ -97,52 +98,31 @@ export type BulkUpdateInput = {
 export async function runBulkUpdate(
   input: BulkUpdateInput,
 ): Promise<BulkUpdateReport> {
-  const { candidates, update, verify, onProgress, signal } = input;
-  const outcomes: UpdateOutcome[] = [];
-
-  let done = 0;
-  for (const candidate of candidates) {
-    if (signal?.aborted === true) {
-      return { outcomes, cancelled: true };
-    }
-    const mod = candidate.mod;
-    onProgress?.(done, candidates.length, mod);
-
-    try {
-      // `await` is doing the load-bearing work in this function. Everything
-      // below happens after Vortex has finished with this mod, and the next
-      // iteration cannot begin until it has.
-      await update(candidate);
-    } catch (err) {
-      outcomes.push({
-        kind: "failed",
-        mod,
-        why: err instanceof Error ? err.message : String(err),
-      });
-      done += 1;
-      continue;
-    }
-
-    try {
-      const checked = await verify(mod);
-      if (checked.kind === "ok") outcomes.push({ kind: "updated", mod });
-      else if (checked.kind === "missing") {
-        outcomes.push({ kind: "files-dropped", mod, missing: checked.missing });
-      } else outcomes.push({ kind: "unverified", mod, why: checked.why });
-    } catch (err) {
-      // A check that threw is a check that did not happen. Reporting the mod
-      // as updated here would be the one lie this module exists to prevent.
-      outcomes.push({
-        kind: "unverified",
-        mod,
-        why: err instanceof Error ? err.message : String(err),
-      });
-    }
-    done += 1;
-  }
-
-  onProgress?.(done, candidates.length, candidates[candidates.length - 1]?.mod as CuratorMod);
-  return { outcomes, cancelled: false };
+  const report = await runSequentially<UpdateCandidate>({
+    items: input.candidates,
+    act: input.update,
+    verify: (c) => input.verify(c.mod),
+    ...(input.onProgress !== undefined
+      ? {
+          onProgress: (done, total, c) =>
+            input.onProgress!(done, total, c.mod),
+        }
+      : {}),
+    ...(input.signal !== undefined ? { signal: input.signal } : {}),
+  });
+  return {
+    cancelled: report.cancelled,
+    outcomes: report.outcomes.map((o): UpdateOutcome => {
+      if (o.kind === "done") return { kind: "updated", mod: o.item.mod };
+      if (o.kind === "files-dropped") {
+        return { kind: "files-dropped", mod: o.item.mod, missing: o.missing };
+      }
+      if (o.kind === "failed") {
+        return { kind: "failed", mod: o.item.mod, why: o.why };
+      }
+      return { kind: "unverified", mod: o.item.mod, why: o.why };
+    }),
+  };
 }
 
 /**
