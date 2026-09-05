@@ -1,0 +1,232 @@
+/**
+ * Knowing when ONE update has actually finished.
+ *
+ * The sequential bulk update is only sequential if this resolves at the right
+ * moment. Resolving on someone else's install — the hazard the `acceptAny`
+ * waiter carries — would hand the caller a mod it never asked about and let
+ * the next install start on top of the running one.
+ */
+import { describe, expect, it, vi } from "vitest";
+
+import {
+  UpdateTimeout,
+  installedIdentityReader,
+  updateOneAndWait,
+  type InstallEvents,
+} from "./updateOneMod";
+import type { types } from "@nexusmods/vortex-api";
+
+/** A tiny emitter with the shape Vortex's api exposes. */
+function emitter(): InstallEvents & {
+  emit: (event: string, ...args: unknown[]) => void;
+  count: () => number;
+} {
+  const handlers = new Map<string, Set<(...a: unknown[]) => void>>();
+  return {
+    on: (event, handler) => {
+      const set = handlers.get(event) ?? new Set();
+      set.add(handler);
+      handlers.set(event, set);
+    },
+    removeListener: (event, handler) => {
+      handlers.get(event)?.delete(handler);
+    },
+    emit: (event, ...args) => {
+      for (const h of [...(handlers.get(event) ?? [])]) h(...args);
+    },
+    count: () => [...handlers.values()].reduce((n, s) => n + s.size, 0),
+  };
+}
+
+const identity = (nexusModId: number, nexusFileId: number) => () => ({
+  nexusModId,
+  nexusFileId,
+});
+
+describe("waiting for the right install", () => {
+  it("resolves with the new mod id once OUR mod lands", async () => {
+    const events = emitter();
+    const promise = updateOneAndWait({
+      events,
+      start: () => events.emit("did-install-mod", "skyrimse", "arc", "new-id"),
+      readInstalled: identity(1090, 500),
+      gameId: "skyrimse",
+      nexusModId: 1090,
+      toFileId: 500,
+    });
+    await expect(promise).resolves.toBe("new-id");
+  });
+
+  it("IGNORES an install of some other mod", async () => {
+    // The hazard `acceptAny` carries. Vortex may be installing something the
+    // user started; taking it would verify the wrong mod and let the next
+    // update begin while ours is still writing.
+    const events = emitter();
+    const promise = updateOneAndWait({
+      events,
+      start: () => {
+        events.emit("did-install-mod", "skyrimse", "arc", "someone-elses");
+        events.emit("did-install-mod", "skyrimse", "arc", "ours");
+      },
+      readInstalled: (id) =>
+        id === "ours"
+          ? { nexusModId: 1090, nexusFileId: 500 }
+          : { nexusModId: 999, nexusFileId: 1 },
+      gameId: "skyrimse",
+      nexusModId: 1090,
+      toFileId: 500,
+    });
+    await expect(promise).resolves.toBe("ours");
+  });
+
+  it("ignores the SAME mod at the wrong file id", async () => {
+    // An update to 500 is not satisfied by 499 arriving. Both halves match or
+    // it is not the install we asked for.
+    const events = emitter();
+    const promise = updateOneAndWait({
+      events,
+      start: () => {
+        events.emit("did-install-mod", "skyrimse", "arc", "old");
+        events.emit("did-install-mod", "skyrimse", "arc", "new");
+      },
+      readInstalled: (id) => ({
+        nexusModId: 1090,
+        nexusFileId: id === "new" ? 500 : 499,
+      }),
+      gameId: "skyrimse",
+      nexusModId: 1090,
+      toFileId: 500,
+    });
+    await expect(promise).resolves.toBe("new");
+  });
+
+  it("ignores an install for a different game", async () => {
+    const events = emitter();
+    const promise = updateOneAndWait({
+      events,
+      start: () => {
+        events.emit("did-install-mod", "fallout4", "arc", "wrong-game");
+        events.emit("did-install-mod", "skyrimse", "arc", "right");
+      },
+      readInstalled: identity(1090, 500),
+      gameId: "skyrimse",
+      nexusModId: 1090,
+      toFileId: 500,
+    });
+    await expect(promise).resolves.toBe("right");
+  });
+
+  it("listens BEFORE starting, so a fast install is not missed", async () => {
+    // Vortex can finish a small mod from cache before the call that requested
+    // it returns. A listener attached afterwards waits fifteen minutes for an
+    // event that already fired.
+    const events = emitter();
+    let listenersAtStart = 0;
+    const promise = updateOneAndWait({
+      events,
+      start: () => {
+        listenersAtStart = events.count();
+        events.emit("did-install-mod", "skyrimse", "arc", "id");
+      },
+      readInstalled: identity(1, 2),
+      gameId: "skyrimse",
+      nexusModId: 1,
+      toFileId: 2,
+    });
+    await promise;
+    expect(listenersAtStart).toBe(1);
+  });
+});
+
+describe("not leaking, and not hanging", () => {
+  it("removes its listener once resolved", async () => {
+    // A run over nine hundred mods would otherwise leave nine hundred behind.
+    const events = emitter();
+    await updateOneAndWait({
+      events,
+      start: () => events.emit("did-install-mod", "skyrimse", "a", "id"),
+      readInstalled: identity(1, 2),
+      gameId: "skyrimse",
+      nexusModId: 1,
+      toFileId: 2,
+    });
+    expect(events.count()).toBe(0);
+  });
+
+  it("gives up rather than hanging the whole run", async () => {
+    vi.useFakeTimers();
+    const events = emitter();
+    const promise = updateOneAndWait({
+      events,
+      start: () => undefined,
+      readInstalled: identity(1, 2),
+      gameId: "skyrimse",
+      nexusModId: 1,
+      toFileId: 2,
+      timeoutMs: 1000,
+    });
+    const assertion = expect(promise).rejects.toBeInstanceOf(UpdateTimeout);
+    await vi.advanceTimersByTimeAsync(1001);
+    await assertion;
+    expect(events.count()).toBe(0);
+    vi.useRealTimers();
+  });
+
+  it("rejects immediately when already cancelled, without starting", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const start = vi.fn();
+    await expect(
+      updateOneAndWait({
+        events: emitter(),
+        start,
+        readInstalled: identity(1, 2),
+        gameId: "skyrimse",
+        nexusModId: 1,
+        toFileId: 2,
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow("cancelled");
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a start that threw instead of waiting on it", async () => {
+    await expect(
+      updateOneAndWait({
+        events: emitter(),
+        start: () => {
+          throw new Error("nexus said no");
+        },
+        readInstalled: identity(1, 2),
+        gameId: "skyrimse",
+        nexusModId: 1,
+        toFileId: 2,
+      }),
+    ).rejects.toThrow("nexus said no");
+  });
+});
+
+describe("reading back what Vortex installed", () => {
+  const state = (mods: Record<string, unknown>): types.IState =>
+    ({ persistent: { mods: { skyrimse: mods } } }) as unknown as types.IState;
+
+  it("reads the Nexus pair off the mod's attributes", () => {
+    const read = installedIdentityReader(
+      state({ m: { attributes: { modId: 1090, fileId: 500 } } }),
+      "skyrimse",
+    );
+    expect(read("m")).toEqual({ nexusModId: 1090, nexusFileId: 500 });
+  });
+
+  it("coerces the string form Vortex sometimes stores", () => {
+    const read = installedIdentityReader(
+      state({ m: { attributes: { modId: "7", fileId: "8" } } }),
+      "skyrimse",
+    );
+    expect(read("m")).toEqual({ nexusModId: 7, nexusFileId: 8 });
+  });
+
+  it("returns undefined for a mod Vortex does not have", () => {
+    expect(installedIdentityReader(state({}), "skyrimse")("nope")).toBeUndefined();
+  });
+});

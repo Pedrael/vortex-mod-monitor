@@ -26,6 +26,12 @@ import {
   readCuratorMods,
   readEnabledModIds,
 } from "../../../core/curator/readProfile";
+import { describeBulkUpdate, runBulkUpdate } from "../../../core/curator/bulkUpdate";
+import {
+  installedIdentityReader,
+  updateOneAndWait,
+} from "../../../core/curator/updateOneMod";
+import { verifyUpdatedMod } from "../../../core/curator/verifyAfterUpdate";
 import { Button, Card, Page, Pill } from "../../components";
 import { useApi } from "../../state";
 import { ErrorBoundary } from "../../errors";
@@ -43,6 +49,12 @@ type NexusExt = {
     version: string,
     status: string,
   ) => PromiseLike<unknown>;
+  nexusModUpdate?: (
+    gameId: string,
+    modId: number,
+    fileId: number,
+    source: string,
+  ) => void;
 };
 
 const num = (n: number): string => n.toLocaleString();
@@ -167,6 +179,8 @@ function CuratorBody(): JSX.Element {
   const endorsable = React.useMemo(() => findEndorsable(mods), [mods]);
 
   const ext = api as unknown as NexusExt;
+  /** Vortex gives an updated mod a NEW id; verification must use that one. */
+  const installedIds = React.useRef(new Map<string, string>());
 
   const setFrozen = (mod: CuratorMod, version: string | undefined): void => {
     const { key, value } = freezeAttribute(version);
@@ -225,6 +239,66 @@ function CuratorBody(): JSX.Element {
     );
   };
 
+  const [progress, setProgress] = React.useState<string | undefined>(undefined);
+  const [lines, setLines] = React.useState<string[]>([]);
+
+  /**
+   * Update every candidate, one at a time, verifying each before the next.
+   *
+   * The awaiting is the feature. `updateOneAndWait` resolves only when Vortex
+   * reports finishing THIS mod — matched on its Nexus ids, not on "some
+   * install finished" — and `runBulkUpdate` cannot begin the next until it
+   * has. Vortex's own bulk update starts them together, which is why it loses
+   * files.
+   */
+  const updateAll = async (): Promise<void> => {
+    // Narrowed here rather than relied on from the guard below: this function
+    // is defined above it, so the compiler cannot see that check — the same
+    // shape as the closure bugs that crashed two releases of the build page.
+    const game = gameId;
+    if (game === undefined || ext.nexusModUpdate === undefined) {
+      setNote("Vortex's Nexus integration is not available.");
+      return;
+    }
+    const startUpdate = ext.nexusModUpdate;
+    setBusy("update");
+    setLines([]);
+    const controller = new AbortController();
+    const report = await runBulkUpdate({
+      candidates: updatable,
+      signal: controller.signal,
+      onProgress: (n, total, m) =>
+        setProgress(`Updating ${n + 1} of ${total} — ${m.name}`),
+      update: async (candidate) => {
+        const newModId = await updateOneAndWait({
+          events: api.events as never,
+          gameId: game,
+          nexusModId: candidate.mod.nexusModId!,
+          toFileId: candidate.toFileId,
+          readInstalled: installedIdentityReader(api.getState(), game),
+          start: () =>
+            startUpdate(
+              game,
+              candidate.mod.nexusModId!,
+              candidate.toFileId,
+              "event-horizon-curator-tools",
+            ),
+        });
+        installedIds.current.set(candidate.mod.id, newModId);
+      },
+      verify: async (m) =>
+        verifyUpdatedMod({
+          state: api.getState(),
+          gameId: game,
+          vortexModId: installedIds.current.get(m.id) ?? m.id,
+        }),
+    });
+    setBusy(undefined);
+    setProgress(undefined);
+    setLines(describeBulkUpdate(report));
+    setTick((t) => t + 1);
+  };
+
   if (gameId === undefined) {
     return (
       <Card title="No active game">
@@ -260,6 +334,15 @@ function CuratorBody(): JSX.Element {
           Reload
         </Button>
         <Button
+          intent="primary"
+          disabled={busy !== undefined || updatable.length === 0}
+          onClick={(): void => void updateAll()}
+        >
+          {busy === "update"
+            ? "Updating..."
+            : `Update ${updatable.length} mod(s), one at a time`}
+        </Button>
+        <Button
           intent="ghost"
           disabled={busy !== undefined || endorsable.length === 0}
           onClick={(): void => void endorseAll()}
@@ -269,6 +352,28 @@ function CuratorBody(): JSX.Element {
             : `Endorse ${endorsable.length} mod(s)`}
         </Button>
       </div>
+
+      {progress !== undefined && (
+        <p style={{ margin: 0, color: "var(--eh-text-primary)" }}>{progress}</p>
+      )}
+
+      {lines.length > 0 && (
+        <Card title="Update report">
+          {lines.map((l) => (
+            <p
+              key={l}
+              style={{
+                margin: "0 0 var(--eh-sp-2)",
+                color: l.includes("LOST")
+                  ? "var(--eh-danger)"
+                  : "var(--eh-text-secondary)",
+              }}
+            >
+              {l}
+            </p>
+          ))}
+        </Card>
+      )}
 
       {note !== undefined && (
         <p
