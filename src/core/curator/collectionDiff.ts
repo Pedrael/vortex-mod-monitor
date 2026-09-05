@@ -115,23 +115,42 @@ function nexusModIdOf(compareKey: string): string | undefined {
 }
 
 /**
+ * ──────────────────────────────────────────────────────────────────────
  * Diff the shipped collection against the live profile.
  *
- * Pure. `built` is the manifest of the version currently published; `current`
- * is what `getModsForProfile` reports right now.
+ * Pure. `built` is the manifest of the version currently published;
+ * `current` is what `getModsForProfile` reports right now.
+ *
+ * ─── THE TWO SIDES DO NOT ALWAYS SPEAK THE SAME VOCABULARY ─────────────
+ * A manifest records whatever identity was available AT BUILD TIME. On a
+ * real 1,757-mod package, 29 mods came out as `external:staging:<hash>` —
+ * Event Horizon could not tie them to Nexus then. The same mods read as
+ * `nexus:<modId>:<fileId>` from the live profile today, because Vortex has
+ * since filled in their attributes.
+ *
+ * Neither key is wrong; they are answers to different questions asked at
+ * different times. But an exact comparison finds nothing, and the name
+ * fallback used to run ONLY when the CURRENT mod lacked a Nexus key — so
+ * for a mod that was external then and Nexus-keyed now, no fallback ran at
+ * all. Twenty mods the curator had not touched appeared as twenty additions
+ * and twenty removals of the same twenty names.
+ *
+ * So the fallback is symmetric now: name is consulted whenever EITHER side
+ * is not Nexus-keyed. A name appearing in both `added` and `removed` is
+ * always a failure to match, never a change.
+ *
+ * ─── AND NAME NEVER OVERRIDES TWO REAL KEYS ────────────────────────────
+ * When both sides ARE Nexus-keyed, a different file id is an UPDATE and is
+ * reported as one. Name matching is the bridge between vocabularies, not a
+ * shortcut around them — letting it run there would silently swallow a
+ * genuine version change whenever an author kept the file name.
+ * ──────────────────────────────────────────────────────────────────────
  */
 export function diffCollectionAgainstProfile(args: {
   built: readonly BuiltModSummary[];
   current: readonly AuditorMod[];
 }): CollectionDiff {
   const { built, current } = args;
-
-  const builtByKey = new Map<string, BuiltModSummary>();
-  const builtByName = new Map<string, BuiltModSummary>();
-  for (const mod of built) {
-    builtByKey.set(mod.compareKey, mod);
-    if (!builtByName.has(mod.name)) builtByName.set(mod.name, mod);
-  }
 
   const diff: CollectionDiff = {
     added: [],
@@ -142,64 +161,100 @@ export function diffCollectionAgainstProfile(args: {
     approximate: 0,
   };
 
-  /** Built mods accounted for, so the leftovers are genuine removals. */
-  const seen = new Set<string>();
+  /** Built entries accounted for, so the leftovers are genuine removals. */
+  const claimed = new Set<string>();
 
-  for (const mod of current) {
-    const key = keyFor(mod);
-    let match = key === undefined ? undefined : builtByKey.get(key);
-    let approximate = false;
-
-    if (match === undefined && key === undefined) {
-      // External: the real key costs a hash of the archive or the whole
-      // staging folder, which a view opening beside a button cannot spend.
-      match = builtByName.get(mod.name);
-      approximate = match !== undefined;
+  const builtByKey = new Map<string, BuiltModSummary>();
+  /** Only Nexus-keyed entries, so this index can never bridge vocabularies. */
+  const byNexusModId = new Map<string, BuiltModSummary[]>();
+  const byName = new Map<string, BuiltModSummary[]>();
+  for (const mod of built) {
+    builtByKey.set(mod.compareKey, mod);
+    const modId = nexusModIdOf(mod.compareKey);
+    if (modId !== undefined) {
+      const list = byNexusModId.get(modId);
+      if (list === undefined) byNexusModId.set(modId, [mod]);
+      else list.push(mod);
     }
+    const named = byName.get(mod.name);
+    if (named === undefined) byName.set(mod.name, [mod]);
+    else named.push(mod);
+  }
 
-    if (match === undefined && key !== undefined) {
-      // A Nexus mod with no exact match may still be a NEWER FILE of a mod the
-      // collection already has — that is an update, not an addition, and
-      // calling it an addition would also make the old file look removed.
-      const modId = nexusModIdOf(key);
-      const sameMod =
-        modId === undefined
-          ? undefined
-          : built.find(
-              (b) => !seen.has(b.compareKey) && nexusModIdOf(b.compareKey) === modId,
-            );
-      if (sameMod !== undefined) {
-        seen.add(sameMod.compareKey);
-        diff.updated.push({
-          name: mod.name,
-          fromVersion: shown(sameMod.version),
-          toVersion: shown(mod.version),
-        });
-        continue;
-      }
-    }
+  const firstUnclaimed = (
+    list: BuiltModSummary[] | undefined,
+  ): BuiltModSummary | undefined =>
+    list?.find((b) => !claimed.has(b.compareKey));
 
-    if (match === undefined) {
-      diff.added.push({
-        name: mod.name,
-        ...(mod.version !== undefined ? { version: mod.version } : {}),
-      });
-      continue;
-    }
-
-    seen.add(match.compareKey);
+  /** Same mod on both sides: identical, or switched on or off. */
+  const settle = (
+    mod: AuditorMod,
+    match: BuiltModSummary,
+    approximate: boolean,
+  ): void => {
+    claimed.add(match.compareKey);
     if (approximate) diff.approximate += 1;
-
-    const wasEnabled = match.enabled;
-    if (wasEnabled !== mod.enabled) {
+    if (match.enabled !== mod.enabled) {
       diff.toggled.push({ name: mod.name, nowEnabled: mod.enabled });
     } else {
       diff.unchanged += 1;
     }
+  };
+
+  // Pass 1 — an exact key match, which needs no interpretation at all.
+  const pending: { mod: AuditorMod; key: string | undefined }[] = [];
+  for (const mod of current) {
+    const key = keyFor(mod);
+    const match = key === undefined ? undefined : builtByKey.get(key);
+    if (match !== undefined && !claimed.has(match.compareKey)) {
+      settle(mod, match, false);
+    } else {
+      pending.push({ mod, key });
+    }
+  }
+
+  // Pass 2 — both sides Nexus-keyed for the same page: a newer FILE, which
+  // is an update. Calling it an addition would also make the old file look
+  // removed, reporting one change as two.
+  const stillPending: typeof pending = [];
+  for (const entry of pending) {
+    const modId = entry.key === undefined ? undefined : nexusModIdOf(entry.key);
+    const match =
+      modId === undefined ? undefined : firstUnclaimed(byNexusModId.get(modId));
+    if (match === undefined) {
+      stillPending.push(entry);
+      continue;
+    }
+    claimed.add(match.compareKey);
+    diff.updated.push({
+      name: entry.mod.name,
+      fromVersion: shown(match.version),
+      toVersion: shown(entry.mod.version),
+    });
+  }
+
+  // Pass 3 — the bridge. One side is not Nexus-keyed, so no key comparison
+  // is possible and the name is the only thing both sides agree on. Counted
+  // as approximate, because a rename would defeat it.
+  const unmatched: AuditorMod[] = [];
+  for (const entry of stillPending) {
+    const candidate = firstUnclaimed(byName.get(entry.mod.name));
+    const bridgeable =
+      candidate !== undefined &&
+      (entry.key === undefined || nexusModIdOf(candidate.compareKey) === undefined);
+    if (bridgeable) settle(entry.mod, candidate, true);
+    else unmatched.push(entry.mod);
+  }
+
+  for (const mod of unmatched) {
+    diff.added.push({
+      name: mod.name,
+      ...(mod.version !== undefined ? { version: mod.version } : {}),
+    });
   }
 
   for (const mod of built) {
-    if (seen.has(mod.compareKey)) continue;
+    if (claimed.has(mod.compareKey)) continue;
     diff.removed.push({
       name: mod.name,
       ...(mod.version !== undefined ? { version: mod.version } : {}),
