@@ -52,6 +52,7 @@ import {
   InterruptedInstalls,
 } from "../pages/CollectionsPage";
 import { DoctorPanel } from "../pages/doctor/DoctorPanel";
+import { CuratorPanel } from "../pages/curator/CuratorPage";
 import { evaluateHealth, healingBlockedReason } from "../../core/doctor/health";
 
 /**
@@ -668,6 +669,72 @@ describe("render", () => {
           onBuildAnother: () => undefined,
           onGoHome: () => undefined,
           onDecidePostProcessing: async () => undefined,
+        } as never),
+      } as never),
+    );
+  });
+
+  it.skipIf(!on)("curator tools — the profile-wide actions", () => {
+    // A fake Vortex store shaped like the real one: a mod needing an update,
+    // one frozen and holding, one whose freeze was broken from outside, and
+    // two installs of the same Nexus page.
+    const modsById: Record<string, unknown> = {
+      "needs-update": {
+        attributes: {
+          name: "Apocalypse - Magic of Skyrim",
+          version: "10.0.0",
+          newestVersion: "10.1.0",
+          modId: 1090,
+          fileId: 400,
+          newestFileId: 500,
+        },
+      },
+      "frozen-ok": {
+        attributes: {
+          name: "SKSE64",
+          version: "2.2.6",
+          modId: 30379,
+          fileId: 10,
+          newestFileId: 44,
+          eventHorizonFrozenAtVersion: "2.2.6",
+          endorsed: "Endorsed",
+        },
+      },
+      "frozen-broken": {
+        attributes: {
+          name: "Address Library for SKSE Plugins",
+          version: "16.0",
+          modId: 32444,
+          eventHorizonFrozenAtVersion: "15.0",
+        },
+      },
+      "dupe-a": {
+        attributes: { name: "Embers XD", version: "3.2.2", modId: 37085, fileId: 900 },
+      },
+      "dupe-b": {
+        attributes: { name: "Embers XD (older)", version: "3.1.0", modId: 37085, fileId: 880 },
+      },
+    };
+    const state = {
+      persistent: {
+        mods: { skyrimse: modsById },
+        profiles: {
+          p1: {
+            gameId: "skyrimse",
+            modState: Object.fromEntries(
+              Object.keys(modsById).map((k) => [k, { enabled: true }]),
+            ),
+          },
+        },
+      },
+      settings: { profiles: { activeProfileId: "p1", activeGameId: "skyrimse" } },
+    };
+    write(
+      "curator-tools",
+      React.createElement(ApiProvider, {
+        api: { getState: () => state, store: { dispatch: () => undefined } },
+        children: React.createElement(ToastProvider, {
+          children: React.createElement(CuratorPanel, {}),
         } as never),
       } as never),
     );

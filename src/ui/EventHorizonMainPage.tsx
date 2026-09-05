@@ -44,6 +44,7 @@ import { InstallPage } from "./pages/install/InstallPage";
 import { CollectionsPage } from "./pages/CollectionsPage";
 import { BuildPage } from "./pages/build/BuildPage";
 import { DoctorPage } from "./pages/doctor/DoctorPage";
+import { CuratorPage } from "./pages/curator/CuratorPage";
 import { PluginDiffsPage } from "./pages/PluginDiffsPage";
 import { ModDiffsPage } from "./pages/ModDiffsPage";
 import { EXTENSION_VERSION } from "./version";
@@ -184,6 +185,8 @@ function RouteOutlet(props: RouteOutletProps): JSX.Element {
       return <DoctorPage key="doctor" onNavigate={onNavigate} />;
     case "build":
       return <BuildPage key="build" onNavigate={onNavigate} />;
+    case "curator":
+      return <CuratorPage key="curator" />;
     case "plugin-diffs":
       return <PluginDiffsPage key="plugin-diffs" onNavigate={onNavigate} />;
     case "mod-diffs":

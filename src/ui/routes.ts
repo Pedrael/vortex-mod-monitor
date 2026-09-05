@@ -17,6 +17,7 @@ export type EventHorizonRoute =
   | "collections"
   | "doctor"
   | "build"
+  | "curator"
   | "plugin-diffs"
   | "mod-diffs"
   | "about";
@@ -71,6 +72,14 @@ export const ROUTES: RouteDescriptor[] = [
     label: "Build",
     description: "Package your current setup as a collection",
     icon: "save",
+  },
+  {
+    id: "curator",
+    label: "Curator Tools",
+    description: "Profile-wide actions: updates, freezes, endorsements, duplicates",
+    // Same caveat as `doctor` above — not confirmed against Vortex's bundled
+    // icon set. If the nav item renders without a glyph, that is why.
+    icon: "tools",
   },
   {
     id: "plugin-diffs",
