@@ -43,7 +43,7 @@ import {
 } from "../pages/install/steps";
 import { ApiProvider } from "../state/ApiContext";
 import { ToastProvider } from "../components/Toast";
-import { AvailabilityPanel, DonePanel } from "../pages/build/BuildPage";
+import { AvailabilityPanel, BuildDiffView, DonePanel } from "../pages/build/BuildPage";
 import { summarizeAvailability } from "../../core/build/nexusAvailability";
 import { DraftCard, PublishedCard } from "../pages/build/BuildDashboard";
 import { DashboardBody, Hero } from "../pages/HomePage";
@@ -670,6 +670,53 @@ describe("render", () => {
           onGoHome: () => undefined,
           onDecidePostProcessing: async () => undefined,
         } as never),
+      } as never),
+    );
+  });
+
+  it.skipIf(!on)("build diff \u2014 what this rebuild would ship", () => {
+    // The card a curator sees on the form, with a diff shaped like a real
+    // revision: a handful added, a couple dropped, several bumped, one
+    // toggled, and a majority untouched.
+    const name = (n: number, w: string): { name: string; version?: string } => ({
+      name: `${w} ${n}`,
+      version: `1.${n}`,
+    });
+    write(
+      "build-diff",
+      React.createElement(BuildDiffView, {
+        outcome: {
+          kind: "diff",
+          againstVersion: "1.0.3",
+          fileName: "meridia-panties-1.0.3.ehcoll",
+          diff: {
+            added: [
+              name(1, "Skyland AIO"),
+              name(2, "Lux Orbis"),
+              name(3, "Embers XD"),
+            ],
+            removed: [name(4, "Obsidian Weathers")],
+            updated: [
+              { name: "Apocalypse - Magic of Skyrim", fromVersion: "9.8", toVersion: "10.0" },
+              { name: "Ordinator - Perks of Skyrim", fromVersion: "9.31", toVersion: "9.32" },
+              { name: "SSE Display Tweaks", fromVersion: "0.5.16", toVersion: "0.5.25" },
+            ],
+            toggled: [{ name: "Wildcat - Combat of Skyrim", nowEnabled: false }],
+            unchanged: 1748,
+            approximate: 29,
+          },
+        },
+      } as never),
+    );
+
+    write(
+      "build-diff-unreadable",
+      React.createElement(BuildDiffView, {
+        outcome: {
+          kind: "unreadable",
+          fileName: "meridia-panties-1.0.3.ehcoll",
+          why: "end of central directory record not found",
+        },
       } as never),
     );
   });

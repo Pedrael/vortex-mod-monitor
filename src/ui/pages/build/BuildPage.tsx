@@ -27,12 +27,19 @@ import * as path from "path";
 import {
   Button,
   Card,
+  DiffSectionBlock,
   HashingCard,
   Pill,
   ProgressRing,
   StepDots,
   useToast,
 } from "../../components";
+import {
+  describeCollectionDiff,
+  isUnchanged,
+} from "../../../core/curator/collectionDiff";
+import { loadBuildDiff, type BuildDiffOutcome } from "./buildDiff";
+import type { AuditorMod } from "../../../core/getModsListForProfile";
 import { ErrorBoundary, useErrorReporter, useErrorReporterFormatted } from "../../errors";
 import type { EventHorizonRoute } from "../../routes";
 import { useApi } from "../../state";
@@ -1375,6 +1382,219 @@ function Dot(props: { color: string }): JSX.Element {
   );
 }
 
+
+/**
+ * ──────────────────────────────────────────────────────────────────────
+ * "What would this build change?" — answered where the decision is made.
+ *
+ * The diff existed already, on an expanded published card on the dashboard.
+ * A curator filling in this form is two screens from it and has exactly this
+ * question, so it is here as well.
+ *
+ * Loaded in the background: reading the baseline means opening one entry of
+ * one `.ehcoll`, and the form must stay usable while that happens. Every
+ * failure resolves to something the card SAYS — a first build, or a package
+ * it could not read — because rendering silence would read as "nothing
+ * changed", which is a claim about a file nobody managed to open.
+ * ──────────────────────────────────────────────────────────────────────
+ */
+function BuildDiffCard(props: {
+  collectionName: string;
+  current: readonly AuditorMod[];
+}): JSX.Element | null {
+  const [outcome, setOutcome] = React.useState<BuildDiffOutcome | undefined>();
+  const { collectionName, current } = props;
+
+  React.useEffect(() => {
+    let alive = true;
+    setOutcome(undefined);
+    void (async (): Promise<void> => {
+      try {
+        const [{ findBuiltPackages }, { readEhcoll }, { getCollectionsDir }] =
+          await Promise.all([
+            import("./publishedDetails"),
+            import("../../../core/manifest/readEhcoll"),
+            import("../../../core/paths"),
+          ]);
+        const outputDir = getCollectionsDir();
+
+        // Every collection sharing this folder, read off its config file
+        // names — `findBuiltPackages` needs them or a name that is a prefix
+        // of another ("Ivy" against "Ivy 2") claims the wrong package.
+        let knownSlugs: string[] = [];
+        try {
+          const fsp = await import("fs/promises");
+          const entries = await fsp.readdir(path.join(outputDir, ".config"));
+          knownSlugs = entries
+            .filter((f) => f.endsWith(".json"))
+            .map((f) => f.slice(0, -".json".length));
+        } catch {
+          /* no config folder yet; the slug alone will have to do */
+        }
+
+        const result = await loadBuildDiff({
+          collectionName,
+          outputDir,
+          knownSlugs,
+          current,
+          findPackages: findBuiltPackages,
+          readPackage: readEhcoll as never,
+        });
+        if (alive) setOutcome(result);
+      } catch (err) {
+        if (alive) {
+          setOutcome({
+            kind: "unreadable",
+            fileName: "your previous build",
+            why: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+    })();
+    return (): void => {
+      alive = false;
+    };
+  }, [collectionName, current]);
+
+  return <BuildDiffView outcome={outcome} />;
+}
+
+/**
+ * The card, given an answer.
+ *
+ * Split from the loading above so it can be rendered — and looked at — with
+ * each outcome in hand. A component whose only path to content is an async
+ * effect is a component nobody sees until it ships.
+ */
+export function BuildDiffView(props: {
+  outcome: BuildDiffOutcome | undefined;
+}): JSX.Element | null {
+  const { outcome } = props;
+
+  // Nothing to say yet, and nothing to say for a first build — a card that
+  // announced "this is your first build" on every new collection would be
+  // noise on the screen where you are least able to act on it.
+  if (outcome === undefined || outcome.kind === "first-build") return null;
+
+  if (outcome.kind === "unreadable") {
+    return (
+      <Card title="Changes since your last build">
+        <p style={{ margin: 0, color: "var(--eh-warning)" }}>
+          Couldn't read {outcome.fileName}, so there is nothing to compare
+          against: {outcome.why}
+        </p>
+      </Card>
+    );
+  }
+
+  const { diff } = outcome;
+  return (
+    <Card title={`Changes since v${outcome.againstVersion}`}>
+      <p
+        style={{
+          margin: "0 0 var(--eh-sp-2)",
+          color: isUnchanged(diff)
+            ? "var(--eh-text-secondary)"
+            : "var(--eh-text-primary)",
+        }}
+      >
+        {describeCollectionDiff(diff)}
+      </p>
+      {!isUnchanged(diff) && (
+        <div className="eh-stack eh-stack--sm">
+          <DiffSectionBlock
+            title="Added"
+            count={diff.added.length}
+            intent="success"
+          >
+            <DiffLines>
+            {diff.added.map((e) => (
+              <DiffLine key={e.name} name={e.name} detail={e.version} />
+            ))}
+          </DiffLines>
+          </DiffSectionBlock>
+          <DiffSectionBlock
+            title="Removed"
+            count={diff.removed.length}
+            intent="danger"
+          >
+            <DiffLines>
+            {diff.removed.map((e) => (
+              <DiffLine key={e.name} name={e.name} detail={e.version} />
+            ))}
+          </DiffLines>
+          </DiffSectionBlock>
+          <DiffSectionBlock
+            title="Updated"
+            count={diff.updated.length}
+          >
+            <DiffLines>
+            {diff.updated.map((e) => (
+              <DiffLine
+                key={e.name}
+                name={e.name}
+                detail={`${e.fromVersion} → ${e.toVersion}`}
+              />
+            ))}
+          </DiffLines>
+          </DiffSectionBlock>
+          <DiffSectionBlock
+            title="Enabled or disabled"
+            count={diff.toggled.length}
+          >
+            <DiffLines>
+            {diff.toggled.map((e) => (
+              <DiffLine
+                key={e.name}
+                name={e.name}
+                detail={e.nowEnabled ? "now enabled" : "now disabled"}
+              />
+            ))}
+          </DiffLines>
+          </DiffSectionBlock>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/** One section's rows, scrolling rather than pushing the page down. */
+function DiffLines(props: { children: React.ReactNode }): JSX.Element {
+  return (
+    <div style={{ maxHeight: 200, overflowY: "auto" }}>{props.children}</div>
+  );
+}
+
+function DiffLine(props: { name: string; detail?: string }): JSX.Element {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        gap: "var(--eh-sp-3)",
+        padding: "2px 0",
+        fontSize: "var(--eh-text-sm)",
+      }}
+    >
+      <span style={{ color: "var(--eh-text-primary)", minWidth: 0 }}>
+        {props.name}
+      </span>
+      {props.detail !== undefined && (
+        <span
+          style={{
+            color: "var(--eh-text-muted)",
+            fontFamily: "var(--eh-font-mono)",
+            fontSize: "var(--eh-text-xs)",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {props.detail}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function FormPanel(props: FormPanelProps): JSX.Element {
   // Autosave. Everything below used to live only in the build session, which
   // is module-scoped — it survived tab switches and a React remount, and was
@@ -1615,6 +1835,8 @@ function FormPanel(props: FormPanelProps): JSX.Element {
           </div>
         </div>
       )}
+      <BuildDiffCard collectionName={curator.name} current={ctx.mods} />
+
       <Card title="Collection metadata">
         <div
           style={{
