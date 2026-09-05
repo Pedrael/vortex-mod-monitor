@@ -53,7 +53,10 @@ better does not prevent.
 
 - **GP-7** — **Verify the probe before believing the result.** A failing check is a claim too, and a
   broken harness fails in exactly the shape of a broken feature. When a result is surprising, suspect
-  the measurement first. *Scar: a hook run without its project-directory variable operated on the
+  the measurement first. A MUTATION THAT NEVER APPLIED is this rule's commonest disguise: the
+  replacement silently matched nothing, every test passed, and it reads as a surviving mutant —
+  i.e. as a gap in the tests rather than a gap in the probe. Print the before and after.
+  *Scar: a hook run without its project-directory variable operated on the
   wrong root and "proved" a working fix was broken; on another day three separate probe harnesses
   reported confident numbers that were artefacts of shell quoting.*
 
@@ -88,6 +91,19 @@ better does not prevent.
   triggered appended to a tracked file and created another, and the repo went dirty.*
 
 ## The evidence
+
+- **GP-27** — **When behaviour improves, the failing test is usually the thing that is wrong.**
+  A test encodes a claim, and a claim can go stale exactly like a comment. After a fix, a red test
+  has two readings — the change broke something, or the test pinned a detail the change was
+  supposed to remove — and they are indistinguishable from the colour alone. Read what the test
+  asserts before repairing the code to satisfy it, and when the assertion was about SHAPE
+  (an identifier, an inline expression, a call site) rather than behaviour, rewrite the assertion
+  to the behaviour it was standing in for. Otherwise the suite quietly becomes a ratchet that
+  forbids improvement.
+  *Scar: five times in one session — a guard asserting an inline filter that had been extracted, a
+  copy test asserting a sentence that had been corrected, a field name that had been renamed. Each
+  time the code was right and the test was the stale artefact.*
+
 
 - **GP-14** — **Establish a contract from the thing that defines it, never from something that
   calls it.** Rank every source by distance from where the behaviour is decided: the producer's own
