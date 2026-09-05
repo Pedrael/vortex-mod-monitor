@@ -48,6 +48,11 @@ import {
 } from "../../../core/curator/reinstallMod";
 import { runSequentially } from "../../../core/curator/runSequentially";
 import {
+  ENDORSE_PACE_MS,
+  describeEndorseDuration,
+  endorseIsLong,
+} from "../../../core/curator/endorsePace";
+import {
   describeCleanupPlan,
   findSupersededMods,
   formatSize,
@@ -442,8 +447,11 @@ function CuratorBody(): JSX.Element {
       // control passes, and the other id endorses nothing.
       api.events.emit("endorse-mod", game, mod.id, "Endorsed");
       done += 1;
-      setProgress(`Endorsing ${done} of ${endorsable.length} — ${mod.name}`);
-      await new Promise((r) => setTimeout(r, 250));
+      setProgress(
+        `Endorsing ${done} of ${endorsable.length} — ${mod.name} ` +
+          `(${describeEndorseDuration(endorsable.length - done)} left)`,
+      );
+      await new Promise((r) => setTimeout(r, ENDORSE_PACE_MS));
     }
     setBusy(undefined);
     setProgress(undefined);
@@ -751,9 +759,31 @@ function CuratorBody(): JSX.Element {
         >
           {busy === "endorse"
             ? "Endorsing..."
-            : `Endorse ${endorsable.length} mod(s)`}
+            : `Endorse ${num(endorsable.length)} mod(s)` +
+              (endorseIsLong(endorsable.length)
+                ? ` — ${describeEndorseDuration(endorsable.length)}`
+                : "")}
         </Button>
       </div>
+
+      {endorseIsLong(endorsable.length) && busy === undefined && (
+        <p
+          style={{
+            margin: 0,
+            padding: "var(--eh-sp-2)",
+            borderLeft: "3px solid var(--eh-warning)",
+            color: "var(--eh-text-secondary)",
+            fontSize: "var(--eh-text-sm)",
+          }}
+        >
+          Endorsing {num(endorsable.length)} mods takes{" "}
+          {describeEndorseDuration(endorsable.length)} and cannot be stopped
+          once it starts. Vortex gives no way to confirm an endorsement
+          finished, so they are spaced {ENDORSE_PACE_MS}ms apart — sending
+          them all at once is a rate-limit, not a faster result. Leave the page
+          open while it runs.
+        </p>
+      )}
 
       {progress !== undefined && (
         <p style={{ margin: 0, color: "var(--eh-text-primary)" }}>{progress}</p>
