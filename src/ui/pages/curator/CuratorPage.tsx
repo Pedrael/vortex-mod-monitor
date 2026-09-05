@@ -48,6 +48,7 @@ import {
 import { runSequentially } from "../../../core/curator/runSequentially";
 import {
   describeCleanupPlan,
+  findSupersededMods,
   formatSize,
   planCleanup,
   type CleanupPlan,
@@ -210,8 +211,14 @@ function CuratorBody(): JSX.Element {
   const endorsable = React.useMemo(() => findEndorsable(mods), [mods]);
 
   const ext = api as unknown as NexusExt;
-  /** Vortex gives an updated mod a NEW id; verification must use that one. */
-  const installedIds = React.useRef(new Map<string, string>());
+  /**
+   * Vortex gives an updated mod a NEW id; verification must use that one.
+   *
+   * Built fresh per run rather than kept in a ref. A ref outlives every run,
+   * and Vortex derives a mod id from its archive name — so a later install can
+   * be handed an id an earlier run already mapped, and verification would then
+   * check a mod that no longer exists.
+   */
   const [selected, setSelected] = React.useState<ReadonlySet<string>>(new Set());
   const chosen = React.useMemo(
     () => mods.filter((m) => selected.has(m.id)),
@@ -230,6 +237,18 @@ function CuratorBody(): JSX.Element {
    * report IS the confirmation, and there is no path to Apply without it.
    */
   const [cleanup, setCleanup] = React.useState<CleanupPlan | undefined>(undefined);
+  /**
+   * Old installs the curator has TICKED for removal.
+   *
+   * Never pre-filled. A lower Nexus file id does not prove an older version —
+   * a page ships a main file and its optional patches under one mod id — and
+   * the planner used to act on that guess.
+   */
+  const [retire, setRetire] = React.useState<ReadonlySet<string>>(new Set());
+  const retireCandidates = React.useMemo(
+    () => findSupersededMods(mods),
+    [mods],
+  );
 
   const setFrozen = (mod: CuratorMod, version: string | undefined): void => {
     const { key, value } = freezeAttribute(version);
@@ -312,6 +331,7 @@ function CuratorBody(): JSX.Element {
     const startUpdate = ext.nexusModUpdate;
     setBusy("update");
     setLines([]);
+    const installedIds = new Map<string, string>();
     const controller = new AbortController();
     const report = await runBulkUpdate({
       candidates: updatable,
@@ -333,13 +353,13 @@ function CuratorBody(): JSX.Element {
               "event-horizon-curator-tools",
             ),
         });
-        installedIds.current.set(candidate.mod.id, newModId);
+        installedIds.set(candidate.mod.id, newModId);
       },
       verify: async (m) =>
         verifyUpdatedMod({
           state: api.getState(),
           gameId: game,
-          vortexModId: installedIds.current.get(m.id) ?? m.id,
+          vortexModId: installedIds.get(m.id) ?? m.id,
         }),
     });
     setBusy(undefined);
@@ -362,6 +382,7 @@ function CuratorBody(): JSX.Element {
     if (game === undefined || targets.length === 0) return;
     setBusy("reinstall");
     setLines([]);
+    const installedIds = new Map<string, string>();
     const state0 = api.getState();
     const enabledNow = readEnabledModIds(state0, game);
 
@@ -382,7 +403,7 @@ function CuratorBody(): JSX.Element {
           gameId: game,
           ...reinstallArgs(preserved),
         } as never);
-        installedIds.current.set(m.id, vortexModId);
+        installedIds.set(m.id, vortexModId);
 
         const fresh = readCuratorMods(
           api.getState(),
@@ -426,7 +447,7 @@ function CuratorBody(): JSX.Element {
         verifyUpdatedMod({
           state: api.getState(),
           gameId: game,
-          vortexModId: installedIds.current.get(m.id) ?? m.id,
+          vortexModId: installedIds.get(m.id) ?? m.id,
         }),
     });
 
@@ -487,6 +508,7 @@ function CuratorBody(): JSX.Element {
       planCleanup({
         mods: readCuratorMods(state0, game, readEnabledModIds(state0, game)),
         downloads: readDownloads(state0, game),
+        removeModIds: retire,
       }),
     );
     setLines([]);
@@ -514,7 +536,16 @@ function CuratorBody(): JSX.Element {
           throw new Error("its path on disk could not be resolved");
         }
         await fsp.rm(full, { force: true });
-        api.store?.dispatch(vortexActions.removeDownload(dlEntry.id) as never);
+        // Outside the throwing path on purpose. The file IS gone by here, so a
+        // failed dispatch must not be reported as a failed deletion — that
+        // would understate what was freed and describe a success as an error.
+        // The worst case is a download entry Vortex still lists, which shows
+        // up as "missing" rather than as lost disk.
+        try {
+          api.store?.dispatch(vortexActions.removeDownload(dlEntry.id) as never);
+        } catch {
+          /* the bytes are freed either way */
+        }
       },
     });
     setBusy(undefined);
@@ -796,6 +827,54 @@ function CuratorBody(): JSX.Element {
           "until you read it and press Apply."
         }
       >
+        {retireCandidates.length > 0 && (
+          <div style={{ marginBottom: "var(--eh-sp-2)" }}>
+            <p
+              style={{
+                margin: "0 0 var(--eh-sp-1)",
+                color: "var(--eh-text-secondary)",
+                fontSize: "var(--eh-text-sm)",
+              }}
+            >
+              {retireCandidates.length} install(s) share a Nexus page with a
+              newer file. That is not proof one is an old VERSION — a page also
+              ships optional patches under the same mod id — so tick only the
+              ones you know are stale.
+            </p>
+            {retireCandidates.map((c) => (
+              <label
+                key={c.mod.id}
+                style={{ ...rowStyle, cursor: "pointer", justifyContent: "flex-start" }}
+              >
+                <input
+                  type="checkbox"
+                  checked={retire.has(c.mod.id)}
+                  onChange={(): void =>
+                    setRetire((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(c.mod.id)) next.delete(c.mod.id);
+                      else next.add(c.mod.id);
+                      return next;
+                    })
+                  }
+                />
+                <span style={{ color: "var(--eh-text-primary)", minWidth: 0 }}>
+                  {c.mod.name}
+                </span>
+                <span
+                  style={{
+                    color: "var(--eh-text-muted)",
+                    fontSize: "var(--eh-text-xs)",
+                  }}
+                >
+                  newer file installed as {c.supersededBy.name}
+                </span>
+                {!c.mod.enabled && <Pill intent="neutral">disabled</Pill>}
+              </label>
+            ))}
+          </div>
+        )}
+
         <div style={{ display: "flex", gap: "var(--eh-sp-2)", flexWrap: "wrap" }}>
           <Button intent="ghost" disabled={busy !== undefined} onClick={scanForCleanup}>
             Scan for old versions

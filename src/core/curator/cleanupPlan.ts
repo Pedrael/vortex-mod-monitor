@@ -85,11 +85,23 @@ export type CleanupPlan = {
 };
 
 /**
- * Which installed mods are older versions of another installed mod.
+ * Installs that MIGHT be older versions of another install. A suggestion.
  *
- * Only same-page duplicates with a comparable pair of file ids qualify: two
- * installs of the SAME file are a different problem, and without file ids
- * there is no ordering, so no way to say which is older.
+ * ─── WHY THIS IS NO LONGER PART OF THE PLAN ────────────────────────────
+ * It used to be, and it was wrong twice over.
+ *
+ * A lower file id is not evidence of an older VERSION. A Nexus page ships a
+ * main file and its optional patches under one mod id with different file
+ * ids, so "the lower one is superseded" retires a patch the curator installed
+ * deliberately. `findDuplicates` already refuses to call that case anything
+ * but a lead — and this function was deleting it.
+ *
+ * Worse, it ignored `enabled`. A curator who hits a regression in v2 disables
+ * it and re-enables v1; the plan then retired v1 — the version actually in
+ * use — and kept the broken one. Verified with a probe before this changed.
+ *
+ * So removals are now the curator's choice, ticked in the view. This ranks
+ * the candidates for them; it does not act.
  */
 export function findSupersededMods(
   mods: readonly CuratorMod[],
@@ -111,9 +123,12 @@ export function findSupersededMods(
     const newest = sorted[0]!;
     for (const older of sorted.slice(1)) {
       // Equal file ids are the same file installed twice — redundant, but not
-      // a VERSION question, and picking a loser between identical twins is a
-      // different decision than retiring an older release.
+      // a VERSION question.
       if (older.nexusFileId === newest.nexusFileId) continue;
+      // The rollback. An enabled install being "superseded" by a disabled one
+      // is a curator running an older version on purpose, and suggesting they
+      // delete it inverts what they chose.
+      if (older.enabled && !newest.enabled) continue;
       out.push({ mod: older, supersededBy: newest });
     }
   }
@@ -130,10 +145,22 @@ export function findSupersededMods(
 export function planCleanup(args: {
   mods: readonly CuratorMod[];
   downloads: readonly DownloadEntry[];
+  /**
+   * Mod ids the curator TICKED for removal. Nothing is removed otherwise.
+   *
+   * The planner deliberately does not choose these itself — a lower file id
+   * does not prove an older version, and acting on that guess deleted a
+   * patch the curator installed on purpose. `findSupersededMods` suggests;
+   * this acts only on what came back.
+   */
+  removeModIds?: ReadonlySet<string>;
 }): CleanupPlan {
-  const { mods, downloads } = args;
+  const { mods, downloads, removeModIds } = args;
 
-  const removeMods = findSupersededMods(mods);
+  const chosen = removeModIds ?? new Set<string>();
+  const removeMods = findSupersededMods(mods).filter((r) =>
+    chosen.has(r.mod.id),
+  );
   const removedIds = new Set(removeMods.map((r) => r.mod.id));
 
   // Every archive still spoken for AFTER the removals above.

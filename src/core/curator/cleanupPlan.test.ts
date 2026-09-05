@@ -94,6 +94,7 @@ describe("what may be deleted", () => {
         mod("new", { archiveId: "dl-new", nexusModId: 7, nexusFileId: 200 }),
       ],
       downloads: [dl("dl-old"), dl("dl-new")],
+      removeModIds: new Set(["old"]),
     });
     expect(plan.removeMods.map((r) => r.mod.id)).toEqual(["old"]);
     expect(plan.deleteArchives.map((a) => a.entry.id)).toEqual(["dl-old"]);
@@ -109,6 +110,7 @@ describe("what may be deleted", () => {
         mod("new", { archiveId: "shared", nexusModId: 7, nexusFileId: 200 }),
       ],
       downloads: [dl("shared")],
+      removeModIds: new Set(["old"]),
     });
     expect(plan.removeMods).toHaveLength(1);
     expect(plan.deleteArchives).toEqual([]);
@@ -168,6 +170,7 @@ describe("the report read before anything is deleted", () => {
         mod("new", { archiveId: "b", nexusModId: 7, nexusFileId: 2 }),
       ],
       downloads: [dl("a"), dl("b")],
+      removeModIds: new Set(["old"]),
     });
     const text = describeCleanupPlan(plan).join(" ");
     expect(text).toContain("installs go first");
@@ -193,5 +196,58 @@ describe("the report read before anything is deleted", () => {
   it("formats sizes a person can read", () => {
     expect(formatSize(3.61 * 1024 ** 3)).toBe("3.61 GB");
     expect(formatSize(700 * 1024 ** 2)).toBe("700 MB");
+  });
+});
+
+describe("the two ways this used to delete the wrong thing", () => {
+  it("never plans a removal the curator did not tick", () => {
+    // It used to choose them itself. A lower file id is not proof of an older
+    // version — a Nexus page ships a main file and its optional patches under
+    // one mod id — so acting on that guess deleted a patch installed on
+    // purpose. Suggesting is fine; acting is not.
+    const mods = [
+      mod("main", { archiveId: "dl-main", nexusModId: 7, nexusFileId: 100 }),
+      mod("optional", { archiveId: "dl-opt", nexusModId: 7, nexusFileId: 200 }),
+    ];
+    const plan = planCleanup({
+      mods,
+      downloads: [dl("dl-main"), dl("dl-opt")],
+    });
+    expect(plan.removeMods).toEqual([]);
+    expect(plan.deleteArchives).toEqual([]);
+    // Still offered as a candidate for the curator to judge.
+    expect(findSupersededMods(mods)).toHaveLength(1);
+  });
+
+  it("does not even SUGGEST retiring an enabled install for a disabled one", () => {
+    // The rollback. A curator who hit a regression in v2 disables it and
+    // re-enables v1; suggesting they delete v1 inverts what they chose. This
+    // was verified with a probe: the old planner retired "v1-IN-USE" and
+    // deleted its archive.
+    expect(
+      findSupersededMods([
+        mod("v1-in-use", { nexusModId: 7, nexusFileId: 100, enabled: true }),
+        mod("v2-disabled", { nexusModId: 7, nexusFileId: 200, enabled: false }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("still suggests retiring a disabled older install", () => {
+    // The ordinary case must survive the guard above.
+    const suggestions = findSupersededMods([
+      mod("old", { nexusModId: 7, nexusFileId: 100, enabled: false }),
+      mod("new", { nexusModId: 7, nexusFileId: 200, enabled: true }),
+    ]);
+    expect(suggestions.map((r) => r.mod.id)).toEqual(["old"]);
+  });
+
+  it("still deletes orphan archives without any removal being ticked", () => {
+    // The bulk of the space is here — archives nothing references at all —
+    // and that path never depended on guessing versions.
+    const plan = planCleanup({
+      mods: [mod("cur", { archiveId: "keep", nexusModId: 7, nexusFileId: 9 })],
+      downloads: [dl("keep"), dl("stale", { nexusModId: 7 })],
+    });
+    expect(plan.deleteArchives.map((a) => a.entry.id)).toEqual(["stale"]);
   });
 });
