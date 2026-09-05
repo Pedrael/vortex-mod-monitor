@@ -800,14 +800,6 @@ function validateInstallState(
     obj.modType === undefined
       ? undefined
       : expectString(obj.modType, `${path}.modType`, errors);
-  const fileOverrides =
-    obj.fileOverrides === undefined
-      ? undefined
-      : expectStringArray(
-          obj.fileOverrides,
-          `${path}.fileOverrides`,
-          errors,
-        );
   const enabledINITweaks =
     obj.enabledINITweaks === undefined
       ? undefined
@@ -838,7 +830,6 @@ function validateInstallState(
     installOrder,
     deploymentPriority,
     ...(modType !== undefined ? { modType } : {}),
-    ...(fileOverrides !== undefined ? { fileOverrides } : {}),
     ...(enabledINITweaks !== undefined ? { enabledINITweaks } : {}),
     ...(stagingFiles !== undefined ? { stagingFiles } : {}),
   };

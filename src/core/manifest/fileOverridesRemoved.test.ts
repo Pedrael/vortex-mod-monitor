@@ -65,9 +65,64 @@ const base = (): Record<string, unknown> => ({
   externalDependencies: [],
 });
 
+/** A minimal mod entry the validator accepts. */
+const modEntry = (): Record<string, unknown> => ({
+  name: "t",
+  compareKey: "nexus:1:2",
+  source: {
+    kind: "nexus",
+    gameDomain: "skyrimspecialedition",
+    modId: 1,
+    fileId: 2,
+    archiveName: "t.zip",
+    sha256: "a".repeat(64),
+  },
+  install: { fomodSelections: [] },
+});
+
 describe("the format no longer carries fileOverrides", () => {
   it("parses a current manifest that omits it entirely", () => {
     expect(() => parseManifest(JSON.stringify(base()))).not.toThrow();
+  });
+
+  it("drops the PER-MOD one too, and no longer validates it", () => {
+    // The removal stopped at the top level. `validateInstallState` went on
+    // parsing `state.fileOverrides`, checking its shape, and spreading it onto
+    // a `ModInstallState` that no longer declares the field — TypeScript does
+    // not apply excess-property checking to a spread, so nothing objected.
+    // Written as a plain key, tsc rejects it: TS2353.
+    //
+    // Two consequences it had: the field came back to life at runtime on any
+    // package carrying it, invisible to `manifestFieldFates`; and a malformed
+    // value pushed a PARSE ERROR, so a manifest could be rejected over a field
+    // the format does not have.
+    const m = base();
+    (m.mods as unknown[]).push({
+      ...modEntry(),
+      state: {
+        enabled: true,
+        installOrder: 0,
+        deploymentPriority: 0,
+        fileOverrides: ["Data/whatever.esp"],
+      },
+    });
+    const { manifest } = parseManifest(JSON.stringify(m));
+    const state = manifest.mods[0]!.state as { fileOverrides?: unknown };
+    expect(state.fileOverrides).toBeUndefined();
+  });
+
+  it("does not reject a manifest over a malformed dead field", () => {
+    const m = base();
+    (m.mods as unknown[]).push({
+      ...modEntry(),
+      state: {
+        enabled: true,
+        installOrder: 0,
+        deploymentPriority: 0,
+        fileOverrides: "not-an-array",
+      },
+    });
+    expect(() => parseManifest(JSON.stringify(m))).not.toThrow();
   });
 
   it("does not surface it on the parsed manifest", () => {

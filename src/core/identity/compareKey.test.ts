@@ -185,3 +185,28 @@ describe("nobody builds or parses these by hand any more", () => {
     expect(utils).not.toContain("identity/compareKey");
   });
 });
+
+describe("the two vocabularies agree where they overlap", () => {
+  it("a fully-pinned nexus reference is byte-identical to the compareKey", () => {
+    // Not cosmetic. `parseManifest` validates a rule by asking
+    // `compareKeys.has(rule.reference)` — a string comparison between a value
+    // built by `nexusFileReference` and a set built by `nexusCompareKey`.
+    // They are separate function bodies by design, because the vocabularies
+    // are allowed to diverge elsewhere; this ONE form is the seam where they
+    // must not. If they drift, every fully-pinned rule silently stops
+    // matching and the collection loses its conflict resolution.
+    for (const [m, f] of [
+      [80968, 341868],
+      ["007", "08"],
+      [1, 2],
+    ] as [string | number, string | number][]) {
+      expect(nexusFileReference(m, f)).toBe(nexusCompareKey(m, f));
+    }
+  });
+
+  it("and the partial form is NOT a compareKey", () => {
+    // The other half of the seam: a mod-page reference must never collide
+    // with a compareKey, or a rule would resolve onto an arbitrary variant.
+    expect(parseCompareKey(nexusModReference(80968)).kind).toBe("unrecognised");
+  });
+});

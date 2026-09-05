@@ -352,20 +352,6 @@ export async function recordPostProcessingDecision(args: {
 }
 
 /**
- * Overlay the curator's post-processing declarations onto the mod set.
- *
- * Takes the config as a PARAMETER rather than closing over it, and that is the
- * point rather than a style choice. This started life as a `.map()` inside
- * `runBuildPipeline` that read `collectionConfig` from the enclosing scope
- * — seventeen lines before that variable was declared. TypeScript cannot
- * prove execution order across a closure boundary, so it compiled cleanly and
- * threw "Cannot access 'collectionConfig' before initialization" the moment a
- * curator pressed Build. It caught the same mistake instantly elsewhere in
- * this file, where the reference happened to be direct.
- *
- * As an argument, calling it too early is a compile error again.
- */
-/**
  * Mods that genuinely cannot be identified, config in hand.
  *
  * A mod the curator marked `treatAsExternal` is NOT unidentified: it ships,
@@ -390,6 +376,20 @@ export function findUnidentifiedMods(
   );
 }
 
+/**
+ * Overlay the curator's post-processing declarations onto the mod set.
+ *
+ * Takes the config as a PARAMETER rather than closing over it, and that is the
+ * point rather than a style choice. This started life as a `.map()` inside
+ * `runBuildPipeline` that read `collectionConfig` from the enclosing scope
+ * — fifty-seven lines before that variable was declared. TypeScript cannot
+ * prove execution order across a closure boundary, so it compiled cleanly and
+ * threw "Cannot access 'collectionConfig' before initialization" the moment a
+ * curator pressed Build. It caught the same mistake instantly elsewhere in
+ * this file, where the reference happened to be direct.
+ *
+ * As an argument, calling it too early is a compile error again.
+ */
 export function applyPostProcessedDeclarations(
   mods: readonly AuditorMod[],
   config: CollectionConfig,

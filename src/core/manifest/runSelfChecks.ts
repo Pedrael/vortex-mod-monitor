@@ -86,7 +86,7 @@ export type RunSelfChecksOptions = {
  * The only finding in this file that is not advisory. A staged file the
  * archive cannot produce is a file no user can ever have, so it fails
  * verification, gets reinstalled from the same archive, fails identically and
- * the mod is recorded broken """ + D + u""" permanently, whatever the user does.
+ * the mod is recorded broken — permanently, whatever the user does.
  *
  * Declaring the mod post-processed tells the driver those files are the
  * curator's; bundling it ships them instead. Doing neither ships a collection
@@ -147,7 +147,7 @@ export function describeUndeclaredPostProcessing(
     .join(", ");
   return (
     `${undeclared.length} mod(s) have staged file(s) their archive cannot ` +
-    `produce and are NOT declared post-processed """ + D + u""" ${names}. A user ` +
+    `produce and are NOT declared post-processed — ${names}. A user ` +
     `installing from those archives can never have those files, so each mod ` +
     `will fail its integrity check, be reinstalled once, fail again and be ` +
     `recorded as broken. Set "postProcessed": true on them in the collection ` +

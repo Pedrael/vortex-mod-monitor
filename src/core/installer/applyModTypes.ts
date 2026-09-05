@@ -73,6 +73,21 @@ export function planModTypeChanges(args: {
     const vortexModId = args.installed.get(mod.compareKey);
     if (vortexModId === undefined) continue;
 
+    // `?? ""` reads an ABSENT type as Vortex's default, which is a claim about
+    // the curator's machine rather than a fact from it — so it is only safe
+    // while every package records the field. It does: `AuditorMod.modType` is
+    // a required string, `getModsListForProfile` sets it to "" when Vortex has
+    // no type, and `buildManifest` writes it unconditionally. A current build
+    // therefore always carries it, "" included.
+    //
+    // The type says `modType?: string` and the parser accepts it missing, so
+    // the FORMAT still permits a state the producer never emits — reachable
+    // only from a package built before modType capture existed, or a
+    // hand-edited manifest. Backward compatibility is not carried here by
+    // decision, so absent stays "default" rather than growing a branch for a
+    // case that cannot arrive. If that ever changes, this is the line: absent
+    // would have to mean "unknown, leave the user's type alone", the way
+    // `capturePluginFlags` already treats a header it could not read.
     const to = mod.state.modType ?? "";
     const from = args.currentTypes.get(vortexModId) ?? "";
     if (normalise(from) === normalise(to)) continue;
