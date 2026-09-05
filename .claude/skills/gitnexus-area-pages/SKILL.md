@@ -1,67 +1,67 @@
 ---
 name: gitnexus-area-pages
-description: "Skill for the Pages area of Event-Horizon. 42 symbols across 13 files."
+description: "Skill for the Pages area of Event-Horizon. 150 symbols across 38 files."
 ---
 
 # Pages
 
-42 symbols | 13 files | Cohesion: 72%
+150 symbols | 38 files | Cohesion: 79%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how useErrorReporterFormatted, CollectionsPage, HomePage work
+- Understanding how describeEnableChanges, planEnableChanges, describeCleanupPlan work
 - Modifying pages-related functionality
 
 ## Key Files
 
 | File | Symbols |
 |------|---------|
+| `src/ui/pages/install/steps.tsx` | ConfirmStep, ConflictRow, DoneStep, ExternalDownloadGuide, FailureBody (+16) |
+| `src/ui/pages/CollectionsPage.tsx` | CollectionsList, handleContinueInstall, refresh, DetailTile, EmptyState (+9) |
+| `src/ui/pages/HomePage.tsx` | CuratorPanel, Dashboard, DashboardBody, ErrorPanel, FooterRow (+8) |
 | `src/ui/pages/ModDiffsPage.tsx` | ModDiffsPage, ChangedModList, ChangedModRow, FieldDiffRow, TierBadge (+8) |
+| `src/ui/pages/build/BuildPage.tsx` | AvailabilityPanel, BuildingPanel, ErrorPanel, IdlePanel, ImportPreviousButton (+7) |
+| `src/ui/pages/curator/CuratorPage.tsx` | CuratorBody, endorseAll, refreshUpdates, setEnabledFor, setFrozen (+6) |
 | `src/ui/pages/PluginDiffsPage.tsx` | PluginDiffsPage, FileSelector, PluginDiffsView, EnabledMismatchList, PluginEntryList (+3) |
 | `src/ui/pages/AboutPage.tsx` | AboutPage, LinkRow, Stat, handleClick, openExternal |
-| `src/ui/EventHorizonMainPage.tsx` | AppShell, NavBar, RouteOutlet |
-| `src/core/modDiffStorage.ts` | listModDiffFiles, parseFilename, readModDiffReport |
-| `src/core/pluginDiffStorage.ts` | listPluginDiffFiles, parseFilename, readPluginDiffReport |
-| `src/ui/errors/ErrorContext.tsx` | useErrorReporterFormatted |
-| `src/ui/pages/CollectionsPage.tsx` | CollectionsPage |
-| `src/ui/pages/HomePage.tsx` | HomePage |
-| `src/ui/pages/build/BuildPage.tsx` | BuildPage |
+| `src/ui/pages/doctor/DoctorPanel.tsx` | CheckCard, DoctorPanel, VerdictRing, rank |
+| `src/core/installer/fomodReplayMode.ts` | describeFomodModes, s, mustAskReplayMode |
 
 ## Entry Points
 
 Start here when exploring this area:
 
-- **`useErrorReporterFormatted`** (Function) — `src/ui/errors/ErrorContext.tsx:65`
-- **`CollectionsPage`** (Function) — `src/ui/pages/CollectionsPage.tsx:90`
-- **`HomePage`** (Function) — `src/ui/pages/HomePage.tsx:48`
-- **`ModDiffsPage`** (Function) — `src/ui/pages/ModDiffsPage.tsx:67`
-- **`PluginDiffsPage`** (Function) — `src/ui/pages/PluginDiffsPage.tsx:53`
+- **`describeEnableChanges`** (Function) — `src/core/curator/bulkToggles.ts:61`
+- **`planEnableChanges`** (Function) — `src/core/curator/bulkToggles.ts:34`
+- **`describeCleanupPlan`** (Function) — `src/core/curator/cleanupPlan.ts:237`
+- **`formatSize`** (Function) — `src/core/curator/cleanupPlan.ts:225`
+- **`freezeAttribute`** (Function) — `src/core/curator/readProfile.ts:112`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `useErrorReporterFormatted` | Function | `src/ui/errors/ErrorContext.tsx` | 65 |
-| `CollectionsPage` | Function | `src/ui/pages/CollectionsPage.tsx` | 90 |
-| `HomePage` | Function | `src/ui/pages/HomePage.tsx` | 48 |
-| `ModDiffsPage` | Function | `src/ui/pages/ModDiffsPage.tsx` | 67 |
-| `PluginDiffsPage` | Function | `src/ui/pages/PluginDiffsPage.tsx` | 53 |
-| `BuildPage` | Function | `src/ui/pages/build/BuildPage.tsx` | 119 |
-| `InstallPage` | Function | `src/ui/pages/install/InstallPage.tsx` | 50 |
-| `listModDiffFiles` | Function | `src/core/modDiffStorage.ts` | 60 |
-| `readModDiffReport` | Function | `src/core/modDiffStorage.ts` | 95 |
-| `listPluginDiffFiles` | Function | `src/core/pluginDiffStorage.ts` | 60 |
-| `readPluginDiffReport` | Function | `src/core/pluginDiffStorage.ts` | 95 |
-| `DiffSectionBlock` | Function | `src/ui/components/DiffSectionBlock.tsx` | 33 |
+| `describeEnableChanges` | Function | `src/core/curator/bulkToggles.ts` | 61 |
+| `planEnableChanges` | Function | `src/core/curator/bulkToggles.ts` | 34 |
+| `describeCleanupPlan` | Function | `src/core/curator/cleanupPlan.ts` | 237 |
+| `formatSize` | Function | `src/core/curator/cleanupPlan.ts` | 225 |
+| `freezeAttribute` | Function | `src/core/curator/readProfile.ts` | 112 |
+| `healingBlockedReason` | Function | `src/core/doctor/health.ts` | 497 |
+| `overallHealth` | Function | `src/core/doctor/health.ts` | 444 |
+| `describeInstallAttempt` | Function | `src/core/installer/attemptRecord.ts` | 169 |
+| `describeFomodModes` | Function | `src/core/installer/fomodReplayMode.ts` | 78 |
+| `s` | Function | `src/core/installer/fomodReplayMode.ts` | 84 |
+| `mustAskReplayMode` | Function | `src/core/installer/fomodReplayMode.ts` | 183 |
+| `Button` | Function | `src/ui/components/Button.tsx` | 31 |
+| `Card` | Function | `src/ui/components/Card.tsx` | 31 |
+| `EventHorizonLogo` | Function | `src/ui/components/EventHorizonLogo.tsx` | 47 |
+| `HashingCard` | Function | `src/ui/components/HashingCard.tsx` | 49 |
+| `Modal` | Function | `src/ui/components/Modal.tsx` | 57 |
 | `Page` | Function | `src/ui/components/Page.tsx` | 26 |
-| `AboutPage` | Function | `src/ui/pages/AboutPage.tsx` | 21 |
-| `AppShell` | Function | `src/ui/EventHorizonMainPage.tsx` | 87 |
-| `NavBar` | Function | `src/ui/EventHorizonMainPage.tsx` | 112 |
-| `RouteOutlet` | Function | `src/ui/EventHorizonMainPage.tsx` | 169 |
-| `ChangedModList` | Function | `src/ui/pages/ModDiffsPage.tsx` | 413 |
-| `ChangedModRow` | Function | `src/ui/pages/ModDiffsPage.tsx` | 447 |
-| `FieldDiffRow` | Function | `src/ui/pages/ModDiffsPage.tsx` | 573 |
+| `Pill` | Function | `src/ui/components/Pill.tsx` | 19 |
+| `ProgressRing` | Function | `src/ui/components/ProgressRing.tsx` | 29 |
+| `renderLabel` | Function | `src/ui/components/ProgressRing.tsx` | 42 |
 
 ## Execution Flows
 
@@ -75,12 +75,12 @@ Start here when exploring this area:
 | `RouteOutlet → GetActiveGameId` | cross_community | 6 |
 | `RouteOutlet → ResolveProfileName` | cross_community | 6 |
 | `RouteOutlet → ResolveVortexVersion` | cross_community | 6 |
+| `Dashboard → IsSemverLike` | cross_community | 6 |
 | `BuildPage → NotifyStateChanged` | cross_community | 6 |
-| `ReportView → FormatFieldValue` | cross_community | 5 |
 
 ## How to Explore
 
-1. `context({name: "useErrorReporterFormatted"})` — see callers and callees
+1. `context({name: "describeEnableChanges"})` — see callers and callees
 2. `query({search_query: "pages"})` — find related execution flows
 3. Read key files listed above for implementation details
 4. `explain({target: "<file or symbol>"})` — persisted taint findings (source→sink data flows), when indexed with `--pdg`

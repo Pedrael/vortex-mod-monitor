@@ -27,7 +27,7 @@ description: "Skill for the Components area of Event-Horizon. 14 symbols across 
 
 Start here when exploring this area:
 
-- **`EventHorizonMainPage`** (Function) — `src/ui/EventHorizonMainPage.tsx:64`
+- **`EventHorizonMainPage`** (Function) — `src/ui/EventHorizonMainPage.tsx:65`
 - **`ToastProvider`** (Function) — `src/ui/components/Toast.tsx:74`
 - **`ErrorProvider`** (Function) — `src/ui/errors/ErrorContext.tsx:85`
 - **`ApiProvider`** (Function) — `src/ui/state/ApiContext.tsx:25`
@@ -37,7 +37,7 @@ Start here when exploring this area:
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `EventHorizonMainPage` | Function | `src/ui/EventHorizonMainPage.tsx` | 64 |
+| `EventHorizonMainPage` | Function | `src/ui/EventHorizonMainPage.tsx` | 65 |
 | `ToastProvider` | Function | `src/ui/components/Toast.tsx` | 74 |
 | `ErrorProvider` | Function | `src/ui/errors/ErrorContext.tsx` | 85 |
 | `ApiProvider` | Function | `src/ui/state/ApiContext.tsx` | 25 |
@@ -61,7 +61,6 @@ Start here when exploring this area:
 | `EventHorizonMainPage → Modal` | cross_community | 4 |
 | `EventHorizonMainPage → BuildErrorReport` | cross_community | 4 |
 | `EventHorizonMainPage → UseApiOptional` | cross_community | 4 |
-| `Show → NodeToText` | intra_community | 3 |
 
 ## How to Explore
 

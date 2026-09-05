@@ -85,13 +85,29 @@ export type UpdateCandidate = {
 const shown = (v: string | undefined): string => v ?? "unknown";
 
 /**
- * Mods with a newer file available, excluding frozen ones.
+ * Mods with a newer file available — at most ONE per Nexus page.
+ *
+ * ─── WHY ONE ──────────────────────────────────────────────────────────
+ * Vortex leaves the old install in place when a mod updates, so a profile
+ * accumulates several installs of the same mod. Measured on the real profile:
+ * 165 "updatable" mods across far fewer actual mods, including two copies of
+ * Animated Armoury — 7.0 and 8.1 — both offering to become 8.2.
+ *
+ * Updating both would install 8.2 TWICE and leave four copies where there
+ * were two. The tool would be making the exact mess it exists to clean up.
+ *
+ * So each Nexus page contributes one candidate: the NEWEST install, which is
+ * the one whose update produces something the curator wants. The older copies
+ * are already visible as duplicates, and cleaning them up is a different
+ * action with different consequences.
  *
  * Frozen mods are filtered HERE rather than at the call site, so no future
  * caller can offer to update one by forgetting to ask.
  */
 export function findUpdatable(mods: readonly CuratorMod[]): UpdateCandidate[] {
-  const out: UpdateCandidate[] = [];
+  const best = new Map<number, CuratorMod>();
+  const noPage: CuratorMod[] = [];
+
   for (const mod of mods) {
     if (mod.frozenAtVersion !== undefined) continue;
     if (mod.nexusFileId === undefined || mod.newestFileId === undefined) continue;
@@ -100,13 +116,52 @@ export function findUpdatable(mods: readonly CuratorMod[]): UpdateCandidate[] {
     // as an update would install a file OLDER than the one present — a
     // downgrade wearing an update's clothes.
     if (mod.newestFileId <= mod.nexusFileId) continue;
-    out.push({
-      mod,
-      fromFileId: mod.nexusFileId,
-      toFileId: mod.newestFileId,
-      fromVersion: shown(mod.version),
-      toVersion: shown(mod.newestVersion),
-    });
+
+    if (mod.nexusModId === undefined) {
+      // No page to group by. Cannot be a duplicate of anything we can see.
+      noPage.push(mod);
+      continue;
+    }
+    const held = best.get(mod.nexusModId);
+    if (held === undefined || (mod.nexusFileId ?? 0) > (held.nexusFileId ?? 0)) {
+      best.set(mod.nexusModId, mod);
+    }
+  }
+
+  return [...best.values(), ...noPage].map((mod) => ({
+    mod,
+    fromFileId: mod.nexusFileId!,
+    toFileId: mod.newestFileId!,
+    fromVersion: shown(mod.version),
+    toVersion: shown(mod.newestVersion),
+  }));
+}
+
+/**
+ * Older installs that an update would otherwise duplicate.
+ *
+ * The other half of the rule above: these are NOT offered an update, and the
+ * curator should be told why rather than left wondering where they went.
+ */
+export function findUpdateShadowed(
+  mods: readonly CuratorMod[],
+): { mod: CuratorMod; newerInstall: CuratorMod }[] {
+  const offered = new Map(
+    findUpdatable(mods).map((c) => [c.mod.id, c.mod] as const),
+  );
+  const byPage = new Map<number, CuratorMod>();
+  for (const candidate of offered.values()) {
+    if (candidate.nexusModId !== undefined) byPage.set(candidate.nexusModId, candidate);
+  }
+
+  const out: { mod: CuratorMod; newerInstall: CuratorMod }[] = [];
+  for (const mod of mods) {
+    if (mod.frozenAtVersion !== undefined) continue;
+    if (mod.nexusModId === undefined || mod.nexusFileId === undefined) continue;
+    if (mod.newestFileId === undefined || mod.newestFileId <= mod.nexusFileId) continue;
+    if (offered.has(mod.id)) continue;
+    const newer = byPage.get(mod.nexusModId);
+    if (newer !== undefined) out.push({ mod, newerInstall: newer });
   }
   return out;
 }

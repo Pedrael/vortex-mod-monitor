@@ -13,6 +13,7 @@ import {
   findEndorsable,
   findFrozen,
   findUpdatable,
+  findUpdateShadowed,
   summarizeProfile,
   type CuratorMod,
 } from "./profileActions";
@@ -216,5 +217,53 @@ describe("the headline counts", () => {
 
   it("is all zeroes for an empty profile rather than throwing", () => {
     expect(summarizeProfile([])).toMatchObject({ total: 0, updatable: 0 });
+  });
+});
+
+describe("two installs of one mod, both with an update waiting", () => {
+  // Found by running it: the real profile had Animated Armoury installed twice
+  // — 7.0 and 8.1 — and BOTH were offered an update to 8.2. Taking both would
+  // install 8.2 twice and leave four copies where there were two, with the
+  // tool making the exact mess it exists to clean up.
+  const twoInstalls = [
+    mod({ id: "old", nexusModId: 47213, nexusFileId: 700, newestFileId: 820, version: "7.0" }),
+    mod({ id: "new", nexusModId: 47213, nexusFileId: 810, newestFileId: 820, version: "8.1" }),
+  ];
+
+  it("offers the update once, on the newest install", () => {
+    const candidates = findUpdatable(twoInstalls);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]!.mod.id).toBe("new");
+    expect(candidates[0]!.fromVersion).toBe("8.1");
+  });
+
+  it("names the copy it did NOT offer, so it is not a silent omission", () => {
+    const shadowed = findUpdateShadowed(twoInstalls);
+    expect(shadowed).toHaveLength(1);
+    expect(shadowed[0]!.mod.id).toBe("old");
+    expect(shadowed[0]!.newerInstall.id).toBe("new");
+  });
+
+  it("still offers one update per mod when pages differ", () => {
+    expect(
+      findUpdatable([
+        mod({ id: "a", nexusModId: 1, nexusFileId: 1, newestFileId: 2 }),
+        mod({ id: "b", nexusModId: 2, nexusFileId: 1, newestFileId: 2 }),
+      ]),
+    ).toHaveLength(2);
+  });
+
+  it("shadows nothing when a mod is installed once", () => {
+    expect(
+      findUpdateShadowed([
+        mod({ id: "a", nexusModId: 1, nexusFileId: 1, newestFileId: 2 }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("keeps a mod with no Nexus page, which cannot duplicate anything", () => {
+    expect(
+      findUpdatable([mod({ id: "x", nexusFileId: 1, newestFileId: 2 })]),
+    ).toHaveLength(1);
   });
 });

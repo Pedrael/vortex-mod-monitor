@@ -1,9 +1,9 @@
 ---
-name: gitnexus-area-cluster-40
-description: "Skill for the Cluster_40 area of Event-Horizon. 5 symbols across 1 files."
+name: gitnexus-area-cluster-41
+description: "Skill for the Cluster_41 area of Event-Horizon. 5 symbols across 1 files."
 ---
 
-# Cluster_40
+# Cluster_41
 
 5 symbols | 1 files | Cohesion: 80%
 
@@ -11,7 +11,7 @@ description: "Skill for the Cluster_40 area of Event-Horizon. 5 symbols across 1
 
 - Working with code in `scripts/`
 - Understanding how dfMount, enospcHelp, getProjectTmpDir work
-- Modifying cluster_40-related functionality
+- Modifying cluster_41-related functionality
 
 ## Key Files
 
@@ -42,6 +42,6 @@ Start here when exploring this area:
 ## How to Explore
 
 1. `context({name: "dfMount"})` — see callers and callees
-2. `query({search_query: "cluster_40"})` — find related execution flows
+2. `query({search_query: "cluster_41"})` — find related execution flows
 3. Read key files listed above for implementation details
 4. `explain({target: "<file or symbol>"})` — persisted taint findings (source→sink data flows), when indexed with `--pdg`

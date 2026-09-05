@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-errors
-description: "Skill for the Errors area of Event-Horizon. 32 symbols across 7 files."
+description: "Skill for the Errors area of Event-Horizon. 31 symbols across 6 files."
 ---
 
 # Errors
 
-32 symbols | 7 files | Cohesion: 84%
+31 symbols | 6 files | Cohesion: 83%
 
 ## When to Use
 
@@ -22,7 +22,6 @@ description: "Skill for the Errors area of Event-Horizon. 32 symbols across 7 fi
 | `src/ui/errors/ErrorContext.tsx` | onError, onRejection, report |
 | `src/ui/errors/foreignError.ts` | isForeignError, stackOf, describeForeignError |
 | `src/ui/pages/install/InstallPage.tsx` | handleCopy, copyTextToClipboard |
-| `src/ui/state/ApiContext.tsx` | useApiOptional |
 | `src/ui/errors/ErrorBoundary.tsx` | componentDidCatch |
 
 ## Entry Points
@@ -33,7 +32,7 @@ Start here when exploring this area:
 - **`handleCopy`** (Function) — `src/ui/errors/ErrorReportModal.tsx:67`
 - **`handleSave`** (Function) — `src/ui/errors/ErrorReportModal.tsx:78`
 - **`buildErrorReport`** (Function) — `src/ui/errors/formatError.ts:147`
-- **`useApiOptional`** (Function) — `src/ui/state/ApiContext.tsx:49`
+- **`onError`** (Function) — `src/ui/errors/ErrorContext.tsx:128`
 
 ## Key Symbols
 
@@ -43,7 +42,6 @@ Start here when exploring this area:
 | `handleCopy` | Function | `src/ui/errors/ErrorReportModal.tsx` | 67 |
 | `handleSave` | Function | `src/ui/errors/ErrorReportModal.tsx` | 78 |
 | `buildErrorReport` | Function | `src/ui/errors/formatError.ts` | 147 |
-| `useApiOptional` | Function | `src/ui/state/ApiContext.tsx` | 49 |
 | `onError` | Function | `src/ui/errors/ErrorContext.tsx` | 128 |
 | `onRejection` | Function | `src/ui/errors/ErrorContext.tsx` | 141 |
 | `report` | Function | `src/ui/errors/ErrorContext.tsx` | 106 |
@@ -59,6 +57,7 @@ Start here when exploring this area:
 | `saveReportToFile` | Function | `src/ui/errors/ErrorReportModal.tsx` | 320 |
 | `tryRequireElectron` | Function | `src/ui/errors/ErrorReportModal.tsx` | 287 |
 | `handleCopy` | Function | `src/ui/pages/install/InstallPage.tsx` | 319 |
+| `copyTextToClipboard` | Function | `src/ui/pages/install/InstallPage.tsx` | 381 |
 
 ## Execution Flows
 

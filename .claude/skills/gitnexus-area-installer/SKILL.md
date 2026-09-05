@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-installer
-description: "Skill for the Installer area of Event-Horizon. 290 symbols across 57 files."
+description: "Skill for the Installer area of Event-Horizon. 298 symbols across 65 files."
 ---
 
 # Installer
 
-290 symbols | 57 files | Cohesion: 87%
+298 symbols | 65 files | Cohesion: 87%
 
 ## When to Use
 
@@ -17,9 +17,9 @@ description: "Skill for the Installer area of Event-Horizon. 290 symbols across 
 
 | File | Symbols |
 |------|---------|
-| `src/core/installer/runInstall.ts` | buildAbortedResult, buildDisplayNameByModId, buildFailReceipt, buildManifestIndex, buildNexusModIdMap (+50) |
-| `src/core/installer/modInstall.ts` | uninstallMod, delayRespectingAbort, extractBundledFromEhcoll, installFromBundledArchive, installFromExistingDownload (+16) |
-| `src/core/installLedger.ts` | InstallLedgerError, deleteReceipt, expectString, getInstallLedgerDir, getReceiptPath (+11) |
+| `src/core/installer/runInstall.ts` | buildAbortedResult, buildDisplayNameByModId, buildFailReceipt, buildManifestIndex, buildNexusModIdMap (+52) |
+| `src/core/installer/modInstall.ts` | uninstallMod, delayRespectingAbort, extractBundledFromEhcoll, installFromBundledArchive, installFromExistingDownload (+17) |
+| `src/core/installLedger.ts` | InstallLedgerError, expectString, getInstallLedgerDir, getReceiptPath, isIso8601 (+10) |
 | `src/core/installer/applyUserlist.ts` | applyGroupDefinition, applyGroupRule, applyPluginEntry, applyPluginGroup, applyPluginRuleWithCollectionWins (+8) |
 | `src/core/installer/checkNexusAccount.ts` | describeSelectorAvailability, probeNexusAccount, hasNexusSlice, nexusSlice, readNexusAccount (+4) |
 | `src/core/installer/installMarker.ts` | clearInstallMarker, getMarkerDir, listInterruptedInstalls, markerPath, parseMarker (+4) |
@@ -35,7 +35,7 @@ Start here when exploring this area:
 - **`describeGameIniApplication`** (Function) — `src/core/installer/applyGameIni.ts:286`
 - **`shouldApplyGameIni`** (Function) — `src/core/installer/applyGameIni.ts:266`
 - **`describeIniTweaks`** (Function) — `src/core/installer/applyIniTweaks.ts:114`
-- **`applyModTypeChanges`** (Function) — `src/core/installer/applyModTypes.ts:133`
+- **`describeMirrorOutcome`** (Function) — `src/core/installer/applyMirrors.ts:138`
 - **`describeModTypeChanges`** (Function) — `src/core/installer/applyModTypes.ts:159`
 
 ## Key Symbols
@@ -47,7 +47,7 @@ Start here when exploring this area:
 | `describeGameIniApplication` | Function | `src/core/installer/applyGameIni.ts` | 286 |
 | `shouldApplyGameIni` | Function | `src/core/installer/applyGameIni.ts` | 266 |
 | `describeIniTweaks` | Function | `src/core/installer/applyIniTweaks.ts` | 114 |
-| `applyModTypeChanges` | Function | `src/core/installer/applyModTypes.ts` | 133 |
+| `describeMirrorOutcome` | Function | `src/core/installer/applyMirrors.ts` | 138 |
 | `describeModTypeChanges` | Function | `src/core/installer/applyModTypes.ts` | 159 |
 | `label` | Function | `src/core/installer/applyModTypes.ts` | 163 |
 | `planModTypeChanges` | Function | `src/core/installer/applyModTypes.ts` | 63 |
@@ -69,14 +69,14 @@ Start here when exploring this area:
 |------|------|-------|
 | `InstallNexusViaApi → GetEventHorizonRoot` | cross_community | 10 |
 | `ExecuteDecision → GetEventHorizonDir` | cross_community | 10 |
-| `ExecuteDivergedChoice → ResolveLogFile` | cross_community | 10 |
-| `OnDidInstall → GetVortexUserDataPath` | cross_community | 9 |
-| `ExecuteDivergedChoice → Clamp` | cross_community | 9 |
-| `ExecuteDivergedChoice → Scale` | cross_community | 9 |
-| `ExecuteDivergedChoice → Truncate` | cross_community | 9 |
+| `Act → GetEventHorizonDir` | cross_community | 10 |
 | `ExecutePromptUserChoice → ZipReadError` | cross_community | 9 |
 | `Init → GetVortexUserDataPath` | cross_community | 9 |
-| `ExecuteDivergedChoice → IsAwaitingUserInput` | cross_community | 8 |
+| `InstallFromLocalArchive → Clamp` | cross_community | 8 |
+| `InstallFromLocalArchive → Scale` | cross_community | 8 |
+| `ExecuteDecision → Truncate` | cross_community | 8 |
+| `RouteOutlet → InstallLedgerError` | cross_community | 8 |
+| `CreateBuildPackageAction → GetVortexUserDataPath` | cross_community | 8 |
 
 ## How to Explore
 

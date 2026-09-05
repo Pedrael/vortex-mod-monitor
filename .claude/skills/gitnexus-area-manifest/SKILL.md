@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-manifest
-description: "Skill for the Manifest area of Event-Horizon. 329 symbols across 71 files."
+description: "Skill for the Manifest area of Event-Horizon. 339 symbols across 73 files."
 ---
 
 # Manifest
 
-329 symbols | 71 files | Cohesion: 81%
+339 symbols | 73 files | Cohesion: 80%
 
 ## When to Use
 
@@ -19,14 +19,14 @@ description: "Skill for the Manifest area of Event-Horizon. 329 symbols across 7
 |------|---------|
 | `src/core/manifest/parseManifest.ts` | ParseManifestError, describe, expectArray, expectBoolean, expectEnum (+43) |
 | `src/core/manifest/collectionConfig.ts` | isUuid, listNeverBuiltConfigs, listPublishedCollections, parseAndValidate, validateExternalDependencyEntries (+12) |
+| `src/core/manifest/packageZip.ts` | isAbortLikeError, packageEhcoll, checkAbort, prepareStagingDir, runSevenZipAdd (+12) |
 | `src/core/manifest/readZip.ts` | ZipReadError, extractZipEntryToFile, findDataOffset, findEntry, findZip64Extra (+11) |
-| `src/core/manifest/buildManifest.ts` | buildExternalMod, buildModEntry, buildModInstallSpec, buildModInstallState, buildNexusMod (+11) |
-| `src/core/manifest/packageZip.ts` | isAbortLikeError, packageEhcoll, checkAbort, prepareStagingDir, runSevenZipAdd (+11) |
+| `src/core/manifest/buildManifest.ts` | BuildManifestError, buildLoadOrder, buildManifest, buildPackageMetadata, buildUserlist (+11) |
 | `src/core/manifest/readEhcoll.ts` | crossCheckBundled, prepareStagingDir, readEhcoll, safeRmDir, ReadEhcollError (+7) |
 | `src/core/manifest/externalHints.ts` | downloadsFromState, asMode, collectExternalHints, collectionHints, diagnoseHintSources (+6) |
 | `src/core/manifest/sevenZip.ts` | resolveSevenZip, assertOk, cancelOnAbort, sevenZipAdd, sevenZipExtractFull (+5) |
 | `src/core/manifest/parseModuleConfig.ts` | decodeModuleConfig, parseConditionals, parseFiles, parseGroup, parseModuleConfig (+3) |
-| `src/ui/pages/build/BuildDashboard.tsx` | BuildDashboard, handleOpenDraft, DashboardHeader, DraftsRootHint, EmptyState (+2) |
+| `src/core/manifest/collectionScope.ts` | describeHashedCollisions, describeScope, findHashedIdentityCollisions, groupBy, normalizeInstallName (+2) |
 
 ## Entry Points
 
@@ -46,8 +46,8 @@ Start here when exploring this area:
 | `AbortError` | Class | `src/utils/abortError.ts` | 22 |
 | `ZipReadError` | Class | `src/core/manifest/readZip.ts` | 56 |
 | `BuildManifestError` | Class | `src/core/manifest/buildManifest.ts` | 251 |
-| `CollectionConfigError` | Class | `src/core/manifest/collectionConfig.ts` | 247 |
-| `PackageEhcollError` | Class | `src/core/manifest/packageZip.ts` | 114 |
+| `CollectionConfigError` | Class | `src/core/manifest/collectionConfig.ts` | 256 |
+| `PackageEhcollError` | Class | `src/core/manifest/packageZip.ts` | 132 |
 | `ReadEhcollError` | Class | `src/core/manifest/readEhcoll.ts` | 128 |
 | `parseManifest` | Function | `src/core/manifest/parseManifest.ts` | 143 |
 | `archiveFileCacheKey` | Function | `src/core/archiveHashCache.ts` | 83 |
@@ -73,8 +73,8 @@ Start here when exploring this area:
 | `ExecutePromptUserChoice → FindZip64Extra` | cross_community | 7 |
 | `PublishedDetailsPanel → FindZip64Extra` | cross_community | 7 |
 | `InstallFromBundledArchive → ZipReadError` | cross_community | 7 |
-| `LoadPublishedDetails → ZipReadError` | cross_community | 7 |
 | `RunSelfChecks → GetVortexUserDataPath` | cross_community | 7 |
+| `LoadPublishedDetails → ZipReadError` | cross_community | 7 |
 | `CurrentFingerprint → GetVortexUserDataPath` | cross_community | 7 |
 | `RunInstallImpl → AbortError` | cross_community | 6 |
 

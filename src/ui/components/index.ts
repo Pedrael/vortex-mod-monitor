@@ -35,3 +35,16 @@ export {
 
 export { DiffSectionBlock } from "./DiffSectionBlock";
 export type { DiffSectionBlockProps } from "./DiffSectionBlock";
+
+export { DataTable } from "./table/DataTable";
+export type { Column } from "./table/DataTable";
+export {
+  applyTableView,
+  describeTableView,
+  distinctValues,
+  type CellValue,
+  type ColumnSpec,
+  type SortState,
+  type TableView,
+  type ViewRow,
+} from "./table/tableView";

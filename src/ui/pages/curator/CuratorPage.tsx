@@ -20,6 +20,7 @@ import {
   findEndorsable,
   findFrozen,
   findUpdatable,
+  findUpdateShadowed,
   summarizeProfile,
   type CuratorMod,
 } from "../../../core/curator/profileActions";
@@ -64,29 +65,30 @@ import {
   updateOneAndWait,
 } from "../../../core/curator/updateOneMod";
 import { verifyUpdatedMod } from "../../../core/curator/verifyAfterUpdate";
-import { Button, Card, Page, Pill } from "../../components";
+import { Button, Card, DataTable, Page, Pill, type Column } from "../../components";
 import { useApi } from "../../state";
 import { ErrorBoundary } from "../../errors";
 
-/** The Nexus-integration calls this page uses, all optional on the API. */
-type NexusExt = {
-  nexusCheckModsVersion?: (
-    gameId: string,
-    mods: Record<string, unknown>,
-    forceFull: boolean | "silent",
-  ) => void;
-  nexusEndorseDirect?: (
-    gameId: string,
-    nexusId: number,
-    version: string,
-    status: string,
-  ) => PromiseLike<unknown>;
-  nexusModUpdate?: (
-    gameId: string,
-    modId: number,
-    fileId: number,
-    source: string,
-  ) => void;
+/**
+ * How Vortex's Nexus integration is ACTUALLY reached.
+ *
+ * Not as methods on the api. `INexusAPIExtension` exists in the typings but is
+ * referenced by nothing, and calling `api.nexusCheckModsVersion` found
+ * `undefined` — which this page reported, correctly, as "not available".
+ *
+ * Vortex drives its own buttons through events, and this is copied from what
+ * its mod-update toolbar and endorse control actually do:
+ *
+ *   api.emitAndAwait("check-mods-version", gameId, mods, force)
+ *   api.events.emit("endorse-mod", gameId, vortexModId, status)
+ *   api.events.emit("mod-update", gameId, nexusModId, newestFileId, source)
+ *
+ * Note the endorse id: Vortex passes `mod.id` — its OWN mod id — while the
+ * update passes `attributes.modId`, the NEXUS one. Two ids, adjacent calls,
+ * and the wrong one endorses nothing.
+ */
+type EmitAndAwait = {
+  emitAndAwait?: (event: string, ...args: unknown[]) => PromiseLike<unknown>;
 };
 
 const num = (n: number): string => n.toLocaleString();
@@ -156,14 +158,154 @@ function Section(props: {
   );
 }
 
-const rowStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "var(--eh-sp-3)",
-  padding: "var(--eh-sp-2)",
-  borderTop: "1px solid var(--eh-border-subtle)",
-};
+/**
+ * ─── COLUMN DEFINITIONS LIVE AT MODULE LEVEL, DELIBERATELY ─────────────
+ * `DataTable` projects every row through its columns inside a `useMemo` keyed
+ * on the column array's identity. An array literal written inside the
+ * component is a new array on every render, so that memo would never hit and
+ * a 1,900-mod profile would be re-projected on every keystroke in a filter
+ * box. Defined once here, they are stable for the life of the module.
+ *
+ * The types are read off the finders rather than imported by name, so a
+ * change to what a finder returns is a compile error here rather than a
+ * column quietly rendering `undefined`.
+ */
+type UpdateRow = ReturnType<typeof findUpdatable>[number];
+type FrozenRow = ReturnType<typeof findFrozen>[number];
+type ShadowRow = ReturnType<typeof findUpdateShadowed>[number];
+type RetireRow = ReturnType<typeof findSupersededMods>[number];
+type DuplicateRow = ReturnType<typeof findDuplicates>[number];
+type RemovalRow = CleanupPlan["removeMods"][number];
+type ArchiveRow = CleanupPlan["deleteArchives"][number];
+
+/** Vortex's empty modType is the default one. Say so rather than showing "". */
+const kindOf = (mod: CuratorMod): string =>
+  mod.modType === "" ? "default" : mod.modType;
+const stateOf = (mod: CuratorMod): string =>
+  mod.enabled ? "enabled" : "disabled";
+
+const UPDATE_COLUMNS: Column<UpdateRow>[] = [
+  { key: "name", header: "Mod", value: (c) => c.mod.name },
+  { key: "from", header: "Installed", value: (c) => c.fromVersion, width: 130 },
+  { key: "to", header: "Available", value: (c) => c.toVersion, width: 130 },
+  {
+    key: "state",
+    header: "State",
+    match: "exact",
+    width: 110,
+    value: (c) => stateOf(c.mod),
+  },
+];
+
+const FROZEN_COLUMNS: Column<FrozenRow>[] = [
+  { key: "name", header: "Mod", value: (f) => f.mod.name },
+  { key: "at", header: "Frozen at", value: (f) => f.frozenAtVersion, width: 130 },
+  {
+    key: "status",
+    header: "Status",
+    match: "exact",
+    width: 180,
+    value: (f) =>
+      f.driftedTo !== undefined
+        ? "drifted"
+        : f.updateWithheld
+          ? "holding an update"
+          : "holding",
+    render: (f) =>
+      f.driftedTo !== undefined ? (
+        <Pill intent="danger">now {f.driftedTo}</Pill>
+      ) : (
+        <Pill intent={f.updateWithheld ? "warning" : "neutral"}>
+          {f.updateWithheld ? "holding an update" : "holding"}
+        </Pill>
+      ),
+  },
+];
+
+const SHADOW_COLUMNS: Column<ShadowRow>[] = [
+  { key: "name", header: "Older install", value: (r) => r.mod.name },
+  { key: "version", header: "Version", value: (r) => r.mod.version, width: 130 },
+  {
+    key: "newer",
+    header: "Newer copy already installed",
+    value: (r) => r.newerInstall.name,
+  },
+];
+
+const MOD_COLUMNS: Column<CuratorMod>[] = [
+  { key: "name", header: "Mod", value: (m) => m.name },
+  { key: "version", header: "Version", value: (m) => m.version, width: 130 },
+  { key: "kind", header: "Kind", match: "exact", width: 120, value: kindOf },
+  { key: "state", header: "State", match: "exact", width: 110, value: stateOf },
+];
+
+const RETIRE_COLUMNS: Column<RetireRow>[] = [
+  { key: "name", header: "Older install", value: (c) => c.mod.name },
+  { key: "version", header: "Version", value: (c) => c.mod.version, width: 130 },
+  {
+    key: "newer",
+    header: "Newer file installed as",
+    value: (c) => c.supersededBy.name,
+  },
+  {
+    key: "state",
+    header: "State",
+    match: "exact",
+    width: 110,
+    value: (c) => stateOf(c.mod),
+  },
+];
+
+const DUPLICATE_COLUMNS: Column<DuplicateRow>[] = [
+  {
+    key: "names",
+    header: "Installs sharing a Nexus page",
+    value: (g) => g.mods.map((m) => m.name).join("  ·  "),
+  },
+  {
+    key: "kind",
+    header: "Verdict",
+    match: "exact",
+    width: 220,
+    value: (g) =>
+      g.kind === "same-file" ? "same file twice" : "same page, different files",
+    render: (g) => (
+      <Pill intent={g.kind === "same-file" ? "danger" : "warning"}>
+        {g.kind === "same-file"
+          ? "same file twice"
+          : "same page, different files"}
+      </Pill>
+    ),
+  },
+];
+
+const REMOVAL_COLUMNS: Column<RemovalRow>[] = [
+  { key: "name", header: "Install to remove", value: (r) => r.mod.name },
+  { key: "newer", header: "Superseded by", value: (r) => r.supersededBy.name },
+];
+
+const ARCHIVE_COLUMNS: Column<ArchiveRow>[] = [
+  { key: "file", header: "Archive to delete", value: (a) => a.entry.fileName },
+  {
+    key: "bytes",
+    header: "Size",
+    numeric: true,
+    align: "right",
+    width: 120,
+    value: (a) => a.entry.bytes,
+    render: (a) => formatSize(a.entry.bytes),
+  },
+];
+
+/** Stable row identities, for the same memo reason as the columns above. */
+const updateId = (c: UpdateRow): string => c.mod.id;
+const frozenId = (f: FrozenRow): string => f.mod.id;
+const shadowId = (r: ShadowRow): string => r.mod.id;
+const curatorModId = (m: CuratorMod): string => m.id;
+const retireId = (c: RetireRow): string => c.mod.id;
+const duplicateId = (g: DuplicateRow): string => String(g.nexusModId);
+const removalId = (r: RemovalRow): string => r.mod.id;
+const archiveId = (a: ArchiveRow): string => a.entry.id;
 
 function CuratorBody(): JSX.Element {
   const api = useApi();
@@ -208,9 +350,18 @@ function CuratorBody(): JSX.Element {
   const updatable = React.useMemo(() => findUpdatable(mods), [mods]);
   const frozen = React.useMemo(() => findFrozen(mods), [mods]);
   const duplicates = React.useMemo(() => findDuplicates(mods), [mods]);
+  /**
+   * Older installs of a mod that already has a newer copy installed.
+   *
+   * They are deliberately NOT offered an update — updating both would install
+   * the new file twice and leave four copies where there were two, which is
+   * the exact mess this page exists to clean up. Shown so the omission is
+   * something the curator reads rather than something they notice missing.
+   */
+  const shadowed = React.useMemo(() => findUpdateShadowed(mods), [mods]);
   const endorsable = React.useMemo(() => findEndorsable(mods), [mods]);
 
-  const ext = api as unknown as NexusExt;
+  const ext = api as unknown as EmitAndAwait;
   /**
    * Vortex gives an updated mod a NEW id; verification must use that one.
    *
@@ -224,13 +375,6 @@ function CuratorBody(): JSX.Element {
     () => mods.filter((m) => selected.has(m.id)),
     [mods, selected],
   );
-  const toggle = (id: string): void =>
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
   const [typeValue, setTypeValue] = React.useState("");
   /**
    * The dry run. Deletion is only reachable once a plan is on screen — the
@@ -258,52 +402,55 @@ function CuratorBody(): JSX.Element {
     setTick((t) => t + 1);
   };
 
-  const refreshUpdates = (): void => {
-    if (gameId === undefined || ext.nexusCheckModsVersion === undefined) {
-      setNote(
-        "Vortex's Nexus integration is not available, so update information " +
-          "cannot be refreshed from here.",
-      );
-      return;
-    }
+  const refreshUpdates = async (): Promise<void> => {
+    if (gameId === undefined) return;
     const byId = api.getState().persistent.mods[gameId] ?? {};
-    // Read-only on our side: this asks Vortex to refresh what Nexus says.
-    // Nothing is installed and nothing is changed on disk.
-    ext.nexusCheckModsVersion(gameId, byId as Record<string, unknown>, true);
-    setNote(
-      "Asked Vortex to re-check every mod against Nexus. The counts update as " +
-        "answers arrive — press Reload in a moment.",
-    );
-  };
-
-  const endorseAll = async (): Promise<void> => {
-    if (gameId === undefined || ext.nexusEndorseDirect === undefined) {
-      setNote("Vortex's Nexus integration is not available.");
+    if (ext.emitAndAwait === undefined) {
+      setNote("This Vortex build does not expose emitAndAwait.");
       return;
     }
-    setBusy("endorse");
-    let done = 0;
-    let failed = 0;
-    // One at a time. Endorsing is a network call per mod and Nexus rate-limits;
-    // firing 900 at once earns a ban, not a faster result.
-    for (const mod of endorsable) {
-      if (mod.nexusModId === undefined) continue;
-      try {
-        await ext.nexusEndorseDirect(
-          gameId,
-          mod.nexusModId,
-          mod.version ?? "1.0.0",
-          "Endorsed",
-        );
-        done += 1;
-      } catch {
-        failed += 1;
-      }
+    setBusy("refresh");
+    setNote("Asking Nexus about every mod — this takes a moment.");
+    try {
+      // Read-only: this asks Vortex to refresh what Nexus says. Nothing is
+      // installed and nothing on disk changes. Same call Vortex's own
+      // "check for updates" toolbar button makes.
+      await ext.emitAndAwait("check-mods-version", gameId, byId, true);
+      setNote("Nexus re-checked. The counts below are current.");
+    } catch (err) {
+      setNote(
+        `Vortex could not check for updates: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
     }
     setBusy(undefined);
     setTick((t) => t + 1);
+  };
+
+  const endorseAll = async (): Promise<void> => {
+    const game = gameId;
+    if (game === undefined) return;
+    setBusy("endorse");
+    let done = 0;
+    // Paced, not parallel. `endorse-mod` is fire-and-forget — Vortex gives no
+    // promise to await — so the only way to avoid firing 1,500 requests at
+    // Nexus in one tick is to space them. A ban is not a faster result.
+    for (const mod of endorsable) {
+      if (mod.nexusModId === undefined) continue;
+      // Vortex's OWN mod id here, not the Nexus one: that is what its endorse
+      // control passes, and the other id endorses nothing.
+      api.events.emit("endorse-mod", game, mod.id, "Endorsed");
+      done += 1;
+      setProgress(`Endorsing ${done} of ${endorsable.length} — ${mod.name}`);
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    setBusy(undefined);
+    setProgress(undefined);
+    setTick((t) => t + 1);
     setNote(
-      `Endorsed ${done} mod(s)` + (failed > 0 ? `, ${failed} failed.` : "."),
+      `Asked Vortex to endorse ${done} mod(s). Vortex reports each result in ` +
+        `its own notifications; press Reload to see the counts settle.`,
     );
   };
 
@@ -324,11 +471,7 @@ function CuratorBody(): JSX.Element {
     // is defined above it, so the compiler cannot see that check — the same
     // shape as the closure bugs that crashed two releases of the build page.
     const game = gameId;
-    if (game === undefined || ext.nexusModUpdate === undefined) {
-      setNote("Vortex's Nexus integration is not available.");
-      return;
-    }
-    const startUpdate = ext.nexusModUpdate;
+    if (game === undefined) return;
     setBusy("update");
     setLines([]);
     const installedIds = new Map<string, string>();
@@ -346,7 +489,10 @@ function CuratorBody(): JSX.Element {
           toFileId: candidate.toFileId,
           readInstalled: installedIdentityReader(api.getState(), game),
           start: () =>
-            startUpdate(
+            // Vortex's own update button emits exactly this, with the NEXUS
+            // mod id and the newest file id.
+            api.events.emit(
+              "mod-update",
               game,
               candidate.mod.nexusModId!,
               candidate.toFileId,
@@ -583,7 +729,7 @@ function CuratorBody(): JSX.Element {
       </div>
 
       <div style={{ display: "flex", gap: "var(--eh-sp-2)", flexWrap: "wrap" }}>
-        <Button intent="ghost" onClick={refreshUpdates}>
+        <Button intent="ghost" onClick={(): void => void refreshUpdates()}>
           Re-check Nexus for updates
         </Button>
         <Button intent="ghost" onClick={(): void => setTick((t) => t + 1)}>
@@ -652,36 +798,52 @@ function CuratorBody(): JSX.Element {
           "them concurrently, which is why it loses files."
         }
       >
-        {updatable.length === 0 ? (
-          <p style={{ color: "var(--eh-text-secondary)", margin: 0 }}>
-            Nothing to update, as far as Vortex currently knows. Re-check Nexus
-            if that looks wrong.
-          </p>
-        ) : (
-          updatable.slice(0, 40).map((c) => (
-            <div key={c.mod.id} style={rowStyle}>
-              <span style={{ color: "var(--eh-text-primary)", minWidth: 0 }}>
-                {c.mod.name}
-              </span>
-              <span
-                style={{
-                  color: "var(--eh-text-secondary)",
-                  fontFamily: "var(--eh-font-mono)",
-                  fontSize: "var(--eh-text-xs)",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {c.fromVersion} → {c.toVersion}
-              </span>
-              <Button
-                size="sm"
-                intent="ghost"
-                onClick={(): void => setFrozen(c.mod, c.mod.version ?? "")}
-              >
-                Freeze here
-              </Button>
-            </div>
-          ))
+        <DataTable
+          rows={updatable}
+          idOf={updateId}
+          columns={UPDATE_COLUMNS}
+          noun="update"
+          limit={200}
+          empty={
+            <p style={{ color: "var(--eh-text-secondary)", margin: 0 }}>
+              Nothing to update, as far as Vortex currently knows. Re-check
+              Nexus if that looks wrong.
+            </p>
+          }
+          actions={(c): JSX.Element => (
+            <Button
+              size="sm"
+              intent="ghost"
+              onClick={(): void => setFrozen(c.mod, c.mod.version ?? "")}
+            >
+              Freeze here
+            </Button>
+          )}
+        />
+
+        {shadowed.length > 0 && (
+          <div style={{ marginTop: "var(--eh-sp-3)" }}>
+            <p
+              style={{
+                margin: "0 0 var(--eh-sp-1)",
+                color: "var(--eh-text-secondary)",
+                fontSize: "var(--eh-text-sm)",
+              }}
+            >
+              {shadowed.length} older install(s) also have a newer file on
+              Nexus and are deliberately NOT listed above — you already have a
+              newer copy of each installed, so updating both would install the
+              new file twice. Retire them under Disk cleanup instead.
+            </p>
+            <DataTable
+              rows={shadowed}
+              idOf={shadowId}
+              columns={SHADOW_COLUMNS}
+              noun="older install"
+              limit={100}
+              maxHeight={240}
+            />
+          </div>
         )}
       </Section>
 
@@ -693,38 +855,29 @@ function CuratorBody(): JSX.Element {
           "version moves anyway, it is reported here rather than hidden."
         }
       >
-        {frozen.length === 0 ? (
-          <p style={{ color: "var(--eh-text-secondary)", margin: 0 }}>
-            Nothing frozen. Freeze a mod when its current version is the one
-            your setup depends on.
-          </p>
-        ) : (
-          frozen.map((f) => (
-            <div key={f.mod.id} style={rowStyle}>
-              <span style={{ color: "var(--eh-text-primary)", minWidth: 0 }}>
-                {f.mod.name}
-              </span>
-              {f.driftedTo !== undefined ? (
-                <Pill intent="danger">
-                  frozen at {f.frozenAtVersion}, now {f.driftedTo}
-                </Pill>
-              ) : (
-                <Pill intent={f.updateWithheld ? "warning" : "neutral"}>
-                  {f.updateWithheld
-                    ? `holding at ${f.frozenAtVersion}`
-                    : `at ${f.frozenAtVersion}`}
-                </Pill>
-              )}
-              <Button
-                size="sm"
-                intent="ghost"
-                onClick={(): void => setFrozen(f.mod, undefined)}
-              >
-                Unfreeze
-              </Button>
-            </div>
-          ))
-        )}
+        <DataTable
+          rows={frozen}
+          idOf={frozenId}
+          columns={FROZEN_COLUMNS}
+          noun="frozen mod"
+          limit={200}
+          maxHeight={320}
+          empty={
+            <p style={{ color: "var(--eh-text-secondary)", margin: 0 }}>
+              Nothing frozen. Freeze a mod when its current version is the one
+              your setup depends on.
+            </p>
+          }
+          actions={(f): JSX.Element => (
+            <Button
+              size="sm"
+              intent="ghost"
+              onClick={(): void => setFrozen(f.mod, undefined)}
+            >
+              Unfreeze
+            </Button>
+          )}
+        />
       </Section>
 
       <Section
@@ -798,24 +951,16 @@ function CuratorBody(): JSX.Element {
           </Button>
         </div>
 
-        <div style={{ maxHeight: 320, overflowY: "auto", marginTop: "var(--eh-sp-2)" }}>
-          {mods.map((m) => (
-            <label
-              key={m.id}
-              style={{ ...rowStyle, cursor: "pointer", justifyContent: "flex-start" }}
-            >
-              <input
-                type="checkbox"
-                checked={selected.has(m.id)}
-                onChange={(): void => toggle(m.id)}
-              />
-              <span style={{ color: "var(--eh-text-primary)", minWidth: 0 }}>
-                {m.name}
-              </span>
-              {m.modType !== "" && <Pill intent="neutral">{m.modType}</Pill>}
-              {!m.enabled && <Pill intent="warning">disabled</Pill>}
-            </label>
-          ))}
+        <div style={{ marginTop: "var(--eh-sp-2)" }}>
+          <DataTable
+            rows={mods}
+            idOf={curatorModId}
+            columns={MOD_COLUMNS}
+            noun="mod"
+            limit={200}
+            maxHeight={420}
+            selection={{ selected, onChange: setSelected }}
+          />
         </div>
       </Section>
 
@@ -841,37 +986,15 @@ function CuratorBody(): JSX.Element {
               ships optional patches under the same mod id — so tick only the
               ones you know are stale.
             </p>
-            {retireCandidates.map((c) => (
-              <label
-                key={c.mod.id}
-                style={{ ...rowStyle, cursor: "pointer", justifyContent: "flex-start" }}
-              >
-                <input
-                  type="checkbox"
-                  checked={retire.has(c.mod.id)}
-                  onChange={(): void =>
-                    setRetire((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(c.mod.id)) next.delete(c.mod.id);
-                      else next.add(c.mod.id);
-                      return next;
-                    })
-                  }
-                />
-                <span style={{ color: "var(--eh-text-primary)", minWidth: 0 }}>
-                  {c.mod.name}
-                </span>
-                <span
-                  style={{
-                    color: "var(--eh-text-muted)",
-                    fontSize: "var(--eh-text-xs)",
-                  }}
-                >
-                  newer file installed as {c.supersededBy.name}
-                </span>
-                {!c.mod.enabled && <Pill intent="neutral">disabled</Pill>}
-              </label>
-            ))}
+            <DataTable
+              rows={retireCandidates}
+              idOf={retireId}
+              columns={RETIRE_COLUMNS}
+              noun="older install"
+              limit={200}
+              maxHeight={320}
+              selection={{ selected: retire, onChange: setRetire }}
+            />
           </div>
         )}
 
@@ -910,42 +1033,28 @@ function CuratorBody(): JSX.Element {
               </p>
             ))}
 
-            <div style={{ maxHeight: 260, overflowY: "auto" }}>
-              {cleanup.removeMods.map((r) => (
-                <div key={r.mod.id} style={rowStyle}>
-                  <span style={{ color: "var(--eh-text-primary)", minWidth: 0 }}>
-                    {r.mod.name}
-                  </span>
-                  <span
-                    style={{
-                      color: "var(--eh-text-muted)",
-                      fontSize: "var(--eh-text-xs)",
-                    }}
-                  >
-                    superseded by {r.supersededBy.name}
-                  </span>
-                  <Pill intent="warning">install removed</Pill>
-                </div>
-              ))}
-              {cleanup.deleteArchives.map((a) => (
-                <div key={a.entry.id} style={rowStyle}>
-                  <span
-                    style={{
-                      color: "var(--eh-text-primary)",
-                      minWidth: 0,
-                      fontFamily: "var(--eh-font-mono)",
-                      fontSize: "var(--eh-text-xs)",
-                    }}
-                  >
-                    {a.entry.fileName}
-                  </span>
-                  <span style={{ color: "var(--eh-text-muted)" }}>
-                    {formatSize(a.entry.bytes)}
-                  </span>
-                  <Pill intent="danger">deleted</Pill>
-                </div>
-              ))}
-            </div>
+            {cleanup.removeMods.length > 0 && (
+              <DataTable
+                rows={cleanup.removeMods}
+                idOf={removalId}
+                columns={REMOVAL_COLUMNS}
+                noun="install"
+                limit={200}
+                maxHeight={240}
+              />
+            )}
+            {cleanup.deleteArchives.length > 0 && (
+              <div style={{ marginTop: "var(--eh-sp-2)" }}>
+                <DataTable
+                  rows={cleanup.deleteArchives}
+                  idOf={archiveId}
+                  columns={ARCHIVE_COLUMNS}
+                  noun="archive"
+                  limit={200}
+                  maxHeight={240}
+                />
+              </div>
+            )}
           </div>
         )}
       </Section>
@@ -958,24 +1067,19 @@ function CuratorBody(): JSX.Element {
           "so those are shown as something to look at rather than a verdict."
         }
       >
-        {duplicates.length === 0 ? (
-          <p style={{ color: "var(--eh-text-secondary)", margin: 0 }}>
-            No mod is installed twice.
-          </p>
-        ) : (
-          duplicates.map((group) => (
-            <div key={group.nexusModId} style={rowStyle}>
-              <span style={{ color: "var(--eh-text-primary)", minWidth: 0 }}>
-                {group.mods.map((m) => m.name).join("  ·  ")}
-              </span>
-              <Pill intent={group.kind === "same-file" ? "danger" : "warning"}>
-                {group.kind === "same-file"
-                  ? "same file twice"
-                  : "same page, different files"}
-              </Pill>
-            </div>
-          ))
-        )}
+        <DataTable
+          rows={duplicates}
+          idOf={duplicateId}
+          columns={DUPLICATE_COLUMNS}
+          noun="group"
+          limit={200}
+          maxHeight={320}
+          empty={
+            <p style={{ color: "var(--eh-text-secondary)", margin: 0 }}>
+              No mod is installed twice.
+            </p>
+          }
+        />
       </Section>
     </div>
   );

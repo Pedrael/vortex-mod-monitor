@@ -714,7 +714,64 @@ describe("render", () => {
       "dupe-b": {
         attributes: { name: "Embers XD (older)", version: "3.1.0", modId: 37085, fileId: 880 },
       },
+      // Two installs of ONE Nexus page, both with a newer file waiting. Only
+      // the newer one may be offered an update — offering both would install
+      // 8.2 twice. The older shows up under "older installs" instead.
+      "shadow-old": {
+        attributes: {
+          name: "Animated Armoury 7.0",
+          version: "7.0",
+          modId: 47213,
+          fileId: 700,
+          newestFileId: 820,
+          newestVersion: "8.2",
+        },
+      },
+      "shadow-new": {
+        attributes: {
+          name: "Animated Armoury 8.1",
+          version: "8.1",
+          modId: 47213,
+          fileId: 810,
+          newestFileId: 820,
+          newestVersion: "8.2",
+        },
+      },
     };
+
+    // A real profile is ~1,900 mods, and every list on this page used to
+    // render as one flat column of them. Five fixture mods is the shape that
+    // made that look fine. These are the other 1,895.
+    const WORDS = [
+      "Cathedral", "Skyland", "Lux", "Embers", "JK's", "Obsidian", "Rudy",
+      "Simplicity", "Wildcat", "Ordinator", "Apothecary", "Mysticism",
+      "Bijin", "Pandorable", "Northbourne", "Vanargand", "Leviathan",
+    ];
+    const NOUNS = [
+      "Weathers", "Landscapes", "Interiors", "Armory", "NPCs", "Animations",
+      "Textures AIO", "Overhaul", "Patch", "Retexture", "Fixes", "Redux",
+    ];
+    for (let i = 0; i < 1895; i += 1) {
+      const name =
+        `${WORDS[i % WORDS.length]} ${NOUNS[(i >> 2) % NOUNS.length]} ` +
+        `${1 + (i % 40)}`;
+      const fileId = 1000 + i;
+      modsById[`bulk-${i}`] = {
+        attributes: {
+          name,
+          version: `${1 + (i % 9)}.${i % 10}`,
+          modId: 100000 + i,
+          fileId,
+          // Roughly one in nine has an update waiting, which is the order of
+          // magnitude a real profile shows after a Nexus re-check.
+          ...(i % 9 === 0
+            ? { newestFileId: fileId + 5, newestVersion: `${1 + (i % 9)}.${(i % 10) + 1}` }
+            : { newestFileId: fileId }),
+          ...(i % 5 === 0 ? { endorsed: "Endorsed" } : {}),
+          ...(i % 23 === 0 ? { type: "dinput" } : {}),
+        },
+      };
+    }
     const state = {
       persistent: {
         mods: { skyrimse: modsById },
@@ -722,7 +779,9 @@ describe("render", () => {
           p1: {
             gameId: "skyrimse",
             modState: Object.fromEntries(
-              Object.keys(modsById).map((k) => [k, { enabled: true }]),
+              // Not all enabled: the State column is only worth filtering by
+              // if it has both values in it.
+              Object.keys(modsById).map((k, i) => [k, { enabled: i % 11 !== 0 }]),
             ),
           },
         },
