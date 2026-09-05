@@ -88,6 +88,10 @@ export function readCuratorMods(
       ...opt("nexusFileId", asNumber(attributes.fileId)),
       ...opt("newestFileId", asNumber(attributes.newestFileId)),
       ...opt("endorsed", asString(attributes.endorsed)),
+      // The FILE's name, which is what separates two different files on
+      // one Nexus page from two versions of the same file.
+      ...opt("logicalFileName", asString(attributes.logicalFileName)),
+      ...opt("fileName", asString(attributes.fileName)),
       ...opt("frozenAtVersion", asString(attributes[FROZEN_ATTRIBUTE])),
       ...opt("archiveId", asString(mod?.archiveId)),
     });

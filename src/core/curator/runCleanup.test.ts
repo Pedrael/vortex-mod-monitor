@@ -41,7 +41,7 @@ describe("the order, and what depends on it", () => {
     const order: string[] = [];
     return runCleanup({
       plan: plan({
-        removeMods: [{ mod: mod("old", "a"), supersededBy: mod("new", "b") }],
+        removeMods: [{ mod: mod("old", "a"), supersededBy: mod("new", "b"), evidence: "same-file" }],
         deleteArchives: [{ entry: entry("a"), reason: "freed-by-removal" }],
       }),
       removeMod: async (id) => {
@@ -61,7 +61,7 @@ describe("the order, and what depends on it", () => {
     const deleted: string[] = [];
     const outcome = await runCleanup({
       plan: plan({
-        removeMods: [{ mod: mod("old", "a"), supersededBy: mod("new", "b") }],
+        removeMods: [{ mod: mod("old", "a"), supersededBy: mod("new", "b"), evidence: "same-file" }],
         deleteArchives: [{ entry: entry("a"), reason: "freed-by-removal" }],
       }),
       removeMod: async () => {
@@ -82,7 +82,7 @@ describe("the order, and what depends on it", () => {
     // One failure must not abandon deletions that never depended on it.
     const outcome = await runCleanup({
       plan: plan({
-        removeMods: [{ mod: mod("old", "a"), supersededBy: mod("new", "b") }],
+        removeMods: [{ mod: mod("old", "a"), supersededBy: mod("new", "b"), evidence: "same-file" }],
         deleteArchives: [
           { entry: entry("a"), reason: "freed-by-removal" },
           { entry: entry("loose"), reason: "orphan-superseded" },
@@ -119,7 +119,7 @@ describe("the order, and what depends on it", () => {
     const deleteArchive = vi.fn(async () => undefined);
     const outcome = await runCleanup({
       plan: plan({
-        removeMods: [{ mod: mod("a"), supersededBy: mod("b") }],
+        removeMods: [{ mod: mod("a"), supersededBy: mod("b"), evidence: "same-file" as const }],
         deleteArchives: [{ entry: entry("x"), reason: "orphan-superseded" }],
       }),
       removeMod: async () => {

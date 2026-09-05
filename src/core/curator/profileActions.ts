@@ -55,6 +55,18 @@ export type CuratorMod = {
   /** Vortex's endorsement state: "Undecided" | "Endorsed" | "Abstained". */
   endorsed?: string;
   /**
+   * The NEXUS FILE's own display name — not the mod page's.
+   *
+   * The distinction one Nexus page hides. A page hosts many different files:
+   * "Barbarian Bodypaints - CBBE" and "Barbarian Bodypaints - Male" share mod
+   * id 31826 and are not versions of each other at all. Vortex's own fallback
+   * chain for naming a file is `logicalFileName → fileName → mod name`, and
+   * this follows it.
+   */
+  logicalFileName?: string;
+  /** The archive's file name, as a fallback identity. */
+  fileName?: string;
+  /**
    * Vortex's download id for the archive this mod was installed from.
    *
    * The cleanup planner's whole safety rule reads this: an archive any mod
@@ -279,4 +291,36 @@ export function summarizeProfile(mods: readonly CuratorMod[]): {
     endorsable: findEndorsable(mods).length,
     duplicateGroups: findDuplicates(mods).length,
   };
+}
+
+
+/**
+ * ──────────────────────────────────────────────────────────────────────
+ * Which FILE an install came from, as distinct from which page.
+ *
+ * A Nexus mod id names a page; a page ships a main file, optional files,
+ * variants and patches, each with its own file id. Treating "same page" as
+ * "same file" is what made a bodypaint's CBBE and Male variants look like an
+ * old version and its replacement.
+ *
+ * `logicalFileName` is Nexus's own name for the file and is preferred. The
+ * fallback cuts the archive name at THIS MOD'S OWN ID, which Nexus appends
+ * along with the version and upload timestamp — so it uses an id we already
+ * hold rather than assuming a filename shape. When neither is available the
+ * answer is `undefined`, and callers must not invent one.
+ * ──────────────────────────────────────────────────────────────────────
+ */
+export function fileIdentity(mod: CuratorMod): string | undefined {
+  const logical = mod.logicalFileName?.trim();
+  if (logical !== undefined && logical !== "") return logical.toLowerCase();
+
+  const file = mod.fileName?.trim();
+  if (file === undefined || file === "" || mod.nexusModId === undefined) {
+    return undefined;
+  }
+  const marker = `-${mod.nexusModId}-`;
+  const at = file.lastIndexOf(marker);
+  // `at === 0` would mean the whole name is the suffix, which identifies
+  // nothing. Anything shorter than a character is not a name.
+  return at <= 0 ? undefined : file.slice(0, at).toLowerCase();
 }

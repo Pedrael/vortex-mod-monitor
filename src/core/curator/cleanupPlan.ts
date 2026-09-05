@@ -35,7 +35,7 @@
  * ──────────────────────────────────────────────────────────────────────
  */
 
-import type { CuratorMod } from "./profileActions";
+import { fileIdentity, type CuratorMod } from "./profileActions";
 
 /** One archive as Vortex's download store describes it. */
 export type DownloadEntry = {
@@ -49,10 +49,27 @@ export type DownloadEntry = {
   nexusFileId?: number;
 };
 
+/**
+ * Why we believe one install supersedes another, strongest first.
+ *
+ * - `update-chain` — PROOF. Vortex writes `newestFileId` by walking Nexus's
+ *   own file-update chain from the installed file, so when that lands on
+ *   another install's file id, Nexus itself says this one replaces it.
+ * - `same-file` — the same Nexus FILE at a lower version. Strong: an author
+ *   keeps a file's name across version uploads and gives a different name to
+ *   a different file.
+ * - `same-page-only` — they share a mod id and nothing else. NOT evidence:
+ *   one page ships a main file, optional files, variants and patches, and
+ *   this is exactly the case that offered "Barbarian Bodypaints - CBBE" for
+ *   deletion because "- Male" existed with a higher file id.
+ */
+export type SupersedeEvidence = "update-chain" | "same-file" | "same-page-only";
+
 export type ModRemoval = {
   mod: CuratorMod;
   /** The installed version that replaces it. */
   supersededBy: CuratorMod;
+  evidence: SupersedeEvidence;
 };
 
 export type ArchiveRemoval = {
@@ -85,24 +102,39 @@ export type CleanupPlan = {
 };
 
 /**
- * Installs that MIGHT be older versions of another install. A suggestion.
+ * ──────────────────────────────────────────────────────────────────────
+ * Installs that another install has actually replaced.
  *
  * ─── WHY THIS IS NO LONGER PART OF THE PLAN ────────────────────────────
- * It used to be, and it was wrong twice over.
+ * It used to act on its own, and it was wrong twice over.
  *
  * A lower file id is not evidence of an older VERSION. A Nexus page ships a
  * main file and its optional patches under one mod id with different file
- * ids, so "the lower one is superseded" retires a patch the curator installed
- * deliberately. `findDuplicates` already refuses to call that case anything
- * but a lead — and this function was deleting it.
+ * ids, so "the lower one is superseded" retires a patch the curator
+ * installed deliberately. Worse, it ignored `enabled`: a curator who hits a
+ * regression in v2 disables it and re-enables v1, and the plan then retired
+ * v1 — the version actually in use.
  *
- * Worse, it ignored `enabled`. A curator who hits a regression in v2 disables
- * it and re-enables v1; the plan then retired v1 — the version actually in
- * use — and kept the broken one. Verified with a probe before this changed.
+ * ─── AND WHY SHARING A PAGE IS NOT ENOUGH ──────────────────────────────
+ * Even ranking candidates, "same mod id" produced plain false positives on a
+ * real profile: `Barbarian Bodypaints - CBBE` was offered because
+ * `- Male` existed with a higher file id, and `Community Overlays - Main`
+ * because a `- Bugfix Patch` did. Both pairs are different FILES on one
+ * page, not two versions of one file.
  *
- * So removals are now the curator's choice, ticked in the view. This ranks
- * the candidates for them; it does not act.
+ * So each candidate now carries the evidence behind it, and the two that
+ * mean something — Nexus's own update chain, and the same file at a lower
+ * version — are kept apart from the ones that mean nothing.
+ *
+ * This ranks candidates; it does not act. Removals stay the curator's tick.
+ * ──────────────────────────────────────────────────────────────────────
  */
+const EVIDENCE_RANK: Record<SupersedeEvidence, number> = {
+  "update-chain": 3,
+  "same-file": 2,
+  "same-page-only": 1,
+};
+
 export function findSupersededMods(
   mods: readonly CuratorMod[],
 ): ModRemoval[] {
@@ -117,22 +149,89 @@ export function findSupersededMods(
   const out: ModRemoval[] = [];
   for (const group of byModId.values()) {
     if (group.length < 2) continue;
-    const sorted = [...group].sort(
-      (a, b) => (b.nexusFileId ?? 0) - (a.nexusFileId ?? 0),
-    );
-    const newest = sorted[0]!;
-    for (const older of sorted.slice(1)) {
-      // Equal file ids are the same file installed twice — redundant, but not
-      // a VERSION question.
-      if (older.nexusFileId === newest.nexusFileId) continue;
-      // The rollback. An enabled install being "superseded" by a disabled one
-      // is a curator running an older version on purpose, and suggesting they
+
+    /** Best claim so far per older install — strongest evidence wins. */
+    const best = new Map<string, ModRemoval>();
+    const consider = (
+      older: CuratorMod,
+      newer: CuratorMod,
+      evidence: SupersedeEvidence,
+    ): void => {
+      if (older.id === newer.id) return;
+      // Strictly older. Equal file ids are the SAME file installed twice —
+      // redundant, but not a version question, and `findDuplicates` says so
+      // with the confidence that case actually carries.
+      if ((older.nexusFileId ?? 0) >= (newer.nexusFileId ?? 0)) return;
+      // The rollback. An enabled install "superseded" by a disabled one is a
+      // curator running an older version on purpose, and suggesting they
       // delete it inverts what they chose.
-      if (older.enabled && !newest.enabled) continue;
-      out.push({ mod: older, supersededBy: newest });
+      if (older.enabled && !newer.enabled) return;
+      const held = best.get(older.id);
+      if (held === undefined || EVIDENCE_RANK[evidence] > EVIDENCE_RANK[held.evidence]) {
+        best.set(older.id, { mod: older, supersededBy: newer, evidence });
+      }
+    };
+
+    // 1. Nexus's own answer. `newestFileId` is the end of the update chain
+    //    from THIS file; if another install is sitting on it, that install
+    //    is this one's successor and no inference is involved.
+    const byFileId = new Map<number, CuratorMod>();
+    for (const mod of group) byFileId.set(mod.nexusFileId as number, mod);
+    for (const mod of group) {
+      if (mod.newestFileId === undefined) continue;
+      const successor = byFileId.get(mod.newestFileId);
+      if (successor !== undefined) consider(mod, successor, "update-chain");
     }
+
+    // 2. The same FILE at a lower version. Grouped by the file's own name,
+    //    so a variant is never compared against a different variant.
+    const byIdentity = new Map<string, CuratorMod[]>();
+    for (const mod of group) {
+      const identity = fileIdentity(mod);
+      if (identity === undefined) continue;
+      const list = byIdentity.get(identity);
+      if (list === undefined) byIdentity.set(identity, [mod]);
+      else list.push(mod);
+    }
+    for (const bucket of byIdentity.values()) {
+      if (bucket.length < 2) continue;
+      const sorted = [...bucket].sort(
+        (a, b) => (b.nexusFileId ?? 0) - (a.nexusFileId ?? 0),
+      );
+      const newest = sorted[0] as CuratorMod;
+      for (const older of sorted.slice(1)) consider(older, newest, "same-file");
+    }
+
+    // 3. Everything else that merely shares the page. Reported so nothing
+    //    silently disappears, and labelled so nothing is mistaken for proof.
+    const pageNewest = [...group].sort(
+      (a, b) => (b.nexusFileId ?? 0) - (a.nexusFileId ?? 0),
+    )[0] as CuratorMod;
+    for (const mod of group) {
+      if (best.has(mod.id)) continue;
+      consider(mod, pageNewest, "same-page-only");
+    }
+
+    out.push(...best.values());
   }
   return out;
+}
+
+/** Candidates backed by something — Nexus's chain, or the same file. */
+export function provenSupersedes(list: readonly ModRemoval[]): ModRemoval[] {
+  return list.filter((r) => r.evidence !== "same-page-only");
+}
+
+/** Candidates that only share a mod page. A lead, and never more. */
+export function unprovenSupersedes(list: readonly ModRemoval[]): ModRemoval[] {
+  return list.filter((r) => r.evidence === "same-page-only");
+}
+
+/** The evidence, as the row says it. */
+export function describeEvidence(evidence: SupersedeEvidence): string {
+  if (evidence === "update-chain") return "Nexus update chain";
+  if (evidence === "same-file") return "same file, older version";
+  return "same page only";
 }
 
 /**

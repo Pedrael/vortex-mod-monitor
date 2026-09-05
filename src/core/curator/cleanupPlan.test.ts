@@ -10,6 +10,9 @@ import { describe, expect, it } from "vitest";
 import {
   archivesFreedByRemoval,
   cleanupSubset,
+  describeEvidence,
+  provenSupersedes,
+  unprovenSupersedes,
   findSupersededMods,
   orphanArchives,
   tickedArchives,
@@ -277,5 +280,184 @@ describe("splitting the plan into the two acts", () => {
       deleteArchives: orphanArchives(plan),
     });
     expect(archivesOnly.removeMods).toEqual([]);
+  });
+});
+
+
+describe("two different FILES on one Nexus page are not two versions", () => {
+  // Both pairs are real, off the curator's own Skyrim profile, and both were
+  // offered for deletion by the rule that only looked at the mod id.
+  const bodypaints = [
+    mod("bp-cbbe", {
+      name: "(2)Barbarian Bodypaints - CBBE-31826-1-0-1579138592",
+      fileName: "Barbarian Bodypaints - CBBE-31826-1-0-1579138592.7z",
+      version: "1.0",
+      nexusModId: 31826,
+      nexusFileId: 128100,
+    }),
+    mod("bp-male", {
+      name: "(3)Barbarian Bodypaints - Male-31826-1-0-1579138821",
+      fileName: "Barbarian Bodypaints - Male-31826-1-0-1579138821.7z",
+      version: "1.0",
+      nexusModId: 31826,
+      nexusFileId: 128101,
+    }),
+  ];
+
+  const overlays = [
+    mod("co-main", {
+      fileName: "Community Overlays 1 - Main - CBBE 2K-22487-1-0-1-1547251200.7z",
+      version: "1.0.1",
+      nexusModId: 22487,
+      nexusFileId: 90001,
+    }),
+    mod("co-patch", {
+      fileName: "Community Overlays 1 - Bugfix Patch-22487-1-0-2-1548457200.7z",
+      version: "1.0.2",
+      nexusModId: 22487,
+      nexusFileId: 90002,
+    }),
+  ];
+
+  it("does not call a CBBE variant an old version of the Male one", () => {
+    expect(provenSupersedes(findSupersededMods(bodypaints))).toEqual([]);
+  });
+
+  it("does not call a main file an old version of a bugfix patch", () => {
+    // This one has a genuinely HIGHER version on the other file — 1.0.2
+    // against 1.0.1 — so comparing versions would not have saved it either.
+    // Only the file's own name separates them.
+    expect(provenSupersedes(findSupersededMods(overlays))).toEqual([]);
+  });
+
+  it("still reports them as a lead, rather than hiding them", () => {
+    const unproven = unprovenSupersedes(findSupersededMods(bodypaints));
+    expect(unproven).toHaveLength(1);
+    expect(unproven[0]!.evidence).toBe("same-page-only");
+    expect(describeEvidence(unproven[0]!.evidence)).toBe("same page only");
+  });
+
+  it("prefers the file's own name over parsing the archive", () => {
+    // `logicalFileName` is what Nexus calls the file. When it is present the
+    // archive name is not consulted at all.
+    const named = [
+      mod("a", {
+        logicalFileName: "Barbarian Bodypaints - CBBE",
+        fileName: "whatever-31826-1-0-1.7z",
+        nexusModId: 31826,
+        nexusFileId: 1,
+      }),
+      mod("b", {
+        logicalFileName: "Barbarian Bodypaints - Male",
+        fileName: "whatever-31826-1-0-2.7z",
+        nexusModId: 31826,
+        nexusFileId: 2,
+      }),
+    ];
+    expect(provenSupersedes(findSupersededMods(named))).toEqual([]);
+  });
+});
+
+describe("what IS an old version", () => {
+  it("recognises the same file at a lower version", () => {
+    const pair = [
+      mod("apoc-old", {
+        fileName: "Apocalypse - Magic of Skyrim-1090-9-8-1500000000.7z",
+        version: "9.8",
+        nexusModId: 1090,
+        nexusFileId: 400,
+      }),
+      mod("apoc-new", {
+        fileName: "Apocalypse - Magic of Skyrim-1090-10-0-1600000000.7z",
+        version: "10.0",
+        nexusModId: 1090,
+        nexusFileId: 500,
+      }),
+    ];
+    const proven = provenSupersedes(findSupersededMods(pair));
+    expect(proven).toHaveLength(1);
+    expect(proven[0]!.mod.id).toBe("apoc-old");
+    expect(proven[0]!.evidence).toBe("same-file");
+  });
+
+  it("takes Nexus's own update chain as proof, whatever the names say", () => {
+    // `newestFileId` is written by walking Nexus's file_updates from the
+    // installed file. Landing on another install's file id is not an
+    // inference — it is Nexus saying this one replaced that one.
+    const pair = [
+      mod("old", {
+        nexusModId: 7,
+        nexusFileId: 100,
+        newestFileId: 200,
+        logicalFileName: "An Old Name Nobody Kept",
+      }),
+      mod("new", {
+        nexusModId: 7,
+        nexusFileId: 200,
+        logicalFileName: "A Renamed File",
+      }),
+    ];
+    const proven = provenSupersedes(findSupersededMods(pair));
+    expect(proven).toHaveLength(1);
+    expect(proven[0]!.evidence).toBe("update-chain");
+  });
+
+  it("lets the chain outrank a mere name match", () => {
+    const three = [
+      mod("v1", {
+        nexusModId: 7,
+        nexusFileId: 100,
+        newestFileId: 300,
+        logicalFileName: "Same Name",
+      }),
+      mod("v2", { nexusModId: 7, nexusFileId: 200, logicalFileName: "Same Name" }),
+      mod("v3", { nexusModId: 7, nexusFileId: 300, logicalFileName: "Same Name" }),
+    ];
+    const found = findSupersededMods(three).find((r) => r.mod.id === "v1");
+    expect(found?.evidence).toBe("update-chain");
+    expect(found?.supersededBy.id).toBe("v3");
+  });
+
+  it("compares within a file, not across the whole page", () => {
+    // Two variants, each with its own history. The older CBBE is superseded
+    // by the newer CBBE — NOT by the Male file that happens to be newest.
+    const four = [
+      mod("cbbe-1", { nexusModId: 9, nexusFileId: 10, logicalFileName: "Skin CBBE" }),
+      mod("cbbe-2", { nexusModId: 9, nexusFileId: 20, logicalFileName: "Skin CBBE" }),
+      mod("male-1", { nexusModId: 9, nexusFileId: 30, logicalFileName: "Skin Male" }),
+    ];
+    const proven = provenSupersedes(findSupersededMods(four));
+    expect(proven).toHaveLength(1);
+    expect(proven[0]!.mod.id).toBe("cbbe-1");
+    expect(proven[0]!.supersededBy.id).toBe("cbbe-2");
+  });
+
+  it("still refuses to retire the version actually in use", () => {
+    // The rollback: v1 re-enabled after a bad v2. Unchanged by any of this.
+    const pair = [
+      mod("v1", {
+        enabled: true,
+        nexusModId: 7,
+        nexusFileId: 100,
+        logicalFileName: "Same",
+      }),
+      mod("v2", {
+        enabled: false,
+        nexusModId: 7,
+        nexusFileId: 200,
+        logicalFileName: "Same",
+      }),
+    ];
+    expect(findSupersededMods(pair)).toEqual([]);
+  });
+
+  it("says nothing about a file identity it cannot determine", () => {
+    // No logical name, and an archive name that never mentions the mod id.
+    const pair = [
+      mod("a", { fileName: "mystery.7z", nexusModId: 7, nexusFileId: 1 }),
+      mod("b", { fileName: "other.7z", nexusModId: 7, nexusFileId: 2 }),
+    ];
+    expect(provenSupersedes(findSupersededMods(pair))).toEqual([]);
+    expect(unprovenSupersedes(findSupersededMods(pair))).toHaveLength(1);
   });
 });

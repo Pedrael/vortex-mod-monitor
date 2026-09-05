@@ -721,6 +721,7 @@ describe("render", () => {
         archiveId: "dl-shadow-old",
         attributes: {
           name: "Animated Armoury 7.0",
+          fileName: "Animated Armoury-47213-7-0-1579138592.7z",
           version: "7.0",
           modId: 47213,
           fileId: 700,
@@ -732,11 +733,77 @@ describe("render", () => {
         archiveId: "dl-shadow-new",
         attributes: {
           name: "Animated Armoury 8.1",
+          fileName: "Animated Armoury-47213-8-1-1679138592.7z",
           version: "8.1",
           modId: 47213,
           fileId: 810,
           newestFileId: 820,
           newestVersion: "8.2",
+        },
+      },
+      // Two different FILES on one page — the case that used to be offered
+      // for deletion. They must land in the unproven group, never the first.
+      "bp-cbbe": {
+        archiveId: "dl-bp-cbbe",
+        attributes: {
+          name: "(2)Barbarian Bodypaints - CBBE-31826-1-0-1579138592",
+          fileName: "Barbarian Bodypaints - CBBE-31826-1-0-1579138592.7z",
+          version: "1.0",
+          modId: 31826,
+          fileId: 128100,
+        },
+      },
+      "bp-male": {
+        archiveId: "dl-bp-male",
+        attributes: {
+          name: "(3)Barbarian Bodypaints - Male-31826-1-0-1579138821",
+          fileName: "Barbarian Bodypaints - Male-31826-1-0-1579138821.7z",
+          version: "1.0",
+          modId: 31826,
+          fileId: 128101,
+        },
+      },
+      "co-main": {
+        archiveId: "dl-co-main",
+        attributes: {
+          name: "(3) Community Overlays 1 - Main - CBBE 2K-22487-1-0-1-1547251200",
+          fileName: "Community Overlays 1 - Main - CBBE 2K-22487-1-0-1-1547251200.7z",
+          version: "1.0.1",
+          modId: 22487,
+          fileId: 90001,
+        },
+      },
+      "co-patch": {
+        archiveId: "dl-co-patch",
+        attributes: {
+          name: "(Q) Community Overlays 1 - Bugfix Patch-22487-1-0-2-1548457200",
+          fileName: "Community Overlays 1 - Bugfix Patch-22487-1-0-2-1548457200.7z",
+          version: "1.0.2",
+          modId: 22487,
+          fileId: 90002,
+        },
+      },
+      // A genuine old version: the same file, two versions, and Nexus's own
+      // chain pointing from one to the other.
+      "sky-old": {
+        archiveId: "dl-sky-old",
+        attributes: {
+          name: "Skyland AIO 4.2",
+          logicalFileName: "Skyland AIO",
+          version: "4.2",
+          modId: 34179,
+          fileId: 600,
+          newestFileId: 700,
+        },
+      },
+      "sky-new": {
+        archiveId: "dl-sky-new",
+        attributes: {
+          name: "Skyland AIO 4.7",
+          logicalFileName: "Skyland AIO",
+          version: "4.7",
+          modId: 34179,
+          fileId: 700,
         },
       },
     };
@@ -812,6 +879,16 @@ describe("render", () => {
           { modId: 100000 + i, fileId: 900 + i },
         );
       }
+    }
+    for (const [id, file, mid, fid] of [
+      ["dl-bp-cbbe", "Barbarian Bodypaints - CBBE-31826-1-0-1579138592.7z", 31826, 128100],
+      ["dl-bp-male", "Barbarian Bodypaints - Male-31826-1-0-1579138821.7z", 31826, 128101],
+      ["dl-co-main", "Community Overlays 1 - Main - CBBE 2K-22487-1-0-1.7z", 22487, 90001],
+      ["dl-co-patch", "Community Overlays 1 - Bugfix Patch-22487-1-0-2.7z", 22487, 90002],
+      ["dl-sky-old", "Skyland AIO-34179-4-2.7z", 34179, 600],
+      ["dl-sky-new", "Skyland AIO-34179-4-7.7z", 34179, 700],
+    ] as [string, string, number, number][]) {
+      dl(id, file, 900 * 1024 ** 2, { modId: mid, fileId: fid });
     }
     dl("dl-shadow-old", "Animated Armoury-47213-7-0.7z", 220 * 1024 ** 2, {
       modId: 47213,

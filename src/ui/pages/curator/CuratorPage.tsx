@@ -55,7 +55,10 @@ import {
 import {
   archivesFreedByRemoval,
   cleanupSubset,
+  describeEvidence,
   findSupersededMods,
+  provenSupersedes,
+  unprovenSupersedes,
   formatSize,
   orphanArchives,
   planCleanup,
@@ -257,13 +260,37 @@ const MOD_COLUMNS: Column<CuratorMod>[] = [
   { key: "state", header: "State", match: "exact", width: 110, value: stateOf },
 ];
 
+const shownVersion = (v: string | undefined): string => v ?? "unknown";
+
 const RETIRE_COLUMNS: Column<RetireRow>[] = [
   { key: "name", header: "Older install", value: (c) => c.mod.name },
-  { key: "version", header: "Version", value: (c) => c.mod.version, width: 130 },
+  {
+    key: "version",
+    header: "Version",
+    width: 190,
+    // The transition, not just the installed side. "1.0" alone says nothing
+    // about what would replace it, which is the fact being decided here.
+    value: (c) =>
+      `${shownVersion(c.mod.version)} → ${shownVersion(c.supersededBy.version)}`,
+  },
   {
     key: "newer",
-    header: "Newer file installed as",
+    header: "Replaced by",
     value: (c) => c.supersededBy.name,
+  },
+  {
+    key: "evidence",
+    header: "Why",
+    match: "exact",
+    width: 200,
+    // On the row, because this card deletes things. A curator should not have
+    // to remember which rule put a line here.
+    value: (c) => describeEvidence(c.evidence),
+    render: (c) => (
+      <Pill intent={c.evidence === "same-page-only" ? "warning" : "neutral"}>
+        {describeEvidence(c.evidence)}
+      </Pill>
+    ),
   },
   {
     key: "state",
@@ -444,6 +471,23 @@ function CuratorBody(): JSX.Element {
   const retireCandidates = React.useMemo(
     () => findSupersededMods(mods),
     [mods],
+  );
+  /**
+   * Backed by evidence versus merely sharing a mod page.
+   *
+   * Kept apart because they are different claims. "Same page" produced plain
+   * false positives on the real profile — a bodypaint's CBBE variant offered
+   * for deletion because a Male variant had a higher file id — so those are
+   * shown separately, below, and never mixed in with the ones Nexus or the
+   * file's own name actually vouches for.
+   */
+  const provenRetire = React.useMemo(
+    () => provenSupersedes(retireCandidates),
+    [retireCandidates],
+  );
+  const unprovenRetire = React.useMemo(
+    () => unprovenSupersedes(retireCandidates),
+    [retireCandidates],
   );
 
   /**
@@ -1213,15 +1257,16 @@ function CuratorBody(): JSX.Element {
       <Section
         title="Disk cleanup — 2. Old mod installs"
         note={
-          "This one changes your setup, so nothing is pre-ticked. A lower " +
-          "Nexus file id is NOT proof of an older version — one page ships a " +
-          "main file and its optional patches under the same mod id — so tick " +
-          "only the installs you know are stale. Their archives are freed too."
+          "This one changes your setup, so nothing is pre-ticked. An install " +
+          "is only listed here when Nexus's own update chain says it was " +
+          "replaced, or when the same FILE is installed at a lower version — " +
+          "sharing a mod page proves nothing on its own. Removing an install " +
+          "frees its archive too."
         }
       >
         {retireCandidates.length === 0 ? (
           <p style={{ color: "var(--eh-text-secondary)", margin: 0 }}>
-            No install shares a Nexus page with a newer file.
+            No install has been replaced by another one you have installed.
           </p>
         ) : (
           <>
@@ -1263,15 +1308,53 @@ function CuratorBody(): JSX.Element {
                 </Button>
               )}
             </div>
-            <DataTable
-              rows={retireCandidates}
-              idOf={retireId}
-              columns={RETIRE_COLUMNS}
-              noun="older install"
-              limit={200}
-              maxHeight={320}
-              selection={{ selected: retire, onChange: setRetire }}
-            />
+            {provenRetire.length === 0 ? (
+              <p style={{ color: "var(--eh-text-secondary)", margin: 0 }}>
+                Nothing here is backed by evidence. Everything found only
+                shares a mod page, and is listed below.
+              </p>
+            ) : (
+              <DataTable
+                rows={provenRetire}
+                idOf={retireId}
+                columns={RETIRE_COLUMNS}
+                noun="older install"
+                limit={200}
+                maxHeight={320}
+                selection={{ selected: retire, onChange: setRetire }}
+              />
+            )}
+
+            {unprovenRetire.length > 0 && (
+              <div style={{ marginTop: "var(--eh-sp-3)" }}>
+                <p
+                  style={{
+                    margin: "0 0 var(--eh-sp-1)",
+                    padding: "var(--eh-sp-2)",
+                    borderLeft: "3px solid var(--eh-warning)",
+                    color: "var(--eh-text-secondary)",
+                    fontSize: "var(--eh-text-sm)",
+                  }}
+                >
+                  {num(unprovenRetire.length)} more install(s) share a Nexus
+                  page with a newer file and NOTHING ELSE. That is not an old
+                  version — one page ships a main file, optional files,
+                  variants and patches, so this is where
+                  &ldquo;Bodypaints - CBBE&rdquo; sits next to
+                  &ldquo;Bodypaints - Male&rdquo;. Listed so nothing is hidden;
+                  tick one only if you know it yourself.
+                </p>
+                <DataTable
+                  rows={unprovenRetire}
+                  idOf={retireId}
+                  columns={RETIRE_COLUMNS}
+                  noun="unproven install"
+                  limit={200}
+                  maxHeight={280}
+                  selection={{ selected: retire, onChange: setRetire }}
+                />
+              </div>
+            )}
           </>
         )}
       </Section>
