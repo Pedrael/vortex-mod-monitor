@@ -601,19 +601,19 @@ describe("render", () => {
           modId: "mod-xlodgen",
           modName: "sse-xlodgen-output-pbr",
           unexplained: 1608,
-          examples: [
-            "Textures/Terrain/Valefrost/Valefrost.Terrain.HeightMap.-27.-7.23.26.-256.452.dds",
-            "Textures/Terrain/Tamriel/Tamriel.Terrain.HeightMap.4.-12.dds",
-            "Meshes/Terrain/Tamriel/Objects/Tamriel.32.-32.-32.BTO",
+          files: [
+            { path: "Textures/Terrain/Valefrost/Valefrost.Terrain.HeightMap.-27.-7.23.26.-256.452.dds", kind: "changed", delta: 24576 },
+            { path: "Textures/Terrain/Tamriel/Tamriel.Terrain.HeightMap.4.-12.dds", kind: "added" },
+            { path: "Meshes/Terrain/Tamriel/Objects/Tamriel.32.-32.-32.BTO", kind: "changed", delta: -2048 },
           ],
         },
         {
           modId: "mod-armour",
           modName: "Immersive Armours",
           unexplained: 2,
-          examples: [
-            "Data/Meshes/armour/hide/patched_cuirass.nif",
-            "Data/MyFix-Patch.esp",
+          files: [
+            { path: "Data/Meshes/armour/hide/patched_cuirass.nif", kind: "changed", delta: 24576 },
+            { path: "Data/MyFix-Patch.esp", kind: "added" },
           ],
         },
         // Three more, taken from a real 57-mod report. Two candidates make
@@ -624,32 +624,32 @@ describe("render", () => {
           modId: "mod-eeos",
           modName: "EEOS - Enemy Revolution of Skyrim-37228-2-02-1705594315",
           unexplained: 6,
-          examples: [
-            "ApocalypseSpellsForNPCs_DISTR.ini",
-            "GrowlPerksAndSpellsForNPCs_DISTR.ini",
-            "ODINSpellsForNPCs_DISTR.ini",
-            "PotionsForNPCs_DISTR.ini",
-            "TriumvirateShadowSpellsForNPCs_DISTR.ini",
-            "VanillaShoutsForNPCs_DISTR.ini",
+          files: [
+            { path: "ApocalypseSpellsForNPCs_DISTR.ini", kind: "changed", delta: 24576 },
+            { path: "GrowlPerksAndSpellsForNPCs_DISTR.ini", kind: "added" },
+            { path: "ODINSpellsForNPCs_DISTR.ini", kind: "changed", delta: -2048 },
+            { path: "PotionsForNPCs_DISTR.ini", kind: "changed", delta: -118 },
+            { path: "TriumvirateShadowSpellsForNPCs_DISTR.ini", kind: "added" },
+            { path: "VanillaShoutsForNPCs_DISTR.ini", kind: "changed", delta: -2048 },
           ],
         },
         {
           modId: "mod-junipers",
           modName: "3D Junipers - Trees and Berries-43852-0-2-1687771639",
           unexplained: 3,
-          examples: [
-            "meshes/_byoh/plants/byohhouseingrdjuniper01.nif",
-            "meshes/plants/florajuniper01.nif",
-            "meshes/plants/juniper01.nif",
+          files: [
+            { path: "meshes/_byoh/plants/byohhouseingrdjuniper01.nif", kind: "changed", delta: 24576 },
+            { path: "meshes/plants/florajuniper01.nif", kind: "added" },
+            { path: "meshes/plants/juniper01.nif", kind: "changed", delta: -2048 },
           ],
         },
         {
           modId: "mod-grid",
           modName: "Grid Inventory 188733 1.4.1 2026-08-22T09-05Z L5WQbqhQB",
           unexplained: 2,
-          examples: [
-            "SKSE/Plugins/GridInventory_icons.pak",
-            "SKSE/Plugins/GridInventory_ui.ini",
+          files: [
+            { path: "SKSE/Plugins/GridInventory_icons.pak", kind: "changed", delta: 24576 },
+            { path: "SKSE/Plugins/GridInventory_ui.ini", kind: "added" },
           ],
         },
       ],

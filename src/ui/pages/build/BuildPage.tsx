@@ -50,6 +50,10 @@ import type {
 import type { PostProcessingCandidate } from "../../../core/manifest/runSelfChecks";
 import { isNexusMod, recordPostProcessingDecision } from "./engine";
 import {
+  countKinds,
+  describeUnexplainedFile,
+} from "../../../core/manifest/unexplainedFiles";
+import {
   describeChoice,
   describeDecisionIntro,
   overrideForChoice,
@@ -2617,8 +2621,14 @@ function PostProcessingDecisions(props: {
                 </span>
               </div>
 
-              {/* Evidence, on screen. The decision is unanswerable without it. */}
-              {c.examples.length > 0 && (
+              {/*
+                Evidence, on screen. The decision is unanswerable without it —
+                and a bare path is not enough evidence. "Common Clothes and
+                Armors.esp" tells the curator nothing about whether declaring
+                it costs the user that file or merely hands them the archive's
+                version, so each path now carries what it means.
+              */}
+              {c.files.length > 0 && (
                 <ul
                   style={{
                     margin: 0,
@@ -2630,12 +2640,25 @@ function PostProcessingDecisions(props: {
                     color: "var(--eh-text-secondary)",
                   }}
                 >
-                  {c.examples.map((p: string) => (
-                    <li key={p}>{p}</li>
+                  {c.files.map((f) => (
+                    <li key={f.path}>
+                      {f.path}
+                      <span
+                        style={{
+                          color:
+                            f.kind === "changed" && (f.delta ?? 0) > 0
+                              ? "var(--eh-warning)"
+                              : "var(--eh-text-muted)",
+                        }}
+                      >
+                        {" — "}
+                        {describeUnexplainedFile(f)}
+                      </span>
+                    </li>
                   ))}
-                  {c.unexplained > c.examples.length && (
+                  {c.unexplained > c.files.length && (
                     <li style={{ listStyle: "none", opacity: 0.7 }}>
-                      and {c.unexplained - c.examples.length} more
+                      and {c.unexplained - c.files.length} more
                     </li>
                   )}
                 </ul>
@@ -2643,7 +2666,7 @@ function PostProcessingDecisions(props: {
 
               {answer !== undefined ? (
                 <span style={{ color: "var(--eh-text-secondary)" }}>
-                  ✓ {describeChoice(answer, c.unexplained).label} — saved.
+                  ✓ {describeChoice(answer, c.unexplained, countKinds(c.files)).label} — saved.
                 </span>
               ) : (
                 // Side by side, so the two answers read as alternatives to
@@ -2658,7 +2681,7 @@ function PostProcessingDecisions(props: {
                   }}
                 >
                   {(["declare", "bundle"] as PostProcessingChoice[]).map((k) => {
-                    const copy = describeChoice(k, c.unexplained);
+                    const copy = describeChoice(k, c.unexplained, countKinds(c.files));
                     return (
                       <div
                         key={k}

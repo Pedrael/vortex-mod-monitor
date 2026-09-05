@@ -33,6 +33,7 @@ import { resolveModArchivePath } from "../archiveHashing";
 import type { AuditorMod } from "../getModsListForProfile";
 import { ehLog } from "../logging/ehLog";
 import type { SelfCheckReport } from "./selfCheckMod";
+import type { UnexplainedFile } from "./unexplainedFiles";
 import { selfCheckMod, summarizeSelfChecks } from "./selfCheckMod";
 import { resolveSevenZip, sevenZipExtractFull } from "./sevenZip";
 import type { SevenZipApi } from "./sevenZip";
@@ -107,8 +108,14 @@ export type PostProcessingCandidate = {
   modName: string;
   /** How many staged files the archive cannot produce. */
   unexplained: number;
-  /** A few of them, by path, so the answer comes from looking. */
-  examples: string[];
+  /**
+   * A few of them, classified, so the answer comes from looking.
+   *
+   * Not bare paths: a path cannot tell the curator whether declaring means the
+   * user goes WITHOUT the file or simply receives the archive's version of it,
+   * and those have opposite consequences.
+   */
+  files: UnexplainedFile[];
 };
 
 /**
@@ -128,7 +135,7 @@ export function findPostProcessingCandidates(
       modId: r.modId,
       modName: r.modName,
       unexplained: r.unexplained,
-      examples: r.unexplainedExamples,
+      files: r.unexplainedExamples,
     }));
 }
 

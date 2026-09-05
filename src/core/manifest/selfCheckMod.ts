@@ -34,8 +34,16 @@ import { expandFomodPlan } from "./expandFomodPlan";
 import type { RecordedStep } from "./fomodReplay";
 import { replayFomod } from "./fomodReplay";
 import { parseModuleConfig } from "./parseModuleConfig";
-import type { StagedFileRef } from "./verifyAgainstArchive";
+import type {
+  ArchiveVerificationResult,
+  StagedFileRef,
+} from "./verifyAgainstArchive";
 import { verifyStagingAgainstArchive } from "./verifyAgainstArchive";
+import {
+  UNEXPLAINED_EXAMPLES,
+  classifyUnexplained,
+  type UnexplainedFile,
+} from "./unexplainedFiles";
 
 /** How thoroughly a mod could actually be checked. */
 export type SelfCheckDepth =
@@ -66,7 +74,7 @@ export type SelfCheckReport = {
    *
    * Capped: this is evidence for a human, not a manifest.
    */
-  unexplainedExamples: string[];
+  unexplainedExamples: UnexplainedFile[];
   /**
    * Archive files with no staged counterpart that the archive's own shape does
    * not explain — the omission signal for mods with no FOMOD script to replay.
@@ -125,24 +133,27 @@ function findModuleConfigEntry(listing: ArchiveListing): string | undefined {
  * `enrichModsWithArchiveHashes` treats a failed hash as "no hash" rather than
  * aborting the batch.
  */
-/** How many unexplained paths to keep for the curator to look at. */
-const UNEXPLAINED_EXAMPLES = 6;
-
 /**
  * The count and the evidence together, so a caller cannot record one without
  * the other. Eight return paths set this; a bare number at any of them would
  * be a mod the decision UI could show no reason for.
  */
-function unexplainedFacts(containment: {
-  unexplained: number;
-  verdicts: ReadonlyArray<{ kind: string; file: { path: string } }>;
-}): { unexplained: number; unexplainedExamples: string[] } {
+function unexplainedFacts(
+  containment: ArchiveVerificationResult,
+  listing: ArchiveListing,
+): { unexplained: number; unexplainedExamples: UnexplainedFile[] } {
   return {
     unexplained: containment.unexplained,
-    unexplainedExamples: containment.verdicts
-      .filter((v) => v.kind === "unexplained")
-      .slice(0, UNEXPLAINED_EXAMPLES)
-      .map((v) => v.file.path),
+    // Classified against the archive rather than reported as bare paths: a
+    // path alone cannot tell the curator whether declaring it means the user
+    // goes WITHOUT the file or merely gets the archive's version of it.
+    unexplainedExamples: classifyUnexplained(
+      containment.verdicts
+        .filter((v) => v.kind === "unexplained")
+        .slice(0, UNEXPLAINED_EXAMPLES)
+        .map((v) => v.file),
+      listing,
+    ),
   };
 }
 
@@ -153,7 +164,7 @@ export async function selfCheckMod(input: SelfCheckInput): Promise<SelfCheckRepo
     modName: input.modName,
     missing: [] as string[],
     unexplained: 0,
-    unexplainedExamples: [] as string[],
+    unexplainedExamples: [] as UnexplainedFile[],
     omissionLeads: [] as OmissionLead[],
     stagedCount: input.staged.length,
     expectedCount: 0,
@@ -206,14 +217,14 @@ export async function selfCheckMod(input: SelfCheckInput): Promise<SelfCheckRepo
   const configEntry = findModuleConfigEntry(listing);
   if (configEntry === undefined) {
     notes.push("No FOMOD script in archive; expected file set unknown.");
-    return { ...withLeads, depth: "containment", notes, ...unexplainedFacts(containment) };
+    return { ...withLeads, depth: "containment", notes, ...unexplainedFacts(containment, listing) };
   }
   if (input.recordedChoices.length === 0) {
     // Vortex records nothing when an install had no branching. The script's
     // unconditional files could still be derived, but a wrong "missing" claim
     // is worse than no claim, so this stays containment-only for now.
     notes.push("No recorded FOMOD choices; cannot derive the expected file set.");
-    return { ...withLeads, depth: "containment", notes, ...unexplainedFacts(containment) };
+    return { ...withLeads, depth: "containment", notes, ...unexplainedFacts(containment, listing) };
   }
 
   let raw: Buffer | undefined;
@@ -223,7 +234,7 @@ export async function selfCheckMod(input: SelfCheckInput): Promise<SelfCheckRepo
     notes.push(`Could not read ${configEntry}: ${err instanceof Error ? err.message : String(err)}`);
   }
   if (raw === undefined) {
-    return { ...withLeads, depth: "containment", notes, ...unexplainedFacts(containment) };
+    return { ...withLeads, depth: "containment", notes, ...unexplainedFacts(containment, listing) };
   }
 
   let expected;
@@ -236,7 +247,7 @@ export async function selfCheckMod(input: SelfCheckInput): Promise<SelfCheckRepo
       // A replay we do not fully understand must never accuse a folder of
       // missing files.
       notes.push("Replay confidence low; not reporting missing files.");
-      return { ...withLeads, depth: "containment", notes, ...unexplainedFacts(containment) };
+      return { ...withLeads, depth: "containment", notes, ...unexplainedFacts(containment, listing) };
     }
     expected = expandFomodPlan(replay.sources, listing);
     if (expected.unmatchedSpecs.length > 0) {
@@ -244,11 +255,11 @@ export async function selfCheckMod(input: SelfCheckInput): Promise<SelfCheckRepo
         `${expected.unmatchedSpecs.length} FOMOD spec(s) matched nothing in the archive; ` +
           `not reporting missing files.`,
       );
-      return { ...withLeads, depth: "containment", notes, ...unexplainedFacts(containment) };
+      return { ...withLeads, depth: "containment", notes, ...unexplainedFacts(containment, listing) };
     }
   } catch (err) {
     notes.push(`FOMOD replay failed: ${err instanceof Error ? err.message : String(err)}`);
-    return { ...withLeads, depth: "containment", notes, ...unexplainedFacts(containment) };
+    return { ...withLeads, depth: "containment", notes, ...unexplainedFacts(containment, listing) };
   }
 
   const stagedPaths = new Set(input.staged.map((f) => f.path.toLowerCase()));
@@ -261,7 +272,7 @@ export async function selfCheckMod(input: SelfCheckInput): Promise<SelfCheckRepo
     depth: "replayed",
     notes,
     missing,
-    ...unexplainedFacts(containment),
+    ...unexplainedFacts(containment, listing),
     expectedCount: expected.files.length,
   };
 }

@@ -136,10 +136,59 @@ describe("the panel offers no way to answer without looking", () => {
   });
 
   it("shows the offending paths rather than only a count", () => {
-    expect(body).toContain("c.examples.map");
+    expect(body).toContain("c.files.map");
+  });
+
+  it("says what each path MEANS, not just its name", () => {
+    // A bare path cannot answer the question being asked. "Common Clothes and
+    // Armors.esp" does not tell the curator whether declaring costs the user
+    // that file or merely hands them the archive's copy of it — and those are
+    // opposite outcomes wearing the same verdict.
+    expect(body).toContain("describeUnexplainedFile(f)");
   });
 
   it("preselects nothing", () => {
     expect(body).not.toMatch(/defaultChecked|defaultValue/);
+  });
+});
+
+describe("the declare consequence tells the truth about each kind", () => {
+  it("says users go WITHOUT a file the archive does not have", () => {
+    const c = describeChoice("declare", 2, { added: 2, changed: 0 });
+    expect(c.consequence).toContain("without your 2 files");
+  });
+
+  it("says users get the ARCHIVE'S version of a file they changed", () => {
+    // The old copy claimed users install "without your 1 file" here, which is
+    // false: the archive has that file, so they receive its copy. On a real
+    // 1894-mod profile this case was thousands of files.
+    const c = describeChoice("declare", 1, { added: 0, changed: 1 });
+    expect(c.consequence).toContain("ITS version");
+    expect(c.consequence).not.toContain("without your 1 file");
+  });
+
+  it("covers both when the mod has some of each", () => {
+    const c = describeChoice("declare", 5, { added: 2, changed: 3 });
+    expect(c.consequence).toContain("go without the files you added");
+    expect(c.consequence).toContain("archive's version of the ones you changed");
+  });
+
+  it("stays true when the split is unknown", () => {
+    const c = describeChoice("declare", 3);
+    expect(c.consequence).toContain("added");
+    expect(c.consequence).toContain("changed");
+  });
+});
+
+describe("the panel heading describes both shapes", () => {
+  it("does not claim the archives simply lack these files", () => {
+    // Only true of added files. For a changed one the archive HAS it.
+    expect(describeDecisionIntro(5).what).not.toContain("do not contain");
+  });
+
+  it("names both what users lose and what they get instead", () => {
+    const what = describeDecisionIntro(5).what;
+    expect(what).toContain("added");
+    expect(what).toContain("changed");
   });
 });

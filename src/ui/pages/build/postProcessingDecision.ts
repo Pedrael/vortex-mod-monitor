@@ -76,18 +76,55 @@ export type ChoiceCopy = {
  * what the curator is about to do to someone, which is the thing they are
  * qualified to have an opinion about.
  */
+/**
+ * What actually happens to the user, which depends on something the old copy
+ * ignored.
+ *
+ * "Users install this mod without your N files" is true of a file the archive
+ * does not have. It is FALSE of a file the archive does have and the curator
+ * edited: the user is not missing that file, they receive the archive's copy
+ * of it — an uncleaned plugin, an unrepacked BA2. Measured on a real 1894-mod
+ * profile, the second case is thousands of files, so the sentence was wrong
+ * more often than it was right.
+ */
+function declareOutcome(
+  n: string,
+  kinds: { added: number; changed: number } | undefined,
+  fileCount: number,
+): string {
+  if (kinds === undefined || (kinds.added > 0 && kinds.changed > 0)) {
+    return (
+      `Users install this mod from its archive. They go without the files ` +
+      `you added, and receive the archive's version of the ones you changed ` +
+      `— not your ${n}.`
+    );
+  }
+  if (kinds.changed === 0) {
+    return `Users install this mod from its archive, without your ${n}.`;
+  }
+  return (
+    `Users install this mod from its archive and get ITS version of ` +
+    `${fileCount === 1 ? "that file" : "those files"}, not your ${n}.`
+  );
+}
+
 export function describeChoice(
   choice: PostProcessingChoice,
   fileCount: number,
+  /**
+   * How those files split. Omit only where the split is genuinely unknown —
+   * the copy is then written to stay true either way.
+   */
+  kinds?: { added: number; changed: number },
 ): ChoiceCopy {
   const n = `${fileCount} file${fileCount === 1 ? "" : "s"}`;
   if (choice === "declare") {
     return {
       label: "These files are mine — users don't need them",
       consequence:
-        `Users install this mod from its archive, without your ${n}. Right ` +
-        `for xLODGen or DynDOLOD output, a BA2 you repacked, or a plugin you ` +
-        `cleaned: work that belongs to your machine.`,
+        `${declareOutcome(n, kinds, fileCount)} Right for xLODGen or DynDOLOD output, a ` +
+        `BA2 you repacked, or a plugin you cleaned: work that belongs to your ` +
+        `machine.`,
     };
   }
   return {
@@ -116,10 +153,14 @@ export function describeDecisionIntro(modCount: number): {
   const mods = `${modCount} mod${modCount === 1 ? "" : "s"}`;
   return {
     title: `${mods} need${modCount === 1 ? "s" : ""} a decision`,
+    // Two shapes, and the difference decides what declaring costs. The first
+    // version of this said the archives "do not contain" these files, which
+    // is only true of the ones the curator ADDED — for a file they edited the
+    // archive has it, and the user receives that copy rather than nothing.
     what:
-      `Their staging folders hold files that their own archives do not ` +
-      `contain. Users install from those archives, so there is no way for ` +
-      `them to end up with these files.`,
+      `Their staging folders differ from the archives they came from — files ` +
+      `you added, which users would never get, and files you changed, where ` +
+      `users would get the archive's version instead of yours.`,
     question: "Do the people installing this collection need them?",
     ifIgnored:
       `Leaving one undecided is not neutral: the file is recorded as ` +

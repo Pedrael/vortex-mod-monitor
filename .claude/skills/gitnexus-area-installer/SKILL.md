@@ -35,8 +35,8 @@ Start here when exploring this area:
 - **`describeGameIniApplication`** (Function) — `src/core/installer/applyGameIni.ts:286`
 - **`shouldApplyGameIni`** (Function) — `src/core/installer/applyGameIni.ts:266`
 - **`describeIniTweaks`** (Function) — `src/core/installer/applyIniTweaks.ts:114`
-- **`applyModTypeChanges`** (Function) — `src/core/installer/applyModTypes.ts:118`
-- **`describeModTypeChanges`** (Function) — `src/core/installer/applyModTypes.ts:144`
+- **`applyModTypeChanges`** (Function) — `src/core/installer/applyModTypes.ts:133`
+- **`describeModTypeChanges`** (Function) — `src/core/installer/applyModTypes.ts:159`
 
 ## Key Symbols
 
@@ -47,11 +47,11 @@ Start here when exploring this area:
 | `describeGameIniApplication` | Function | `src/core/installer/applyGameIni.ts` | 286 |
 | `shouldApplyGameIni` | Function | `src/core/installer/applyGameIni.ts` | 266 |
 | `describeIniTweaks` | Function | `src/core/installer/applyIniTweaks.ts` | 114 |
-| `applyModTypeChanges` | Function | `src/core/installer/applyModTypes.ts` | 118 |
-| `describeModTypeChanges` | Function | `src/core/installer/applyModTypes.ts` | 144 |
-| `label` | Function | `src/core/installer/applyModTypes.ts` | 148 |
+| `applyModTypeChanges` | Function | `src/core/installer/applyModTypes.ts` | 133 |
+| `describeModTypeChanges` | Function | `src/core/installer/applyModTypes.ts` | 159 |
+| `label` | Function | `src/core/installer/applyModTypes.ts` | 163 |
 | `planModTypeChanges` | Function | `src/core/installer/applyModTypes.ts` | 63 |
-| `readCurrentModTypes` | Function | `src/core/installer/applyModTypes.ts` | 91 |
+| `readCurrentModTypes` | Function | `src/core/installer/applyModTypes.ts` | 106 |
 | `describePluginFlagRepair` | Function | `src/core/installer/applyPluginLightFlags.ts` | 124 |
 | `describePluginOrderApplication` | Function | `src/core/installer/applyPluginOrder.ts` | 312 |
 | `describeModTypeMismatches` | Function | `src/core/installer/checkModTypes.ts` | 83 |
