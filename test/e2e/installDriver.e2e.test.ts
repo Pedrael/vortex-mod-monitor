@@ -11,6 +11,7 @@
  * is the level where every bug this cycle lived.
  */
 
+import { createHash } from "node:crypto";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -23,6 +24,7 @@ import { buildManifest } from "../../src/core/manifest/buildManifest";
 import { captureStagingFiles } from "../../src/core/manifest/captureStagingFiles";
 import { scopeCollectionMods } from "../../src/core/manifest/collectionScope";
 import { emitsOf, makeFakeVortex } from "./fakeVortex";
+import { makeZip } from "../makeZip";
 import { makeWorld, type World } from "./world";
 import type { EhcollManifest } from "../../src/types/ehcoll";
 import type { UserSideState } from "../../src/types/installPlan";
@@ -445,5 +447,121 @@ describe("install driver, end to end", () => {
 
     __testPaths.documentsPath = previousDocs;
     fs.rmSync(docs, { recursive: true, force: true });
+  });
+});
+
+describe("mirroring, through the real driver", () => {
+  /**
+   * The gap this closes: step 6c of `runInstall` was reachable only by
+   * installing a mirrored collection by hand. Every part around it was
+   * covered — the plan, the applier, the proof condition — and the WIRING
+   * between them was not, which is precisely the shape of the two crashes
+   * that cost releases this cycle.
+   *
+   * So this drives the driver. The curator's folder is real bytes on disk,
+   * the archive produces DIFFERENT bytes on the user's machine, and the
+   * package is a real zip the real reader opens.
+   */
+  const sha = (s: string): string =>
+    createHash("sha256").update(Buffer.from(s)).digest("hex");
+
+  const CURATOR = {
+    "Data/Cleaned.esp": "curator's cleaned plugin",
+    "Data/MyPatch.ini": "a patch the curator dropped in",
+  };
+
+  /** What Vortex's install of the Nexus archive actually produces. */
+  const FROM_ARCHIVE = {
+    "Data/Cleaned.esp": "the uncleaned plugin from the archive",
+    "Data/Leftover.txt": "in the archive, not in the curator's folder",
+  };
+
+  async function mirroredWorld() {
+    world = makeWorld({
+      mods: [
+        {
+          id: "mirrored-mod",
+          nexus: { modId: 900, fileId: 901 },
+          archiveSha256: "c".repeat(64),
+          files: CURATOR,
+        },
+      ],
+    });
+    const manifest = await packageFrom(world!);
+    // The curator answered "mirror" for this mod.
+    (manifest.mods[0]!.state as { mirrored?: boolean }).mirrored = true;
+
+    // A real package carrying the curator's bytes, content-addressed.
+    fs.writeFileSync(
+      `${world!.root}/pkg.ehcoll`,
+      makeZip(
+        Object.values(CURATOR).map((contents) => ({
+          name: `mirror/${sha(contents)}`,
+          data: Buffer.from(contents),
+        })),
+      ),
+    );
+    return manifest;
+  }
+
+  it("leaves the user's folder byte-identical to the curator's", async () => {
+    const manifest = await mirroredWorld();
+    const fake = makeFakeVortex({
+      gameId: "fallout4",
+      stagingRoot: world!.stagingRoot,
+      installProduces: () => FROM_ARCHIVE,
+    });
+
+    await install(manifest, fake);
+
+    const dir = path.join(world!.stagingRoot, fake.installed[0]!.vortexModId);
+    const read = (rel: string): string =>
+      fs.readFileSync(path.join(dir, ...rel.split("/")), "utf8");
+
+    // Changed by the curator — the archive's version must not survive.
+    expect(read("Data/Cleaned.esp")).toBe(CURATOR["Data/Cleaned.esp"]);
+    // Added by the curator — the archive cannot produce it at all.
+    expect(read("Data/MyPatch.ini")).toBe(CURATOR["Data/MyPatch.ini"]);
+    // In the archive but not the curator's folder — removed.
+    expect(fs.existsSync(path.join(dir, "Data", "Leftover.txt"))).toBe(false);
+  });
+
+  it("does not touch a mod the curator did not mark", async () => {
+    // Mirroring is opt-in per mod. A driver that reconciled everything would
+    // pass the test above and quietly rewrite 900 other mods.
+    const manifest = await mirroredWorld();
+    (manifest.mods[0]!.state as { mirrored?: boolean }).mirrored = false;
+
+    const fake = makeFakeVortex({
+      gameId: "fallout4",
+      stagingRoot: world!.stagingRoot,
+      installProduces: () => FROM_ARCHIVE,
+    });
+    await install(manifest, fake);
+
+    const dir = path.join(world!.stagingRoot, fake.installed[0]!.vortexModId);
+    expect(fs.readFileSync(path.join(dir, "Data", "Cleaned.esp"), "utf8")).toBe(
+      FROM_ARCHIVE["Data/Cleaned.esp"],
+    );
+    expect(fs.existsSync(path.join(dir, "Data", "Leftover.txt"))).toBe(true);
+  });
+
+  it("survives a package that carries none of the bytes", async () => {
+    // The install must still finish. A mod that cannot be mirrored is a mod
+    // that does not match the curator — not a failed installation.
+    const manifest = await mirroredWorld();
+    fs.writeFileSync(
+      `${world!.root}/pkg.ehcoll`,
+      makeZip([{ name: "mirror/nothing-useful", data: Buffer.from("x") }]),
+    );
+
+    const fake = makeFakeVortex({
+      gameId: "fallout4",
+      stagingRoot: world!.stagingRoot,
+      installProduces: () => FROM_ARCHIVE,
+    });
+    const result = await install(manifest, fake);
+
+    expect((result as { kind?: string }).kind).not.toBe("failed");
   });
 });

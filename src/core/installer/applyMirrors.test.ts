@@ -20,64 +20,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { applyMirrorPlan, describeMirrorOutcome, mirrorEntryFor } from "./applyMirrors";
 import { planMirror } from "./mirrorStaging";
-import { crc32 } from "../manifest/readZip";
+import { makeZip } from "../../../test/makeZip";
 
 const sha = (b: Buffer): string => createHash("sha256").update(b).digest("hex");
-
-/**
- * A minimal STORED zip. No compression, no ZIP64 — enough entries to extract.
- *
- * Written by hand because the 7z the packager uses is stubbed out under test,
- * and the point here is to drive the real reader.
- */
-function makeZip(entries: { name: string; data: Buffer }[]): Buffer {
-  const locals: Buffer[] = [];
-  const central: Buffer[] = [];
-  let offset = 0;
-
-  for (const e of entries) {
-    const name = Buffer.from(e.name, "utf8");
-    const sum = crc32(e.data);
-
-    const lfh = Buffer.alloc(30);
-    lfh.writeUInt32LE(0x04034b50, 0);
-    lfh.writeUInt16LE(20, 4); // version needed
-    lfh.writeUInt16LE(0, 6); // flags
-    lfh.writeUInt16LE(0, 8); // method: stored
-    lfh.writeUInt32LE(0, 10); // time+date
-    lfh.writeUInt32LE(sum, 14);
-    lfh.writeUInt32LE(e.data.length, 18);
-    lfh.writeUInt32LE(e.data.length, 22);
-    lfh.writeUInt16LE(name.length, 26);
-    lfh.writeUInt16LE(0, 28);
-    locals.push(lfh, name, e.data);
-
-    const cdh = Buffer.alloc(46);
-    cdh.writeUInt32LE(0x02014b50, 0);
-    cdh.writeUInt16LE(20, 4);
-    cdh.writeUInt16LE(20, 6);
-    cdh.writeUInt16LE(0, 8);
-    cdh.writeUInt16LE(0, 10);
-    cdh.writeUInt32LE(0, 12);
-    cdh.writeUInt32LE(sum, 16);
-    cdh.writeUInt32LE(e.data.length, 20);
-    cdh.writeUInt32LE(e.data.length, 24);
-    cdh.writeUInt16LE(name.length, 28);
-    cdh.writeUInt32LE(offset, 42);
-    central.push(cdh, name);
-
-    offset += lfh.length + name.length + e.data.length;
-  }
-
-  const cd = Buffer.concat(central);
-  const eocd = Buffer.alloc(22);
-  eocd.writeUInt32LE(0x06054b50, 0);
-  eocd.writeUInt16LE(entries.length, 8);
-  eocd.writeUInt16LE(entries.length, 10);
-  eocd.writeUInt32LE(cd.length, 12);
-  eocd.writeUInt32LE(offset, 16);
-  return Buffer.concat([...locals, cd, eocd]);
-}
 
 let dir: string;
 let staging: string;
