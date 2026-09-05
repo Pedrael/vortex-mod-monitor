@@ -13,9 +13,9 @@
  * npx as the last resort so a machine with no global install still works.
  */
 import fs from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 /** Manifest locations, newest first — order matters, the first readable one wins. */
 const MANIFESTS = ['.bearing/manifest.json', '.gitnexus/agent-kit-manifest.json'];

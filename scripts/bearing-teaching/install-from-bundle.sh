@@ -16,17 +16,17 @@ REPO_NAME="${GITNEXUS_REPO_NAME:-$(basename "$ROOT")}"
 
 info "Target repo: $REPO_NAME"
 
-if grep -rq 'vmm' .cursor/rules .cursor/hooks .bearing/skills/bearing-workspace .bearing/skills/bearing-enforcement 2>/dev/null; then
-  warn "Bundle still references vmm — set GITNEXUS_REPO_NAME and re-run substitution:"
+if grep -rq 'Event-Horizon' .cursor/rules .cursor/hooks .bearing/skills/bearing-workspace .bearing/skills/bearing-enforcement 2>/dev/null; then
+  warn "Bundle still references Event-Horizon — set GITNEXUS_REPO_NAME and re-run substitution:"
   warn "  GITNEXUS_REPO_NAME=$REPO_NAME bash scripts/bearing-teaching/install-from-bundle.sh"
   if [[ "${GITNEXUS_SKIP_RENAME:-}" != "1" ]]; then
-    info "Replacing vmm → $REPO_NAME in rules/hooks/skills"
+    info "Replacing Event-Horizon → $REPO_NAME in rules/hooks/skills"
     find .cursor/rules .cursor/hooks .bearing/skills/bearing-workspace .bearing/skills/bearing-enforcement \
       -type f \( -name '*.mdc' -o -name '*.sh' -o -name '*.mjs' -o -name 'SKILL.md' \) \
-      -exec sed -i '' "s/vmm/$REPO_NAME/g" {} + 2>/dev/null \
+      -exec sed -i '' "s/Event-Horizon/$REPO_NAME/g" {} + 2>/dev/null \
       || find .cursor/rules .cursor/hooks .bearing/skills/bearing-workspace .bearing/skills/bearing-enforcement \
       -type f \( -name '*.mdc' -o -name '*.sh' -o -name '*.mjs' -o -name 'SKILL.md' \) \
-      -exec sed -i "s/vmm/$REPO_NAME/g" {} +
+      -exec sed -i "s/Event-Horizon/$REPO_NAME/g" {} +
     ok "Repo name substituted"
   fi
 fi
@@ -59,4 +59,4 @@ fi
 info "Running team setup"
 bash scripts/bearing-setup.sh ${GITNEXUS_SETUP_FLAGS:-}
 
-ok "Install complete — restart Cursor"
+ok "Install complete — restart your editor"

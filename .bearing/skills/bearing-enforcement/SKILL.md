@@ -62,14 +62,14 @@ START
 When blocked, hooks return ready-to-run calls like:
 
 ```javascript
-gitnexus_query({ search_query: "auth flow", task_context: "...", goal: "...", repo: "vmm", limit: 5, max_symbols: 12 })
-gitnexus_context({ name: "<symbol>", repo: "vmm" })
-gitnexus_trace({ from: "<source>", to: "<target>", repo: "vmm", maxDepth: 10 })
-gitnexus_pdg_query({ mode: "flows", target: "<function-or-file>", variable: "<var>", repo: "vmm" })
-gitnexus_explain({ target: "<file-or-symbol>", repo: "vmm" })
-READ gitnexus://repo/vmm/schema
-gitnexus_cypher({ statement: "MATCH (f)-[r:CodeRelation {type: 'ACCESSES'}]->(p:Property {name: $name}) RETURN f.name, f.filePath, r.reason", params: { name: "<field>" }, repo: "vmm" })
-gitnexus_impact({ target: "<symbol>", direction: "upstream", repo: "vmm", summaryOnly: false, limit: 100 })
+gitnexus_query({ search_query: "auth flow", task_context: "...", goal: "...", repo: "Event-Horizon", limit: 5, max_symbols: 12 })
+gitnexus_context({ name: "<symbol>", repo: "Event-Horizon" })
+gitnexus_trace({ from: "<source>", to: "<target>", repo: "Event-Horizon", maxDepth: 10 })
+gitnexus_pdg_query({ mode: "flows", target: "<function-or-file>", variable: "<var>", repo: "Event-Horizon" })
+gitnexus_explain({ target: "<file-or-symbol>", repo: "Event-Horizon" })
+READ gitnexus://repo/Event-Horizon/schema
+gitnexus_cypher({ statement: "MATCH (f)-[r:CodeRelation {type: 'ACCESSES'}]->(p:Property {name: $name}) RETURN f.name, f.filePath, r.reason", params: { name: "<field>" }, repo: "Event-Horizon" })
+gitnexus_impact({ target: "<symbol>", direction: "upstream", repo: "Event-Horizon", summaryOnly: false, limit: 100 })
 ```
 
 | Blocked | Replacement |

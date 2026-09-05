@@ -80,6 +80,16 @@ function isUnindexedPath(pathArg, root) {
   if (/(?:^|\/)(?:node_modules|vendor|dist|build|coverage|\.git|\.gitnexus)(?:\/|$)/.test(pa)) {
     return true;
   }
+  // bearing's OWN installed files. `.gitnexusignore` excludes `.bearing/`, `.claude/`, `.agents/`
+  // and `.zed/` from the index, and this list did not — so reading or grepping the kit's own hook
+  // library was denied and redirected to a graph that provably has zero rows for it (measured:
+  // `MATCH (n:File) WHERE n.filePath CONTAINS '.bearing'` returns nothing). The only exit was
+  // `bearing:fallback`, which is a large share of the fallback grants in the field log — and it
+  // fires on anyone auditing bearing inside their own repo. `editSensitivity` already exempts
+  // `.bearing/`; the search side never did (NS-5, NS-6).
+  if (/(?:^|\/)\.(?:bearing|claude|agents|zed|cursor|githooks)(?:\/|$)/.test(pa)) {
+    return true;
+  }
   // An absolute path that is not under the repo root is, by definition, not in this repo's graph.
   if (pa.startsWith("/") && root) {
     const r = String(root).replace(/\\/g, "/").replace(/\/$/, "");
@@ -248,6 +258,10 @@ export function classifyGrep(req, ctx) {
   // answers "which files contain this symbol", which is discovery. Allowing it unconditionally
   // handed every agent a one-flag bypass of the symbol gate. The reported case — counting a field
   // in the file just written — still passes, because it names a path.
+  // A DIRECTORY scope is deliberately NOT allowed, and the deny message must stop promising it.
+  // Allowing `src/hooks` sounds narrow until you notice `src` takes the same branch — and `src` is
+  // the whole codebase, i.e. precisely the discovery sweep this gate exists to catch. The suite
+  // pins that ("still denies the sweep the gate exists for"), and it is right: the exit is a FILE.
   const counting = (ti.output_mode ?? "") === "count" && Boolean(normPath);
   const scoped = scopedToOneFile || inTests || counting;
 
@@ -299,7 +313,11 @@ export function classifyGrep(req, ctx) {
   // TODO|FIXME|HACK|XXX carve-out in isLiteralPattern unreachable for single-token patterns.
   // The !altSym guard matters: a decl alternation ("isScaleIn =|const oppStop") contains a space,
   // so isLiteralPattern calls it literal — it is still a symbol search.
-  if (literal && !altSym) {
+  // SCOPE and NON-SOURCE beat an alternation; only pattern SHAPE loses to it. A grep over ONE FILE
+  // — or over a .txt/.log — that happens to contain `a|b|c` is not repo-wide symbol discovery, and
+  // the graph has nothing to say about either. Denying it redirected to `context({name:"a"})` for
+  // a word that is not a symbol. Hit while reading a test-run log during this very audit (NS-5).
+  if (nonSource || scoped || (literal && !altSym)) {
     return { decision: "allow", agentMessage: "Grep OK — literal/config/doc search." };
   }
 
@@ -315,7 +333,16 @@ export function classifyGrep(req, ctx) {
       };
     }
     const seg = symbolOf(token);
-    const fieldLike = !isDeclSearch(token) && helpers.isLikelyFieldName(seg);
+    // EVIDENCE, not capitalization. `isLikelyFieldName` is a camelCase test — `/^[a-z][a-zA-Z0-9]*$/`
+    // — which is also the naming convention for every JS/TS function, method and hook. Measured on
+    // this repo's own index: 380 of 398 indexed Function names took this branch, and 371 of those
+    // have no :Property of that name at all. Only snake_case and PascalCase escaped, so the policy
+    // was accidentally right for Python and wrong for JavaScript. `context` answers the Function
+    // case AND returns the same ACCESSES edges for a real Property, so it is a strict superset.
+    // A dotted access — `accountingHelpers.getJEDocumentCell` — is real evidence of a field read;
+    // a bare `getJEDocumentCell` is not, and both took this branch (NS-5).
+    const fieldLike =
+      !isDeclSearch(token) && isDottedAccess(token) && helpers.isLikelyFieldName(seg);
     if (fieldLike) {
       const schema = helpers.mcpReadSchema(repo);
       const call = helpers.cypherFieldAccess(seg, repo);
@@ -329,8 +356,8 @@ export function classifyGrep(req, ctx) {
           `Field grep blocked → ${schema} → ${call}${tail}\n` +
           `If that returns [] it is a known coverage gap, NOT proof the field is unused: ACCESSES ` +
           `indexes class fields, and plain-object properties (option bags, config objects, ` +
-          `destructured params) often produce no rows. Then re-run this grep scoped to a file or ` +
-          `directory — that is allowed — and report the gap: ` +
+          `destructured params) often produce no rows. Then re-run this grep scoped to a single FILE ` +
+          `— that is allowed; a directory is not — and report the gap: ` +
           `${howToRun("bearing:fallback")} -- "ACCESSES returned [] for <field> but grep finds N".\n` +
           `${helpers.cypherMidSessionNudge()}`,
         userKey: "block.grep.field",
@@ -402,6 +429,12 @@ export function classifyRead(req, ctx) {
   const isSmallConfig =
     /\.(json|md|yaml|yml|mdc|sh)$/.test(filePath) || /package\.json$/.test(filePath);
   const isGeneratedSkill = /(\.cursor|\.claude|\.agents)\/skills\//.test(norm);
+  // Can this repo's index contain the file AT ALL? `classifyGrep` has asked this since the day
+  // someone was blocked from reading a dependency's source; `classifyRead` never did. So a Read of
+  // another repo's file, or of node_modules, was denied and redirected at `query({repo:"<this>"})`
+  // — a graph that cannot hold it. `isSourceCodePath` made it worse by matching `/src/` or `/lib/`
+  // anywhere in an absolute path, so any foreign path containing either read as this repo's source.
+  const unindexed = helpers ? isUnindexedPath(norm, root) : false;
 
   if (phase === "classical_fallback") {
     return { decision: "allow", agentMessage: ctx.staleFallbackMsg, userKey: "stale.classical" };
@@ -412,7 +445,7 @@ export function classifyRead(req, ctx) {
     // denied because HEAD had moved one commit — index freshness is irrelevant to all of them
     // (NS-5). Gate SOURCE reads, which is what the graph would actually have answered.
     const staleNonSource = filePath && !helpers.isSourceCodePath(norm, config, ctx.root);
-    if (!filePath || isSmallConfig || isGeneratedSkill || staleNonSource) {
+    if (!filePath || isSmallConfig || isGeneratedSkill || staleNonSource || unindexed) {
       return {
         decision: "allow",
         agentMessage:
@@ -434,6 +467,13 @@ export function classifyRead(req, ctx) {
   const isTest = /(?:^|\/)tests?\//.test(norm);
   if (hasRange || isSmallConfig || isGeneratedSkill || isTest || !isCode) {
     return { decision: "allow" };
+  }
+  if (unindexed) {
+    return {
+      decision: "allow",
+      agentMessage:
+        "Read OK — that path is outside this repo's index (another repo, a dependency, or a directory .gitnexusignore excludes), so the graph has nothing to say about it.",
+    };
   }
 
   const lineCount = typeof ctx.readLines === "function" ? ctx.readLines() : 0;
@@ -805,9 +845,15 @@ function compoundNotice(command) {
 export function classifyShell(req, ctx) {
   const command = req.command || "";
   const { phase } = ctx;
+  // CURRENT script name first, the pre-rename one kept as an alias (NS-15). This named only
+  // `gitnexus-agent.mjs` after the rename to `bearing-*`, so the escape hatch the gates themselves
+  // print — `node scripts/bearing-agent.mjs fallback "<why>"` — was not recognised as maintenance
+  // and got the graph-first redirect instead of a pass. A block whose documented exit is itself
+  // gated is the trap NS-6 exists to prevent. The identical defect was fixed in the Cursor shell
+  // allowlist and this sibling was missed — GP-24, on the path that now matters most.
   const isGitnexusMaint =
-    /\bnpm run bearing:[\w.-]+/.test(command) ||
-    /\bnode scripts\/gitnexus-agent\.mjs\b/.test(command) ||
+    /\bnpm run (bearing|gitnexus):[\w.-]+/.test(command) ||
+    /\bnode scripts\/(bearing|gitnexus)-agent\.mjs\b/.test(command) ||
     /\bnpx(?:\s+-y)?\s+gitnexus(?:@latest)?\b/.test(command);
   const isReadOnlyGit =
     /\bgit\s+(status|diff|log|show|branch|rev-parse|check-ignore|check-attr)\b/.test(command);

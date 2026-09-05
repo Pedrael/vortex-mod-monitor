@@ -60,27 +60,28 @@ function readRuntime() {
     if (!fs.existsSync(p)) continue;
     try {
       const m = JSON.parse(fs.readFileSync(p, 'utf8'));
-      return m.runtime || 'cursor';
+      // A manifest predating the `runtime` field is a cursor-era install, and `both` was the
+      // default then — cursor+zed. Cursor is gone; zed is the half of that answer still checkable.
+      return m.runtime || 'zed';
     } catch {
-      return 'cursor';
+      return 'zed';
     }
   }
-  return fs.existsSync(path.join(root, '.cursor/hooks.json')) ? 'cursor' : 'zed';
+  return 'zed';
 }
 
 /**
  * Which runtimes an install actually covers.
  *
  * This was `r === 'cursor' || r === 'both'`, a second implementation of something the installer
- * already knew, and it had drifted (GP-11). Bearing accepts `cursor`, `zed`, `claude`, `codex`,
- * `both` (= cursor+zed), `all` (= every one) and comma lists — of which that expression understood
- * exactly two. Consequences, both observed:
+ * already knew, and it had drifted (GP-11). Bearing accepts `zed`, `claude`, `codex`, `all` and
+ * comma lists — of which that expression understood two, neither of them current. Consequences,
+ * both observed before the checks were derived from the runtime rather than guessed:
  *
- *   runtime "all"    -> wantsCursor false, so the RECOMMENDED install skipped every Cursor check
- *                       and reported a clean bill of health it had not verified.
- *   runtime "claude" -> ungated checks still looked for Cursor files, so a correct Claude-only
- *                       install was reported broken and told the user to "restart Cursor" (NS-6:
- *                       advice they cannot follow, about a problem that does not exist).
+ *   runtime "all"    -> the recommended install skipped every check for a runtime it HAD, and
+ *                       reported a clean bill of health it had not verified.
+ *   runtime "claude" -> ungated checks looked for another editor's files, so a correct install was
+ *                       reported broken with advice about a problem that did not exist (NS-6).
  */
 function runtimeSet(r) {
   const tokens = String(r || 'both')
@@ -90,14 +91,11 @@ function runtimeSet(r) {
     .filter(Boolean);
   const out = new Set();
   for (const t of tokens) {
-    if (t === 'both') { out.add('cursor'); out.add('zed'); }
-    else if (t === 'all') { out.add('cursor'); out.add('zed'); out.add('claude'); out.add('codex'); }
+    if (t === 'both') { out.add('zed'); out.add('claude'); }
+    else if (t === 'all') { out.add('zed'); out.add('claude'); out.add('codex'); }
     else out.add(t);
   }
   return out;
-}
-function wantsCursor(r) {
-  return runtimeSet(r).has('cursor');
 }
 function wantsZed(r) {
   return runtimeSet(r).has('zed');
@@ -126,11 +124,19 @@ function checkPackageGates() {
   if (readStealth()) {
     // Not a pass with a caveat — genuinely not applicable. `.bearing/commands.json` carries the
     // same commands for a stealth repo, and howToRun() reads them, so nothing is missing.
+    //
+    // But LOOK before saying so. This returned ok:true naming a file it never opened; delete that
+    // file and the check still passed green while the verifier's own remediation degenerated to
+    // naming a command it simultaneously reported as not installed (NS-9, NS-20).
+    const table = path.join(root, '.bearing/commands.json');
+    const present = fs.existsSync(table);
     return {
       id: 'pkg_gates',
-      ok: true,
+      ok: present,
       label: 'package.json gates',
-      detail: 'n/a — stealth install (commands live in .bearing/commands.json)',
+      detail: present
+        ? 'n/a — stealth install (commands live in .bearing/commands.json)'
+        : 'stealth install, but .bearing/commands.json is MISSING — no command resolves here',
     };
   }
   if (!fs.existsSync(p)) {
@@ -219,10 +225,24 @@ function checkModuleDelivery() {
     microscope: 'bearing-microscope',
     consult: 'bearing-consult',
     minions: 'bearing-minions',
+    tsjs: 'bearing-tsjs',
+    frontend: 'bearing-frontend',
+    react: 'bearing-react',
+  };
+  // Modules whose payload is a FILE rather than a skill. Without this the loop below skips them
+  // entirely and reports them as fine when nothing landed — the same failure 1.1.2 fixed for
+  // skills, one delivery mechanism over.
+  const FILE_OF = {
+    goldpractices: '.bearing/gold-practices.md',
+    tsjs: '.bearing/lang/typescript.md',
+    frontend: '.bearing/stack/frontend.md',
+    react: '.bearing/stack/react.md',
   };
   const store = path.join(root, SKILLS_STORE);
   const broken = [];
   for (const id of features) {
+    const file = FILE_OF[id];
+    if (file && !fs.existsSync(path.join(root, file))) broken.push(`${id} (no ${file})`);
     const skill = SKILL_OF[id];
     if (!skill) continue; // gitnexus is delivered by MCP + npm scripts, checked elsewhere
     const canonical = path.join(store, skill, 'SKILL.md');
@@ -231,7 +251,7 @@ function checkModuleDelivery() {
       continue;
     }
     // And reachable through the per-runtime farm the host actually reads.
-    for (const [rt, dir] of [['claude', '.claude/skills'], ['cursor', '.cursor/skills'], ['zed', '.agents/skills']]) {
+    for (const [rt, dir] of [['claude', '.claude/skills'], ['zed', '.agents/skills']]) {
       if (!runtimeSet(readRuntime()).has(rt)) continue;
       if (!fs.existsSync(path.join(root, dir, skill, 'SKILL.md'))) {
         broken.push(`${id} (not readable at ${dir}/${skill})`);
@@ -281,7 +301,6 @@ function checkSkillsStore() {
 }
 
 function checkSkillSymlinks(runtime) {
-  const cursorOk = fs.existsSync(path.join(root, '.cursor/skills/bearing-workspace/SKILL.md'));
   const zedOk = fs.existsSync(path.join(root, '.agents/skills/bearing-workspace/SKILL.md'));
   // The `else` branch asserted the ZED directory for every runtime that was not Cursor — so a
   // Claude-only install failed on "missing .agents/skills symlinks", a Zed path it was never
@@ -292,7 +311,6 @@ function checkSkillSymlinks(runtime) {
   // Claude's (not), leaving this check vacuous on exactly the install it was rewritten for.
   const claudeOk = fs.existsSync(path.join(root, '.claude/skills/bearing-workspace/SKILL.md'));
   const want = [];
-  if (wantsCursor(runtime)) want.push(['.cursor/skills', cursorOk]);
   if (wantsZed(runtime)) want.push(['.agents/skills', zedOk]);
   if (wantsClaude(runtime)) want.push(['.claude/skills', claudeOk]);
   let ok = true;
@@ -304,28 +322,6 @@ function checkSkillSymlinks(runtime) {
       : want.filter(([, l]) => !l).map(([d]) => `missing ${d}`).join(', ');
   }
   return { id: 'skills_symlinks', ok, label: 'Skill symlinks', detail };
-}
-
-function checkHooksJson() {
-  const p = path.join(root, '.cursor/hooks.json');
-  if (!fs.existsSync(p)) {
-    return { id: 'hooks_json', ok: false, label: 'hooks.json structure', detail: 'missing' };
-  }
-  try {
-    const h = JSON.parse(fs.readFileSync(p, 'utf8')).hooks ?? {};
-    const ok =
-      (h.sessionStart?.length ?? 0) >= 2 &&
-      (h.beforeSubmitPrompt?.length ?? 0) >= 1 &&
-      (h.preToolUse?.length ?? 0) >= 4;
-    return {
-      id: 'hooks_json',
-      ok,
-      label: 'hooks.json structure',
-      detail: ok ? 'session + prompt + preToolUse guards' : 'incomplete hook chain',
-    };
-  } catch {
-    return { id: 'hooks_json', ok: false, label: 'hooks.json structure', detail: 'invalid JSON' };
-  }
 }
 
 function checkZed() {
@@ -365,30 +361,6 @@ function checkZed() {
   return checks;
 }
 
-const CURSOR_CRITICAL = [
-  '.cursor/rules/00-bearing-enforcement.mdc',
-  '.cursor/hooks.json',
-  '.bearing/lib/hook-helpers.mjs',
-  '.bearing/lib/stale-policy.mjs',
-  'scripts/bearing-agent.mjs',
-  'scripts/bearing-verify.mjs',
-];
-
-const HOOK_SCRIPTS = [
-  'bearing-session-primer.sh',
-  'bearing-grep-guard.sh',
-  'bearing-read-guard.sh',
-  'bearing-edit-guard.sh',
-];
-
-function checkHookExecutable(name) {
-  const p = path.join(root, '.cursor/hooks', name);
-  if (!fs.existsSync(p)) {
-    return { id: `hook:${name}`, ok: false, label: name, detail: 'missing' };
-  }
-  const mode = fs.statSync(p).mode & 0o111;
-  return { id: `hook:${name}`, ok: mode !== 0, label: name, detail: mode ? 'executable' : 'not executable' };
-}
 
 /**
  * @param {string} repoRoot
@@ -401,12 +373,6 @@ export async function verifyInstall(repoRoot) {
   const retired = await checkRetiredHookKeys();
   if (retired) checks.push(retired);
 
-  if (wantsCursor(runtime)) {
-    for (const rel of CURSOR_CRITICAL) checks.push(checkFile(rel));
-    checks.push(checkHooksJson());
-    for (const h of HOOK_SCRIPTS) checks.push(checkHookExecutable(h));
-    checks.push(checkFile('.cursor/mcp.json'));
-  }
 
   if (wantsZed(runtime)) {
     checks.push(...checkZed());
@@ -461,12 +427,24 @@ async function printHuman(report) {
   }
   ui.summaryTable({ title: `Checks: ${report.passed}/${report.total} passed`, rows });
 
-  const hardFail = report.checks.some(
-    (c) => !c.ok && !['health:graph_fresh', 'health:embeddings'].includes(c.id)
-  );
+  // "The index has not been built yet" is not "the kit is incomplete", and kit update cannot clear
+  // it — I followed the instruction literally and got the identical output back. The persistence
+  // pair is the same state as graph_fresh/embeddings and belongs with them; `doctor` already words
+  // this correctly (NS-6: advice the reader cannot act on is a dead end).
+  const INDEX_NOT_BUILT = [
+    'health:graph_fresh',
+    'health:embeddings',
+    'health:persistence_dir',
+    'health:persistence_meta',
+  ];
+  const hardFail = report.checks.some((c) => !c.ok && !INDEX_NOT_BUILT.includes(c.id));
+  const indexMissing = report.checks.some((c) => !c.ok && INDEX_NOT_BUILT.includes(c.id));
   if (hardFail) {
     ui.fail(`Kit incomplete — run kit update, then ${await run('bearing:verify')}`);
     return 1;
+  }
+  if (indexMissing) {
+    ui.warn(`Kit files OK — the graph index is not built yet. Run ${await run('bearing:agent-refresh')}.`);
   }
   if (!report.health.healthy) {
     ui.warn(`Graph stale or missing embeddings — ${await run('bearing:agent-refresh')}`);
@@ -475,7 +453,6 @@ async function printHuman(report) {
   }
 
   const steps = [await run('bearing:health')];
-  if (wantsCursor(report.runtime)) steps.unshift('Restart Cursor (MCP + hooks)');
   if (wantsZed(report.runtime)) {
     steps.unshift('Restart Zed — trust worktree; profile "Zed + GitNexus"');
   }

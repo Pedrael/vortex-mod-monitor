@@ -220,9 +220,17 @@ export function readNorthStars(root) {
 export function northStarsDigest(root, max = 0) {
   const out = [];
   for (const raw of readNorthStars(root).split('\n')) {
-    // Tolerant of markdown noise: "- **NS-3** — …", "NS-3. …", "* NS-3: …"
-    if (!/^\s*(?:[-*+]\s*)?\**\s*NS-\d+\b/.test(raw)) continue;
-    const line = raw.replace(/^\s*(?:[-*+]\s*)?/, '').replace(/\*\*/g, '').trim();
+    // Tolerant of markdown noise: "- **NS-3** — …", "NS-3. …", "* NS-3: …", "### NS-3 — …".
+    // The HEADING form was missing and cost a real repo its entire anchor: 15 well-written
+    // north-stars written as `### NS-1 — …` produced a digest of ZERO, so the hook took the
+    // "file exists but has no NS-# lines yet" exit and emitted nothing, silently, on every fire.
+    // Nothing reported it — the feature simply did not happen. A structure the author chose is
+    // not "noise", and this list must cover the ordinary ways a person numbers a doc.
+    if (!/^\s*(?:#{1,6}\s*)?(?:[-*+]\s*)?\**\s*NS-\d+\b/.test(raw)) continue;
+    const line = raw
+      .replace(/^\s*(?:#{1,6}\s*)?(?:[-*+]\s*)?/, '')
+      .replace(/\*\*/g, '')
+      .trim();
     if (line) out.push(line);
     if (max > 0 && out.length >= max) break;
   }
@@ -235,12 +243,23 @@ export function northStarsDigest(root, max = 0) {
  * @param {boolean} reset start the count over (called right after an anchor is emitted)
  * @returns {number} the count AFTER this call
  */
-export function bumpNorthStarCounter(root, reset = false) {
+export function bumpNorthStarCounter(root, reset = false, key = null) {
   const { stateDir, northStarCounter } = sessionPaths(root);
+  // ONE COUNTER PER CHAT, not per repo — the same correction the task-core was given, and for the
+  // same reason: several agent sessions in one repository is the normal case, not the edge one.
+  // A single shared counter meant every concurrent agent bumped it, so with N sessions the repo
+  // fired N times as many anchors and each landed in whichever agent happened to make the 25th
+  // call — targeted at random rather than at the one that drifted. Measured on this repo: three
+  // bumps per one of the observing agent's own tool calls, and 391 anchors in a single repo's
+  // telemetry against 8 impact gates fleet-wide. Its neighbours `.bearing-microscope-<key>.json`
+  // and `.bearing-consult-<key>.flag` were already keyed; this one was not.
+  const counterPath = key
+    ? path.join(stateDir, `.gitnexus-northstar-counter-${sessionKey(key)}.json`)
+    : northStarCounter;
   let n = 0;
   if (!reset) {
     try {
-      n = JSON.parse(fs.readFileSync(northStarCounter, 'utf8')).n || 0;
+      n = JSON.parse(fs.readFileSync(counterPath, 'utf8')).n || 0;
     } catch {
       n = 0;
     }
@@ -251,9 +270,9 @@ export function bumpNorthStarCounter(root, reset = false) {
     // Two PostToolUse hooks run per tool call and both touch session state. Write-then-rename so a
     // concurrent reader never observes a partially-written file. (Lost updates are still possible
     // and are benign here: the anchor fires a little later than configured.)
-    const tmp = `${northStarCounter}.${process.pid}.tmp`;
+    const tmp = `${counterPath}.${process.pid}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify({ n: next }));
-    fs.renameSync(tmp, northStarCounter);
+    fs.renameSync(tmp, counterPath);
   } catch {
     /* best-effort — a missing counter just means we anchor again sooner */
   }
@@ -697,25 +716,23 @@ export function shouldClearOnSource(source) {
   return source !== 'compact' && source !== 'resume';
 }
 
-/** Append a lightweight state breadcrumb to the memory file (best-effort). */
-export function appendMemoryCheckpoint(root, note = '') {
-  const p = memoryPath(root);
-  try {
-    fs.mkdirSync(path.dirname(p), { recursive: true });
-    if (!fs.existsSync(p)) {
-      fs.writeFileSync(
-        p,
-        `# Project working memory (bearing)\n\n` +
-          `> Durable across compaction + sessions. Keep this current: task, decisions, ` +
-          `findings, open items, key file:line. Nothing important should live only in the volatile transcript.\n`,
-      );
-    }
-    fs.appendFileSync(p, `\n<!-- checkpoint ${new Date().toISOString()} -->\n${note}\n`);
-    return true;
-  } catch {
-    return false;
-  }
-}
+/**
+ * MEMORY.md IS AN INDEX, NOT A NOTEBOOK — so bearing does not write to it.
+ *
+ * `appendMemoryCheckpoint` used to append a two-line PreCompact breadcrumb here. Under the Claude
+ * Code CLI that file is the memory INDEX: it is loaded into context on EVERY session, and its
+ * contract is one `- [Title](file.md) — hook` line per memory, with the content in the files those
+ * point at. So each compaction did not preserve state — it pushed two lines of kit telemetry into
+ * every future session's window and buried the real pointers. One real project accumulated nine
+ * near-identical stanzas around a single genuine entry.
+ *
+ * Nothing ever READ them: the only consumer checked whether the file exists, never its contents.
+ * A write-only append to someone else's index is not a checkpoint, it is litter — and the durable
+ * state it claimed to be preserving already lives in `.bearing/task-cores/<chat>.md`, per chat,
+ * rewritten by the agent that owns it. The compaction COUNT is still recorded, in the scorecard.
+ *
+ * `memoryPath` stays: the session brief points the agent at their own memory, which is correct.
+ */
 
 export function clearSessionState(root) {
   const {
@@ -818,8 +835,3 @@ export function firstToolNudge(root, stale) {
   return parts.join('\n');
 }
 
-export function appendNudge(agentMessage, nudge) {
-  if (!nudge) return agentMessage;
-  if (!agentMessage) return nudge;
-  return `${nudge}\n\n${agentMessage}`;
-}

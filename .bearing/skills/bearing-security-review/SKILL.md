@@ -22,12 +22,12 @@ Use this when a task touches untrusted input, auth/session data, file paths, she
 
 ```
 1. query({ search_query: "<feature/security surface>", task_context, goal: "sources sinks validators" })
-2. context({ name: "<entry or sink symbol>", repo: "vmm" })
-3. gitnexus_explain({ target: "<file-or-symbol>", repo: "vmm" })
-4. gitnexus_pdg_query({ mode: "flows", target: "<function-or-file>", variable: "<inputVar>", repo: "vmm" })
-5. gitnexus_pdg_query({ mode: "controls", target: "<function-or-file>", repo: "vmm" })
-6. impact({ target: "<changed symbol>", direction: "upstream", mode: "pdg", repo: "vmm" }) when PDG layer exists
-7. detect_changes({ scope: "unstaged", repo: "vmm" }) before done
+2. context({ name: "<entry or sink symbol>", repo: "Event-Horizon" })
+3. gitnexus_explain({ target: "<file-or-symbol>", repo: "Event-Horizon" })
+4. gitnexus_pdg_query({ mode: "flows", target: "<function-or-file>", variable: "<inputVar>", repo: "Event-Horizon" })
+5. gitnexus_pdg_query({ mode: "controls", target: "<function-or-file>", repo: "Event-Horizon" })
+6. impact({ target: "<changed symbol>", direction: "upstream", mode: "pdg", repo: "Event-Horizon" }) when PDG layer exists
+7. detect_changes({ scope: "unstaged", repo: "Event-Horizon" }) before done
 ```
 
 If PDG/taint returns “no layer”, do **not** call the code safe. Say the repo needs `npm run bearing:pdg` / pre-commit PDG refresh, then fall back to graph + targeted reads.

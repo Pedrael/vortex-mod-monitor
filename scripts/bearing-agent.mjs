@@ -46,14 +46,34 @@ const labels = {
 const labelFor = (k) => labels[k] ?? k.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase());
 
 
+/**
+ * Name a command that exists HERE.
+ *
+ * The fallback used to DERIVE the subcommand by trimming `bearing:` — the exact derivation
+ * `.bearing/lib/how-to-run.mjs` documents as impossible, because the mapping is not a trim:
+ * `bearing:agent-refresh` runs `refresh`, `bearing:agent-status` runs `status`. In any repo without
+ * the npm scripts — every STEALTH install, and bearing's own — the stale-index banner therefore
+ * told the agent to run `node scripts/bearing-agent.mjs agent-refresh`, which is not a command.
+ * Observed in a real session's fallback log, and it happened again while auditing this file.
+ * `bearing:refresh` was worse than wrong: it resolved to a DIFFERENT command than the npm script of
+ * that name. Read the table both halves are generated from instead (NS-6, NS-20).
+ */
 function howToRun(name) {
   try {
     const pkg = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"));
     if (pkg.scripts?.[name]) return `npm run ${name}`;
   } catch {
-    /* no package.json, or unreadable → fall through to the direct form */
+    /* no package.json, or unreadable → fall through to the table */
   }
-  return `node scripts/bearing-agent.mjs ${name.replace(/^bearing:/, "")}`;
+  try {
+    const table = JSON.parse(
+      fs.readFileSync(new URL("../.bearing/commands.json", import.meta.url), "utf8"),
+    );
+    if (table[name]) return table[name];
+  } catch {
+    /* older install, or the table was never written */
+  }
+  return `${name} (not installed in this repo)`;
 }
 
 
@@ -629,11 +649,6 @@ if (cmd === "doctor") {
   const lines = ["GitNexus doctor — backend + kit reachability", ""];
   let problems = 0;
 
-  // Cursor-only: a Claude or Zed install has no .cursor/mcp.json and reporting its absence
-  // as a problem told the reader to "restart Cursor" for a file they never wanted (NS-6).
-  const wantsCursorHere = String(
-    (() => { try { return JSON.parse(fs.readFileSync(path.join(ROOT, ".bearing/manifest.json"), "utf8")).runtime; } catch { return "cursor"; } })(),
-  ).split(",").some((t) => ["cursor", "both", "all"].includes(t.trim().toLowerCase()));
   const mcpPath = path.join(ROOT, ".cursor/mcp.json");
   let mcpOk = false;
   try {
@@ -643,8 +658,6 @@ if (cmd === "doctor") {
   } catch {
     /* missing */
   }
-  if (wantsCursorHere) lines.push(`${mcpOk ? "✓" : "✗"} .cursor/mcp.json gitnexus entry`);
-if (wantsCursorHere && !mcpOk) problems++;
 
   // Live probe of the GitNexus CLI backend (proxy for MCP server health).
   // Probe the SAME binary everything else runs. Hardcoding npx here meant this reported the STOCK
@@ -727,7 +740,7 @@ if (wantsCursorHere && !mcpOk) problems++;
       ? endpoint
         ? "Doctor: backend reachable, server current, endpoint answering. If MCP tools still fail, restart your editor to reload its client."
         : "Doctor: backend reachable, server current. If MCP tools still fail, restart your editor."
-      : `Doctor: ${problems} problem(s) — fix the ✗ items above${wantsCursorHere ? ", then restart Cursor" : ""}.`,
+      : `Doctor: ${problems} problem(s) — fix the ✗ items above.`,
   );
   console.log(lines.join("\n"));
   process.exit(problems === 0 ? 0 : 1);

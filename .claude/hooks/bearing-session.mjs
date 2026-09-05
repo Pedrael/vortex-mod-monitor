@@ -39,11 +39,11 @@ const { existsSync } = await import("node:fs");
 // here. A non-zero PreToolUse exit DENIES the call, so all five guards failing at once blocked Grep,
 // Read, Edit, Bash and MCP simultaneously, explained by a raw Node stack trace. A false deny is
 // worse than a missed gate (NS-5); with no libs there is no verdict to give, so give none.
-let gnContext, emitContext, howToRun, clearSessionState, shouldClearOnSource, isImpactUsed, isDetectUsed, memoryPath, fallbackGrant, taskCorePath, taskCoreReadPath, taskCoreExists, pruneTaskCores, ensureTaskCoreDir, sessionKey, northStarsPath, northStarsExists, graphFeatureEnabled, readTelemetry, summarizeTelemetry, readScorecard, diagnoseEnforcement;
+let gnContext, emitContext, howToRun, clearSessionState, shouldClearOnSource, isImpactUsed, isDetectUsed, memoryPath, fallbackGrant, taskCorePath, taskCoreReadPath, taskCoreExists, pruneTaskCores, ensureTaskCoreDir, sessionKey, northStarsPath, northStarsExists, northStarsDigest, graphFeatureEnabled, readTelemetry, summarizeTelemetry, readScorecard, diagnoseEnforcement;
 try {
   ({ gnContext, emitContext } = await lib("claude-emit.mjs"));
   ({ howToRun } = await lib("how-to-run.mjs"));
-  ({ clearSessionState, shouldClearOnSource, isImpactUsed, isDetectUsed, memoryPath, fallbackGrant, taskCorePath, taskCoreReadPath, taskCoreExists, pruneTaskCores, ensureTaskCoreDir, sessionKey, northStarsPath, northStarsExists, graphFeatureEnabled, readTelemetry, summarizeTelemetry, readScorecard, diagnoseEnforcement } = await lib("session-primer.mjs"));
+  ({ clearSessionState, shouldClearOnSource, isImpactUsed, isDetectUsed, memoryPath, fallbackGrant, taskCorePath, taskCoreReadPath, taskCoreExists, pruneTaskCores, ensureTaskCoreDir, sessionKey, northStarsPath, northStarsExists, northStarsDigest, graphFeatureEnabled, readTelemetry, summarizeTelemetry, readScorecard, diagnoseEnforcement } = await lib("session-primer.mjs"));
 } catch {
   process.exit(0);
 }
@@ -76,16 +76,32 @@ const staleLine = !graphEnabled
   ? ""
   : grant
   ? `⚠ CLASSICAL FALLBACK active (${grant.reason || "GitNexus distrusted"}) — classical Grep/Read/shell allowed for ~${Math.max(1, Math.round(grant.remainingMs / 60000))} min. RE-CONFIRM findings with the graph once GitNexus is reliable; end early with \`${howToRun('bearing:fallback:off')}\`.`
-  : ctx.phase !== "fresh"
-    ? "Index is STALE — run `${howToRun('bearing:agent-refresh')}` before graph calls (hooks block until refreshed)."
+  : // Read the STALENESS, not the PHASE. With `stalenessGate: "off"` — the shipped default —
+    // stale-policy returns phase:"fresh" for a stale index on purpose: it stops staleness DENYING
+    // anything. It sets `staleNote`/`gateOff` so the truth can still be told, and nothing read
+    // them, so this line announced "Index is fresh" over an index 50 commits behind. That is the
+    // one message loaded before the agent forms any premise, and it cannot be checked by its
+    // reader — the exact inversion NS-8 forbids ("a stale index must never be reported as fresh").
+    ctx.stale && ctx.stale.fresh === false
+    ? `Index is STALE — ${ctx.staleDetail || ctx.stale.reason || "behind HEAD"}`
     : "Index is fresh — hooks redirect symbol Grep / large Read / blind edits to the graph.";
 
 // NORTH-STARS come FIRST on every session type (fresh, compact, resume). They're the project's
 // fixed points — the semantic anchor that outranks every other doc — so they must be in the window
 // BEFORE the agent forms any premise. The PostToolUse anchor hook keeps them there mid-session.
-const nsLine = northStarsExists(root)
+// THREE states, not two. `northStarsExists` only asks whether the file is non-empty, and since
+// bearing now seeds a starter, "non-empty" no longer means "has north-stars" — announcing an
+// authoritative doc that contains none is exactly the unchecked claim NS-20 is about, and it
+// trains the agent to ignore the line. So the count of citable claims decides:
+//   claims > 0  → the anchor line, unchanged
+//   file, none  → say it is empty and how to fill it; this is the ONLY moment the module can ask
+//   no file     → silent, as before (a pre-seed install, or the module was declined)
+const nsClaims = northStarsExists(root) ? northStarsDigest(root, 1).length : 0;
+const nsLine = nsClaims
   ? `⚑ READ THE NORTH-STARS FIRST — \`${northStarsPath(root)}\`: the project's numbered, authoritative fixed points (invariants, exact term meanings, settled decisions, rejected ideas). They OUTRANK every other doc and your own inference — a conclusion that conflicts with one is wrong. Cite the relevant NS-# when you make a consequential claim, propose a direction, or reject an idea; never silently edit or work around one — propose the change to the user instead.`
-  : "";
+  : northStarsExists(root)
+    ? `⚑ NO NORTH-STARS YET — \`${northStarsPath(root)}\` is the starter bearing seeded and nobody has written an \`NS-#\` into it, so this project currently has no anchor against semantic drift. Do not invent them. As you work, WATCH for the things that qualify — an invariant someone re-derives, a term used in a non-obvious way, a decision being relitigated, an idea already measured and rejected — and when you meet one, propose it to the user in that file's format. One real entry is worth more than ten plausible ones.`
+    : "";
 
 let lines;
 if (recovering) {

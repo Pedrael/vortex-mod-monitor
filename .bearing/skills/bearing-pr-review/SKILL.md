@@ -18,7 +18,7 @@ scoped `Grep` (allowed here, not a gate violation) and say which check you ran.
 
 ```
 1. `npm run bearing:branch-status -- <base>` to confirm current branch/base and suggested MCP calls
-2. gitnexus_detect_changes({ scope: "compare", base_ref: "main", repo: "vmm", branch: "<current-branch>" })
+2. gitnexus_detect_changes({ scope: "compare", base_ref: "main", repo: "Event-Horizon", branch: "<current-branch>" })
 3. Review summary.risk_level, changed_symbols, affected_processes
 4. For HIGH/CRITICAL or unexpected processes → impact on changed entry points with the same `branch`
 5. For security/input/file/db/exec changes → `bearing-security-review` (`explain`, `pdg_query`, `trace`)

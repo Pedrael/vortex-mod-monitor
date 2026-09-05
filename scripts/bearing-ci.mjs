@@ -40,7 +40,11 @@ const highThreshold = Number(process.env.GITNEXUS_CI_HIGH || 8);
 const MARKER = '<!-- bearing-ci-report -->';
 
 const CODE_RE = /\.(js|mjs|cjs|jsx|ts|tsx|py|rb|go|rs|java|kt|swift|php|cs|cpp|c|scala)$/i;
-const TEST_RE = /(^|\/)(tests?|spec|__tests__)\/|\.(test|spec)\./i;
+// One definition of 'is this a test', shared with bearing-test-order — there were two and
+// they disagreed on `.test.mjs` (GP-11).
+const { isTestPath, parseChangedSymbols } = await import(
+  new URL('../.bearing/lib/hook-helpers.mjs', import.meta.url).href
+);
 const SENSITIVE_RE = /(auth|login|session|token|password|secret|crypto|payment|billing|permission|admin)/i;
 
 function git(args) {
@@ -79,9 +83,9 @@ function collectDiff() {
   return {
     base,
     all: files,
-    code: files.filter((f) => CODE_RE.test(f) && !TEST_RE.test(f)),
-    tests: files.filter((f) => TEST_RE.test(f)),
-    sensitive: files.filter((f) => CODE_RE.test(f) && SENSITIVE_RE.test(f) && !TEST_RE.test(f)),
+    code: files.filter((f) => CODE_RE.test(f) && !isTestPath(f)),
+    tests: files.filter((f) => isTestPath(f)),
+    sensitive: files.filter((f) => CODE_RE.test(f) && SENSITIVE_RE.test(f) && !isTestPath(f)),
   };
 }
 
@@ -95,18 +99,22 @@ function detectChanges(repo, base) {
     symbols: num(/,\s*(\d+)\s*symbols/i),
     processes: num(/Affected processes:\s*(\d+)/i),
     risk: (r.out.match(/Risk level:\s*(\w+)/i) ?? [])[1] ?? 'unknown',
-    changed: [...r.out.matchAll(/^\s*Symbol\s+(.+?)\s+→\s+(.+)$/gm)].map((m) => ({
-      sym: m[1].trim(),
-      file: m[2].trim(),
-    })),
+    // Shared parser. The regex here matched /^\s*Symbol\s+/ and so matched NOTHING — the CLI
+    // prints the KIND ("Function foo → path"). Every run fell through to the basename fallback
+    // below and reported a table of zeros.
+    changed: parseChangedSymbols(r.out).symbols.map((c) => ({ sym: c.name, file: c.filePath })),
+    parsedSymbols: parseChangedSymbols(r.out).parsed,
   };
 }
 
 /** Upstream caller count per changed symbol — the blast-radius signal. */
-function blastRadius(repo, symbols) {
+function blastRadius(repo, symbols, byFile = false) {
   const out = [];
   for (const sym of symbols.slice(0, 25)) {
-    const q = `MATCH (caller)-[:CodeRelation {type: 'CALLS'}]->(f {name: '${sym.replace(/'/g, "\\'")}'}) RETURN count(caller)`;
+    const esc = sym.replace(/'/g, "\\'");
+    const q = byFile
+      ? `MATCH (caller)-[:CodeRelation {type: 'CALLS'}]->(f) WHERE f.filePath = '${esc}' RETURN count(caller)`
+      : `MATCH (caller)-[:CodeRelation {type: 'CALLS'}]->(f {name: '${esc}'}) RETURN count(caller)`;
     const r = gn(['cypher', '-r', repo, q], 60000);
     const n = r.ok ? Number((r.out.match(/(\d+)/) ?? [])[1] ?? 0) : null;
     out.push({ sym, callers: n });
@@ -126,8 +134,20 @@ function structural(repo) {
   }
 }
 
+/**
+ * REACH, not quality — and the words matter more than they look.
+ *
+ * This was a traffic light: 🔴 for many callers, 🟢 for none. Both readings are wrong and the green
+ * one is dangerous. A symbol with eleven callers is not BAD, it is load-bearing — the row is telling
+ * you where to look, not that something is broken. And a zero is the most ambiguous cell in the
+ * table: the report's own footer says `0 callers` can mean "none" or "could not resolve", so
+ * painting it the reassuring colour contradicts the paragraph directly beneath it.
+ *
+ * Named by how far the change reaches instead, with nothing on the scale that reads as a verdict.
+ */
 function riskTag(callers) {
   if (callers === null) return 'unknown';
+  if (callers === 0) return 'none-found';
   if (callers >= highThreshold) return 'high';
   if (callers >= Math.ceil(highThreshold / 2)) return 'medium';
   return 'low';
@@ -157,12 +177,18 @@ function render({ diff, detected, radius, struct, indexed, indexNote }) {
   if (radius.length) {
     L.push('### Blast radius — who calls what you changed');
     L.push('');
-    L.push('| symbol | upstream callers | |');
+    L.push('| symbol | upstream callers | reach |');
     L.push('|---|---:|---|');
     for (const f of radius.slice(0, 15)) {
       const tag = riskTag(f.callers);
-      const icon = { high: '🔴 high', medium: '🟠 medium', low: '🟢 low', unknown: '⚪ unknown' }[tag];
-      L.push(`| \`${f.sym}\` | ${f.callers ?? '—'} | ${icon} |`);
+      const label = {
+        high: 'wide reach',
+        medium: 'some reach',
+        low: 'narrow reach',
+        'none-found': 'none found — or unresolved',
+        unknown: 'could not check',
+      }[tag];
+      L.push(`| \`${f.sym}\` | ${f.callers ?? '—'} | ${label} |`);
     }
     if (radius.length > 15) L.push(`\n_…and ${radius.length - 15} more._`);
     L.push('');
@@ -204,6 +230,22 @@ function render({ diff, detected, radius, struct, indexed, indexNote }) {
     L.push('');
   }
 
+  // Blast-radius test order — opt-in at install (`testOrder` in the manifest), because it costs a
+  // graph call per changed symbol and it posts to someone else's review surface. Reported, never
+  // enforced: this is an ORDER, and the graph cannot prove a test is irrelevant.
+  if (testOrderEnabled()) {
+    const order = testOrderLines();
+    if (order.length) {
+      L.push('### Run these tests first');
+      L.push('');
+      L.push('Ranked by how much of the change they reach. **This is an order, not a filter** — run');
+      L.push('the rest too; a test the graph cannot link may still be the one that fails.');
+      L.push('');
+      for (const line of order) L.push(line);
+      L.push('');
+    }
+  }
+
   L.push('<details><summary>How to read this</summary>');
   L.push('');
   L.push('**A positive result is strong evidence; a zero is not a finding.** The graph resolves calls through');
@@ -213,6 +255,45 @@ function render({ diff, detected, radius, struct, indexed, indexNote }) {
   L.push('');
   L.push('</details>');
   return L.join('\n');
+}
+
+/**
+ * Did this repo opt in?
+ *
+ * READ FROM hooks.json, NOT THE MANIFEST. `.bearing/manifest.json` is gitignored by design, so it
+ * does not exist in a CI checkout — a setting stored there reads as `false` on every run and the
+ * feature silently never fires. `.bearing/hooks.json` is tracked and team-shared, which is also the
+ * right home for it on the merits: whether CI spends time on this is a decision for the repo, not
+ * for whichever machine happened to run the installer.
+ */
+function testOrderEnabled() {
+  if (process.env.GITNEXUS_CI_TEST_ORDER === '1') return true;
+  if (process.env.GITNEXUS_CI_TEST_ORDER === '0') return false;
+  try {
+    return JSON.parse(fs.readFileSync(path.join(ROOT, '.bearing/hooks.json'), 'utf8')).ciTestOrder === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Shell out to the ordering script rather than reimplementing it — one definition of the answer,
+ * and its own header carries the reasoning about why it never skips. Returns markdown rows, or []
+ * for any failure: a CI report that cannot rank tests still has a blast radius worth posting, so
+ * this must never take the whole comment down with it.
+ */
+function testOrderLines() {
+  const script = path.join(ROOT, 'scripts/bearing-test-order.mjs');
+  if (!fs.existsSync(script)) return [];
+  const r = spawnSync(process.execPath, [script, '--base', baseRef], {
+    cwd: ROOT,
+    encoding: 'utf8',
+    timeout: 120000,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (r.status !== 0) return [];
+  const files = (r.stdout ?? '').split('\n').map((x) => x.trim()).filter(Boolean);
+  return files.slice(0, 15).map((f, i) => `${i + 1}. \`${f}\``);
 }
 
 /** Post once, then edit in place. A new comment per push buries the PR. */
@@ -283,10 +364,16 @@ async function main() {
   // CLAUDE.md filled the blast-radius table with rows like "Always Do" and "npm gates" — every one
   // of them 0 callers, burying the two rows that meant something.
   const codeSymbols = (detected?.changed ?? []).filter((c) => CODE_RE.test(c.file));
-  const symbols = codeSymbols.length
-    ? [...new Set(codeSymbols.map((c) => c.sym))]
-    : [...new Set(diff.code.map((f) => path.basename(f, path.extname(f))))];
-  const radius = indexed ? blastRadius(repo, symbols) : [];
+  // The old fallback used file BASENAMES as symbol names. No graph node is called `gitnexus-cmd`
+  // — the File node is `gitnexus-cmd.mjs` and functions have their own names — so every fallback
+  // row resolved to 0 callers and the table said "nothing here" about a critical change. Ask by
+  // FILE PATH instead, which is a question the graph can actually answer, and mark the rows so the
+  // reader knows they are per-file rather than per-symbol.
+  const byFile = !codeSymbols.length;
+  const symbols = byFile
+    ? [...new Set(diff.code)]
+    : [...new Set(codeSymbols.map((c) => c.sym))];
+  const radius = indexed ? blastRadius(repo, symbols, byFile) : [];
   const struct = indexed ? structural(repo) : null;
 
   const body = render({ diff, detected, radius, struct, indexed, indexNote });

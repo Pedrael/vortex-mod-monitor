@@ -98,7 +98,9 @@
     "bearing.__gate.opt.wiki": "node scripts/bearing-gate-hint.mjs opt-wiki",
     "bearing:wiki": "bash scripts/run-with-project-tmp.sh gitnexus wiki --provider openai --model gpt-4o-mini --base-url https://api.openai.com/v1",
     "bearing:wiki-force": "bash scripts/run-with-project-tmp.sh gitnexus wiki --force --provider openai --model gpt-4o-mini --base-url https://api.openai.com/v1",
-    "gitnexus:wiki-force": "bash scripts/run-with-project-tmp.sh gitnexus wiki --force --provider openai --model gpt-4o-mini --base-url https://api.openai.com/v1"
+    "gitnexus:wiki-force": "bash scripts/run-with-project-tmp.sh gitnexus wiki --force --provider openai --model gpt-4o-mini --base-url https://api.openai.com/v1",
+    "bearing:test-order": "node scripts/bearing-test-order.mjs --report",
+    "gitnexus:test-order": "node scripts/bearing-test-order.mjs --report"
   },
   "devDependencies": {
     "@nexusmods/vortex-api": "2.6.0-beta.2",

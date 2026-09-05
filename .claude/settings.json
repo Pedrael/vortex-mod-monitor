@@ -9,7 +9,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/bearing-grep-guard.mjs\""
+            "command": "node .claude/hooks/bearing-grep-guard.mjs"
           }
         ]
       },
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/bearing-read-guard.mjs\""
+            "command": "node .claude/hooks/bearing-read-guard.mjs"
           }
         ]
       },
@@ -27,7 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/bearing-edit-guard.mjs\""
+            "command": "node .claude/hooks/bearing-edit-guard.mjs"
           }
         ]
       },
@@ -36,7 +36,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/bearing-bash-guard.mjs\""
+            "command": "node .claude/hooks/bearing-bash-guard.mjs"
           }
         ]
       },
@@ -45,7 +45,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/bearing-mcp-guard.mjs\""
+            "command": "node .claude/hooks/bearing-mcp-guard.mjs"
           }
         ]
       }
@@ -55,7 +55,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/bearing-session.mjs\""
+            "command": "node .claude/hooks/bearing-session.mjs"
           }
         ]
       }
@@ -65,7 +65,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/bearing-precompact.mjs\""
+            "command": "node .claude/hooks/bearing-precompact.mjs"
           }
         ]
       }
@@ -75,7 +75,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/bearing-taskcore-nudge.mjs\""
+            "command": "node .claude/hooks/bearing-taskcore-nudge.mjs"
           }
         ]
       },
@@ -83,7 +83,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/bearing-minion-nudge.mjs\""
+            "command": "node .claude/hooks/bearing-minion-nudge.mjs"
           }
         ]
       },
@@ -91,7 +91,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/bearing-consult-nudge.mjs\""
+            "command": "node .claude/hooks/bearing-consult-nudge.mjs"
           }
         ]
       },
@@ -99,7 +99,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/bearing-microscope-nudge.mjs\""
+            "command": "node .claude/hooks/bearing-microscope-nudge.mjs"
           }
         ]
       },
@@ -107,7 +107,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/bearing-northstar-anchor.mjs\""
+            "command": "node .claude/hooks/bearing-northstar-anchor.mjs"
           }
         ]
       },
@@ -116,7 +116,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/bearing-impact-audit.mjs\""
+            "command": "node .claude/hooks/bearing-impact-audit.mjs"
           }
         ]
       }

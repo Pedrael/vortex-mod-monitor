@@ -115,7 +115,7 @@ you have to read. None of them is an error; each looks like an answer.
 
 ### When to escalate to `cypher` (after `query` / `context`)
 
-READ `gitnexus://repo/vmm/schema` before ad-hoc Cypher.
+READ `gitnexus://repo/Event-Horizon/schema` before ad-hoc Cypher.
 
 | Question | Cypher edge / pattern |
 | --- | --- |
@@ -333,7 +333,7 @@ HTTP routes `api_impact` / `route_map` / `shape_check` · multi-repo disambiguat
 **What the schemas do not tell you is where each one is silently wrong** — that is what the sections
 above are for, and it is the reason to read them rather than trust a tool's own summary.
 
-Cheap resource reads (prefer before heavy tools): `READ gitnexus://repo/vmm/{context|schema|clusters|processes|process/<name>}`.
+Cheap resource reads (prefer before heavy tools): `READ gitnexus://repo/Event-Horizon/{context|schema|clusters|processes|process/<name>}`.
 
 ### The three route tools are only as good as `Route` node coverage — CHECK IT FIRST
 
@@ -371,7 +371,7 @@ findings — the tool does not distinguish them, and neither does a raw number i
 
 New chat: run session health ritual if injected — `npm run bearing:agent-status`, one-sentence confirm to user.
 
-`npm run bearing:agent-brief` or READ `gitnexus://repo/vmm/context`. Stale or missing embeddings → **`npm run bearing:agent-refresh` first** (`required_permissions: ["all"]`). Hooks **block** Grep/Read/MCP/shell until refresh succeeds; classical tools only if refresh **fails** (say why). Never ask user to analyze.
+`npm run bearing:agent-brief` or READ `gitnexus://repo/Event-Horizon/context`. Stale or missing embeddings → **`npm run bearing:agent-refresh` first** (`required_permissions: ["all"]`). Hooks **block** Grep/Read/MCP/shell until refresh succeeds; classical tools only if refresh **fails** (say why). Never ask user to analyze.
 
 ## Stale loop (mandatory)
 
@@ -443,7 +443,11 @@ If **`.bearing/northstars.md`** exists, it is the project's **authoritative** st
 - **The GRAVEYARD is settled**: do not re-propose a rejected idea without new evidence that addresses *why* it was rejected, and do not discard a VALIDATED one without evidence that overturns it.
 - Format + maintenance routine: the **`bearing-northstars`** skill.
 
-**`.bearing/gold-practices.md` is the other half**: `GP-#` rules for how the work is done *anywhere*, shipped with bearing, where the north-stars say what *this project* is. Cite them the same way. **On conflict the `NS-#` wins** — a project's own invariant is more specific than a general rule — and you say which one and why. Every rule there has a scar — they are the mistakes that got made anyway, by a careful agent, on this codebase. The ones that bite most often: a claim from reading rather than running is unverified (`GP-1`); a test that has never failed has never been tested (`GP-2`); a fixture chosen for convenience tests the case that cannot fail (`GP-4`); a failing check is a claim too, so verify the probe before believing it (`GP-7`); every line you print is a claim (`GP-8`); establish a contract from the thing that defines it, never from something that calls it (`GP-14`); never ask a person what the source can answer (`GP-15`).
+## Gold practices — how the work is done anywhere
+
+**`.bearing/gold-practices.md`** holds numbered `GP-#` rules for how the work is done *anywhere*, shipped with bearing. Below its END marker sits this project's own `PP-#` practices — that half is yours and survives updates, and it is where a lesson you learned goes (bearing's block above is overwritten). Cite them the way you cite any authority here. **Every rule has a scar**: each is a mistake that got made anyway, by a careful agent, on a real codebase — which is why knowing better does not prevent them. The ones that bite most often: a claim from reading rather than running is unverified (`GP-1`); a test that has never failed has never been tested (`GP-2`); a fixture chosen for convenience tests the case that cannot fail (`GP-4`); a failing check is a claim too, so verify the probe before believing it (`GP-7`); every line you print is a claim (`GP-8`); establish a contract from the thing that defines it, never from something that calls it (`GP-14`); never ask a person what the source can answer (`GP-15`).
+
+Where this project has north-stars, **`NS-#` outranks `GP-#`** — a project's own invariant is more specific than a general rule — and you say which one and why rather than averaging them.
 
 ## Durable memory (survives compaction + sessions)
 
