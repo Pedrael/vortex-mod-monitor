@@ -1538,7 +1538,16 @@ export async function runBuildPipeline(
 
   checkAbort();
   onProgress?.({ phase: "capturing-load-order" });
-  const loadOrder = captureLoadOrder(state, gameId);
+  /**
+   * Vortex keys `persistent.loadOrder` by PROFILE, not by game — see the note
+   * on `captureLoadOrder`. Resolved here rather than threaded through the
+   * pipeline because this is its only use in the build.
+   */
+  const loadOrderProfileId = getActiveProfileIdFromState(state, gameId);
+  const loadOrder =
+    loadOrderProfileId === undefined || loadOrderProfileId === ""
+      ? []
+      : captureLoadOrder(state, loadOrderProfileId);
 
   checkAbort();
   onProgress?.({ phase: "capturing-userlist" });

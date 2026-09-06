@@ -4,7 +4,7 @@
  * Translates the manifest's `EhcollLoadOrderEntry[]` (compareKey-keyed
  * curator capture) into Vortex's per-game LoadOrder shape and
  * dispatches the redux action that owns
- * `state.persistent.loadOrder[gameId]`.
+ * `state.persistent.loadOrder[profileId]`.
  *
  * ─── DESIGN NOTES ──────────────────────────────────────────────────────
  *
@@ -60,7 +60,21 @@ import { AbortError } from "../../utils/abortError";
 
 export type ApplyLoadOrderInput = {
   api: types.IExtensionApi;
-  gameId: string;
+  /**
+   * ─── THE PROFILE, NOT THE GAME ──────────────────────────────────────
+   * This was `gameId`, and the hive is keyed by PROFILE. Verified against a
+   * live Vortex store: the only keys under `persistent.loadOrder` were
+   * profile ids, and no game id appeared as a key. Vortex's own reducer says
+   * the same — `setLoadOrderEntry` is `setSafe(state, [profileId, modId], e)`
+   * — and the published typing names the parameter `id`, not `gameId`, with a
+   * docstring saying "usually the profile id".
+   *
+   * So every dispatch created `persistent.loadOrder["skyrimse"]`: a
+   * pseudo-profile that no page, selector or serializer ever reads, which
+   * then persists in the user's state forever. The receipt still reported
+   * `applied: N`, which is a claim of work that did not happen.
+   */
+  profileId: string;
   entries: EhcollLoadOrderEntry[];
   /**
    * compareKey → vortex modId. Same map shape `applyModRules` uses;
@@ -168,7 +182,7 @@ export function applyLoadOrder(
     // older Vortex builds where the signature was wrapped.
     const setLoadOrderAction = (
       actions as unknown as {
-        setLoadOrder?: (gameId: string, order: unknown[]) => unknown;
+        setLoadOrder?: (profileId: string, order: unknown[]) => unknown;
       }
     ).setLoadOrder;
 
@@ -192,7 +206,7 @@ export function applyLoadOrder(
     }
 
     input.api.store?.dispatch(
-      setLoadOrderAction(input.gameId, payload) as never,
+      setLoadOrderAction(input.profileId, payload) as never,
     );
   } catch (err) {
     // Couldn't dispatch the whole thing — record every applied entry

@@ -195,7 +195,8 @@ export default function createBuildPackageAction(
         gameId,
       );
 
-      const loadOrder = captureLoadOrder(state, gameId);
+      // Keyed by PROFILE — see captureLoadOrder's note.
+      const loadOrder = captureLoadOrder(state, profileId);
 
       const userlist = captureUserlist(state);
 

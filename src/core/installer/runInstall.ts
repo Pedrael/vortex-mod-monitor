@@ -1920,7 +1920,15 @@ async function runInstallImpl(ctx: DriverContext): Promise<InstallResult> {
     // deploy because Vortex registers loose-archive mods during the
     // deploy pass — we want the LoadOrder dispatch to land on a
     // fully-populated mod table.
-    if (plan.manifest.loadOrder.length > 0) {
+    // The hive is keyed by PROFILE, so without one there is nowhere correct
+    // to write. Skipping loudly beats writing to a pseudo-profile key that
+    // nothing reads and that then lives in the user's state forever.
+    if (plan.manifest.loadOrder.length > 0 && activeProfileId === undefined) {
+      ehLog("warn", "loadorder.skipped.no-profile", {
+        entries: plan.manifest.loadOrder.length,
+      });
+    }
+    if (plan.manifest.loadOrder.length > 0 && activeProfileId !== undefined) {
       reportProgress(
         "applying-load-order",
         0,
@@ -1931,7 +1939,7 @@ async function runInstallImpl(ctx: DriverContext): Promise<InstallResult> {
       try {
         const loResult = applyLoadOrder({
           api,
-          gameId: plan.manifest.game.id,
+          profileId: activeProfileId,
           entries: plan.manifest.loadOrder,
           modIdByCompareKey,
           displayNameByModId: buildDisplayNameByModId(

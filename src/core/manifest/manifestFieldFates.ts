@@ -32,7 +32,11 @@
  * ──────────────────────────────────────────────────────────────────────
  */
 
-import type { EhcollManifest, ModInstallState } from "../../types/ehcoll";
+import type {
+  EhcollManifest,
+  EhcollPluginEntry,
+  ModInstallState,
+} from "../../types/ehcoll";
 
 export type FieldFate =
   /**
@@ -63,7 +67,13 @@ export const MOD_INSTALL_STATE_FATES: {
   mirrored: { kind: "applied", by: "core/installer/runInstall.ts" },
   enabledINITweaks: { kind: "applied", by: "core/installer/applyIniTweaks.ts" },
   postProcessed: { kind: "applied", by: "core/installer/judgeReinstall.ts" },
-  stagingFiles: { kind: "applied", by: "core/installer/verifyModInstall.ts" },
+  /**
+   * `runInstall`, not `verifyModInstall` — the latter receives the file list
+   * as a differently-named argument and mentions `stagingFiles` only in its
+   * comments. The old substring check passed on that prose; the strengthened
+   * one does not, which is the point.
+   */
+  stagingFiles: { kind: "applied", by: "core/installer/runInstall.ts" },
 
   enabled: {
     kind: "recorded-only",
@@ -89,6 +99,27 @@ export const MOD_INSTALL_STATE_FATES: {
 };
 
 /**
+ * ─── ONE SHIPPED TYPE PER TABLE, INCLUDING THE NESTED ONES ─────────────
+ * The two tables above cover `EhcollManifest` and `ModInstallState` — the
+ * top level of each. `EhcollPluginEntry` sits INSIDE `plugins.order[]`, so
+ * `Required<EhcollManifest>` never saw it, and `light` was written by the
+ * build, shipped in every package, and silently dropped by the parser for as
+ * long as the feature existed. The registry that exists to make exactly that
+ * impossible could not see one level down.
+ *
+ * A nested shipped type needs its own table for the same reason the top level
+ * does: `Required<>` turns "someone added a field and nobody reads it" into a
+ * compile error instead of a bug report from a stranger.
+ */
+export const PLUGIN_ENTRY_FATES: {
+  readonly [K in keyof Required<EhcollPluginEntry>]: FieldFate;
+} = {
+  name: { kind: "applied", by: "core/installer/applyPluginOrder.ts" },
+  enabled: { kind: "applied", by: "core/installer/applyPluginOrder.ts" },
+  light: { kind: "applied", by: "core/installer/applyPluginLightFlags.ts" },
+};
+
+/**
  * The manifest's top level.
  */
 export const MANIFEST_FATES: {
@@ -100,12 +131,25 @@ export const MANIFEST_FATES: {
   mods: { kind: "applied", by: "core/resolver/resolveInstallPlan.ts" },
   rules: { kind: "applied", by: "core/installer/applyModRules.ts" },
   plugins: { kind: "applied", by: "core/resolver/resolveInstallPlan.ts" },
-  loadOrder: { kind: "applied", by: "core/installer/applyLoadOrder.ts" },
+  /**
+   * Read off the manifest by the driver, which hands the entries to
+   * `applyLoadOrder` — that module names `loadOrder` only in its docblock.
+   */
+  loadOrder: { kind: "applied", by: "core/installer/runInstall.ts" },
   userlist: { kind: "applied", by: "core/resolver/resolveInstallPlan.ts" },
   gameIni: { kind: "applied", by: "core/installer/applyGameIni.ts" },
   externalDependencies: {
-    kind: "applied",
-    by: "core/resolver/resolveInstallPlan.ts",
+    kind: "recorded-only",
+    why:
+      "The resolver turns these into ExternalDependencyDecisions, and NOTHING " +
+      "consumes them. `userState.externalDependencyState` is hardcoded " +
+      "undefined at all three construction sites, so every dependency " +
+      "resolves `not-verified`; `externalDepBlocking` only fires on `missing` " +
+      "or `files-mismatch` and is therefore unreachable; and the install UI " +
+      "never renders them. This said `applied` while the build page told the " +
+      "curator 'the user's copy is verified against these hashes' — the exact " +
+      "false claim this table exists to prevent, inside the table itself. " +
+      "Recorded-only until a verification pass exists and its result is shown.",
   },
 
   schemaVersion: {

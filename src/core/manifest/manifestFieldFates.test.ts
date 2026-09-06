@@ -21,6 +21,7 @@ import { describe, expect, it } from "vitest";
 import {
   MANIFEST_FATES,
   MOD_INSTALL_STATE_FATES,
+  PLUGIN_ENTRY_FATES,
   type FieldFate,
 } from "./manifestFieldFates";
 
@@ -29,7 +30,11 @@ const SRC = join(__dirname, "..", "..");
 const entries = (table: Record<string, FieldFate>): [string, FieldFate][] =>
   Object.entries(table);
 
-const ALL = [...entries(MOD_INSTALL_STATE_FATES), ...entries(MANIFEST_FATES)];
+const ALL = [
+  ...entries(MOD_INSTALL_STATE_FATES),
+  ...entries(MANIFEST_FATES),
+  ...entries(PLUGIN_ENTRY_FATES),
+];
 
 /** Files that act on a mod's install state on the user's machine. */
 const READ_SIDE = [
@@ -51,6 +56,54 @@ const READ_SIDE = [
  * the wrong reason. A test that cannot fail is worse than no test, so the
  * matcher below is itself exercised in both directions further down.
  */
+/** Source with comments removed, so a mention in prose is not evidence. */
+function stripComments(src: string): string {
+  const noBlock = src.split(/\/\*[\s\S]*?\*\//).join(" ");
+  return noBlock
+    .split("\n")
+    .map((line) => {
+      // Not a URL: only strip `//` that is not preceded by a colon.
+      const at = line.search(/(^|[^:])\/\//);
+      return at === -1 ? line : line.slice(0, at === 0 ? 0 : at + 1);
+    })
+    .join("\n");
+}
+
+/**
+ * Does this source actually READ the field — as `x.field` or `{ field }`?
+ *
+ * Deliberately stricter than a substring and deliberately looser than
+ * `readsStateField`: manifest fields are reached through many receivers
+ * (`manifest.plugins`, `plan.manifest.rules`, a destructured `{ mods }`), so
+ * pinning the receiver would produce false failures. Requiring a property
+ * access or a binding is what separates "reads it" from "says it".
+ */
+function accessesField(src: string, field: string): boolean {
+  const body = stripComments(src);
+  const wordChar = /[A-Za-z0-9_]/;
+
+  // `x.field`, where what follows is not more identifier — the same
+  // prefix trap `readsStateField` guards (`plugins` vs `pluginsExtra`).
+  const dotted = `.${field}`;
+  for (let at = body.indexOf(dotted); at !== -1; at = body.indexOf(dotted, at + 1)) {
+    const next = body.charAt(at + dotted.length);
+    if (next === "" || !wordChar.test(next)) return true;
+  }
+
+  // `const { field } = manifest`, or `{ field, ... }`.
+  for (let at = body.indexOf(field); at !== -1; at = body.indexOf(field, at + 1)) {
+    const before = body.slice(0, at).trimEnd();
+    const after = body.slice(at + field.length).trimStart();
+    const opener = before.charAt(before.length - 1);
+    const closer = after.charAt(0);
+    const bound = opener === "{" || opener === ",";
+    const ends = closer === "," || closer === "}" || closer === ":" || closer === "=";
+    if (bound && ends && !wordChar.test(body.charAt(at - 1))) return true;
+  }
+
+  return false;
+}
+
 function readsStateField(src: string, field: string): boolean {
   const needle = `.state.${field}`;
   const wordChar = /[A-Za-z0-9_]/;
@@ -85,6 +138,26 @@ describe("the whole-name matcher can actually fail", () => {
   });
 });
 
+describe("the matcher behind the applied check", () => {
+  it("does not accept a mention in a comment", () => {
+    // The exact false pass that let `externalDependencies` claim to be
+    // applied while nothing consumed it.
+    expect(accessesField("// externalDependencies are verified later", "externalDependencies")).toBe(false);
+    expect(accessesField("/* about externalDependencies */", "externalDependencies")).toBe(false);
+  });
+
+  it("accepts a real property access or a destructure", () => {
+    expect(accessesField("manifest.externalDependencies.map(x)", "externalDependencies")).toBe(true);
+    expect(accessesField("const { rules } = manifest;", "rules")).toBe(true);
+    expect(accessesField("plan.manifest.plugins.order", "plugins")).toBe(true);
+  });
+
+  it("does not mistake a longer identifier for the field", () => {
+    expect(accessesField("x.loadOrderEntries", "loadOrder")).toBe(false);
+    expect(accessesField("x.loadOrder;", "loadOrder")).toBe(true);
+  });
+});
+
 describe("every applied field really is applied", () => {
   const applied = ALL.filter(([, f]) => f.kind === "applied") as [
     string,
@@ -103,14 +176,26 @@ describe("every applied field really is applied", () => {
     expect(missing).toEqual([]);
   });
 
-  it("points at files that mention the field", () => {
-    // The INI-tweak lesson. If a reader stops reading its field, this fails
-    // and the table gets corrected rather than quietly becoming fiction.
+  it("points at files that ACCESS the field, not ones that mention it", () => {
+    /**
+     * ─── A SUBSTRING MATCH IS NOT EVIDENCE OF A READER ─────────────────
+     * This was `readFileSync(...).includes(field)`, which passes when the
+     * field name appears anywhere at all — in a comment, an import, an
+     * unrelated identifier that merely contains it. `resolveInstallPlan.ts`
+     * says "externalDependencies" in prose, so the table's claim that it was
+     * APPLIED passed this check for as long as it was false.
+     *
+     * Forty lines above, `readsStateField` was already doing this properly,
+     * and it was wired to the ModInstallState table only. The manifest half —
+     * the whole shipped format — had the weak one. So the guard was strong
+     * exactly where it had never been needed and cosmetic where it was.
+     *
+     * Comments are stripped first, then the field must appear as an actual
+     * property access or a destructured binding.
+     */
     const silent = applied
-      .filter(
-        ([field, f]) => !readFileSync(join(SRC, f.by), "utf8").includes(field),
-      )
-      .map(([field, f]) => `${f.by} never mentions ${field}`);
+      .filter(([field, f]) => !accessesField(readFileSync(join(SRC, f.by), "utf8"), field))
+      .map(([field, f]) => `${f.by} never reads ${field}, it only mentions it`);
     expect(silent).toEqual([]);
   });
 });

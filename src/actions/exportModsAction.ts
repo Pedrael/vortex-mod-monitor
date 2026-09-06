@@ -62,7 +62,8 @@ export default function createExportModsAction(
         gameId,
       );
 
-      const loadOrder = captureLoadOrder(state, gameId);
+      // Keyed by PROFILE — see captureLoadOrder's note.
+      const loadOrder = captureLoadOrder(state, profileId);
       op.step("captured", {
         deploymentManifests: deploymentManifests.length,
         loadOrderEntries: loadOrder.length,
