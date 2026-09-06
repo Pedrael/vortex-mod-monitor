@@ -24,6 +24,7 @@
 
 import type { types } from "@nexusmods/vortex-api";
 import type { ReadEhcollResult } from "../../../core/manifest/readEhcoll";
+import type { RuntimeFinding } from "../../../core/runtime/detectRuntimes";
 import type { InstallReceipt } from "../../../types/installLedger";
 import type {
   ConflictChoice,
@@ -76,6 +77,16 @@ export interface PreviewBundle {
    * block names the number of mods that would have to be unpacked.
    */
   extractorBlocked?: { message: string; steps: string[]; toUnpack: number };
+  /**
+   * Microsoft runtimes the machine is missing, or that could not be checked.
+   *
+   * Advisory, never blocking — unlike the extractor above, which stops every
+   * unpack. A missing VC++ redistributable installs the collection perfectly
+   * and then breaks xEdit, ENB and every script-extender plugin afterwards,
+   * with nothing naming the cause. Carried so the preview can say it BEFORE
+   * the install rather than leaving it to be discovered after.
+   */
+  runtimeFindings?: RuntimeFinding[];
 }
 
 export type WizardState =

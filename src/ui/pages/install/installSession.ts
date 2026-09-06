@@ -176,6 +176,9 @@ class InstallSession {
             ...(outcome.extractorBlocked !== undefined
               ? { extractorBlocked: outcome.extractorBlocked }
               : {}),
+            ...(outcome.runtimeFindings !== undefined
+              ? { runtimeFindings: outcome.runtimeFindings }
+              : {}),
           },
         });
       } catch (err) {
@@ -262,6 +265,9 @@ class InstallSession {
             appDataPath: outcome.appDataPath,
             ...(outcome.extractorBlocked !== undefined
               ? { extractorBlocked: outcome.extractorBlocked }
+              : {}),
+            ...(outcome.runtimeFindings !== undefined
+              ? { runtimeFindings: outcome.runtimeFindings }
               : {}),
           },
         });

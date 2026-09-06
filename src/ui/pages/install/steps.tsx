@@ -53,6 +53,7 @@ import {
   readNexusAccount,
 } from "../../../core/installer/checkNexusAccount";
 import type { NexusAccount } from "../../../core/installer/checkNexusAccount";
+import { describeRuntimeFindings } from "../../../core/runtime/detectRuntimes";
 import {
   ConflictChoice,
   DriverProgress,
@@ -660,7 +661,19 @@ export function PreviewStep(props: PreviewStepProps): JSX.Element {
     [account, plan],
   );
 
-  const verdict = computeVerdict(plan, accountLines);
+  /**
+   * Missing system runtimes, said BEFORE the install rather than discovered
+   * after it. Nothing about a missing VC++ redistributable stops a mod
+   * installing — it stops xEdit, ENB and the script-extender plugins working
+   * afterwards, with no message that names the cause, which is the worst
+   * possible moment to find out.
+   */
+  const runtimeLines = React.useMemo(
+    () => describeRuntimeFindings(bundle.runtimeFindings ?? []) ?? [],
+    [bundle.runtimeFindings],
+  );
+
+  const verdict = computeVerdict(plan, [...accountLines, ...runtimeLines]);
 
   // Enter = continue to decisions/review. Esc = bail. Off when focus
   // is inside an input (there are no inputs on this screen yet, but

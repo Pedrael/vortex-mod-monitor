@@ -1,0 +1,185 @@
+/**
+ * ──────────────────────────────────────────────────────────────────────
+ * The three answers, and why the third one has to exist.
+ *
+ * Every case here is one the machine running these tests cannot produce: a
+ * missing key, a registry that refuses, a .NET release too old, a partially
+ * removed runtime. The probes are injected precisely so those are reachable —
+ * a detection layer tested only against the developer's own healthy machine
+ * has tested the one outcome that cannot fail.
+ * ──────────────────────────────────────────────────────────────────────
+ */
+import { describe, expect, it } from "vitest";
+
+import {
+  describeRuntimeFindings,
+  detectRuntimes,
+  type DetectRuntimeDeps,
+} from "./detectRuntimes";
+import type { PrerequisiteId } from "./prerequisites";
+
+/** A registry that answers from a plain map; anything absent is `undefined`. */
+const deps = (over: {
+  registry?: Record<string, string>;
+  throwOn?: string;
+  files?: string[];
+}): DetectRuntimeDeps => ({
+  readRegistryValue: async (hive, key, value) => {
+    const at = `${hive}\\${key}\\${value}`;
+    if (over.throwOn !== undefined && at.includes(over.throwOn)) {
+      throw new Error("access denied");
+    }
+    return over.registry?.[at];
+  },
+  fileExists: async (p) => (over.files ?? []).includes(p),
+  systemDir: "C:\\Windows\\System32",
+});
+
+const VC64 =
+  "HKLM\\SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\x64";
+const NDP = "HKLM\\SOFTWARE\\Microsoft\\NET Framework Setup\\NDP\\v4\\Full";
+
+const only = async (d: DetectRuntimeDeps, id: PrerequisiteId) =>
+  (await detectRuntimes(d, [id]))[0]!;
+
+describe("the VC++ redistributables", () => {
+  it("reads present, with its version", async () => {
+    const f = await only(
+      deps({
+        registry: {
+          [`${VC64}\\Installed`]: "1",
+          [`${VC64}\\Version`]: "v14.38.33130",
+        },
+      }),
+      "vcredist-x64",
+    );
+    expect(f.status).toBe("present");
+    expect(f.version).toBe("v14.38.33130");
+  });
+
+  it("reads absent when the key is not there", async () => {
+    const f = await only(deps({}), "vcredist-x64");
+    expect(f.status).toBe("absent");
+  });
+
+  it("treats Installed=0 as absent, not present", async () => {
+    // A partially removed runtime leaves the key behind with a zero. Reading
+    // "the key exists" as "it is installed" would report a broken machine as
+    // healthy — which is the direction that costs a support conversation.
+    const f = await only(
+      deps({ registry: { [`${VC64}\\Installed`]: "0" } }),
+      "vcredist-x64",
+    );
+    expect(f.status).toBe("absent");
+    expect(f.detail).toMatch(/Installed=0/);
+  });
+
+  it("reads UNKNOWN — never absent — when the registry refuses", async () => {
+    /**
+     * The distinction the whole module exists for. Under Wine, or with a
+     * locked-down policy, the query fails; telling that user they are missing
+     * VC++ when they are not is how a diagnostic gets ignored.
+     */
+    const f = await only(deps({ throwOn: "Runtimes" }), "vcredist-x64");
+    expect(f.status).toBe("unknown");
+    expect(f.detail).toMatch(/could not be read/);
+  });
+
+  it("looks under the 32-bit view for x86", async () => {
+    // The x86 runtime registers under WOW6432Node on a 64-bit Windows.
+    // Probing the same path as x64 would report it missing on every machine.
+    const f = await only(
+      deps({
+        registry: {
+          "HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\x86\\Installed":
+            "1",
+        },
+      }),
+      "vcredist-x86",
+    );
+    expect(f.status).toBe("present");
+  });
+});
+
+describe(".NET Framework", () => {
+  it("accepts a Release NEWER than 4.8's baseline", async () => {
+    /**
+     * Microsoft publishes these as "greater than or equal to", because a
+     * newer Windows ships a higher Release for the same .NET version.
+     * Comparing for equality against one build is the classic way this check
+     * reports every up-to-date machine as missing it.
+     */
+    const f = await only(
+      deps({ registry: { [`${NDP}\\Release`]: "533320" } }),
+      "dotnet48",
+    );
+    expect(f.status).toBe("present");
+  });
+
+  it("accepts the baseline exactly", async () => {
+    const f = await only(
+      deps({ registry: { [`${NDP}\\Release`]: "528040" } }),
+      "dotnet48",
+    );
+    expect(f.status).toBe("present");
+  });
+
+  it("reports an older .NET as absent, and says it is old rather than missing", async () => {
+    const f = await only(
+      deps({ registry: { [`${NDP}\\Release`]: "461808" } }),
+      "dotnet48",
+    );
+    expect(f.status).toBe("absent");
+    expect(f.detail).toMatch(/older than 4\.8/);
+  });
+
+  it("reports a non-numeric Release as unknown", async () => {
+    const f = await only(
+      deps({ registry: { [`${NDP}\\Release`]: "garbage" } }),
+      "dotnet48",
+    );
+    expect(f.status).toBe("unknown");
+  });
+});
+
+describe("what the player is told", () => {
+  it("says nothing at all when everything is present", async () => {
+    // A readiness check that speaks on a ready machine is one people stop
+    // reading, and then it is worth nothing on the day it matters.
+    const findings = await detectRuntimes(
+      deps({
+        registry: {
+          [`${VC64}\\Installed`]: "1",
+          "HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\x86\\Installed":
+            "1",
+          [`${NDP}\\Release`]: "533320",
+          "HKLM\\SOFTWARE\\dotnet\\Setup\\InstalledVersions\\x64\\sharedfx\\Microsoft.WindowsDesktop.App\\Version":
+            "8.0.11",
+        },
+      }),
+    );
+    expect(findings.every((f) => f.status === "present")).toBe(true);
+    expect(describeRuntimeFindings(findings)).toBeUndefined();
+  });
+
+  it("keeps 'missing' and 'could not check' in separate sentences", async () => {
+    // They ask for different things: one is a download, the other is a reason
+    // to look at the log later. Merging them would tell a Wine user to
+    // install something they may well already have.
+    const findings = await detectRuntimes(deps({ throwOn: "NET Framework" }));
+    const lines = describeRuntimeFindings(findings)!;
+    const said = lines.join(" ");
+    expect(said).toMatch(/are not installed/);
+    expect(said).toMatch(/could not be checked/);
+    expect(said).toMatch(/not the same as missing/);
+  });
+
+  it("names what breaks, not the runtime", async () => {
+    // "Missing vcredist" means nothing to a player. "xEdit, ENB and the
+    // script-extender plugins" is the sentence they can act on.
+    const findings = await detectRuntimes(deps({}), ["vcredist-x64"]);
+    const said = describeRuntimeFindings(findings)!.join(" ");
+    expect(said).toMatch(/script-extender/);
+    expect(said).toMatch(/Mods themselves will install fine/);
+  });
+});

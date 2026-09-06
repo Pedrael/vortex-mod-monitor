@@ -56,6 +56,8 @@ import type { SupportedGameId } from "../../../types/ehcoll";
 import type { InstallReceipt } from "../../../types/installLedger";
 import type { InstallPlan } from "../../../types/installPlan";
 import { getVortexUserDataPath } from "../../../core/paths";
+import { ehLog } from "../../../core/logging/ehLog";
+import type { RuntimeFinding } from "../../../core/runtime/detectRuntimes";
 
 const SUPPORTED_GAME_IDS: ReadonlySet<string> = new Set<SupportedGameId>([
   "skyrimse",
@@ -104,6 +106,16 @@ export type LoadOutcome =
       plan: InstallPlan;
       appDataPath: string;
       extractorBlocked?: ExtractorBlocked;
+      /**
+       * System runtimes the machine is missing, or that could not be checked.
+       *
+       * Reported, never blocking. A missing VC++ redistributable does not stop
+       * a single mod installing — it stops xEdit, ENB and the script-extender
+       * plugins from working afterwards, with no message naming the cause. So
+       * the right moment to say it is BEFORE the install, and the right shape
+       * is a warning the player can act on, not a refusal.
+       */
+      runtimeFindings?: RuntimeFinding[];
     };
 
 /**
@@ -265,12 +277,15 @@ export async function runLoadingPipeline(args: {
 
   const plan = resolveInstallPlan(manifest, userState, installTarget);
 
+  const runtimeFindings = await checkSystemRuntimes();
+
   return {
     kind: "ready",
     ehcoll,
     receipt,
     plan,
     appDataPath,
+    ...(runtimeFindings.length > 0 ? { runtimeFindings } : {}),
     ...(extractorFatal !== undefined
       ? {
           extractorBlocked: {
@@ -285,6 +300,36 @@ export async function runLoadingPipeline(args: {
         }
       : {}),
   };
+}
+
+/**
+ * Ask the machine which Microsoft runtimes it has.
+ *
+ * Never throws and never blocks: this is advisory, and a preflight that can
+ * fail an install over its own inability to read a registry key would be
+ * worse than not having it. A probe that cannot answer produces `unknown`
+ * findings, which the report keeps separate from "missing".
+ */
+async function checkSystemRuntimes(): Promise<RuntimeFinding[]> {
+  try {
+    const [{ detectRuntimes }, { readRegistryValue, fileExists }] =
+      await Promise.all([
+        import("../../../core/runtime/detectRuntimes"),
+        import("../../../core/runtime/nodePrereqDeps"),
+      ]);
+    const findings = await detectRuntimes({
+      readRegistryValue,
+      fileExists,
+      systemDir: `${process.env.SystemRoot ?? "C:\\Windows"}\\System32`,
+    });
+    ehLog("info", "preflight.runtimes", {
+      findings: findings.map((f) => `${f.id}=${f.status}`),
+    });
+    return findings;
+  } catch (err) {
+    ehLog("warn", "preflight.runtimes.failed", { err });
+    return [];
+  }
 }
 
 /**
@@ -307,6 +352,8 @@ export async function runLoadingPipelineWithReceipt(args: {
   plan: InstallPlan;
   appDataPath: string;
   extractorBlocked?: ExtractorBlocked;
+  /** Same advisory findings as the first pass — see PreviewBundle. */
+  runtimeFindings?: RuntimeFinding[];
 }> {
   const { api, ehcoll, receipt, appDataPath, events, signal } = args;
   const { manifest } = ehcoll;
@@ -408,11 +455,18 @@ export async function runLoadingPipelineWithReceipt(args: {
 
   const plan = resolveInstallPlan(manifest, userState, installTarget);
 
+  // Re-checked, not carried: this is the stale-receipt re-run and it is a
+  // separate route into the confirm step. Skipping it would leave one path
+  // with no runtime verdict at all — the same ungated back door the extractor
+  // check above exists to close.
+  const runtimeFindings = await checkSystemRuntimes();
+
   return {
     ehcoll,
     receipt,
     plan,
     appDataPath,
+    ...(runtimeFindings.length > 0 ? { runtimeFindings } : {}),
     ...(extractorFatal !== undefined
       ? {
           extractorBlocked: {

@@ -1,0 +1,296 @@
+/**
+ * ──────────────────────────────────────────────────────────────────────
+ * Is the machine itself ready for this collection?
+ *
+ * Not the mods — those are the collection's own problem and every other part
+ * of this tool handles them. This is the layer underneath: the Microsoft
+ * runtimes that xEdit, ENB, and every script-extender plugin link against.
+ * A player missing the VC++ redistributable installs a collection perfectly,
+ * verifies byte-for-byte, and then watches SKSE plugins fail to load with no
+ * message that names the cause.
+ *
+ * `prerequisites.ts` already knew how to INSTALL these. It had no way to ask
+ * whether they were there, so the only thing that ever triggered it was
+ * Vortex's own 7-Zip failing to unpack — a repair for the tool, never a
+ * readiness check for the collection.
+ *
+ * ─── DETECTION IS A CLAIM, SO IT HAS THREE ANSWERS ─────────────────────
+ * `present`, `absent`, and `unknown`. The third is not a rounding error: a
+ * registry read can fail because the key is missing (absent) or because the
+ * query itself did not work — no `reg.exe`, a Wine prefix that answers
+ * strangely, a permissions refusal. Reporting "you are missing VC++" to
+ * someone who has it is how a diagnostic gets ignored, and this project's
+ * rule is that a false positive costs more than a false negative.
+ *
+ * So `unknown` is reported as "could not check", never folded into "missing".
+ *
+ * ─── THE PROBES ARE INJECTED ───────────────────────────────────────────
+ * Registry and filesystem access are passed in, because the interesting cases
+ * — a key that is missing, a query that throws, a version too old — are
+ * exactly the ones that cannot be produced on the machine running the tests.
+ * ──────────────────────────────────────────────────────────────────────
+ */
+
+import type { PrerequisiteId } from "./prerequisites";
+
+/** What we managed to learn about one runtime. */
+export type RuntimeStatus = "present" | "absent" | "unknown";
+
+export type RuntimeFinding = {
+  id: PrerequisiteId;
+  name: string;
+  status: RuntimeStatus;
+  /** The version we read, when we could read one. */
+  version?: string;
+  /** Why the status is what it is — always set for `unknown`. */
+  detail?: string;
+};
+
+/**
+ * Read one registry value. Resolves `undefined` when the key or value does
+ * not exist; REJECTS when the query itself failed.
+ *
+ * The distinction is the whole point: "not installed" and "could not look"
+ * must not arrive as the same answer.
+ */
+export type ReadRegistryValue = (
+  hive: string,
+  key: string,
+  value: string,
+) => Promise<string | undefined>;
+
+/** Does this file exist? Used where a runtime has no reliable registry key. */
+export type FileExists = (absolutePath: string) => Promise<boolean>;
+
+export type DetectRuntimeDeps = {
+  readRegistryValue: ReadRegistryValue;
+  fileExists: FileExists;
+  /** System directory, so the DirectX probe is not hardcoded to C:. */
+  systemDir: string;
+};
+
+/**
+ * .NET Framework's `Release` DWORD, and what it means.
+ *
+ * Microsoft publishes these as "a value GREATER THAN OR EQUAL to", because a
+ * newer Windows build ships a higher number for the same version. Testing for
+ * equality against a specific build is the classic way this check goes wrong.
+ */
+const DOTNET48_MIN_RELEASE = 528040;
+
+/**
+ * Where each runtime records itself.
+ *
+ * Registry paths are the documented ones. The VC++ redistributables write a
+ * per-architecture key under the VS14 hive, which is the same place Microsoft's
+ * own installers check before deciding they are already current.
+ */
+async function probeVcRedist(
+  deps: DetectRuntimeDeps,
+  arch: "x64" | "x86",
+): Promise<{ status: RuntimeStatus; version?: string; detail?: string }> {
+  // The x86 runtime registers under the 32-bit view on a 64-bit Windows.
+  const key =
+    arch === "x64"
+      ? "SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\x64"
+      : "SOFTWARE\\WOW6432Node\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\x86";
+  try {
+    const installed = await deps.readRegistryValue("HKLM", key, "Installed");
+    if (installed === undefined) return { status: "absent" };
+    // `Installed` is a DWORD; anything other than 1 means a broken or
+    // partially-removed install, which is not "present".
+    if (Number.parseInt(installed, 10) !== 1) {
+      return {
+        status: "absent",
+        detail: `the registry records it as not installed (Installed=${installed})`,
+      };
+    }
+    const version = await deps.readRegistryValue("HKLM", key, "Version");
+    return {
+      status: "present",
+      ...(version !== undefined ? { version } : {}),
+    };
+  } catch (err) {
+    return {
+      status: "unknown",
+      detail: `the registry could not be read: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    };
+  }
+}
+
+async function probeDotNet48(
+  deps: DetectRuntimeDeps,
+): Promise<{ status: RuntimeStatus; version?: string; detail?: string }> {
+  try {
+    const release = await deps.readRegistryValue(
+      "HKLM",
+      "SOFTWARE\\Microsoft\\NET Framework Setup\\NDP\\v4\\Full",
+      "Release",
+    );
+    if (release === undefined) return { status: "absent" };
+    const n = Number.parseInt(release, 10);
+    if (!Number.isFinite(n)) {
+      return {
+        status: "unknown",
+        detail: `the Release value was not a number ("${release}")`,
+      };
+    }
+    // Greater-than-or-equal, deliberately: a newer Windows ships a higher
+    // Release for the same .NET version, so equality would report every
+    // up-to-date machine as missing it.
+    return n >= DOTNET48_MIN_RELEASE
+      ? { status: "present", version: `Release ${n}` }
+      : {
+          status: "absent",
+          detail: `.NET Framework is present but older than 4.8 (Release ${n})`,
+        };
+  } catch (err) {
+    return {
+      status: "unknown",
+      detail: `the registry could not be read: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    };
+  }
+}
+
+async function probeDotNetDesktop8(
+  deps: DetectRuntimeDeps,
+): Promise<{ status: RuntimeStatus; version?: string; detail?: string }> {
+  try {
+    const v = await deps.readRegistryValue(
+      "HKLM",
+      "SOFTWARE\\dotnet\\Setup\\InstalledVersions\\x64\\sharedfx\\Microsoft.WindowsDesktop.App",
+      "Version",
+    );
+    if (v === undefined) return { status: "absent" };
+    return { status: "present", version: v };
+  } catch (err) {
+    return {
+      status: "unknown",
+      detail: `the registry could not be read: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    };
+  }
+}
+
+async function probeDirectX9(
+  deps: DetectRuntimeDeps,
+): Promise<{ status: RuntimeStatus; detail?: string }> {
+  // No registry key worth trusting; the redistributable's job is to drop these
+  // DLLs, so their presence IS the answer. d3dx9_43 is the last of the line
+  // and the one ENB and older tools link against.
+  try {
+    const there = await deps.fileExists(`${deps.systemDir}\\d3dx9_43.dll`);
+    return there ? { status: "present" } : { status: "absent" };
+  } catch (err) {
+    return {
+      status: "unknown",
+      detail: `could not check ${deps.systemDir}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    };
+  }
+}
+
+/** Human names, kept beside the probes so a finding can stand alone. */
+const NAMES: Record<PrerequisiteId, string> = {
+  "vcredist-x64": "Visual C++ 2015–2022 Redistributable (x64)",
+  "vcredist-x86": "Visual C++ 2015–2022 Redistributable (x86)",
+  dotnet48: ".NET Framework 4.8",
+  "dotnet8-desktop-x64": ".NET 8 Desktop Runtime (x64)",
+  directx9: "DirectX 9 runtime (d3dx9)",
+};
+
+/**
+ * Check the runtimes a modded Bethesda game actually needs.
+ *
+ * Ordered by how often each is the real cause, matching the catalogue: the
+ * VC++ redistributables first, because they are what xEdit, ENB and most
+ * script-extender plugins link against.
+ */
+export async function detectRuntimes(
+  deps: DetectRuntimeDeps,
+  /**
+   * ─── WHAT IS WORTH REPORTING IS NARROWER THAN WHAT IS DETECTABLE ─────
+   * The two VC++ redistributables are the catalogue's only `recommended`
+   * entries and the ones xEdit, ENB and script-extender plugins link against.
+   * .NET Framework 4.8 is here because it is a real requirement for several
+   * modding tools — it ships with Windows 10 1903+ and 11, so it is almost
+   * always present, and that is fine: a check that passes silently costs
+   * nothing.
+   *
+   * `dotnet8-desktop-x64` and `directx9` are deliberately NOT in the default
+   * set. Both are `recommended: false`, most Bethesda setups never need them,
+   * and reporting them absent on every machine would be a readiness check
+   * crying wolf — which is how the whole report gets ignored on the day one
+   * of these actually is the cause. They stay detectable for a caller that
+   * has reason to ask.
+   */
+  which: readonly PrerequisiteId[] = [
+    "vcredist-x64",
+    "vcredist-x86",
+    "dotnet48",
+  ],
+): Promise<RuntimeFinding[]> {
+  const out: RuntimeFinding[] = [];
+  for (const id of which) {
+    const probe =
+      id === "vcredist-x64"
+        ? await probeVcRedist(deps, "x64")
+        : id === "vcredist-x86"
+          ? await probeVcRedist(deps, "x86")
+          : id === "dotnet48"
+            ? await probeDotNet48(deps)
+            : id === "dotnet8-desktop-x64"
+              ? await probeDotNetDesktop8(deps)
+              : await probeDirectX9(deps);
+    out.push({ id, name: NAMES[id], ...probe });
+  }
+  return out;
+}
+
+/**
+ * What to tell the player, or `undefined` when there is nothing worth saying.
+ *
+ * Silent when everything is present — a readiness check that speaks on a ready
+ * machine is a readiness check people stop reading.
+ *
+ * "Missing" and "could not check" are separate paragraphs on purpose. They ask
+ * for different things: one is a download, the other is a reason to look at
+ * the log if something misbehaves later.
+ */
+export function describeRuntimeFindings(
+  findings: readonly RuntimeFinding[],
+): string[] | undefined {
+  const absent = findings.filter((f) => f.status === "absent");
+  const unknown = findings.filter((f) => f.status === "unknown");
+  if (absent.length === 0 && unknown.length === 0) return undefined;
+
+  const lines: string[] = [];
+  if (absent.length > 0) {
+    lines.push(
+      `${absent.length} system runtime(s) this collection needs are not ` +
+        `installed: ${absent.map((f) => f.name).join(", ")}. Mods themselves ` +
+        `will install fine without them — what breaks is xEdit, ENB and the ` +
+        `script-extender plugins, usually with no message that names the ` +
+        `cause.`,
+    );
+    for (const f of absent) {
+      if (f.detail !== undefined) lines.push(`  - ${f.name}: ${f.detail}`);
+    }
+  }
+  if (unknown.length > 0) {
+    lines.push(
+      `${unknown.length} could not be checked (${unknown
+        .map((f) => f.name)
+        .join(", ")}). That is not the same as missing — it means the check ` +
+        `itself did not work, which is normal under Wine/Proton. If something ` +
+        `misbehaves later, these are worth ruling out by hand.`,
+    );
+  }
+  return lines;
+}

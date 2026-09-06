@@ -193,3 +193,91 @@ export function nodePrereqDeps(
     ...(verify !== undefined ? { verify } : {}),
   };
 }
+
+/**
+ * ─── READING THE REGISTRY WITHOUT A NATIVE MODULE ──────────────────────
+ * `reg.exe query` is the whole implementation, and it is the right one here:
+ * it ships with Windows, it works inside a Wine prefix (where it answers from
+ * the prefix's own registry, which is exactly what we want to know), and it
+ * needs no native binding in an Electron app that already ships enough of
+ * those.
+ *
+ * Exit code 1 is how `reg` reports "no such key or value", and that is an
+ * ANSWER — the runtime is not installed. Anything else is a failed query, and
+ * it REJECTS, because the caller's whole design turns on telling "not there"
+ * apart from "could not look". Collapsing the two would tell a Wine user they
+ * are missing a runtime they may well have.
+ */
+export function readRegistryValue(
+  hive: string,
+  key: string,
+  value: string,
+): Promise<string | undefined> {
+  return new Promise((resolve, reject) => {
+    if (process.platform !== "win32") {
+      // Not an error: there is no registry to read, and saying "absent" here
+      // would report every Linux user as missing every runtime.
+      reject(new Error("not a Windows registry platform"));
+      return;
+    }
+    cp.execFile(
+      "reg",
+      // Joined with a real backslash. `\$` inside a template literal is an
+      // escaped dollar, so `${hive}\${key}` silently builds the literal text
+      // "HKLM${key}" — which reg answers with "no such key", exit 1, which
+      // this function correctly reports as ABSENT. A malformed query is
+      // indistinguishable from a missing runtime unless the query is right.
+      ["query", [hive, key].join("\\"), "/v", value],
+      { windowsHide: true, timeout: 10_000 },
+      (err, stdout) => {
+        const code = (err as { code?: number } | null)?.code;
+        if (err && code === 1) {
+          // The key or value does not exist. A real answer.
+          resolve(undefined);
+          return;
+        }
+        if (err) {
+          reject(err instanceof Error ? err : new Error(String(err)));
+          return;
+        }
+        /**
+         * `reg` prints `    <name>    <TYPE>    <data>`, and the data may
+         * contain spaces (a path, a version string). Splitting on whitespace
+         * and taking the last field would truncate those, so the type token
+         * is used as the anchor and everything after it is the value.
+         */
+        const line = stdout
+          .split(/\r?\n/)
+          // Built with String.raw: in an ordinary template literal `\s` is
+          // just `s`, which silently matches nothing — and a value that
+          // matches nothing reads as "the runtime is not installed".
+          .find((l) =>
+            new RegExp(String.raw`\s` + value + String.raw`\s+REG_`, "i").test(l),
+          );
+        if (line === undefined) {
+          resolve(undefined);
+          return;
+        }
+        const m = /\s(REG_[A-Z_]+)\s+(.*)$/.exec(line);
+        const raw = m?.[2]?.trim();
+        if (raw === undefined || raw.length === 0) {
+          resolve(undefined);
+          return;
+        }
+        // DWORDs come back as 0x… ; the callers all want a decimal string.
+        const asHex = /^0x([0-9a-f]+)$/i.exec(raw);
+        resolve(asHex ? String(Number.parseInt(asHex[1]!, 16)) : raw);
+      },
+    );
+  });
+}
+
+/** Does this path exist? Used by the DirectX probe. */
+export async function fileExists(absolutePath: string): Promise<boolean> {
+  try {
+    await fsp.stat(absolutePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
