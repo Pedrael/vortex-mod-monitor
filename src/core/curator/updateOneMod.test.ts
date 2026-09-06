@@ -212,7 +212,7 @@ describe("reading back what Vortex installed", () => {
 
   it("reads the Nexus pair off the mod's attributes", () => {
     const read = installedIdentityReader(
-      state({ m: { attributes: { modId: 1090, fileId: 500 } } }),
+      () => state({ m: { attributes: { modId: 1090, fileId: 500 } } }),
       "skyrimse",
     );
     expect(read("m")).toEqual({ nexusModId: 1090, nexusFileId: 500 });
@@ -220,13 +220,35 @@ describe("reading back what Vortex installed", () => {
 
   it("coerces the string form Vortex sometimes stores", () => {
     const read = installedIdentityReader(
-      state({ m: { attributes: { modId: "7", fileId: "8" } } }),
+      () => state({ m: { attributes: { modId: "7", fileId: "8" } } }),
       "skyrimse",
     );
     expect(read("m")).toEqual({ nexusModId: 7, nexusFileId: 8 });
   });
 
   it("returns undefined for a mod Vortex does not have", () => {
-    expect(installedIdentityReader(state({}), "skyrimse")("nope")).toBeUndefined();
+    expect(
+      installedIdentityReader(() => state({}), "skyrimse")("nope"),
+    ).toBeUndefined();
+  });
+
+  it("READS THE STATE AT CALL TIME, not when it was built", () => {
+    // The bug this signature exists to prevent. The caller built the reader
+    // once, before the run, from `api.getState()` — and Redux state is
+    // immutable, so every later lookup searched a state in which the mod
+    // Vortex had just installed did not exist. The identity check failed on
+    // the right mod, `did-install-mod` was discarded as somebody else's, and
+    // the bulk update stopped after one mod for fifteen silent minutes.
+    let live = state({});
+    const read = installedIdentityReader(() => live, "skyrimse");
+
+    // Built before the mod exists — exactly the real ordering.
+    expect(read("new-mod")).toBeUndefined();
+
+    live = state({ "new-mod": { attributes: { modId: 187578, fileId: 799404 } } });
+    expect(read("new-mod")).toEqual({
+      nexusModId: 187578,
+      nexusFileId: 799404,
+    });
   });
 });

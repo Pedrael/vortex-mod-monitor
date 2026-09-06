@@ -656,7 +656,9 @@ function CuratorBody(): JSX.Element {
           gameId: game,
           nexusModId: candidate.mod.nexusModId!,
           toFileId: candidate.toFileId,
-          readInstalled: installedIdentityReader(api.getState(), game),
+          // The getter, never a snapshot: the mod being waited for does
+          // not exist in any state captured before the update started.
+          readInstalled: installedIdentityReader(() => api.getState(), game),
           start: () => {
             /**
              * ─── THE LAST ARGUMENT IS A DISCRIMINATOR, NOT A LABEL ──────

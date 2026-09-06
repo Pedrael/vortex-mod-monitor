@@ -32,6 +32,8 @@
 
 import type { types } from "@nexusmods/vortex-api";
 
+import { ehLog } from "../logging/ehLog";
+
 /** Minimal event surface, so the waiter is testable without Vortex. */
 export type InstallEvents = {
   on: (event: string, handler: (...args: unknown[]) => void) => void;
@@ -110,8 +112,18 @@ export function updateOneAndWait(input: UpdateOneInput): Promise<string> {
         installed?.nexusModId !== nexusModId ||
         installed?.nexusFileId !== toFileId
       ) {
+        // Logged, because a REJECTED event is the whole failure mode here and
+        // it used to look identical to no event at all. When the reader was
+        // handed a stale snapshot this fired for the right mod every time,
+        // with both ids undefined, and nothing anywhere said so.
+        ehLog("debug", "update.install-event.ignored", {
+          vortexModId,
+          want: { nexusModId, fileId: toFileId },
+          saw: installed ?? null,
+        });
         return;
       }
+      ehLog("info", "update.install-event.matched", { vortexModId });
       finish(() => resolve(vortexModId));
     }
 
@@ -140,6 +152,7 @@ export function updateOneAndWait(input: UpdateOneInput): Promise<string> {
         ),
       );
     }, timeoutMs);
+    ehLog("debug", "update.waiting", { nexusModId, toFileId, timeoutMs });
 
     try {
       start();
@@ -149,14 +162,30 @@ export function updateOneAndWait(input: UpdateOneInput): Promise<string> {
   });
 }
 
-/** Read the Nexus identity Vortex recorded for a mod it just installed. */
+/**
+ * ──────────────────────────────────────────────────────────────────────
+ * Read the Nexus identity Vortex recorded for a mod it just installed.
+ *
+ * ─── IT TAKES A GETTER, NOT A STATE, AND THAT IS THE POINT ─────────────
+ * This used to take `types.IState`, and the caller passed `api.getState()`
+ * while building the run — one snapshot, captured BEFORE the first update
+ * started. Redux state is immutable, so every later lookup searched a state
+ * in which the newly installed mod did not exist yet. The identity check
+ * failed on a mod Vortex had genuinely just installed, `did-install-mod` was
+ * discarded as somebody else's, and the waiter sat out its full fifteen
+ * minutes with one mod updated and the run stopped dead behind it.
+ *
+ * A getter cannot be stale. Passing a snapshot is now a compile error rather
+ * than a bulk update that silently does one mod.
+ * ──────────────────────────────────────────────────────────────────────
+ */
 export function installedIdentityReader(
-  state: types.IState,
+  getState: () => types.IState,
   gameId: string,
 ): (vortexModId: string) => { nexusModId?: number; nexusFileId?: number } | undefined {
   return (vortexModId) => {
     const mod = (
-      state as unknown as {
+      getState() as unknown as {
         persistent?: {
           mods?: Record<string, Record<string, { attributes?: Record<string, unknown> }>>;
         };
