@@ -17,6 +17,14 @@ import {
   type HealthReceiptView,
 } from "./health";
 
+/**
+ * Plugin-order fixtures now carry `enabled`, because the check compares
+ * enabled plugins only — that is the whole reason it stopped calling every
+ * healthy install "drifted".
+ */
+const on = (...names: string[]): { name: string; enabled: boolean }[] =>
+  names.map((name) => ({ name, enabled: true }));
+
 const receipt = (over: Partial<HealthReceiptView> = {}): HealthReceiptView => ({
   packageName: "Ivy 2",
   packageVersion: "1.0.10",
@@ -28,7 +36,7 @@ const receipt = (over: Partial<HealthReceiptView> = {}): HealthReceiptView => ({
   ],
   rulesApplication: {
     appliedRuleCount: 291,
-    baselinePluginOrder: ["a.esp", "b.esp", "c.esp"],
+    baselinePluginOrder: on("a.esp", "b.esp", "c.esp"),
   },
   userlistApplication: { appliedRuleCount: 29 },
   ...over,
@@ -40,7 +48,7 @@ const healthy = (over: Partial<HealthObservations> = {}): HealthObservations => 
   installedModIds: ["m1", "m2", "m3"],
   enabledModIds: ["m1", "m2", "m3"],
   driftedCompareKeys: [],
-  currentPluginOrder: ["a.esp", "b.esp", "c.esp"],
+  currentPluginOrder: on("a.esp", "b.esp", "c.esp"),
   currentModRuleCount: 291,
   currentUserlistRuleCount: 29,
   ...over,
@@ -90,24 +98,62 @@ describe("evaluateHealth", () => {
     expect(overallHealth(checks).status).toBe("drifted");
   });
 
+  it("is HEALTHY when the user simply has plugins of their own", () => {
+    /**
+     * The false positive that made this check useless. It bailed on
+     * `a.length !== b.length` and reported "The order has 431 plugins; the
+     * curator's had 412" — on an install that reproduced perfectly. Every
+     * real profile has extra plugins, so it was red on every real machine,
+     * which trains people to ignore the one diagnostic that matters.
+     */
+    const checks = evaluateHealth(
+      receipt(),
+      healthy({
+        currentPluginOrder: on("a.esp", "mine1.esp", "b.esp", "mine2.esp", "c.esp"),
+      }),
+    );
+    expect(byId(checks, "plugin-order").status).toBe("healthy");
+  });
+
+  it("ignores a disabled plugin sitting in the middle of the file", () => {
+    // plugins.txt lists disabled plugins too; one loads nothing and takes no
+    // slot, so its position cannot be drift.
+    const checks = evaluateHealth(
+      receipt(),
+      healthy({
+        currentPluginOrder: [
+          { name: "a.esp", enabled: true },
+          { name: "off.esp", enabled: false },
+          { name: "b.esp", enabled: true },
+          { name: "c.esp", enabled: true },
+        ],
+      }),
+    );
+    expect(byId(checks, "plugin-order").status).toBe("healthy");
+  });
+
   it("ignores plugin-order casing, which is not stable across machines", () => {
     const checks = evaluateHealth(
       receipt(),
-      healthy({ currentPluginOrder: ["A.esp", "B.ESP", "c.esp"] }),
+      healthy({ currentPluginOrder: on("A.esp", "B.ESP", "c.esp") }),
     );
     // Case-sensitive comparison would report drift on every entry and make
     // this check useless.
     expect(byId(checks, "plugin-order").status).toBe("healthy");
   });
 
-  it("names where the plugin order first diverges", () => {
+  it("names which plugin is out of place, not which index differs", () => {
+    // An absolute position is meaningless once the user has plugins of their
+    // own — every index after the first extra one shifts. The actionable
+    // fact is which plugin should load after which.
     const checks = evaluateHealth(
       receipt(),
-      healthy({ currentPluginOrder: ["a.esp", "c.esp", "b.esp"] }),
+      healthy({ currentPluginOrder: on("a.esp", "c.esp", "b.esp") }),
     );
     const c = byId(checks, "plugin-order");
     expect(c.status).toBe("drifted");
-    expect(c.summary).toMatch(/position 2/);
+    expect(c.summary).toMatch(/1 of 3 shared plugins/);
+    expect(c.detail.join(" ")).toMatch(/"c.esp" should load after "b.esp"/);
     expect(c.heal?.action).toBe("repin-plugin-order");
   });
 

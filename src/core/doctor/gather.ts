@@ -124,12 +124,14 @@ export async function gatherObservations(
       import("../userlist"),
     ]);
 
-  let currentPluginOrder: string[] | undefined;
+  // Keeps `enabled`. Flattening to names here is what forced the health
+  // check to compare positions blind and call every healthy install drifted.
+  let currentPluginOrder: { name: string; enabled: boolean }[] | undefined;
   try {
     const entries = await readUserPluginsTxt(gameId);
     // undefined means "this game has no plugins.txt", which the check renders
     // as not-applicable rather than as a problem.
-    currentPluginOrder = entries?.map((e) => e.name);
+    currentPluginOrder = entries?.map((e) => ({ name: e.name, enabled: e.enabled }));
   } catch (err) {
     // Swallowed on purpose (see file header) — but silence here is exactly
     // what makes "no plugins.txt" indistinguishable from "could not read it".

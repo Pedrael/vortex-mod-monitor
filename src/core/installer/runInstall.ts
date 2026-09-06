@@ -2024,7 +2024,7 @@ async function runInstallImpl(ctx: DriverContext): Promise<InstallResult> {
     ehLog("info", "plugins.order-applied", {
       pinned: pluginOrderApplication.pinned,
       sorted: pluginOrderApplication.sorted,
-      written: pluginOrderApplication.written,
+      writeRequested: pluginOrderApplication.writeRequested,
       enabledCorrections: pluginOrderApplication.enabledCorrections,
       notes: pluginOrderApplication.notes,
     });
@@ -2083,10 +2083,24 @@ async function runInstallImpl(ctx: DriverContext): Promise<InstallResult> {
           plan.manifest.plugins.order,
           actual,
         );
-        // The numbers reach the user through the notice below; this line is
-        // for a support conversation about someone else's machine, where
-        // "misordered: 0 of 412" and "misordered: 118 of 412" are very
-        // different stories and neither is visible after the fact.
+        /**
+         * ─── THE ONE NUMBER THAT SAYS WHETHER REPRODUCTION WORKED ───────
+         * This comment used to say the line was "for a support conversation
+         * about someone else's machine" — and then called `reportProgress`,
+         * which is `ctx.onProgress?.()` and nothing else. Both consumers put
+         * it in transient UI, so the next progress event overwrote it and it
+         * was gone. The APPLY step logged fine, so the log said the order was
+         * pinned, sorted and written, and never said whether it came out
+         * right: exactly the "the file has the same lines" versus "the setup
+         * reproduced" gap, on the wrong side of the log-alone rule.
+         */
+        ehLog("info", "plugins.order-drift", {
+          compared: pluginOrderDrift.compared,
+          misordered: pluginOrderDrift.misordered.length,
+          missing: pluginOrderDrift.missing.length,
+          extra: pluginOrderDrift.extra.length,
+          examples: pluginOrderDrift.misordered.slice(0, 5).map((m) => m.name),
+        });
         reportProgress(
           "deploying",
           1,
@@ -2094,10 +2108,22 @@ async function runInstallImpl(ctx: DriverContext): Promise<InstallResult> {
           `Load order: ${pluginOrderDrift.misordered.length} of ` +
             `${pluginOrderDrift.compared} plugins differ from the curator's.`,
         );
+      } else {
+        // Distinct from "0 of 412 drifted". Without this the log cannot tell
+        // a clean order from a check that never ran.
+        ehLog("info", "plugins.order-drift.not-checked", {
+          gameId: plan.manifest.game.id,
+          why: "this game has no plugins.txt we can read",
+        });
       }
-    } catch {
+    } catch (err) {
       // A plugins.txt we cannot read is not a reason to fail an install that
-      // otherwise succeeded — it only means this one check has no answer.
+      // otherwise succeeded — it only means this one check has no answer. But
+      // silence here reads identically to "no drift", so say which it was.
+      ehLog("warn", "plugins.order-drift.unreadable", {
+        gameId: plan.manifest.game.id,
+        err,
+      });
     }
 
     // Final sweep, at the same point Vortex's own collection post-processing

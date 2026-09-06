@@ -182,7 +182,7 @@ describe("pinning the curator's order", () => {
   it("reports success by saying nothing at all", async () => {
     const { api } = fakeApi("ok");
     const result = await run(api);
-    expect(result).toMatchObject({ pinned: true, sorted: true, written: true });
+    expect(result).toMatchObject({ pinned: true, sorted: true, writeRequested: true });
     expect(describePluginOrderApplication(result)).toBeUndefined();
   });
 });
@@ -200,7 +200,7 @@ describe("when LOOT will not sort", () => {
 
     expect(result.pinned).toBe(true);
     expect(result.sorted).toBe(false);
-    expect(result.written).toBe(true); // <- the load-bearing assertion
+    expect(result.writeRequested).toBe(true); // <- the load-bearing assertion
     expect(emits.some((e) => e.event === "collection-postprocess-complete")).toBe(
       true,
     );
@@ -214,7 +214,7 @@ describe("when LOOT will not sort", () => {
     const result = await run(api, { sortTimeoutMs: 30 });
 
     expect(result.sorted).toBe(false);
-    expect(result.written).toBe(true);
+    expect(result.writeRequested).toBe(true);
     expect(result.notes.join(" ")).toMatch(/did not finish sorting/i);
   });
 

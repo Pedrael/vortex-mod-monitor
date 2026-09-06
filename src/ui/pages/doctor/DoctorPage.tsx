@@ -71,7 +71,14 @@ function toHealthView(receipt: InstallReceipt): HealthReceiptView {
               ? { appliedRuleCount: receipt.rulesApplication.appliedRuleCount }
               : {}),
             ...(baseline !== undefined
-              ? { baselinePluginOrder: baseline.map((e) => e.name) }
+              ? {
+                  // `enabled` travels with the name: the health check compares
+                  // enabled plugins only, and cannot do that from a string[].
+                  baselinePluginOrder: baseline.map((e) => ({
+                    name: e.name,
+                    enabled: e.enabled,
+                  })),
+                }
               : {}),
           },
         }

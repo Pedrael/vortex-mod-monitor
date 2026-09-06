@@ -71,8 +71,21 @@ export type PluginOrderApplication = {
   pinned: boolean;
   /** LOOT ran and integrated plugins outside the collection. */
   sorted: boolean;
-  /** Vortex was asked to flush the order to plugins.txt. */
-  written: boolean;
+  /**
+   * ─── ASKED, NOT CONFIRMED ───────────────────────────────────────────
+   * `events.emit` is fire-and-forget, so this is set on the absence of a
+   * synchronous throw and means "Vortex was asked to flush the order to
+   * plugins.txt" — nothing more. It was named `written`, and every consumer
+   * read it as an outcome: the notice stayed silent on
+   * `pinned && sorted && written`, and Doctor's heal reported "Restored the
+   * recorded order" on `pinned` alone.
+   *
+   * Renamed so the name cannot be misread. The driver confirms separately by
+   * reading plugins.txt off disk — `readUserPluginsTxt`, which exists a few
+   * lines later and whose own docblock says the point is to compare against
+   * reality rather than against what state believes reality to be.
+   */
+  writeRequested: boolean;
   /** Plugins whose enabled state was corrected to match the curator's. */
   enabledCorrections: number;
   /** Why a step did not happen. Never silent. */
@@ -101,7 +114,7 @@ export async function applyPluginOrder(
   const result: PluginOrderApplication = {
     pinned: false,
     sorted: false,
-    written: false,
+    writeRequested: false,
     enabledCorrections: 0,
     notes: [],
   };
@@ -220,7 +233,7 @@ export async function applyPluginOrder(
       input.gameId,
       input.collectionId,
     );
-    result.written = true;
+    result.writeRequested = true;
     ehLog("debug", "plugin-order.write.ok", {});
   } catch (err) {
     result.notes.push(
@@ -236,7 +249,7 @@ export async function applyPluginOrder(
   op.ok({
     pinned: result.pinned,
     sorted: result.sorted,
-    written: result.written,
+    writeRequested: result.writeRequested,
     enabledCorrections: result.enabledCorrections,
     notes: result.notes.length,
   });
@@ -358,7 +371,7 @@ function dispatchRaw(
 export function describePluginOrderApplication(
   result: PluginOrderApplication,
 ): string[] | undefined {
-  if (result.pinned && result.sorted && result.written) return undefined;
+  if (result.pinned && result.sorted && result.writeRequested) return undefined;
   if (!result.pinned && result.notes.length === 0) return undefined;
 
   const lines: string[] = [];
@@ -367,7 +380,7 @@ export function describePluginOrderApplication(
       `The collection's plugin order could not be applied, so your existing ` +
         `order is unchanged.`,
     );
-  } else if (!result.written) {
+  } else if (!result.writeRequested) {
     lines.push(
       `The collection's plugin order was set in Vortex but may not have been ` +
         `written to plugins.txt. Sorting plugins in Vortex once will save it.`,

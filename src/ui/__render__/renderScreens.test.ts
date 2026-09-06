@@ -341,7 +341,9 @@ describe("render", () => {
         })),
         rulesApplication: {
           appliedRuleCount: 291,
-          baselinePluginOrder: ["a.esp", "b.esp", "c.esp", "d.esp"],
+          baselinePluginOrder: ["a.esp", "b.esp", "c.esp", "d.esp"].map(
+            (name) => ({ name, enabled: true }),
+          ),
         },
         userlistApplication: { appliedRuleCount: 29 },
       },
@@ -352,7 +354,10 @@ describe("render", () => {
         installedModIds: Array.from({ length: 960 }, (_, i) => `m${i}`),
         enabledModIds: Array.from({ length: 958 }, (_, i) => `m${i}`),
         driftedCompareKeys: ["nexus:5:5", "nexus:9:9"],
-        currentPluginOrder: ["a.esp", "c.esp", "b.esp", "d.esp"],
+        currentPluginOrder: ["a.esp", "c.esp", "b.esp", "d.esp"].map((name) => ({
+          name,
+          enabled: true,
+        })),
         currentModRuleCount: 280,
         currentUserlistRuleCount: 29,
       },
@@ -391,7 +396,9 @@ describe("render", () => {
         })),
         rulesApplication: {
           appliedRuleCount: 291,
-          baselinePluginOrder: ["a.esp", "b.esp", "c.esp", "d.esp"],
+          baselinePluginOrder: ["a.esp", "b.esp", "c.esp", "d.esp"].map(
+            (name) => ({ name, enabled: true }),
+          ),
         },
         userlistApplication: { appliedRuleCount: 29 },
       },
@@ -401,7 +408,10 @@ describe("render", () => {
         installedModIds: Array.from({ length: 960 }, (_, i) => `m${i}`),
         enabledModIds: Array.from({ length: 958 }, (_, i) => `m${i}`),
         driftedCompareKeys: ["nexus:5:5", "nexus:9:9"],
-        currentPluginOrder: ["a.esp", "c.esp", "b.esp", "d.esp"],
+        currentPluginOrder: ["a.esp", "c.esp", "b.esp", "d.esp"].map((name) => ({
+          name,
+          enabled: true,
+        })),
         currentModRuleCount: 280,
         currentUserlistRuleCount: 29,
       },
@@ -441,7 +451,9 @@ describe("render", () => {
         })),
         rulesApplication: {
           appliedRuleCount: 291,
-          baselinePluginOrder: ["a.esp", "b.esp", "c.esp", "d.esp"],
+          baselinePluginOrder: ["a.esp", "b.esp", "c.esp", "d.esp"].map(
+            (name) => ({ name, enabled: true }),
+          ),
         },
         userlistApplication: { appliedRuleCount: 29 },
       },
@@ -451,7 +463,10 @@ describe("render", () => {
         installedModIds: Array.from({ length: 960 }, (_, i) => `m${i}`),
         enabledModIds: Array.from({ length: 960 }, (_, i) => `m${i}`),
         driftedCompareKeys: undefined,
-        currentPluginOrder: ["a.esp", "c.esp", "b.esp", "d.esp"],
+        currentPluginOrder: ["a.esp", "c.esp", "b.esp", "d.esp"].map((name) => ({
+          name,
+          enabled: true,
+        })),
         currentModRuleCount: 291,
         currentUserlistRuleCount: 29,
       },

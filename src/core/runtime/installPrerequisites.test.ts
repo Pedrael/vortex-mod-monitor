@@ -71,7 +71,7 @@ describe("installPrerequisites", () => {
     const results = await installPrerequisites([vcx64], deps());
     expect(results[0]?.verdict).toEqual({ kind: "installed" });
     expect(results[0]?.verified).toBeUndefined();
-    expect(summarisePrereqResults(results).fixed).toBe(false);
+    expect(summarisePrereqResults(results, true).fixed).toBe(false);
   });
 
   it("reports a fix only when the probe says so afterwards", async () => {
@@ -79,7 +79,7 @@ describe("installPrerequisites", () => {
     const results = await installPrerequisites([vcx64], deps({ verify }));
     expect(verify).toHaveBeenCalledTimes(1);
     expect(results[0]?.verified).toBe(true);
-    expect(summarisePrereqResults(results).fixed).toBe(true);
+    expect(summarisePrereqResults(results, true).fixed).toBe(true);
   });
 
   it("distinguishes 'installed but still broken' from success and failure", async () => {
@@ -87,10 +87,51 @@ describe("installPrerequisites", () => {
       [vcx64],
       deps({ verify: vi.fn().mockResolvedValue(false) }),
     );
-    const summary = summarisePrereqResults(results);
+    // ON WINE the remaining suspect is the Proton build.
+    const onWine = summarisePrereqResults(results, true);
+    expect(onWine.fixed).toBe(false);
+    expect(onWine.message).toMatch(/Proton version/);
+
+    // ON WINDOWS it is not, and telling someone to change a Proton version
+    // they do not have is worse than saying nothing.
+    const onWindows = summarisePrereqResults(results, false);
+    expect(onWindows.fixed).toBe(false);
+    expect(onWindows.message).not.toMatch(/Proton/);
+    expect(onWindows.message).toMatch(/Restarting Vortex/);
+  });
+
+  it("blames the reboot, not Proton, when a runtime needs one", async () => {
+    /**
+     * 3010 is what vc_redist returns when its files are in use — and Vortex
+     * is running and holding them, so this is the common case. The verdict is
+     * good, the probe legitimately still fails, and the old code read that as
+     * "the install did not help" and sent Windows users after Proton.
+     */
+    const results = await installPrerequisites(
+      [vcx64],
+      deps({ run: vi.fn().mockResolvedValue(3010), verify: vi.fn().mockResolvedValue(false) }),
+    );
+    expect(results[0]?.verdict.kind).toBe("needs-reboot");
+    for (const onWine of [true, false]) {
+      const summary = summarisePrereqResults(results, onWine);
+      expect(summary.fixed).toBe(false);
+      expect(summary.message).toMatch(/restart/i);
+      expect(summary.message).not.toMatch(/Proton/);
+    }
+  });
+
+  it("names administrator rights when the elevation prompt was refused", async () => {
+    // 1602 is a dismissed UAC dialog, which can appear behind Vortex. It had
+    // no arm of its own, so the user was told "the installers did not
+    // complete" with no hint at what to do about it.
+    const results = await installPrerequisites(
+      [vcx64],
+      deps({ run: vi.fn().mockResolvedValue(1602) }),
+    );
+    expect(results[0]?.verdict.kind).toBe("cancelled");
+    const summary = summarisePrereqResults(results, false);
     expect(summary.fixed).toBe(false);
-    // The useful part: it redirects to the actual remaining suspect.
-    expect(summary.message).toMatch(/Proton version/);
+    expect(summary.message).toMatch(/administrator/i);
   });
 
   it("stops once the problem is verified fixed", async () => {

@@ -161,6 +161,17 @@ export type WizardAction =
       type: "plan-ready";
       bundle: PreviewBundle;
     }
+  /**
+   * The extractor repair worked, so the reason the gate was closed is gone.
+   *
+   * `extractorBlocked` is a SNAPSHOT taken during loading. Nothing cleared it
+   * and the repair never re-ran the preflight, so a successful repair left
+   * the gate firing off stale evidence forever — the dialog said the
+   * extractor works now, Install re-fired the same error, and repeating the
+   * repair reported already-current and said the same encouraging thing
+   * again. Only re-picking the file escaped it, and nothing said so.
+   */
+  | { type: "extractor-unblocked" }
   | {
       type: "open-decisions";
       bundle: PreviewBundle;
@@ -246,6 +257,13 @@ export function wizardReducer(
         receipt: action.receipt,
         appDataPath: action.appDataPath,
       };
+    case "extractor-unblocked": {
+      // Only meaningful where a bundle exists; every other state has no gate.
+      if (!("bundle" in state)) return state;
+      if (state.bundle.extractorBlocked === undefined) return state;
+      const { extractorBlocked: _cleared, ...rest } = state.bundle;
+      return { ...state, bundle: rest } as WizardState;
+    }
     case "plan-ready":
       return { kind: "preview", bundle: action.bundle };
     case "open-decisions":

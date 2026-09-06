@@ -29,6 +29,10 @@
 
 /** Which aspect of the collection a check covers. */
 import type { FomodReplayMode } from "../installer/fomodReplayMode";
+import {
+  comparePluginOrder,
+  type PluginOrderEntry,
+} from "../installer/checkPluginOrder";
 
 export type HealthCheckId =
   | "profile"
@@ -93,8 +97,14 @@ export interface HealthObservations {
    * (the deep scan is opt-in because it hashes real bytes).
    */
   driftedCompareKeys: readonly string[] | undefined;
-  /** Current plugins.txt order, or undefined when the game has none. */
-  currentPluginOrder: readonly string[] | undefined;
+  /**
+   * Current plugins.txt order, or undefined when the game has none.
+   *
+   * Carries `enabled`, and must: a disabled plugin occupies a line in the
+   * file and changes nothing about what loads, so a comparison that cannot
+   * see the flag has to treat every one of them as a positional difference.
+   */
+  currentPluginOrder: readonly PluginOrderEntry[] | undefined;
   /** Mod rules currently set for this game, counted. */
   currentModRuleCount: number | undefined;
   /** LOOT userlist rules currently set, counted. */
@@ -109,7 +119,7 @@ export interface HealthReceiptView {
   mods: ReadonlyArray<{ vortexModId: string; compareKey: string; name: string }>;
   rulesApplication?: {
     appliedRuleCount?: number;
-    baselinePluginOrder?: readonly string[];
+    baselinePluginOrder?: readonly PluginOrderEntry[];
   };
   userlistApplication?: { appliedRuleCount?: number };
   /**
@@ -132,25 +142,6 @@ function detailList(names: readonly string[]): string[] {
   ];
 }
 
-/**
- * Compare two plugin orders, ignoring case.
- *
- * plugins.txt casing is not stable across machines or Vortex versions, so a
- * case-sensitive comparison reports drift on every single entry and makes the
- * check useless.
- */
-function orderMatches(
-  a: readonly string[],
-  b: readonly string[],
-): { same: boolean; firstDivergence?: number } {
-  if (a.length !== b.length) return { same: false, firstDivergence: 0 };
-  for (let i = 0; i < a.length; i += 1) {
-    if ((a[i] ?? "").toLowerCase() !== (b[i] ?? "").toLowerCase()) {
-      return { same: false, firstDivergence: i };
-    }
-  }
-  return { same: true };
-}
 
 /**
  * Diagnose. Pure — every Vortex read happens in the caller.
@@ -311,28 +302,50 @@ export function evaluateHealth(
       affectedCount: 0,
     });
   } else {
-    const cmp = orderMatches(baseline, obs.currentPluginOrder);
+    /**
+     * ─── ONE DEFINITION OF "THE ORDER MATCHES" ──────────────────────────
+     * This used to be a local `orderMatches` that bailed on
+     * `a.length !== b.length` and then compared index by index. Fed the
+     * curator's FULL baseline against the user's FULL plugins.txt, on a real
+     * profile those lengths always differ — the user has their own plugins —
+     * so it reported "drifted" on installs that reproduced perfectly, with a
+     * summary quoting two plugin counts as though that were the finding.
+     *
+     * `comparePluginOrder` is the same question answered properly, and its
+     * three choices are each argued where it lives: compare only ENABLED
+     * plugins, compare only the SHARED subset, and compare RELATIVE sequence
+     * rather than absolute index. The user's own extra plugins are not a
+     * fault; a disabled plugin's position is not a fault.
+     *
+     * A diagnostic that is red on healthy machines teaches people to ignore
+     * it, which is the expensive direction for a tool nobody can inspect.
+     */
+    const drift = comparePluginOrder(baseline, obs.currentPluginOrder);
+    const same = drift.misordered.length === 0 && drift.missing.length === 0;
     checks.push({
       id: "plugin-order",
       title: "Plugin order",
-      status: cmp.same ? "healthy" : "drifted",
-      summary: cmp.same
-        ? `All ${baseline.length} plugins are in the order the curator had.`
-        : baseline.length !== obs.currentPluginOrder.length
-          ? `The order has ${obs.currentPluginOrder.length} plugins; the curator's had ${baseline.length}.`
-          : `The order diverges from the curator's at position ${(cmp.firstDivergence ?? 0) + 1}.`,
-      detail: cmp.same
+      status: same ? "healthy" : "drifted",
+      summary: same
+        ? `All ${drift.compared} shared plugins load in the order the ` +
+          `curator had.`
+        : drift.misordered.length > 0
+          ? `${drift.misordered.length} of ${drift.compared} shared plugins ` +
+            `load in a different order than the curator had.`
+          : `${drift.missing.length} plugin(s) the curator enabled are not ` +
+            `enabled here.`,
+      detail: same
         ? []
         : [
-            `Curator: …${baseline
-              .slice(Math.max(0, (cmp.firstDivergence ?? 0) - 1), (cmp.firstDivergence ?? 0) + 3)
-              .join(", ")}…`,
-            `Yours:   …${obs.currentPluginOrder
-              .slice(Math.max(0, (cmp.firstDivergence ?? 0) - 1), (cmp.firstDivergence ?? 0) + 3)
-              .join(", ")}…`,
+            ...drift.misordered
+              .slice(0, 4)
+              .map((m) => `"${m.name}" should load after "${m.expectedAfter}"`),
+            ...(drift.missing.length > 0
+              ? [`Not present or not enabled: ${drift.missing.slice(0, 4).join(", ")}`]
+              : []),
           ],
-      affectedCount: cmp.same ? 0 : 1,
-      ...(cmp.same
+      affectedCount: same ? 0 : drift.misordered.length + drift.missing.length,
+      ...(same
         ? {}
         : {
             heal: {

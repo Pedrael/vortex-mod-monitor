@@ -28,18 +28,42 @@ import type { InstallPrereqDeps } from "./installPrerequisites";
 const MIN_PLAUSIBLE_BYTES = 100_000;
 const MAX_REDIRECTS = 8;
 
+/**
+ * ─── A SOCKET THAT GOES QUIET IS THE FAILURE THIS PATH ACTUALLY HAS ────
+ * Node sets no default socket timeout, so a stalled CDN connection left the
+ * promise pending forever: a permanent "Downloading…" notification with no
+ * cancel, and a log that recorded `prerequisites.download.start` and then
+ * nothing at all — `beginOp` left open with neither ok nor fail. Against
+ * "diagnosable from the log alone", that is the worst shape available.
+ *
+ * `.on("error")` does not cover it: a stalled socket is open and silent, not
+ * errored. Two separate limits, because they catch different things — a
+ * connection that never establishes, and a transfer that dies mid-stream.
+ */
+const CONNECT_TIMEOUT_MS = 30_000;
+const STALL_TIMEOUT_MS = 60_000;
+
 function download(
   url: string,
   destPath: string,
   onBytes?: (received: number, total: number | undefined) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (err?: Error): void => {
+      if (settled) return;
+      settled = true;
+      if (err) reject(err);
+      else resolve();
+    };
+
     const go = (current: string, hops: number): void => {
       if (hops > MAX_REDIRECTS) {
-        reject(new Error(`Too many redirects fetching ${url}`));
+        finish(new Error(`Too many redirects fetching ${url}`));
         return;
       }
-      https
+      const req = https
         .get(current, { headers: { "User-Agent": "EventHorizon" } }, (res) => {
           const status = res.statusCode ?? 0;
           const location = res.headers.location;
@@ -59,18 +83,42 @@ function download(
             typeof totalHeader === "string" ? Number(totalHeader) : undefined;
           let received = 0;
 
+          // Past the headers, so the connect budget is spent; from here the
+          // question is whether bytes keep arriving.
+          req.setTimeout(0);
+          let stall: ReturnType<typeof setTimeout> | undefined;
+          const armStall = (): void => {
+            if (stall !== undefined) clearTimeout(stall);
+            stall = setTimeout(() => {
+              req.destroy();
+              finish(
+                new Error(
+                  `Download stalled after ${received} bytes from ${current} ` +
+                    `— no data for ${STALL_TIMEOUT_MS / 1000}s.`,
+                ),
+              );
+            }, STALL_TIMEOUT_MS);
+            stall.unref?.();
+          };
+          armStall();
+
           const out = fs.createWriteStream(destPath);
           res.on("data", (chunk: Buffer) => {
             received += chunk.length;
+            armStall();
             onBytes?.(received, total);
           });
+          res.on("close", () => {
+            if (stall !== undefined) clearTimeout(stall);
+          });
           res.pipe(out);
-          out.on("error", reject);
+          out.on("error", finish);
           out.on("finish", () => {
+            if (stall !== undefined) clearTimeout(stall);
             out.close(() => {
               if (received < MIN_PLAUSIBLE_BYTES) {
                 // Almost always an error page saved with an .exe name.
-                reject(
+                finish(
                   new Error(
                     `Downloaded only ${received} bytes from ${current} — that ` +
                       `is not an installer. The link may have moved.`,
@@ -78,12 +126,39 @@ function download(
                 );
                 return;
               }
-              resolve();
+              finish();
             });
           });
         })
-        .on("error", reject);
+        .on("error", finish);
+
+      // The connection itself never opening — a different failure from a
+      // transfer that dies part-way, and the one a dead mirror produces.
+      req.setTimeout(CONNECT_TIMEOUT_MS, () => {
+        req.destroy();
+        finish(
+          new Error(
+            `No response from ${current} within ` +
+              `${CONNECT_TIMEOUT_MS / 1000}s.`,
+          ),
+        );
+      });
+
+      // So the run can be stopped rather than waited out.
+      signal?.addEventListener(
+        "abort",
+        () => {
+          req.destroy();
+          finish(new Error("Cancelled."));
+        },
+        { once: true },
+      );
     };
+
+    if (signal?.aborted === true) {
+      finish(new Error("Cancelled."));
+      return;
+    }
     go(url, 0);
   });
 }

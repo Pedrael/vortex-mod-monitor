@@ -215,7 +215,17 @@ export async function installPrerequisites(
  * could not verify, and an install that demonstrably did not help. Collapsing
  * the last two into "done" is how a repair tool loses people's trust.
  */
-export function summarisePrereqResults(results: readonly PrereqResult[]): {
+export function summarisePrereqResults(
+  results: readonly PrereqResult[],
+  /**
+   * Whether this is a Wine/Proton prefix.
+   *
+   * Required, not optional: the Proton advice below was previously given to
+   * everyone, including Windows users who have no Proton version to change.
+   * A default would let a caller reintroduce that silently.
+   */
+  onWine: boolean,
+): {
   fixed: boolean;
   message: string;
 } {
@@ -236,12 +246,34 @@ export function summarisePrereqResults(results: readonly PrereqResult[]): {
       .filter((r) => verdictIsGood(r.verdict))
       .map((r) => r.name)
       .join(", ");
+
+    /**
+     * ─── A RUNTIME AWAITING A REBOOT IS NOT EVIDENCE ABOUT PROTON ──────
+     * `vc_redist` returns 3010 when its files are in use — and Vortex is
+     * running and holding them, so this is the ordinary case, not an edge.
+     * The verdict is `needs-reboot`, `verdictIsGood` accepts it, the probe
+     * then legitimately still fails because the runtime is not active yet,
+     * and the old code read that as "the install did not help".
+     */
+    if (results.some((r) => r.verdict.kind === "needs-reboot")) {
+      return {
+        fixed: false,
+        message:
+          `${names || "The runtimes"} installed, but Windows needs to restart ` +
+          `before they take effect — that is why the extractor still does not ` +
+          `work. Restart, then start the install again.`,
+      };
+    }
+
     return {
       fixed: false,
-      message:
-        `${names || "The runtimes"} installed, but the extractor still does ` +
-        `not work. That points at the Proton build rather than a missing ` +
-        `runtime — try a different Proton version for the Vortex prefix.`,
+      message: onWine
+        ? `${names || "The runtimes"} installed, but the extractor still does ` +
+          `not work. That points at the Proton build rather than a missing ` +
+          `runtime — try a different Proton version for the Vortex prefix.`
+        : `${names || "The runtimes"} installed, but the extractor still does ` +
+          `not work. Restarting Vortex is worth trying first; if it persists, ` +
+          `Vortex's own 7-Zip is damaged and reinstalling Vortex is the fix.`,
     };
   }
 
@@ -249,10 +281,17 @@ export function summarisePrereqResults(results: readonly PrereqResult[]): {
   if (failures.length === results.length) {
     return {
       fixed: false,
+      // `cancelled` is 1602/1223 — a refused UAC prompt. It had no arm of
+      // its own, so a user who dismissed the elevation dialog was told "the
+      // installers did not complete", with no mention of the reason.
       message: `Nothing installed. ${
-        failures[0]?.verdict.kind === "failed"
-          ? failures[0].verdict.why
-          : "The installers did not complete."
+        failures.every((f) => f.verdict.kind === "cancelled")
+          ? "The elevation prompt was dismissed — these runtimes need " +
+            "administrator rights, and the prompt can appear behind the " +
+            "Vortex window."
+          : failures[0]?.verdict.kind === "failed"
+            ? failures[0].verdict.why
+            : "The installers did not complete."
       }`,
     };
   }

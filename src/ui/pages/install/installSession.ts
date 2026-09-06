@@ -485,7 +485,28 @@ class InstallSession {
       );
 
       api.dismissNotification?.("eh-prereq-repair");
-      const summary = summarisePrereqResults(results);
+      const summary = summarisePrereqResults(results, onWine);
+
+      /**
+       * ─── A REPAIR THAT WORKED HAS TO CLEAR THE GATE IT UNBLOCKED ───────
+       * `extractorBlocked` is written once during loading and read by the
+       * gate in `startInstall`. Nothing cleared it, and the repair never
+       * re-ran the preflight — so the dialog said "Installed, and the
+       * extractor works now. You can start the install.", the user pressed
+       * Install, and the gate fired again off the stale snapshot. Repeating
+       * the repair hit 1638 (already-current), verified true, and printed the
+       * same encouraging sentence forever. The only escape was re-picking the
+       * .ehcoll, which nothing told them about.
+       *
+       * `summary.fixed` is not "the installer exited 0" — it is the 7-Zip
+       * self-test passing afterwards, which is the same probe the gate is
+       * standing on. So when it is true, the gate's reason is gone.
+       */
+      if (summary.fixed) {
+        this.dispatch({ type: "extractor-unblocked" });
+        const { ehLog: log } = await import("../../../core/logging/ehLog");
+        log("info", "prereq.repair.gate-cleared", {});
+      }
 
       const { ehLog } = await import("../../../core/logging/ehLog");
       ehLog(summary.fixed ? "info" : "warn", "prereq.repair", {

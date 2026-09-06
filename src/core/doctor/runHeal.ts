@@ -195,10 +195,28 @@ async function healImpl(
       // applyPluginOrder never throws — a load order it could not set is a
       // worse outcome, not an exception — so the outcome has to be read out
       // of the result rather than assumed from the absence of a throw.
-      return result.written || result.pinned
+      /**
+       * `writeRequested` was named `written`, and this read it as an outcome
+       * — worse, it accepted `pinned` ALONE as proof of a restore, so it
+       * could report success having only put the order into Vortex's state
+       * and never asked for it to reach disk.
+       *
+       * Both are requests, not confirmations. The wording now says what was
+       * actually done, and the qualified sentence is the correct one under
+       * "a false negative is cheaper than a false positive": telling someone
+       * their order is restored when it is not is how they ship a broken
+       * setup believing it is fixed.
+       */
+      return result.writeRequested || result.pinned
         ? {
             kind: "done",
-            summary: `Restored the recorded order for ${order.length} plugins.`,
+            summary: result.writeRequested
+              ? `Set the recorded order for ${order.length} plugins and asked ` +
+                `Vortex to save it. Check the load order looks right before ` +
+                `you launch — Vortex gives no confirmation that it wrote.`
+              : `Set the recorded order for ${order.length} plugins in ` +
+                `Vortex, but could not ask it to save to plugins.txt. It may ` +
+                `not survive until the next deploy.`,
           }
         : {
             kind: "blocked",
