@@ -43,7 +43,12 @@ import {
 } from "../pages/install/steps";
 import { ApiProvider } from "../state/ApiContext";
 import { ToastProvider } from "../components/Toast";
-import { AvailabilityPanel, BuildDiffView, DonePanel } from "../pages/build/BuildPage";
+import {
+  AvailabilityPanel,
+  BuildDiffView,
+  DecisionsGate,
+  DonePanel,
+} from "../pages/build/BuildPage";
 import { summarizeAvailability } from "../../core/build/nexusAvailability";
 import { DraftCard, PublishedCard, RecentlyBuiltCard } from "../pages/build/BuildDashboard";
 import { DashboardBody, Hero } from "../pages/HomePage";
@@ -710,6 +715,56 @@ describe("render", () => {
           onDismiss: () => undefined,
         } as never),
       ),
+    );
+  });
+
+  it.skipIf(!on)("decisions gate - the build held open for an answer", () => {
+    const candidate = (
+      modId: string,
+      modName: string,
+      unexplained: number,
+      files: { path: string; kind: string; delta?: number }[],
+      over: Record<string, unknown> = {},
+    ): unknown => ({
+      modId,
+      modName,
+      unexplained,
+      files,
+      canMirror: true,
+      fingerprint: "fp",
+      reopened: false,
+      ...over,
+    });
+    write(
+      "decisions-gate",
+      React.createElement(ToastProvider, {
+        children: React.createElement(DecisionsGate, {
+          state: {
+            kind: "awaiting-decisions",
+            ctx: { mods: [] },
+            curator: { name: "Meridia Panties", version: "1.0.4" },
+            progress: { phase: "inspecting-mods" },
+            candidates: [
+              candidate("lod", "DynDOLOD Output-1234-3-0-1700000000", 4212, [
+                { path: "meshes/terrain/tamriel/objects/tamriel.4.-32.-32.bto", kind: "added" },
+                { path: "textures/terrain/tamriel/tamriel.4.-32.-32.dds", kind: "added" },
+                { path: "DynDOLOD.esm", kind: "added" },
+              ]),
+              // The re-ask: answered before, and the files moved since.
+              candidate(
+                "aos",
+                "Audio Overhaul for Skyrim (4.1.3)-12466-4-1-3-1683940246",
+                1,
+                [{ path: "Audio Overhaul Skyrim.esp", kind: "changed", delta: -1843 }],
+                { reopened: true },
+              ),
+            ],
+          },
+          onDecide: async () => undefined,
+          onContinue: () => undefined,
+          onCancel: () => undefined,
+        } as never),
+      } as never),
     );
   });
 

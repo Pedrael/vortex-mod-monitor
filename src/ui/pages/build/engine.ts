@@ -46,7 +46,9 @@ import { captureUserlist } from "../../../core/userlist";
 import { getCurrentPluginsTxtPath } from "../../../core/comparePlugins";
 import { buildManifest } from "../../../core/manifest/buildManifest";
 import { captureStagingFiles } from "../../../core/manifest/captureStagingFiles";
-import { runSelfChecks } from "../../../core/manifest/runSelfChecks";
+import { runSelfChecks,
+  findPostProcessingCandidates,
+} from "../../../core/manifest/runSelfChecks";
 import type { MirrorFileSpec } from "../../../core/manifest/packageZip";
 import {
   installRootFor,
@@ -114,6 +116,7 @@ import {
   type ExternalModConfigEntry,
   type PublishedCollectionSummary,
   decidedPostProcessing,
+  modsNewlyBundled,
 } from "../../../core/manifest/collectionConfig";
 import {
   collectExternalHints,
@@ -993,7 +996,21 @@ export async function runBuildPipeline(
   context: BuildContext,
   curator: CuratorInput,
   overrides: BuildOverrides,
-  opts?: { onProgress?: (p: BuildProgress) => void; signal?: AbortSignal },
+  opts?: {
+    onProgress?: (p: BuildProgress) => void;
+    signal?: AbortSignal;
+    /**
+     * Called once, mid-build, when mods need a post-processing decision.
+     *
+     * The build WAITS on this promise. Whatever answers the handler records
+     * into the collection config are picked up when it resolves, so they
+     * apply to the package being built rather than the next one.
+     *
+     * Omit it and the build never pauses — the Done card asks afterwards,
+     * exactly as before.
+     */
+    onDecisions?: (candidates: PostProcessingCandidate[]) => Promise<void>;
+  },
 ): Promise<BuildPipelineResult> {
   const op = beginOp("build.pipeline", {
     gameId: context.gameId,
@@ -1003,6 +1020,7 @@ export async function runBuildPipeline(
   });
   const onProgress = opts?.onProgress;
   const signal = opts?.signal;
+  const onDecisions = opts?.onDecisions;
   const checkAbort = (): void => {
     if (signal?.aborted) {
       throw new AbortError("Build cancelled by user");
@@ -1391,6 +1409,82 @@ export async function runBuildPipeline(
     });
     selfCheckWarnings = selfCheck.warnings;
     postProcessingCandidates = selfCheck.postProcessingCandidates;
+
+    /**
+     * ─── ASK BEFORE PACKING ────────────────────────────────────────────
+     * The question used to be asked on the Done card, after the package was
+     * sealed — so every answer applied to the NEXT build and the curator had
+     * to build twice to ship one decision.
+     *
+     * The answers are written to the config by the caller while this awaits,
+     * so everything after this point has to be re-derived from the config
+     * rather than from what was loaded before the pause.
+     *
+     * Optional: with no handler the build runs exactly as it did, and the
+     * Done card asks. That keeps every other caller — and the harness —
+     * working unchanged.
+     */
+    if (postProcessingCandidates.length > 0 && onDecisions !== undefined) {
+      const configBefore = collectionConfig;
+      await onDecisions(postProcessingCandidates);
+
+      const reloaded = await loadOrCreateCollectionConfig({ configDir, slug });
+      collectionConfig = reloaded.config;
+      mods = applyPostProcessedDeclarations(mods, collectionConfig);
+
+      // "Ship my copy" arrives after bundling has already run, because the
+      // self-check has to come after bundling to mean anything. A second
+      // pass over just the mods that gained the flag is what makes the
+      // answer land in this build instead of the next one.
+      const newlyBundled = modsNewlyBundled(configBefore, collectionConfig);
+      if (newlyBundled.length > 0) {
+        try {
+          const sevenZip = resolveSevenZip();
+          const again = await repackBundledExternals({
+            state,
+            gameId,
+            mods,
+            config: collectionConfig,
+            sevenZip,
+            workDir: repackDir,
+            isExternal: (m) =>
+              shipsAsExternal(isNexusMod(m), collectionConfig.externalMods[m.id]),
+            options: {
+              ...(signal !== undefined ? { signal } : {}),
+              onProgress: (done, total, modName) =>
+                onProgress?.({
+                  phase: "resolving-bundled-archives",
+                  message: `Packing "${modName}" from its staging folder (${done} / ${total})...`,
+                  done,
+                  total,
+                }),
+            },
+          });
+          mods = again.mods;
+          repackedBundles = [...repackedBundles, ...again.bundles];
+          bundleWarnings.push(...again.warnings);
+        } catch (err) {
+          // A failed second pass must not lose the build. The decision is
+          // saved either way and the next build will honour it.
+          bundleWarnings.push(
+            `${newlyBundled.length} mod(s) you chose to ship could not be ` +
+              `packed during this build (${
+                err instanceof Error ? err.message : String(err)
+              }). Your answer is saved — rebuild to include them.`,
+          );
+        }
+      }
+
+      // What is STILL unanswered. Recomputed from the same reports rather
+      // than re-running the check: the staging did not change while the
+      // curator was reading, only what they said about it.
+      postProcessingCandidates = findPostProcessingCandidates(
+        selfCheck.reports,
+        decidedPostProcessing(collectionConfig),
+        selfCheck.mirrorable,
+      );
+    }
+
     selfCheckOp.ok({
       replayed: selfCheck.summary.replayed,
       containment: selfCheck.summary.containment,

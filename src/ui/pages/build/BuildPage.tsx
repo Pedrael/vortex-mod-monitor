@@ -556,6 +556,32 @@ function BuildWizard(props: BuildWizardProps): JSX.Element {
       </div>
     );
   }
+  if (state.kind === "awaiting-decisions") {
+    return (
+      <div className="eh-page">
+        {backToDashboard}
+        <Header stepIndex={stepIndex} stepLabel="Decisions" />
+        <DecisionsGate
+          state={state}
+          onDecide={async (candidate, choice): Promise<void> => {
+            const mod = state.ctx.mods.find((m) => m.id === candidate.modId);
+            await recordPostProcessingDecision({
+              collectionName: state.curator.name,
+              modId: candidate.modId,
+              patch: overrideForChoice(choice, {
+                isNexusMod: mod !== undefined && isNexusMod(mod),
+                ...(candidate.fingerprint !== undefined
+                  ? { fingerprint: candidate.fingerprint }
+                  : {}),
+              }),
+            });
+          }}
+          onContinue={(): void => session.continueAfterDecisions()}
+          onCancel={(): void => session.cancelBuilding()}
+        />
+      </div>
+    );
+  }
   if (state.kind === "done") {
     return (
       <div className="eh-page">
@@ -2716,14 +2742,111 @@ function ExternalModsTable(
  *
  * So the friction is the feature. It costs a minute per mod, once.
  */
+/**
+ * ──────────────────────────────────────────────────────────────────────
+ * The build, held open for an answer.
+ *
+ * Packing has not happened yet, which is the whole point: an answer given
+ * here ships in the package being built. Asked on the Done card it applied to
+ * the NEXT build, so shipping one decision cost two builds.
+ *
+ * Continuing without answering is allowed and says what it costs. The
+ * alternative — refusing to proceed — would trap a curator who wants to think
+ * about it, in the middle of a build they cannot leave.
+ * ──────────────────────────────────────────────────────────────────────
+ */
+export function DecisionsGate(props: {
+  state: Extract<BuildSessionState, { kind: "awaiting-decisions" }>;
+  onDecide: (
+    c: PostProcessingCandidate,
+    choice: PostProcessingChoice,
+  ) => Promise<void>;
+  onContinue: () => void;
+  onCancel: () => void;
+}): JSX.Element {
+  const [decided, setDecided] = React.useState<
+    ReadonlyMap<string, PostProcessingChoice>
+  >(new Map());
+  const [busy, setBusy] = React.useState<string | undefined>(undefined);
+  const { candidates } = props.state;
+  const open = candidates.filter((c) => !decided.has(c.modId));
+
+  return (
+    <Card title="Before this gets packed">
+      <p style={{ margin: "0 0 var(--eh-sp-3)", color: "var(--eh-text-secondary)" }}>
+        The build is waiting here. Whatever you answer goes into the package
+        it is about to make — you do not have to build again.
+      </p>
+
+      <PostProcessingDecisions
+        candidates={candidates}
+        decided={decided}
+        busy={busy}
+        applyMode="this-build"
+        onDecide={(candidate, choice): void => {
+          setBusy(candidate.modId);
+          void (async (): Promise<void> => {
+            try {
+              await props.onDecide(candidate, choice);
+              setDecided((prev) => new Map(prev).set(candidate.modId, choice));
+            } finally {
+              setBusy(undefined);
+            }
+          })();
+        }}
+      />
+
+      <div
+        style={{
+          display: "flex",
+          gap: "var(--eh-sp-2)",
+          marginTop: "var(--eh-sp-3)",
+          flexWrap: "wrap",
+          alignItems: "center",
+        }}
+      >
+        <Button
+          intent="primary"
+          disabled={busy !== undefined}
+          onClick={props.onContinue}
+        >
+          {open.length === 0
+            ? "Continue building"
+            : `Continue with ${open.length} unanswered`}
+        </Button>
+        <Button intent="ghost" disabled={busy !== undefined} onClick={props.onCancel}>
+          Cancel build
+        </Button>
+        {open.length > 0 && (
+          <span style={{ color: "var(--eh-text-secondary)", fontSize: "var(--eh-text-sm)" }}>
+            Unanswered mods ship as they are today — their extra files are
+            recorded as required, and users installing from the archive cannot
+            produce them.
+          </span>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 function PostProcessingDecisions(props: {
   candidates: PostProcessingCandidate[];
   /** Mods already answered in this session, so the list shrinks as they go. */
   decided: ReadonlyMap<string, PostProcessingChoice>;
   busy: string | undefined;
   onDecide: (c: PostProcessingCandidate, choice: PostProcessingChoice) => void;
+  /**
+   * Which package these answers reach.
+   *
+   * Asked mid-build they land in the package being made; asked on the Done
+   * card the package is already sealed and they wait for the next one. The
+   * same component says both, because saying the wrong one is how a curator
+   * ends up believing they shipped a decision they did not.
+   */
+  applyMode?: "this-build" | "next-build";
 }): JSX.Element | null {
   const { candidates, decided, busy, onDecide } = props;
+  const applyMode = props.applyMode ?? "next-build";
   const open = candidates.filter((c) => !decided.has(c.modId));
   if (candidates.length === 0) return null;
 
@@ -2741,7 +2864,10 @@ function PostProcessingDecisions(props: {
     >
       {open.length === 0 ? (
         <strong style={{ color: "var(--eh-text-primary)" }}>
-          All {candidates.length} answered. Build again to apply them.
+          All {candidates.length} answered.{" "}
+          {applyMode === "this-build"
+            ? "They will be applied to this build."
+            : "Build again to apply them."}
         </strong>
       ) : (
         <>

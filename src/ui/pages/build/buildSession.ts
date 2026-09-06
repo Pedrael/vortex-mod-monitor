@@ -202,6 +202,8 @@ export interface BuildErrorRecord {
   phase: "load" | "build";
 }
 
+import type { PostProcessingCandidate } from "../../../core/manifest/runSelfChecks";
+
 export type BuildSessionState =
   | {
       /**
@@ -294,6 +296,26 @@ export type BuildSessionState =
       kind: "building";
       ctx: BuildContext;
       curator: CuratorInput;
+      progress: BuildProgress;
+    }
+  | {
+      /**
+       * Packing is held, waiting on the curator.
+       *
+       * The question about diverged files used to be asked on the Done card,
+       * after the package was sealed — so every answer applied to the NEXT
+       * build. Asked here, the answers land in the package being built.
+       *
+       * A real state rather than a modal for the same reason every other
+       * phase is one: Vortex unmounts a page on a tab switch, and a promise
+       * parked in component state dies with it. The build is still running,
+       * awaiting a resolver held on the session.
+       */
+      kind: "awaiting-decisions";
+      ctx: BuildContext;
+      curator: CuratorInput;
+      candidates: PostProcessingCandidate[];
+      /** What the build was doing when it stopped, for the header. */
       progress: BuildProgress;
     }
   | {
@@ -1124,6 +1146,49 @@ class BuildSession {
    * other sessions hold the slot. Always call `releaseBuild` on the
    * way out so the next queued session is promoted.
    */
+  /**
+   * Resolves the promise the pipeline is parked on.
+   *
+   * Held here rather than in the state: the state is broadcast to every
+   * subscriber and copied into React on each tick, and a function in it would
+   * be both meaningless to a renderer and easy to lose in a spread.
+   */
+  private resumeDecisions?: () => void;
+
+  /**
+   * Let a parked pipeline go, without answering.
+   *
+   * Called on cancel: the abort signal is only checked between steps, and a
+   * pipeline suspended on this promise never reaches one. Resolving lets it
+   * run to the next check and abort there.
+   */
+  private releaseDecisions(): void {
+    const resume = this.resumeDecisions;
+    this.resumeDecisions = undefined;
+    resume?.();
+  }
+
+  /**
+   * The curator is done answering — let the build finish.
+   *
+   * Safe to call when nothing is waiting: a stray click after the build has
+   * already moved on must not throw.
+   */
+  continueAfterDecisions(): void {
+    const resume = this.resumeDecisions;
+    if (resume === undefined) return;
+    this.resumeDecisions = undefined;
+    if (this.state.kind === "awaiting-decisions") {
+      this.setState({
+        kind: "building",
+        ctx: this.state.ctx,
+        curator: this.state.curator,
+        progress: this.state.progress,
+      });
+    }
+    resume();
+  }
+
   private _runBuild(api: types.IExtensionApi): void {
     const input = this.pendingBuildInput;
     if (input === undefined) {
@@ -1168,12 +1233,32 @@ class BuildSession {
             signal: controller.signal,
             onProgress: (progress) => {
               if (this.controller !== controller) return;
+              // While paused, progress from a background step must not
+              // silently return the UI to "building" and swallow the
+              // question the curator is looking at.
               if (this.state.kind !== "building") return;
               this.setState({
                 kind: "building",
                 ctx: input.ctx,
                 curator: input.curator,
                 progress,
+              });
+            },
+            onDecisions: async (candidates): Promise<void> => {
+              if (this.controller !== controller) return;
+              const progress =
+                this.state.kind === "building"
+                  ? this.state.progress
+                  : { phase: "inspecting-mods" as const };
+              await new Promise<void>((resolve) => {
+                this.resumeDecisions = resolve;
+                this.setState({
+                  kind: "awaiting-decisions",
+                  ctx: input.ctx,
+                  curator: input.curator,
+                  candidates,
+                  progress,
+                });
               });
             },
           },
@@ -1240,6 +1325,14 @@ class BuildSession {
       void input; // silence unused
       return;
     }
+    if (this.state.kind === "awaiting-decisions") {
+      // Abort alone would not free it: the signal is only observed between
+      // steps, and a pipeline parked on the decisions promise never reaches
+      // one. Release it first, then abort, and it stops at the next check.
+      this.controller?.abort();
+      this.releaseDecisions();
+      return;
+    }
     if (this.state.kind !== "building") return;
     this.controller?.abort();
   }
@@ -1251,6 +1344,7 @@ class BuildSession {
    */
   reset(): void {
     this.controller?.abort();
+    this.releaseDecisions();
     this.controller = undefined;
     this.setState({ kind: "idle" });
   }

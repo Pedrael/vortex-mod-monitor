@@ -261,6 +261,15 @@ export type SelfCheckRunResult = {
    * curator has not decided about yet. Rendered as a decision, not a warning.
    */
   postProcessingCandidates: PostProcessingCandidate[];
+  /**
+   * Mod ids whose staging carries a hash for every file.
+   *
+   * Returned so a caller that re-derives the candidate list after the curator
+   * answers — a build paused mid-flight — reaches the same verdict about
+   * which mods can be mirrored, instead of quietly offering the choice to a
+   * mod the build cannot honour it for.
+   */
+  mirrorable: ReadonlySet<string>;
 };
 
 /**
@@ -315,6 +324,7 @@ export async function runSelfChecks(
       summary: summarizeSelfChecks([]),
       warnings: [],
       postProcessingCandidates: [],
+      mirrorable: new Set<string>(),
     };
   }
   const readEntry = makeReadEntry(sevenZip);
@@ -527,5 +537,5 @@ export async function runSelfChecks(
       : {}),
   });
 
-  return { reports, summary, warnings, postProcessingCandidates };
+  return { reports, summary, warnings, postProcessingCandidates, mirrorable };
 }

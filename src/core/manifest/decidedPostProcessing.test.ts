@@ -17,7 +17,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { decidedPostProcessing } from "./collectionConfig";
+import { decidedPostProcessing, modsNewlyBundled } from "./collectionConfig";
 import { findPostProcessingCandidates } from "./runSelfChecks";
 import { fingerprintUnexplained } from "./unexplainedFiles";
 import type { CollectionConfig } from "./collectionConfig";
@@ -182,5 +182,62 @@ describe("the fingerprint itself", () => {
 
   it("is empty-stable", () => {
     expect(fingerprintUnexplained([])).toBe(fingerprintUnexplained([]));
+  });
+});
+
+
+describe("an answer given while the build is paused", () => {
+  // Bundling runs BEFORE the self-check, because a bundled mod's archive IS
+  // its staging and comparing them is meaningless. So "ship my copy" —
+  // the right answer for LOD output — arrives after its own repack has
+  // already gone by, and needs a second pass to land in this build.
+  it("names a mod that just gained the bundle flag", () => {
+    expect(
+      modsNewlyBundled(
+        config({ lods: { postProcessed: true } }),
+        config({ lods: { bundled: true } }),
+      ),
+    ).toEqual(["lods"]);
+  });
+
+  it("names a mod that had no entry at all before", () => {
+    expect(modsNewlyBundled(config({}), config({ lods: { bundled: true } }))).toEqual([
+      "lods",
+    ]);
+  });
+
+  it("does NOT re-pack a mod that was already bundled", () => {
+    // It was packed on the first pass. Repacking it would be minutes of
+    // 7z for a file that already exists.
+    expect(
+      modsNewlyBundled(
+        config({ m: { bundled: true } }),
+        config({ m: { bundled: true } }),
+      ),
+    ).toEqual([]);
+  });
+
+  it("ignores answers that need no repack", () => {
+    // `mirrored` and `postProcessed` are consumed after this point, so they
+    // land in the same build with no extra work.
+    expect(
+      modsNewlyBundled(
+        config({}),
+        config({ a: { mirrored: true }, b: { postProcessed: true } }),
+      ),
+    ).toEqual([]);
+  });
+
+  it("returns them in a stable order", () => {
+    expect(
+      modsNewlyBundled(
+        config({}),
+        config({ zeta: { bundled: true }, alpha: { bundled: true } }),
+      ),
+    ).toEqual(["alpha", "zeta"]);
+  });
+
+  it("survives a config with no external mods at all", () => {
+    expect(modsNewlyBundled({} as never, {} as never)).toEqual([]);
   });
 });

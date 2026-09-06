@@ -160,25 +160,40 @@ export function describeChoice(
       consequence:
         `Users still download this mod from Nexus, then the collection puts ` +
         `your version of the ${n} in place — their folder ends up identical ` +
-        `to yours. The package carries this mod's files to do that, so the ` +
-        `download is bigger.`,
+        `to yours. Right when the archive has the file and you changed it: a ` +
+        `plugin you cleaned, an ini you edited. The package carries this ` +
+        `mod's files to do that, so the download is bigger.`,
     };
   }
   if (choice === "declare") {
     return {
       label: "These files are mine — users don't need them",
+      // ─── THE EXAMPLES HERE WERE WRONG, AND WRONG IN THE COSTLY ──────
+      // It used to offer "xLODGen or DynDOLOD output" and "a plugin you
+      // cleaned" as the cases for declaring. Both are the opposite: LOD
+      // output is generated from the curator's EXACT mod list and load
+      // order, nobody installing the collection can regenerate it, and
+      // declaring it ships a world with no LODs. A cleaned plugin declared
+      // means users get the dirty one back. The failure is silent in both
+      // cases — nothing fails, nothing warns, the setup is just quietly not
+      // the one that was promised.
+      //
+      // What actually belongs here is only what a user is NO WORSE OFF
+      // without, so the test is stated that way rather than as a list.
       consequence:
-        `${declareOutcome(n, kinds, fileCount)} Right for xLODGen or DynDOLOD output, a ` +
-        `BA2 you repacked, or a plugin you cleaned: work that belongs to your ` +
-        `machine.`,
+        `${declareOutcome(n, kinds, fileCount)} Right only when they are no ` +
+        `worse off for it — a tool's logs or .bak backups, a cache, an ini ` +
+        `tuned to your hardware. NOT for LOD output or a cleaned plugin: ` +
+        `nobody can regenerate those, and users would silently go without.`,
     };
   }
   return {
     label: "These files matter — ship my copy",
     consequence:
       `Packs your whole staging folder into the collection so users get the ` +
-      `${n} too. Right if you dropped in a patch or an edit the setup needs. ` +
-      `Makes the download bigger by the size of the folder.`,
+      `${n} too. Right for xLODGen or DynDOLOD output — generated from YOUR ` +
+      `exact mod list, so nobody can reproduce it — or a patch you dropped ` +
+      `in. Makes the download bigger by the size of the folder.`,
   };
 }
 

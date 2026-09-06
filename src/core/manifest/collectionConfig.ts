@@ -1022,3 +1022,33 @@ export function decidedPostProcessing(
   }
   return out;
 }
+
+
+/**
+ * ──────────────────────────────────────────────────────────────────────
+ * Mods that became `bundled` while the build was paused for a decision.
+ *
+ * The build's order is load-bearing and cannot simply be rearranged:
+ * bundling repacks a staging folder into an archive, and the self-check that
+ * FINDS diverged files must run after that, because a bundled mod's archive
+ * IS its staging and comparing the two is meaningless.
+ *
+ * So the question is asked after bundling has already happened, and "ship my
+ * copy" — now the right answer for LOD output — arrives too late for its own
+ * repack. This names the mods that need a second pass, so the answer takes
+ * effect in the build the curator is standing in rather than the next one.
+ *
+ * Only ADDITIONS count. A mod that was already bundled was packed on the
+ * first pass, and un-bundling mid-build is not something the screen offers.
+ * ──────────────────────────────────────────────────────────────────────
+ */
+export function modsNewlyBundled(
+  before: CollectionConfig,
+  after: CollectionConfig,
+): string[] {
+  const was = before.externalMods ?? {};
+  const now = after.externalMods ?? {};
+  return Object.keys(now)
+    .filter((id) => now[id]?.bundled === true && was[id]?.bundled !== true)
+    .sort();
+}

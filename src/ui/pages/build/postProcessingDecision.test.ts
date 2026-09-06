@@ -72,12 +72,35 @@ describe("the wording a curator decides from", () => {
   });
 
   it("gives concrete examples of when each is right", () => {
-    // "Is this deliberate?" is answerable with yes by anyone. "Is this xLODGen
-    // output, or a patch you dropped in?" is not.
+    // "Is this deliberate?" is answerable with yes by anyone. "Is this a
+    // tool's log, or LOD output?" is not.
     expect(describeChoice("declare", 3).consequence).toMatch(
-      /xlodgen|dyndolod|repack|clean/i,
+      /log|backup|cache|ini/i,
     );
-    expect(describeChoice("bundle", 3).consequence).toMatch(/patch|needs/i);
+    expect(describeChoice("bundle", 3).consequence).toMatch(/patch|lod/i);
+    expect(describeChoice("mirror", 3).consequence).toMatch(/clean|ini/i);
+  });
+
+  it("never points LOD output at declaring it", () => {
+    // The correction that cost a real collection its LODs. Output from
+    // xLODGen or DynDOLOD is generated from the curator's exact mod list and
+    // load order; a user installing the collection cannot regenerate it, so
+    // declaring it ships a world with no LODs and nothing anywhere says so.
+    const declare = describeChoice("declare", 1608).consequence;
+    expect(declare).not.toMatch(/right for[^.]*(xlodgen|dyndolod)/i);
+    // And it says the opposite out loud, because the wrong answer here is
+    // the one a curator reaches for by default.
+    expect(declare).toMatch(/not for lod/i);
+  });
+
+  it("points LOD output at shipping it instead", () => {
+    expect(describeChoice("bundle", 1608).consequence).toMatch(
+      /xlodgen|dyndolod/i,
+    );
+  });
+
+  it("still says what declaring costs, whichever example is given", () => {
+    expect(describeChoice("declare", 3).consequence).toMatch(/no worse off/i);
   });
 
   it("says bundling costs download size, so the choice is informed", () => {
