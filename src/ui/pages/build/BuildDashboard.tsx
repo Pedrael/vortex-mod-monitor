@@ -78,6 +78,13 @@ import { useApi } from "../../state";
 import type { BuildDraftPayload } from "./buildSession";
 import { getBuildSessionRegistry } from "./buildSessionRegistry";
 import { slugify } from "./engine";
+import {
+  describeProfileDrift,
+  isProfileUnmoved,
+  profileDriftSince,
+  type DriftMod,
+} from "../../../core/curator/profileDrift";
+import { formatRelativeTime } from "../dashboard/data";
 import { getCollectionsDir, getVortexUserDataPath } from "../../../core/paths";
 import {
   loadPublishedDetails,
@@ -114,6 +121,87 @@ interface DashboardState {
 // ───────────────────────────────────────────────────────────────────────
 // Component
 // ───────────────────────────────────────────────────────────────────────
+
+/**
+ * A build that finished during this session, offered back.
+ *
+ * Not a draft card. A finished build has no draft file — it deletes its own
+ * on success — so wearing a draft's clothes gave it a phantom title and a
+ * "discard" button for something that no longer existed. It is a different
+ * thing and says so: what was built, when, and whether the profile it was
+ * measured against still looks the same.
+ *
+ * "Open" costs nothing. The session still holds the mods, the hashes and
+ * every divergence the done screen shows; rebuilding to see them again is
+ * minutes of hashing for a result already in memory.
+ */
+export function RecentlyBuiltCard(props: {
+  built: {
+    name: string;
+    version: string;
+    modCount: number;
+    outputBytes: number;
+    builtAt: number;
+    drift: ReturnType<typeof profileDriftSince>;
+  };
+  onOpen: () => void;
+  onDismiss: () => void;
+}): JSX.Element {
+  const { built } = props;
+  const moved = !isProfileUnmoved(built.drift);
+  return (
+    <div className="eh-card">
+      <div
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          gap: "var(--eh-sp-2)",
+          flexWrap: "wrap",
+        }}
+      >
+        <strong style={{ color: "var(--eh-text-primary)" }}>
+          {built.name}
+        </strong>
+        <span className="eh-muted">v{built.version}</span>
+        <Pill intent="success">built</Pill>
+      </div>
+
+      <div className="eh-muted" style={{ marginTop: "var(--eh-sp-1)" }}>
+        {built.modCount.toLocaleString()} mods ·{" "}
+        {formatBytes(built.outputBytes)} · {formatRelativeTime(built.builtAt)}
+      </div>
+
+      <p
+        style={{
+          margin: "var(--eh-sp-2) 0 0",
+          fontSize: "var(--eh-text-sm)",
+          color: moved ? "var(--eh-warning)" : "var(--eh-text-secondary)",
+        }}
+      >
+        {describeProfileDrift(built.drift)}
+        {moved
+          ? " Reopening still works — the package is a record of what was built."
+          : ""}
+      </p>
+
+      <div
+        style={{
+          display: "flex",
+          gap: "var(--eh-sp-2)",
+          marginTop: "var(--eh-sp-3)",
+          flexWrap: "wrap",
+        }}
+      >
+        <Button intent="primary" size="sm" onClick={props.onOpen}>
+          Open build result
+        </Button>
+        <Button intent="ghost" size="sm" onClick={props.onDismiss}>
+          Dismiss
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 export function BuildDashboard(props: BuildDashboardProps): JSX.Element {
   const api = useApi();
@@ -560,6 +648,72 @@ They are not harmless clutter — a collection's ` +
     })();
   };
 
+  /**
+   * Builds that finished this session and have not been dismissed.
+   *
+   * The result is already in memory — mods, hashes, divergences, every
+   * decision the done screen offers. Recomputing it means re-hashing the
+   * whole profile, so the only thing missing was a door back to it.
+   *
+   * Drift is measured against what Vortex reports NOW, and only reported:
+   * the package on disk does not become wrong because a mod was enabled
+   * afterwards, so this never blocks reopening.
+   */
+  const recentlyBuilt = React.useMemo(() => {
+    const out: {
+      draftId: string;
+      gameId: string;
+      name: string;
+      version: string;
+      modCount: number;
+      outputBytes: number;
+      builtAt: number;
+      drift: ReturnType<typeof profileDriftSince>;
+    }[] = [];
+    for (const session of registry.list()) {
+      const st = session.getState();
+      if (st.kind !== "done") continue;
+
+      let live: DriftMod[] = [];
+      try {
+        const vortexState = api.getState();
+        const profileId = getActiveProfileIdFromState(vortexState, session.gameId);
+        if (profileId !== undefined) {
+          live = getModsForProfile(vortexState, session.gameId, profileId);
+        }
+      } catch {
+        // No profile to compare against. The build is still reopenable —
+        // it is a record of what happened, not a claim about now.
+      }
+
+      out.push({
+        draftId: session.draftId,
+        gameId: session.gameId,
+        name: st.curator.name,
+        version: st.curator.version,
+        modCount: st.result.modCount,
+        outputBytes: st.result.outputBytes,
+        builtAt: st.builtAt,
+        drift: profileDriftSince(st.ctx.mods as DriftMod[], live),
+      });
+    }
+    return out.sort((a, b) => b.builtAt - a.builtAt);
+    // `registryTick` is the handle: a build finishing must make this appear,
+    // and Vortex's own mod-state watcher bumps the same tick, so drift is
+    // re-measured when the curator changes something in another tab.
+  }, [registry, registryTick, api]);
+
+  const handleOpenBuilt = (draftId: string, gameId: string): void => {
+    registry.ensure({ draftId, gameId });
+    props.onOpenDraft(draftId);
+  };
+
+  const handleDismissBuilt = (draftId: string): void => {
+    const session = registry.list().find((s) => s.draftId === draftId);
+    session?.reset();
+    registry.remove(draftId);
+  };
+
   // ── Filtering / merging ────────────────────────────────────────────
 
   const items = React.useMemo<DashboardItem[]>(() => {
@@ -596,6 +750,9 @@ They are not harmless clutter — a collection's ` +
       // successful build: no title (a `done` session exposes no form state),
       // no file behind it, and a "discard" button for a draft that no longer
       // exists. It looked exactly like a second collection nobody created.
+      // Still skipped HERE — a finished build is not a draft and must not
+      // wear a draft's card. It gets its own section instead; see
+      // `recentlyBuilt` below.
       if (sessionState.kind === "done") continue;
       const formish: Partial<BuildDraftPayload> = {};
       if (
@@ -715,8 +872,42 @@ They are not harmless clutter — a collection's ` +
         </div>
       )}
 
-      {items.length === 0 ? (
+      {recentlyBuilt.length > 0 && (
+        <div style={{ marginBottom: "var(--eh-sp-4)" }}>
+          <h3
+            style={{
+              margin: "0 0 var(--eh-sp-2)",
+              fontSize: "var(--eh-text-sm)",
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+              color: "var(--eh-text-muted)",
+            }}
+          >
+            Built this session
+          </h3>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
+              gap: "var(--eh-sp-4)",
+            }}
+          >
+            {recentlyBuilt.map((b) => (
+              <RecentlyBuiltCard
+                key={b.draftId}
+                built={b}
+                onOpen={(): void => handleOpenBuilt(b.draftId, b.gameId)}
+                onDismiss={(): void => handleDismissBuilt(b.draftId)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {items.length === 0 && recentlyBuilt.length === 0 ? (
         <EmptyState onNewDraft={handleNewDraft} />
+      ) : items.length === 0 ? (
+        <></>
       ) : (
         <div
           style={{

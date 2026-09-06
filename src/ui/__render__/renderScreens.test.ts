@@ -45,7 +45,7 @@ import { ApiProvider } from "../state/ApiContext";
 import { ToastProvider } from "../components/Toast";
 import { AvailabilityPanel, BuildDiffView, DonePanel } from "../pages/build/BuildPage";
 import { summarizeAvailability } from "../../core/build/nexusAvailability";
-import { DraftCard, PublishedCard } from "../pages/build/BuildDashboard";
+import { DraftCard, PublishedCard, RecentlyBuiltCard } from "../pages/build/BuildDashboard";
 import { DashboardBody, Hero } from "../pages/HomePage";
 import {
   FailedAttempts,
@@ -671,6 +671,45 @@ describe("render", () => {
           onDecidePostProcessing: async () => undefined,
         } as never),
       } as never),
+    );
+  });
+
+  it.skipIf(!on)("recently built - the way back into a finished build", () => {
+    const base = {
+      name: "Meridia Panties",
+      version: "1.0.4",
+      modCount: 1757,
+      outputBytes: 1.1 * 1024 ** 3,
+      builtAt: Date.now() - 7 * 60 * 1000,
+    };
+    write(
+      "recently-built",
+      React.createElement(
+        "div",
+        { className: "eh-stack eh-stack--md" },
+        React.createElement(RecentlyBuiltCard, {
+          key: "clean",
+          built: { ...base, drift: { added: [], removed: [], toggled: [], changed: [] } },
+          onOpen: () => undefined,
+          onDismiss: () => undefined,
+        } as never),
+        React.createElement(RecentlyBuiltCard, {
+          key: "moved",
+          built: {
+            ...base,
+            name: "Ivy 2",
+            version: "1.0.13",
+            drift: {
+              added: ["Skyland AIO"],
+              removed: [],
+              toggled: ["Wildcat - Combat of Skyrim", "Vanargand Animations"],
+              changed: ["Apocalypse - Magic of Skyrim"],
+            },
+          },
+          onOpen: () => undefined,
+          onDismiss: () => undefined,
+        } as never),
+      ),
     );
   });
 

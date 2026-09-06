@@ -301,6 +301,16 @@ export type BuildSessionState =
       result: BuildPipelineResult;
       ctx: BuildContext;
       curator: CuratorInput;
+      /**
+       * When the build finished, so the dashboard can offer it back.
+       *
+       * A finished session used to be unreachable: it stays in the registry
+       * with its result intact, and the dashboard skipped it deliberately
+       * (synthesising a draft card for one produced a phantom "Untitled
+       * draft"). The consequence was that leaving the done screen threw away
+       * minutes of hashing with no way back short of building again.
+       */
+      builtAt: number;
     }
   | {
       kind: "error";
@@ -1176,6 +1186,7 @@ class BuildSession {
           result,
           ctx: input.ctx,
           curator: input.curator,
+          builtAt: Date.now(),
         });
         // Successful build → wipe the in-flight draft. Best-effort.
         void deleteDraft(getAppDataPath(), "build", this.draftId);
