@@ -117,6 +117,7 @@ import {
   type PublishedCollectionSummary,
   decidedPostProcessing,
   modsNewlyBundled,
+  modsNoLongerBundled,
 } from "../../../core/manifest/collectionConfig";
 import {
   collectExternalHints,
@@ -1424,7 +1425,10 @@ export async function runBuildPipeline(
      * Done card asks. That keeps every other caller — and the harness —
      * working unchanged.
      */
-    if (postProcessingCandidates.length > 0 && onDecisions !== undefined) {
+    if (
+      postProcessingCandidates.some((c) => c.needsAnswer) &&
+      onDecisions !== undefined
+    ) {
       const configBefore = collectionConfig;
       await onDecisions(postProcessingCandidates);
 
@@ -1436,6 +1440,14 @@ export async function runBuildPipeline(
       // self-check has to come after bundling to mean anything. A second
       // pass over just the mods that gained the flag is what makes the
       // answer land in this build instead of the next one.
+      // A verdict CHANGED away from bundling leaves an archive already
+      // repacked on the first pass. Shipping it would put a bundled archive
+      // in the package for a mod that is no longer meant to have one.
+      const dropped = new Set(modsNoLongerBundled(configBefore, collectionConfig));
+      if (dropped.size > 0) {
+        repackedBundles = repackedBundles.filter((b) => !dropped.has(b.modId));
+      }
+
       const newlyBundled = modsNewlyBundled(configBefore, collectionConfig);
       if (newlyBundled.length > 0) {
         try {

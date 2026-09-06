@@ -35,8 +35,10 @@ import { describeUndeclaredPostProcessing } from "./runSelfChecks";
 import type { SelfCheckReport } from "./selfCheckMod";
 
 /** "These mods were answered, with no fingerprint recorded." */
-const answered = (ids: string[]): ReadonlyMap<string, string | undefined> =>
-  new Map(ids.map((id) => [id, undefined] as const));
+const answered = (
+  ids: string[],
+): ReadonlyMap<string, { choice: "declare"; fingerprint?: string }> =>
+  new Map(ids.map((id) => [id, { choice: "declare" as const }] as const));
 
 const report = (
   modId: string,

@@ -2769,7 +2769,10 @@ export function DecisionsGate(props: {
   >(new Map());
   const [busy, setBusy] = React.useState<string | undefined>(undefined);
   const { candidates } = props.state;
-  const open = candidates.filter((c) => !decided.has(c.modId));
+  // A settled row is listed for review and is NOT outstanding. Counting it
+  // made the button say "3 unanswered" under a heading reading "2 mods need
+  // a decision".
+  const open = candidates.filter((c) => c.needsAnswer && !decided.has(c.modId));
 
   return (
     <Card title="Before this gets packed">
@@ -2847,7 +2850,18 @@ function PostProcessingDecisions(props: {
 }): JSX.Element | null {
   const { candidates, decided, busy, onDecide } = props;
   const applyMode = props.applyMode ?? "next-build";
-  const open = candidates.filter((c) => !decided.has(c.modId));
+  /**
+   * Rows the curator has explicitly re-opened to change the verdict.
+   *
+   * Settled mods are LISTED now rather than hidden — a verdict given once was
+   * previously unreachable for ever, which made the screen impossible to
+   * review. They show their answer; this is what turns one back into a
+   * question.
+   */
+  const [changing, setChanging] = React.useState<ReadonlySet<string>>(new Set());
+  const open = candidates.filter(
+    (c) => c.needsAnswer && !decided.has(c.modId),
+  );
   if (candidates.length === 0) return null;
 
   const intro = describeDecisionIntro(open.length);
@@ -2911,8 +2925,13 @@ function PostProcessingDecisions(props: {
         }}
       >
         {candidates.map((c, i) => {
+          // Either answered a moment ago in this panel, or carried in from
+          // the config. Both are a verdict and both are changeable.
+          const settledAs: PostProcessingChoice | undefined =
+            decided.get(c.modId) ??
+            (c.needsAnswer ? undefined : (c.decision as PostProcessingChoice | undefined));
           const answer = decided.get(c.modId);
-          const done = answer !== undefined;
+          const done = settledAs !== undefined && !changing.has(c.modId);
           return (
             <div
               key={c.modId}
@@ -3038,12 +3057,45 @@ function PostProcessingDecisions(props: {
                 </ul>
               )}
 
-              {answer !== undefined ? (
-                <span style={{ color: "var(--eh-text-secondary)" }}>
-                  ✓ {describeChoice(answer, c.unexplained, countKinds(c.files)).label}
-                  {" — saved. Applies from your next build; the package you "}
-                  {"just built is unchanged."}
-                </span>
+              {settledAs !== undefined && !changing.has(c.modId) ? (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "var(--eh-sp-2)",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <Pill intent="neutral">
+                    ✓{" "}
+                    {
+                      describeChoice(settledAs, c.unexplained, countKinds(c.files))
+                        .label
+                    }
+                  </Pill>
+                  <span
+                    style={{
+                      color: "var(--eh-text-secondary)",
+                      fontSize: "var(--eh-text-sm)",
+                    }}
+                  >
+                    {answer !== undefined
+                      ? applyMode === "this-build"
+                        ? "Saved — applies to this build."
+                        : "Saved — applies from your next build; the package you just built is unchanged."
+                      : "Answered earlier, and these files have not changed since."}
+                  </span>
+                  <Button
+                    size="sm"
+                    intent="ghost"
+                    disabled={busy !== undefined}
+                    onClick={(): void =>
+                      setChanging((prev) => new Set(prev).add(c.modId))
+                    }
+                  >
+                    Change
+                  </Button>
+                </div>
               ) : (
                 // Side by side, so the two answers read as alternatives to
                 // weigh rather than a list to get through. They are not
@@ -3077,7 +3129,16 @@ function PostProcessingDecisions(props: {
                         <Button
                           intent={k === "mirror" ? "primary" : "ghost"}
                           disabled={busy !== undefined || blocked}
-                          onClick={(): void => onDecide(c, k)}
+                          onClick={(): void => {
+                            // Close the row again: a re-opened one must show
+                            // its NEW verdict, not stay a set of buttons.
+                            setChanging((prev) => {
+                              const next = new Set(prev);
+                              next.delete(c.modId);
+                              return next;
+                            });
+                            onDecide(c, k);
+                          }}
                         >
                           {busy === c.modId ? "Saving..." : copy.label}
                         </Button>

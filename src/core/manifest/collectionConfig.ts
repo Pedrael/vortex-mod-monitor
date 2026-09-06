@@ -1007,20 +1007,67 @@ export async function listNeverBuiltConfigs(
  * more is a worse trade than trusting an answer that was right when given.
  * ──────────────────────────────────────────────────────────────────────
  */
+export type DecidedChoice = "mirror" | "declare" | "bundle";
+
+export type PostProcessingAnswer = {
+  choice: DecidedChoice;
+  /** The diverged files this was answered about. Absent on older entries. */
+  fingerprint?: string;
+};
+
+/**
+ * Which of the three answers an entry carries.
+ *
+ * The flags are not mutually exclusive in the config — the build form can set
+ * `bundled` independently of anything decided here — so a precedence is
+ * needed, and it follows what the BUILD actually does rather than which flag
+ * was written last. Bundling ships the staging folder verbatim, which makes
+ * both other flags moot; mirroring reconciles the files, which makes
+ * `postProcessed` moot. So the strongest statement about the bytes wins, and
+ * the verdict shown always matches the outcome.
+ */
+export function choiceFromEntry(
+  entry: ExternalModConfigEntry | undefined,
+): DecidedChoice | undefined {
+  if (entry?.bundled === true) return "bundle";
+  if (entry?.mirrored === true) return "mirror";
+  if (entry?.postProcessed === true) return "declare";
+  return undefined;
+}
+
 export function decidedPostProcessing(
   config: CollectionConfig,
-): Map<string, string | undefined> {
-  const out = new Map<string, string | undefined>();
+): Map<string, PostProcessingAnswer> {
+  const out = new Map<string, PostProcessingAnswer>();
   for (const [modId, entry] of Object.entries(config.externalMods ?? {})) {
-    if (
-      entry?.postProcessed === true ||
-      entry?.mirrored === true ||
-      entry?.bundled === true
-    ) {
-      out.set(modId, entry.postProcessingDecidedFor);
-    }
+    const choice = choiceFromEntry(entry);
+    if (choice === undefined) continue;
+    out.set(modId, {
+      choice,
+      ...(entry?.postProcessingDecidedFor !== undefined
+        ? { fingerprint: entry.postProcessingDecidedFor }
+        : {}),
+    });
   }
   return out;
+}
+
+/**
+ * Mods that STOPPED being bundled while the build was paused.
+ *
+ * Only reachable now that a curator can change a verdict mid-build. The mod
+ * was repacked on the first pass; leaving that bundle in the package would
+ * ship an archive for a mod that is no longer supposed to have one.
+ */
+export function modsNoLongerBundled(
+  before: CollectionConfig,
+  after: CollectionConfig,
+): string[] {
+  const was = before.externalMods ?? {};
+  const now = after.externalMods ?? {};
+  return Object.keys(was)
+    .filter((id) => was[id]?.bundled === true && now[id]?.bundled !== true)
+    .sort();
 }
 
 

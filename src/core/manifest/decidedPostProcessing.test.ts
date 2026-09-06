@@ -17,7 +17,12 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { decidedPostProcessing, modsNewlyBundled } from "./collectionConfig";
+import {
+  choiceFromEntry,
+  decidedPostProcessing,
+  modsNewlyBundled,
+  modsNoLongerBundled,
+} from "./collectionConfig";
 import { findPostProcessingCandidates } from "./runSelfChecks";
 import { fingerprintUnexplained } from "./unexplainedFiles";
 import type { CollectionConfig } from "./collectionConfig";
@@ -76,25 +81,55 @@ describe("which answers count as answers", () => {
     const decided = decidedPostProcessing(
       config({ m: { mirrored: true, postProcessingDecidedFor: "fp-original" } }),
     );
-    expect(decided.get("m")).toBe("fp-original");
+    expect(decided.get("m")).toEqual({
+      choice: "mirror",
+      fingerprint: "fp-original",
+    });
   });
 });
 
 describe("whether the question comes back", () => {
-  it("stays shut for a mirrored mod whose files have not changed", () => {
+  it("stops ASKING about a mirrored mod whose files have not changed", () => {
     // The exact case the curator hit: every card answered "Reproduce my
     // version", every card asked again on the next build.
     const decided = decidedPostProcessing(
       config({ m: { mirrored: true, postProcessingDecidedFor: "fp-original" } }),
     );
-    expect(findPostProcessingCandidates([report("m")], decided)).toEqual([]);
+    const [found] = findPostProcessingCandidates([report("m")], decided);
+    expect(found!.needsAnswer).toBe(false);
+    expect(found!.reopened).toBe(false);
   });
 
-  it("stays shut for a bundled mod too", () => {
+  it("still SHOWS it, with the verdict, so it can be reviewed", () => {
+    // Settled mods used to vanish from the list, which made a verdict given
+    // once unreachable for ever — there was no screen anywhere that could
+    // tell you what you had decided, let alone change it.
+    const decided = decidedPostProcessing(
+      config({ m: { mirrored: true, postProcessingDecidedFor: "fp-original" } }),
+    );
+    const [found] = findPostProcessingCandidates([report("m")], decided);
+    expect(found!.decision).toBe("mirror");
+  });
+
+  it("stops asking about a bundled mod too, and says so", () => {
     const decided = decidedPostProcessing(
       config({ m: { bundled: true, postProcessingDecidedFor: "fp-original" } }),
     );
-    expect(findPostProcessingCandidates([report("m")], decided)).toEqual([]);
+    const [found] = findPostProcessingCandidates([report("m")], decided);
+    expect(found!.needsAnswer).toBe(false);
+    expect(found!.decision).toBe("bundle");
+  });
+
+  it("puts what still needs an answer first", () => {
+    // A settled mod is on the list to be reviewed, not to be waded through.
+    const decided = decidedPostProcessing(
+      config({ settled: { mirrored: true } }),
+    );
+    const found = findPostProcessingCandidates(
+      [report("settled", { unexplained: 900 }), report("open", { unexplained: 2 })],
+      decided,
+    );
+    expect(found.map((c) => c.modId)).toEqual(["open", "settled"]);
   });
 
   it("REOPENS when the diverged files have changed since", () => {
@@ -121,7 +156,8 @@ describe("whether the question comes back", () => {
     // Upgrading must not re-open every decision the curator ever made. An
     // answer with nothing recorded about it simply never expires.
     const decided = decidedPostProcessing(config({ m: { mirrored: true } }));
-    expect(findPostProcessingCandidates([report("m")], decided)).toEqual([]);
+    const [found] = findPostProcessingCandidates([report("m")], decided);
+    expect(found!.needsAnswer).toBe(false);
   });
 
   it("honours an answer when the report cannot produce a fingerprint", () => {
@@ -130,7 +166,9 @@ describe("whether the question comes back", () => {
     );
     const noFp = report("m", {});
     delete (noFp as { unexplainedFingerprint?: string }).unexplainedFingerprint;
-    expect(findPostProcessingCandidates([noFp], decided)).toEqual([]);
+    expect(findPostProcessingCandidates([noFp], decided)[0]!.needsAnswer).toBe(
+      false,
+    );
   });
 
   it("hands the current fingerprint to the UI, so the answer records it", () => {
@@ -239,5 +277,56 @@ describe("an answer given while the build is paused", () => {
 
   it("survives a config with no external mods at all", () => {
     expect(modsNewlyBundled({} as never, {} as never)).toEqual([]);
+  });
+});
+
+
+describe("which of the three an entry is carrying", () => {
+  it("reads each flag back as the button that wrote it", () => {
+    expect(choiceFromEntry({ mirrored: true })).toBe("mirror");
+    expect(choiceFromEntry({ postProcessed: true })).toBe("declare");
+    expect(choiceFromEntry({ bundled: true })).toBe("bundle");
+    expect(choiceFromEntry({})).toBeUndefined();
+    expect(choiceFromEntry(undefined)).toBeUndefined();
+  });
+
+  it("shows the verdict the BUILD will act on when flags overlap", () => {
+    // The flags are not exclusive — the build form can set `bundled` on its
+    // own. Bundling ships the staging folder verbatim, which makes both the
+    // others moot, and mirroring reconciles the files, which makes
+    // `postProcessed` moot. So the shown verdict matches the outcome.
+    expect(choiceFromEntry({ bundled: true, mirrored: true })).toBe("bundle");
+    expect(choiceFromEntry({ mirrored: true, postProcessed: true })).toBe(
+      "mirror",
+    );
+  });
+});
+
+describe("a verdict changed while the build is paused", () => {
+  it("names a mod that stopped being bundled", () => {
+    // Only reachable now that a verdict can be changed mid-build. It was
+    // repacked on the first pass; shipping that archive would put a bundle
+    // in the package for a mod no longer meant to have one.
+    expect(
+      modsNoLongerBundled(
+        config({ m: { bundled: true } }),
+        config({ m: { mirrored: true } }),
+      ),
+    ).toEqual(["m"]);
+  });
+
+  it("says nothing when the bundle stands", () => {
+    expect(
+      modsNoLongerBundled(
+        config({ m: { bundled: true } }),
+        config({ m: { bundled: true } }),
+      ),
+    ).toEqual([]);
+  });
+
+  it("says nothing about a mod that was never bundled", () => {
+    expect(
+      modsNoLongerBundled(config({ m: {} }), config({ m: { declared: true } as never })),
+    ).toEqual([]);
   });
 });

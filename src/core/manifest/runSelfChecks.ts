@@ -66,7 +66,7 @@ export type RunSelfChecksOptions = {
    * which is weaker: it cannot see a bundling decision and has no fingerprint
    * to reopen on.
    */
-  decided?: ReadonlyMap<string, string | undefined>;
+  decided?: ReadonlyMap<string, PostProcessingAnswer>;
 };
 
 /**
@@ -112,6 +112,11 @@ export type RunSelfChecksOptions = {
  * because the decision is not "acknowledge this", it is "do your users need
  * these files or not", and those have opposite answers and opposite fixes.
  */
+import type {
+  DecidedChoice,
+  PostProcessingAnswer,
+} from "./collectionConfig";
+
 export type PostProcessingCandidate = {
   modId: string;
   modName: string;
@@ -149,6 +154,24 @@ export type PostProcessingCandidate = {
    * see. So it is asked again, and said to be a re-ask rather than a new one.
    */
   reopened: boolean;
+  /**
+   * The answer this mod currently carries, if any.
+   *
+   * Answered mods used to be dropped from this list entirely, which made the
+   * screen unreviewable: a curator could see what still needed deciding and
+   * nothing about what they had already decided, so a verdict given once was
+   * unreachable for ever. They are listed now, with their verdict, and the UI
+   * lets it be changed.
+   */
+  decision?: DecidedChoice;
+  /**
+   * Whether this mod is still waiting on the curator.
+   *
+   * `false` for one already answered about these exact files. The build only
+   * pauses when something needs an answer — listing a settled mod is for
+   * review, not a reason to stop.
+   */
+  needsAnswer: boolean;
 };
 
 /**
@@ -166,33 +189,47 @@ export function findPostProcessingCandidates(
    * recorded" and closes the question. A key whose value differs from the
    * report's current fingerprint reopens it.
    */
-  decided: ReadonlyMap<string, string | undefined>,
+  decided: ReadonlyMap<string, PostProcessingAnswer>,
   /** Mod ids whose staging was captured with a hash for every file. */
   mirrorable: ReadonlySet<string> = new Set(),
 ): PostProcessingCandidate[] {
-  return reports
-    .filter((r) => r.unexplained > 0 && !isSettled(r, decided))
-    .sort((a, b) => b.unexplained - a.unexplained)
-    .map((r) => ({
-      modId: r.modId,
-      modName: r.modName,
-      unexplained: r.unexplained,
-      files: r.unexplainedExamples,
-      canMirror: mirrorable.has(r.modId),
-      ...(r.unexplainedFingerprint !== undefined
-        ? { fingerprint: r.unexplainedFingerprint }
-        : {}),
-      reopened: decided.has(r.modId),
-    }));
+  return (
+    reports
+      .filter((r) => r.unexplained > 0)
+      .map((r) => {
+        const settled = isSettled(r, decided);
+        const answer = decided.get(r.modId);
+        return {
+          modId: r.modId,
+          modName: r.modName,
+          unexplained: r.unexplained,
+          files: r.unexplainedExamples,
+          canMirror: mirrorable.has(r.modId),
+          ...(r.unexplainedFingerprint !== undefined
+            ? { fingerprint: r.unexplainedFingerprint }
+            : {}),
+          reopened: !settled && answer !== undefined,
+          ...(answer !== undefined ? { decision: answer.choice } : {}),
+          needsAnswer: !settled,
+        };
+      })
+      // What still needs a decision comes first; within each group, the mods
+      // with most at stake. A settled mod is on the list to be reviewed, not
+      // to be waded through on the way to the ones that are not.
+      .sort((a, b) => {
+        if (a.needsAnswer !== b.needsAnswer) return a.needsAnswer ? -1 : 1;
+        return b.unexplained - a.unexplained;
+      })
+  );
 }
 
 /** Answered, and about the same files it was answered about. */
 function isSettled(
   report: SelfCheckReport,
-  decided: ReadonlyMap<string, string | undefined>,
+  decided: ReadonlyMap<string, PostProcessingAnswer>,
 ): boolean {
   if (!decided.has(report.modId)) return false;
-  const answeredFor = decided.get(report.modId);
+  const answeredFor = decided.get(report.modId)?.fingerprint;
   // Answered before fingerprints were recorded, or against a report that
   // could not produce one. Honour it rather than nag.
   if (answeredFor === undefined) return true;
@@ -203,7 +240,7 @@ function isSettled(
 export function describeUndeclaredPostProcessing(
   reports: readonly SelfCheckReport[],
   /** Same map as `findPostProcessingCandidates`: any answer closes this. */
-  decided: ReadonlyMap<string, string | undefined>,
+  decided: ReadonlyMap<string, PostProcessingAnswer>,
 ): string | undefined {
   const undeclared = reports
     .filter((r) => r.unexplained > 0 && !isSettled(r, decided))
@@ -447,10 +484,16 @@ export async function runSelfChecks(
    */
   const decided =
     opts?.decided ??
-    new Map<string, string | undefined>(
+    new Map<string, PostProcessingAnswer>(
       mods
         .filter((m) => m.postProcessed === true || m.mirrored === true)
-        .map((m) => [m.id, undefined] as const),
+        .map(
+          (m) =>
+            [
+              m.id,
+              { choice: m.mirrored === true ? "mirror" : "declare" },
+            ] as const,
+        ),
     );
   const undeclaredWarning = describeUndeclaredPostProcessing(reports, decided);
   if (undeclaredWarning !== undefined) warnings.push(undeclaredWarning);

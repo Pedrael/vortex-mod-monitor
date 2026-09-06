@@ -733,6 +733,7 @@ describe("render", () => {
       canMirror: true,
       fingerprint: "fp",
       reopened: false,
+      needsAnswer: true,
       ...over,
     });
     write(
@@ -757,6 +758,16 @@ describe("render", () => {
                 1,
                 [{ path: "Audio Overhaul Skyrim.esp", kind: "changed", delta: -1843 }],
                 { reopened: true },
+              ),
+              // Already answered, and the files have not moved. Listed with
+              // its verdict rather than hidden, so it can be reviewed and
+              // changed.
+              candidate(
+                "embers",
+                "Embers XD-37085-3-2-2-1699000000",
+                12,
+                [{ path: "meshes/effects/fxembers01.nif", kind: "changed", delta: 2048 }],
+                { needsAnswer: false, decision: "declare", canMirror: false },
               ),
             ],
           },
