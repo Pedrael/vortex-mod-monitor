@@ -109,6 +109,19 @@ function comparable(
   numeric: boolean,
 ): string | number | undefined {
   if (value === undefined) return undefined;
+  /**
+   * ─── A BLANK CELL IS AN UNKNOWN, NOT A ZERO AND NOT AN EMPTY NAME ────
+   * `Number("")` is 0, and so is `Number("   ")` — so a mod whose version
+   * Vortex never recorded sorted in among the real numbers as the smallest
+   * one. Ascending by version put every unknown at the top of the list
+   * looking like the oldest mods on the profile, which is exactly the column
+   * a curator sorts to decide what to update.
+   *
+   * In a text column the same blank sorted first for the same reason. Both
+   * are the one case this module already has a rule for: an unknown sorts
+   * LAST in both directions, and matches no non-empty filter.
+   */
+  if (typeof value === "string" && value.trim() === "") return undefined;
   if (!numeric) return String(value);
   const n = typeof value === "number" ? value : Number(value);
   return Number.isNaN(n) ? undefined : n;

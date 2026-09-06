@@ -254,3 +254,30 @@ describe("how the button words it", () => {
     expect(describeTarget({ ids: ["a"], from: "all" }, "mod")).toBe("1 mod");
   });
 });
+
+describe("a blank cell is an unknown, not a small one", () => {
+  it("sorts an empty version LAST in both directions", () => {
+    // `Number("")` is 0, so a version Vortex never recorded used to sort in
+    // among the real ones as the smallest — at the top of the ascending sort
+    // a curator uses to find what needs updating.
+    expect(compareForSort("", 5, true, "asc")).toBeGreaterThan(0);
+    expect(compareForSort("", 5, true, "desc")).toBeGreaterThan(0);
+    expect(compareForSort("   ", 0, true, "asc")).toBeGreaterThan(0);
+  });
+
+  it("sorts an empty name LAST too, not first", () => {
+    expect(compareForSort("", "Aardvark", false, "asc")).toBeGreaterThan(0);
+    expect(compareForSort("", "Aardvark", false, "desc")).toBeGreaterThan(0);
+  });
+
+  it("still ties two blanks", () => {
+    expect(compareForSort("", "  ", true, "asc")).toBe(0);
+  });
+
+  it("leaves a real zero alone", () => {
+    // The value that must NOT be swept up with the blanks: an archive of
+    // zero bytes is a fact, and a fact sorts.
+    expect(compareForSort(0, 5, true, "asc")).toBeLessThan(0);
+    expect(compareForSort("0", 5, true, "asc")).toBeLessThan(0);
+  });
+});

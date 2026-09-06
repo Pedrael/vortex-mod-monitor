@@ -181,10 +181,22 @@ export function diffCollectionAgainstProfile(args: {
     else named.push(mod);
   }
 
+  /**
+   * The first candidate not already spoken for, optionally filtered.
+   *
+   * The predicate matters more than it looks. Taking the FIRST unclaimed
+   * candidate is only right when there is one; a Nexus page routinely ships
+   * several installs — a main file and its variants, "Bodypaints - CBBE"
+   * beside "Bodypaints - Male" — and then "first" is whichever the built
+   * manifest happened to list first.
+   */
   const firstUnclaimed = (
     list: BuiltModSummary[] | undefined,
+    accept?: (b: BuiltModSummary) => boolean,
   ): BuiltModSummary | undefined =>
-    list?.find((b) => !claimed.has(b.compareKey));
+    list?.find(
+      (b) => !claimed.has(b.compareKey) && (accept === undefined || accept(b)),
+    );
 
   /** Same mod on both sides: identical, or switched on or off. */
   const settle = (
@@ -219,8 +231,17 @@ export function diffCollectionAgainstProfile(args: {
   const stillPending: typeof pending = [];
   for (const entry of pending) {
     const modId = entry.key === undefined ? undefined : nexusModIdOf(entry.key);
+    /**
+     * Prefer the entry with the SAME NAME before falling back to any entry
+     * from the page. Two installs off one page are the ordinary case, and
+     * pairing "Bodypaints - Male" with the built "Bodypaints - CBBE" reports
+     * an update that did not happen — with the wrong from/to versions — and
+     * leaves the real counterpart to be reported as added AND removed.
+     */
+    const fromPage = modId === undefined ? undefined : byNexusModId.get(modId);
     const match =
-      modId === undefined ? undefined : firstUnclaimed(byNexusModId.get(modId));
+      firstUnclaimed(fromPage, (b) => b.name === entry.mod.name) ??
+      firstUnclaimed(fromPage);
     if (match === undefined) {
       stillPending.push(entry);
       continue;
@@ -238,11 +259,22 @@ export function diffCollectionAgainstProfile(args: {
   // as approximate, because a rename would defeat it.
   const unmatched: AuditorMod[] = [];
   for (const entry of stillPending) {
-    const candidate = firstUnclaimed(byName.get(entry.mod.name));
-    const bridgeable =
-      candidate !== undefined &&
-      (entry.key === undefined || nexusModIdOf(candidate.compareKey) === undefined);
-    if (bridgeable) settle(entry.mod, candidate, true);
+    /**
+     * The bridgeability test belongs IN the search, not after it.
+     *
+     * It used to take the first unclaimed name match and then ask whether
+     * that one could bridge — so when a name is shared by a Nexus-keyed
+     * entry and an external one, and this side is Nexus-keyed, the first
+     * candidate fails the test and the mod is reported as ADDED even though
+     * the external entry sitting right behind it is exactly its counterpart.
+     * One unchanged mod then reads as one addition and one removal.
+     */
+    const candidate = firstUnclaimed(
+      byName.get(entry.mod.name),
+      (b) =>
+        entry.key === undefined || nexusModIdOf(b.compareKey) === undefined,
+    );
+    if (candidate !== undefined) settle(entry.mod, candidate, true);
     else unmatched.push(entry.mod);
   }
 

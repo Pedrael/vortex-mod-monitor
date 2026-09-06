@@ -290,3 +290,93 @@ describe("when the two sides identify a mod differently", () => {
     expect(diff.added).toHaveLength(1);
   });
 });
+
+/**
+ * ─── ONE NEXUS PAGE, SEVERAL INSTALLS ──────────────────────────────────
+ * The ordinary shape on a real profile: a main file and its variants share a
+ * mod id. "The first entry from that page" is then whichever the manifest
+ * happened to list first, which is not an answer.
+ */
+describe("a mod page with more than one install on it", () => {
+  it("pairs each install with its own name, not with whichever came first", () => {
+    // Both updated. Matching by position would report CBBE's old version as
+    // Male's from-version and vice versa — an update that never happened,
+    // with numbers the curator cannot reconcile against anything.
+    const diff = diffCollectionAgainstProfile({
+      built: [
+        builtMod("nexus:7:100", "Bodypaints - CBBE", { version: "1.0" }),
+        builtMod("nexus:7:200", "Bodypaints - Male", { version: "3.0" }),
+      ],
+      current: [
+        nexus("Bodypaints - Male", 7, 201, { version: "3.1" }),
+        nexus("Bodypaints - CBBE", 7, 101, { version: "1.1" }),
+      ],
+    });
+
+    expect(diff.added).toEqual([]);
+    expect(diff.removed).toEqual([]);
+    const male = diff.updated.find((u) => u.name === "Bodypaints - Male");
+    const cbbe = diff.updated.find((u) => u.name === "Bodypaints - CBBE");
+    expect(male).toEqual({
+      name: "Bodypaints - Male",
+      fromVersion: "3.0",
+      toVersion: "3.1",
+    });
+    expect(cbbe).toEqual({
+      name: "Bodypaints - CBBE",
+      fromVersion: "1.0",
+      toVersion: "1.1",
+    });
+  });
+
+  it("still pairs by page when the author renamed the file", () => {
+    // The fallback has to survive: a rename with no same-name candidate is
+    // still an update, not an add plus a remove.
+    const diff = diffCollectionAgainstProfile({
+      built: [builtMod("nexus:7:100", "Old Name", { version: "1.0" })],
+      current: [nexus("New Name", 7, 101, { version: "1.1" })],
+    });
+    expect(diff.updated).toHaveLength(1);
+    expect(diff.added).toEqual([]);
+    expect(diff.removed).toEqual([]);
+  });
+});
+
+describe("the name bridge picks a candidate it can actually bridge to", () => {
+  it("does not report a bridgeable mod as added because a namesake was in front", () => {
+    /**
+     * Two built entries share a name: one Nexus-keyed (a DIFFERENT page, so
+     * pass 2 never touches it) and one external. The live mod is Nexus-keyed,
+     * so it can only bridge to the external entry.
+     *
+     * Testing only the first candidate found it blocked by the unclaimed
+     * Nexus namesake and gave up: the mod was reported as ADDED and the
+     * external entry it plainly corresponds to as REMOVED — two changes
+     * standing in for a mod the curator had merely reinstalled from Nexus.
+     */
+    const diff = diffCollectionAgainstProfile({
+      built: [
+        builtMod("nexus:9:500", "Shared Name"),
+        builtMod("external:abc123", "Shared Name"),
+      ],
+      current: [nexus("Shared Name", 42, 700)],
+    });
+
+    expect(diff.added).toEqual([]);
+    expect(diff.approximate).toBe(1);
+    // The other built entry IS gone, and is still reported as such.
+    expect(diff.removed.map((r) => r.name)).toEqual(["Shared Name"]);
+  });
+
+  it("still refuses to bridge when BOTH sides carry a Nexus key", () => {
+    // The rule the bridge must not erode: two real keys that disagree are an
+    // add and a remove, never a name match, or a genuine swap disappears.
+    const diff = diffCollectionAgainstProfile({
+      built: [builtMod("nexus:9:500", "Shared Name")],
+      current: [nexus("Shared Name", 42, 700)],
+    });
+    expect(diff.added).toHaveLength(1);
+    expect(diff.removed).toHaveLength(1);
+    expect(diff.approximate).toBe(0);
+  });
+});
