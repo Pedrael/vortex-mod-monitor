@@ -37,6 +37,9 @@
  * ──────────────────────────────────────────────────────────────────────
  */
 
+import { existsSync, statSync } from "fs";
+
+import { ehLog } from "../logging/ehLog";
 import * as fsp from "fs/promises";
 import * as path from "path";
 
@@ -163,17 +166,114 @@ export function parseIni(text: string): IniSetting[] {
   return out;
 }
 
+/**
+ * ─── My Games IS STORE-SPECIFIC TOO ────────────────────────────────────
+ * The same trap as `%LOCALAPPDATA%`, one folder over, and copied from the
+ * same authority: Vortex's `iniFiles` table is overlaid by store, so a GOG
+ * Skyrim SE keeps its INIs in `My Games/Skyrim Special Edition GOG`.
+ *
+ * Worse here than for plugins.txt, because the Steam folder usually still
+ * EXISTS — left behind by an earlier install — so the capture does not come
+ * back empty, it comes back with someone's stale settings from months ago and
+ * ships them as the curator's. Measured on the machine this was found on: the
+ * GOG folder had been written that day, the Steam folder a month earlier, and
+ * both held three INIs.
+ *
+ * Note this table is NOT the same as the plugins.txt one — GOG has no
+ * Fallout 4 entry, Epic and Xbox do. Transcribed rather than derived.
+ */
+const STORE_MYGAMES_OVERRIDES: Record<string, Record<string, string>> = {
+  gog: {
+    skyrimse: "Skyrim Special Edition GOG",
+    enderalspecialedition: "Enderal Special Edition GOG",
+  },
+  epic: {
+    skyrimse: "Skyrim Special Edition EPIC",
+    fallout4: "Fallout4 EPIC",
+  },
+  xbox: {
+    skyrimse: "Skyrim Special Edition MS",
+    fallout4: "Fallout4 MS",
+  },
+};
+
+/**
+ * Every My Games folder this game could be using, most specific first.
+ *
+ * A KNOWN store is authoritative — override or not — because Steam and any
+ * store that does not relocate both use the base name and there is nothing to
+ * look for. Only "we do not know" justifies probing.
+ */
+export function myGamesFolderCandidates(
+  gameId: string,
+  store?: string,
+): string[] {
+  const base = INI_FILES_BY_GAME[gameId]?.folder;
+  if (base === undefined) return [];
+  if (store !== undefined) {
+    return [STORE_MYGAMES_OVERRIDES[store.toLowerCase()]?.[gameId] ?? base];
+  }
+  const variants = Object.values(STORE_MYGAMES_OVERRIDES)
+    .map((byGame) => byGame[gameId])
+    .filter((f): f is string => f !== undefined);
+  return [base, ...variants.filter((f) => f !== base)];
+}
+
 /** Which files this game keeps its settings in, and where. */
 export function iniLocationFor(
   gameId: string,
   documentsPath: string,
+  /** Vortex's discovered store. See myGamesFolderCandidates. */
+  store?: string,
 ): { dir: string; files: string[] } | undefined {
   const spec = INI_FILES_BY_GAME[gameId];
   if (spec === undefined) return undefined;
-  return {
-    dir: `${documentsPath}/My Games/${spec.folder}`.replace(/\\/g, "/"),
-    files: spec.files,
-  };
+
+  const candidates = myGamesFolderCandidates(gameId, store);
+  const dirFor = (folder: string): string =>
+    `${documentsPath}/My Games/${folder}`.replace(/\\/g, "/");
+
+  if (store !== undefined || candidates.length === 1) {
+    return { dir: dirFor(candidates[0] ?? spec.folder), files: spec.files };
+  }
+
+  /**
+   * Store unknown, so let the disk decide — and prefer a folder that actually
+   * holds one of this game's INIs over one that merely exists. A leftover
+   * Steam directory with no INIs in it must not win over the live one.
+   */
+  const withIni = candidates.filter((folder) =>
+    spec.files.some((f) => existsSync(`${dirFor(folder)}/${f}`)),
+  );
+  if (withIni.length === 1) {
+    return { dir: dirFor(withIni[0]!), files: spec.files };
+  }
+  if (withIni.length > 1) {
+    // Both a Steam and a store folder hold INIs — someone changed editions.
+    // Newest wins, because that is the one the game has been writing to, and
+    // saying so beats silently shipping month-old settings.
+    const newest = withIni
+      .map((folder) => ({
+        folder,
+        at: spec.files.reduce((max, f) => {
+          try {
+            return Math.max(max, statSync(`${dirFor(folder)}/${f}`).mtimeMs);
+          } catch {
+            return max;
+          }
+        }, 0),
+      }))
+      .sort((a, b) => b.at - a.at);
+    ehLog("warn", "game-ini.ambiguous-store", {
+      gameId,
+      candidates: newest.map((c) => c.folder),
+      chose: newest[0]?.folder,
+    });
+    return { dir: dirFor(newest[0]!.folder), files: spec.files };
+  }
+
+  ehLog("warn", "game-ini.no-folder-found", { gameId, tried: candidates });
+  return { dir: dirFor(spec.folder), files: spec.files };
 }
 
 /**
@@ -220,9 +320,11 @@ export type GameIniCapture = {
 export async function captureGameIni(args: {
   gameId: string;
   documentsPath: string;
+  /** Vortex's discovered store — My Games is store-specific. */
+  store?: string;
 }): Promise<GameIniCapture> {
   const empty: GameIniCapture = { files: [], machineKept: [], missing: [] };
-  const location = iniLocationFor(args.gameId, args.documentsPath);
+  const location = iniLocationFor(args.gameId, args.documentsPath, args.store);
   if (location === undefined) return empty;
 
   const files: IniFileSnapshot[] = [];

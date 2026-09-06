@@ -23,6 +23,7 @@ import {
   discoveredStore,
   pluginsTxtFolderCandidates,
 } from "./comparePlugins";
+import { myGamesFolderCandidates } from "./manifest/gameIni";
 
 describe("the store decides the folder", () => {
   it("uses the store's folder when Vortex discovered one", () => {
@@ -90,5 +91,50 @@ describe("reading the store out of Vortex's discovery", () => {
     expect(discoveredStore({}, "skyrimse")).toBeUndefined();
     expect(discoveredStore(undefined, "skyrimse")).toBeUndefined();
     expect(discoveredStore(stateWith("gog"), "fallout4")).toBeUndefined();
+  });
+});
+
+/**
+ * ─── My Games CARRIES THE SAME TRAP, WITH A WORSE FAILURE ──────────────
+ * `%LOCALAPPDATA%` missing means an empty capture, which at least looks like
+ * nothing. My Games usually still has the leftover Steam folder from an
+ * earlier install, so reading the wrong one ships someone's MONTHS-OLD
+ * settings as the curator's, and nothing about that looks wrong.
+ */
+describe("My Games is store-specific too, and differs from the plugins.txt table", () => {
+  it("relocates Skyrim SE for every store that relocates it", () => {
+    expect(myGamesFolderCandidates("skyrimse", "gog")).toEqual([
+      "Skyrim Special Edition GOG",
+    ]);
+    expect(myGamesFolderCandidates("skyrimse", "epic")).toEqual([
+      "Skyrim Special Edition EPIC",
+    ]);
+    expect(myGamesFolderCandidates("skyrimse", "xbox")).toEqual([
+      "Skyrim Special Edition MS",
+    ]);
+  });
+
+  it("leaves GOG's Fallout 4 on the base name, because GOG does not relocate it", () => {
+    /**
+     * Confirmed by the curator and by Vortex's own table, which has no
+     * fallout4 entry under `gog` in either overlay. Epic and Xbox DO
+     * relocate it, so this is not a general rule about Fallout 4 — it is a
+     * fact about GOG, and inventing "Fallout4 GOG" would send the capture at
+     * a folder that does not exist.
+     */
+    expect(myGamesFolderCandidates("fallout4", "gog")).toEqual(["Fallout4"]);
+    expect(myGamesFolderCandidates("fallout4", "epic")).toEqual(["Fallout4 EPIC"]);
+    expect(myGamesFolderCandidates("fallout4", "xbox")).toEqual(["Fallout4 MS"]);
+    expect(myGamesFolderCandidates("fallout4", "steam")).toEqual(["Fallout4"]);
+  });
+
+  it("offers every variant when the store is unknown", () => {
+    const c = myGamesFolderCandidates("skyrimse");
+    expect(c[0]).toBe("Skyrim Special Edition");
+    expect(c).toContain("Skyrim Special Edition GOG");
+  });
+
+  it("has no My Games folder for a game with no INI layout", () => {
+    expect(myGamesFolderCandidates("morrowind")).toEqual([]);
   });
 });

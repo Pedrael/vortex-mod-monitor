@@ -2195,6 +2195,17 @@ async function runInstallImpl(ctx: DriverContext): Promise<InstallResult> {
           documentsPath:
             (util as unknown as { getVortexPath?: (id: string) => string })
               .getVortexPath?.("documents") ?? "",
+          // Writing to the wrong My Games folder edits a directory the game
+          // never reads, and reports success for it.
+          ...(discoveredStore(api.getState(), plan.manifest.game.id) !==
+          undefined
+            ? {
+                store: discoveredStore(
+                  api.getState(),
+                  plan.manifest.game.id,
+                )!,
+              }
+            : {}),
         });
       } catch (err) {
         // Never fatal. A collection whose mods all installed is not a failure

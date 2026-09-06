@@ -198,6 +198,12 @@ export async function applyGameIni(args: {
   gameIni: EhcollGameIni;
   gameId: string;
   documentsPath: string;
+  /**
+   * Vortex's discovered store. My Games is store-specific, and writing INIs
+   * into the Steam folder of a GOG install edits a directory the game never
+   * reads — a "success" that changes nothing.
+   */
+  store?: string;
 }): Promise<GameIniApplicationReceipt> {
   const receipt: GameIniApplicationReceipt = {
     appliedCount: 0,
@@ -211,7 +217,11 @@ export async function applyGameIni(args: {
     files: args.gameIni.files.length,
   });
 
-  const location = iniLocationFor(args.gameId, args.documentsPath);
+  const location = iniLocationFor(
+    args.gameId,
+    args.documentsPath,
+    args.store,
+  );
   if (location === undefined) {
     receipt.failed.push({
       fileName: "(all)",

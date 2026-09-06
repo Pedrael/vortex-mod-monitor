@@ -1657,6 +1657,13 @@ export async function runBuildPipeline(
     gameId,
     documentsPath: (util as unknown as { getVortexPath?: (id: string) => string })
       .getVortexPath?.("documents") ?? "",
+    // My Games is store-specific: a GOG Skyrim SE keeps its INIs under
+    // "Skyrim Special Edition GOG", and the leftover Steam folder usually
+    // still exists — so reading the wrong one ships stale settings rather
+    // than none, which is harder to notice.
+    ...(discoveredStore(state, gameId) !== undefined
+      ? { store: discoveredStore(state, gameId)! }
+      : {}),
   }).catch(() => ({ files: [], machineKept: [], missing: [] }));
   bundleWarnings.push(...describeMachineKept(gameIniCapture));
   if (gameIniCapture.files.length > 0) {
