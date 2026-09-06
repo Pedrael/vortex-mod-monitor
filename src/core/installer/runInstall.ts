@@ -2077,6 +2077,7 @@ async function runInstallImpl(ctx: DriverContext): Promise<InstallResult> {
       alreadyCorrect: pluginFlagRepair.alreadyCorrect,
       unknown: pluginFlagRepair.unknown,
       missing: pluginFlagRepair.missing,
+      unreadable: pluginFlagRepair.unreadable,
       regularAfter: pluginFlagRepair.regularAfter,
       failures: pluginFlagRepair.failures,
     });

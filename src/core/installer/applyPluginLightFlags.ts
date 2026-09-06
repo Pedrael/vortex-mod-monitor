@@ -31,7 +31,7 @@
 import * as path from "path";
 
 import {
-  readPluginFlags,
+  readPluginFlagsDetailed,
   setPluginLightFlag,
   REGULAR_PLUGIN_LIMIT,
 } from "../manifest/pluginFlags";
@@ -62,8 +62,21 @@ export type PluginFlagRepair = {
   alreadyCorrect: number;
   /** The manifest did not record a flag: older package, or unreadable at build. */
   unknown: number;
-  /** Not on disk, or not a readable plugin. */
+  /**
+   * Not on disk. ENOENT and nothing else.
+   *
+   * This used to also mean "locked", "permission denied" and "not a plugin",
+   * because the reader collapsed every failure to `undefined`. An install run
+   * while the game or xEdit holds the plugins open reported them as absent —
+   * sending the user to look for files that were right there.
+   */
   missing: number;
+  /**
+   * There, but unreadable: locked by another process, permissions, an I/O
+   * error. Named, because it is the one the user can act on (close the game
+   * and re-run) and the one a support log needs.
+   */
+  unreadable: string[];
   /** Writes that failed, named — each one is a plugin closer to not loading. */
   failures: string[];
   /**
@@ -91,6 +104,7 @@ export async function applyPluginLightFlags(args: {
 }): Promise<PluginFlagRepair> {
   const result: PluginFlagRepair = {
     corrected: 0,
+    unreadable: [],
     set: 0,
     cleared: 0,
     correctedNames: [],
@@ -112,7 +126,17 @@ export async function applyPluginLightFlags(args: {
     args.onProgress?.(done, args.order.length);
 
     const file = path.join(args.dataDir, plugin.name);
-    const current = await readPluginFlags(file);
+    const read = await readPluginFlagsDetailed(file);
+    const current = read.kind === "ok" ? read.flags : undefined;
+    // "Not there" and "there but we could not open it" ask for different
+    // things from the user, so they are counted apart.
+    const noteUnreadable = (): void => {
+      if (read.kind === "unreadable" || read.kind === "not-a-plugin") {
+        result.unreadable.push(`${plugin.name}: ${read.why}`);
+      } else {
+        result.missing += 1;
+      }
+    };
 
     /**
      * Counted from the FILE, not from the manifest, and only when enabled.
@@ -128,12 +152,12 @@ export async function applyPluginLightFlags(args: {
     if (plugin.light === undefined) {
       result.unknown += 1;
       if (current !== undefined) countsAsRegular(current.isLight);
-      else result.missing += 1;
+      else noteUnreadable();
       continue;
     }
 
     if (current === undefined) {
-      result.missing += 1;
+      noteUnreadable();
       continue;
     }
 
@@ -187,11 +211,19 @@ export function describePluginFlagRepair(
    * not fire either. The install said success and the flags that make the
    * collection loadable were never restored.
    */
-  const total = result.unknown + result.missing + result.alreadyCorrect + result.corrected;
-  const blind = total > 0 && result.unknown + result.missing === total;
+  const total =
+    result.unknown +
+    result.missing +
+    result.unreadable.length +
+    result.alreadyCorrect +
+    result.corrected;
+  const blind =
+    total > 0 &&
+    result.unknown + result.missing + result.unreadable.length === total;
   if (
     result.corrected === 0 &&
     result.failures.length === 0 &&
+    result.unreadable.length === 0 &&
     !overLimit &&
     !blind
   ) {
@@ -245,6 +277,17 @@ export function describePluginFlagRepair(
   if (result.missing > 0 && !blind) {
     lines.push(
       `  - ${result.missing} plugin(s) in the collection are not on disk here.`,
+    );
+  }
+  if (result.unreadable.length > 0) {
+    // Distinct from missing on purpose: these files ARE there, and the usual
+    // cause is the game or xEdit holding them open — which the user can fix
+    // and re-run, if they are told that is what happened.
+    lines.push(
+      `  - ${result.unreadable.length} plugin(s) are on disk but could not be ` +
+        `read, so their ESL flags were left alone. Close the game and any ` +
+        `xEdit/LOOT windows, then re-run: ` +
+        `${result.unreadable.slice(0, 3).join("; ")}`,
     );
   }
   return lines;

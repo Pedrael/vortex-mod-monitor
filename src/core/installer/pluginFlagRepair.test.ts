@@ -39,6 +39,7 @@ const repair = (over: Partial<PluginFlagRepair> = {}): PluginFlagRepair => ({
   alreadyCorrect: 0,
   unknown: 0,
   missing: 0,
+  unreadable: [],
   failures: [],
   regularAfter: 0,
   ...over,
@@ -106,5 +107,49 @@ describe("the over-limit alarm", () => {
   it("does not fire at the limit exactly", () => {
     expect(describePluginFlagRepair(repair({ regularAfter: 254, alreadyCorrect: 1 })))
       .toBeUndefined();
+  });
+});
+
+describe("'not on disk' and 'could not open it' are different problems", () => {
+  it("tells a locked plugin apart from a missing one", () => {
+    /**
+     * The reader used to collapse ENOENT, EPERM and EBUSY into one
+     * `undefined`, so an install run while the game or xEdit holds the
+     * plugins open reported them as "not on disk here" — sending the user to
+     * look for files that were sitting right there. One of these is fixed by
+     * closing a program and re-running; the other is not.
+     */
+    const lines = said(
+      repair({
+        alreadyCorrect: 5,
+        missing: 2,
+        unreadable: ["Locked.esp: EBUSY: resource busy or locked"],
+      }),
+    );
+    expect(lines).toMatch(/2 plugin\(s\) in the collection are not on disk/);
+    expect(lines).toMatch(/1 plugin\(s\) are on disk but could not be read/);
+    expect(lines).toMatch(/Close the game/);
+    expect(lines).toMatch(/Locked\.esp/);
+  });
+
+  it("speaks even when unreadable is the ONLY thing that happened", () => {
+    // Nothing corrected, nothing failed, nothing missing — the old notice
+    // returned undefined here and the install reported plain success while
+    // every flag was left unapplied.
+    const lines = describePluginFlagRepair(
+      repair({ alreadyCorrect: 3, unreadable: ["A.esp: EPERM"] }),
+    );
+    expect(lines).toBeDefined();
+    expect(lines!.join(" ")).toMatch(/could not be read/);
+  });
+
+  it("counts unreadable toward 'we learned nothing at all'", () => {
+    // A Data folder we cannot open ANY of is the same total failure as one
+    // where nothing exists, and must not be silent either.
+    const lines = describePluginFlagRepair(
+      repair({ unreadable: ["A.esp: EPERM", "B.esp: EPERM"] }),
+    );
+    expect(lines).toBeDefined();
+    expect(lines!.join(" ")).toMatch(/None of the 2 plugins|could not be read/);
   });
 });

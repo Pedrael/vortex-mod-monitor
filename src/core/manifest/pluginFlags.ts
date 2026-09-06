@@ -63,28 +63,83 @@ export type PluginFlags = {
  * those are different facts, and collapsing them would let an unreadable file
  * be recorded as "not light", which is the direction that breaks a game.
  */
-export async function readPluginFlags(
+/**
+ * ─── WHY THE READ FAILED, FOR THE CALLER THAT HAS TO EXPLAIN IT ────────
+ * `readPluginFlags` collapses every failure to `undefined`, which is right
+ * for deciding whether to WRITE a flag — any doubt means leave the file
+ * alone. It is wrong for telling a user what happened: a plugin that is not
+ * on disk, one the game has open, and one that is not a plugin at all are
+ * three different problems with three different fixes, and the install
+ * reported all of them as "not on disk here".
+ *
+ * Both live here so they cannot drift: the swallowing version is defined in
+ * terms of this one.
+ */
+export type PluginFlagsRead =
+  | { kind: "ok"; flags: PluginFlags }
+  /** ENOENT — the file genuinely is not there. */
+  | { kind: "not-found" }
+  /** Present and readable, but not a Bethesda plugin (or truncated). */
+  | { kind: "not-a-plugin"; why: string }
+  /** There, but we could not read it: locked, permissions, an I/O error. */
+  | { kind: "unreadable"; why: string };
+
+export async function readPluginFlagsDetailed(
   filePath: string,
-): Promise<PluginFlags | undefined> {
+): Promise<PluginFlagsRead> {
   let handle;
   try {
     handle = await fsp.open(filePath, "r");
     const buf = Buffer.alloc(HEADER_BYTES);
     const { bytesRead } = await handle.read(buf, 0, HEADER_BYTES, 0);
-    if (bytesRead < HEADER_BYTES) return undefined;
+    if (bytesRead < HEADER_BYTES) {
+      return {
+        kind: "not-a-plugin",
+        why: `only ${bytesRead} bytes — too short to hold a TES4 header`,
+      };
+    }
     // Anything else is not a Bethesda plugin — a stray .esp that is really a
     // text file, or a truncated download.
-    if (buf.toString("latin1", 0, 4) !== "TES4") return undefined;
+    if (buf.toString("latin1", 0, 4) !== "TES4") {
+      return { kind: "not-a-plugin", why: "no TES4 header" };
+    }
     const flags = buf.readUInt32LE(FLAGS_OFFSET);
     return {
-      isLight: (flags & FLAG_LIGHT) !== 0,
-      isMaster: (flags & FLAG_MASTER) !== 0,
+      kind: "ok",
+      flags: {
+        isLight: (flags & FLAG_LIGHT) !== 0,
+        isMaster: (flags & FLAG_MASTER) !== 0,
+      },
     };
-  } catch {
-    return undefined;
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") return { kind: "not-found" };
+    // EBUSY/EPERM/EACCES are the interesting ones: the file IS there, and
+    // telling the user it is missing sends them looking in the wrong place.
+    return {
+      kind: "unreadable",
+      why: `${code ?? "read failed"}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    };
   } finally {
     await handle?.close().catch(() => undefined);
   }
+}
+
+/**
+ * The flags, or `undefined` for any reason at all.
+ *
+ * Deliberately lossy: every caller that WRITES a flag must treat doubt as
+ * "leave it alone", and a single `undefined` makes that impossible to get
+ * wrong. Callers that must EXPLAIN a failure use
+ * {@link readPluginFlagsDetailed}.
+ */
+export async function readPluginFlags(
+  filePath: string,
+): Promise<PluginFlags | undefined> {
+  const read = await readPluginFlagsDetailed(filePath);
+  return read.kind === "ok" ? read.flags : undefined;
 }
 
 /**

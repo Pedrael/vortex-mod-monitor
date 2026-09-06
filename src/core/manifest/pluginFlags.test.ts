@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   readPluginFlags,
+  readPluginFlagsDetailed,
   setPluginLightFlag,
   REGULAR_PLUGIN_LIMIT,
 } from "./pluginFlags";
@@ -139,5 +140,61 @@ describe("the limit that makes this matter", () => {
     expect(REGULAR_PLUGIN_LIMIT).toBe(254);
     expect(817 - 573).toBeLessThan(REGULAR_PLUGIN_LIMIT);
     expect(817 - 573 + 11).toBeGreaterThan(REGULAR_PLUGIN_LIMIT);
+  });
+});
+
+describe("why a read failed, for the caller that has to explain it", () => {
+  it("reports a missing file as not-found, never as unreadable", async () => {
+    const r = await readPluginFlagsDetailed(
+      path.join(dir, "definitely-not-here.esp"),
+    );
+    expect(r.kind).toBe("not-found");
+  });
+
+  it("reports a non-plugin as not-a-plugin, with the reason", async () => {
+    // A stray .esp that is really a text file. Present and readable — telling
+    // the user it is "not on disk" would send them looking for it.
+    const f = path.join(dir, "text.esp");
+    fs.writeFileSync(f, "this is not a plugin at all, but it is long");
+    const r = await readPluginFlagsDetailed(f);
+    expect(r.kind).toBe("not-a-plugin");
+    expect(r.kind === "not-a-plugin" && r.why).toMatch(/TES4/);
+  });
+
+  it("reports a truncated file as not-a-plugin, saying how short", async () => {
+    const f = path.join(dir, "short.esp");
+    fs.writeFileSync(f, "TES");
+    const r = await readPluginFlagsDetailed(f);
+    expect(r.kind).toBe("not-a-plugin");
+    expect(r.kind === "not-a-plugin" && r.why).toMatch(/bytes/);
+  });
+
+  it("still gives the swallowing reader the same answers", async () => {
+    // The two must not drift: readPluginFlags is defined in terms of the
+    // detailed one precisely so a new failure mode cannot appear in one and
+    // not the other.
+    const f = path.join(dir, "gone.esp");
+    expect(await readPluginFlags(f)).toBeUndefined();
+    expect((await readPluginFlagsDetailed(f)).kind).toBe("not-found");
+  });
+});
+
+describe("a failure that is not ENOENT", () => {
+  it("reports UNREADABLE, not not-found, when the path cannot be opened", async () => {
+    /**
+     * The branch the whole detailed reader exists for, and the one that is
+     * hard to reach on a healthy machine — EBUSY and EPERM need another
+     * process holding the file. A DIRECTORY is the portable way to make the
+     * open fail for a reason that is not "it does not exist".
+     *
+     * Without this the `code === "ENOENT"` test is never exercised: every
+     * other case returns before the catch, so collapsing the two back into
+     * "not-found" passes the whole suite.
+     */
+    const asDir = path.join(dir, "IAmADirectory.esp");
+    fs.mkdirSync(asDir);
+    const r = await readPluginFlagsDetailed(asDir);
+    expect(r.kind).toBe("unreadable");
+    expect(r.kind === "unreadable" && r.why).toMatch(/EISDIR|EPERM|EACCES/);
   });
 });
