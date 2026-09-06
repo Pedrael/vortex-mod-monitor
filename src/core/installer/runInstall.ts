@@ -2059,13 +2059,25 @@ async function runInstallImpl(ctx: DriverContext): Promise<InstallResult> {
         );
       },
     });
+    /**
+     * This is the only step in the whole install that modifies bytes inside
+     * the user's game folder, and it used to log counts alone — `corrected: 7`
+     * and nothing else. A user reporting "a plugin is light and should not be"
+     * produced a log that could not name a single file, and the two directions
+     * (which have opposite consequences) were one number.
+     */
     ehLog("info", "plugins.light-flags", {
       corrected: pluginFlagRepair.corrected,
+      set: pluginFlagRepair.set,
+      cleared: pluginFlagRepair.cleared,
+      // Capped: a large run is itself the signal, and 573 names is not a log
+      // line anyone reads.
+      correctedNames: pluginFlagRepair.correctedNames.slice(0, 50),
       alreadyCorrect: pluginFlagRepair.alreadyCorrect,
       unknown: pluginFlagRepair.unknown,
       missing: pluginFlagRepair.missing,
       regularAfter: pluginFlagRepair.regularAfter,
-      failures: pluginFlagRepair.failures.length,
+      failures: pluginFlagRepair.failures,
     });
 
     // ── 7b1. did the load order actually come out like the curator's? ──

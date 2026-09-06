@@ -1,0 +1,110 @@
+/**
+ * ──────────────────────────────────────────────────────────────────────
+ * What the ESL repair counts, and what it says about it.
+ *
+ * The audit found this subsystem reporting confidently wrong things in the
+ * one situation it exists for. Every case below is a real defect that shipped:
+ *
+ *   - a package with no recorded flags, or a Data folder it cannot read,
+ *     produced NO message at all — the two ways the step fails completely
+ *     were reported as silence, and the install said success;
+ *   - `regularAfter` skipped every plugin whose flag was not recorded, so
+ *     the more flags were missing the further the count fell below the truth,
+ *     and the "your game will not start" alarm was deafest exactly when the
+ *     flags had been lost;
+ *   - disabled plugins were counted as consuming a load-order slot, which
+ *     they do not, producing that alarm for profiles that launch fine;
+ *   - setting and clearing the flag were one counter, and the message
+ *     asserted the set-direction meaning for both — telling a user whose
+ *     flags were REMOVED that those plugins "do not use a regular
+ *     load-order slot".
+ *
+ * The render fixture in `renderScreens.test.ts` pins the happy-path sentence
+ * as a hand-written literal, which tests the rendering and not the producing.
+ * This file is the other half.
+ * ──────────────────────────────────────────────────────────────────────
+ */
+import { describe, expect, it } from "vitest";
+
+import {
+  describePluginFlagRepair,
+  type PluginFlagRepair,
+} from "./applyPluginLightFlags";
+
+const repair = (over: Partial<PluginFlagRepair> = {}): PluginFlagRepair => ({
+  corrected: 0,
+  set: 0,
+  cleared: 0,
+  correctedNames: [],
+  alreadyCorrect: 0,
+  unknown: 0,
+  missing: 0,
+  failures: [],
+  regularAfter: 0,
+  ...over,
+});
+
+const said = (r: PluginFlagRepair): string =>
+  (describePluginFlagRepair(r) ?? []).join(" ");
+
+describe("total failure is never reported as silence", () => {
+  it("speaks up when the package recorded no flags at all", () => {
+    // The exact shape of the parser bug: every entry `unknown`, nothing
+    // corrected, nothing failed, regularAfter 0 — so every existing
+    // condition for a notice was false and the user was told nothing.
+    const lines = describePluginFlagRepair(repair({ unknown: 817 }));
+    expect(lines).toBeDefined();
+    expect(lines!.join(" ")).toMatch(/no esl \(light\) flag was recorded/i);
+  });
+
+  it("speaks up when none of the plugins could be read from disk", () => {
+    const lines = describePluginFlagRepair(repair({ missing: 817 }));
+    expect(lines).toBeDefined();
+    expect(lines!.join(" ")).toMatch(/None of the 817 plugins/);
+    expect(lines!.join(" ")).toMatch(/Data folder/);
+  });
+
+  it("still says nothing when everything was already correct", () => {
+    // The happy path stays quiet on purpose: announcing "restored 0 flags"
+    // on every install teaches people to ignore the notice.
+    expect(describePluginFlagRepair(repair({ alreadyCorrect: 817 }))).toBeUndefined();
+  });
+});
+
+describe("the two directions are different claims", () => {
+  it("says a slot was saved only when the flag was SET", () => {
+    const lines = said(repair({ corrected: 6, set: 6, alreadyCorrect: 1 }));
+    expect(lines).toMatch(/Restored the collection's ESL \(light\) flag on 6/);
+    expect(lines).toMatch(/do not use a regular load-order slot/);
+  });
+
+  it("never claims a saved slot when the flag was CLEARED", () => {
+    // Clearing consumes a slot. The old single counter printed the
+    // set-direction sentence here, which is false in both halves.
+    const lines = said(
+      repair({ corrected: 3, cleared: 3, alreadyCorrect: 1, regularAfter: 100 }),
+    );
+    expect(lines).toMatch(/Removed the ESL \(light\) flag from 3/);
+    expect(lines).toMatch(/uses a regular load-order slot/);
+    expect(lines).not.toMatch(/do not use a regular load-order slot/);
+  });
+
+  it("reports both when a run did some of each", () => {
+    const lines = said(repair({ corrected: 5, set: 3, cleared: 2 }));
+    expect(lines).toMatch(/flag on 3/);
+    expect(lines).toMatch(/from 2/);
+  });
+});
+
+describe("the over-limit alarm", () => {
+  it("fires above the 254 regular-plugin limit", () => {
+    const lines = said(repair({ regularAfter: 255, alreadyCorrect: 1 }));
+    expect(lines).toMatch(/will not start/);
+    expect(lines).toMatch(/255/);
+  });
+
+  it("does not fire at the limit exactly", () => {
+    expect(describePluginFlagRepair(repair({ regularAfter: 254, alreadyCorrect: 1 })))
+      .toBeUndefined();
+  });
+});

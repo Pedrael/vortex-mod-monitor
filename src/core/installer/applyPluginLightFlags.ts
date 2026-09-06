@@ -38,8 +38,26 @@ import {
 import type { EhcollPluginEntry } from "../../types/ehcoll";
 
 export type PluginFlagRepair = {
-  /** Files whose flag was actually rewritten. */
+  /** Files whose flag was actually rewritten. `set + cleared`. */
   corrected: number;
+  /**
+   * ─── THE TWO DIRECTIONS ARE NOT THE SAME EVENT ──────────────────────
+   * Setting the flag frees a load-order slot; clearing it consumes one, and
+   * clearing is the direction that can push a working profile over the 254
+   * limit. They were one counter, and the notice asserted the set-direction
+   * meaning for both — telling a curator whose flags were CLEARED that the
+   * plugins "do not use a regular load-order slot", which is false in exactly
+   * the case that matters.
+   */
+  set: number;
+  cleared: number;
+  /**
+   * Which plugins were touched, so the log can answer the first question
+   * anyone asks after a game stops starting. This is the only step in the
+   * whole install that modifies bytes in the user's game folder, and it used
+   * to record a count and nothing else.
+   */
+  correctedNames: string[];
   /** Already correct — the common case when the mod author shipped it light. */
   alreadyCorrect: number;
   /** The manifest did not record a flag: older package, or unreadable at build. */
@@ -48,7 +66,19 @@ export type PluginFlagRepair = {
   missing: number;
   /** Writes that failed, named — each one is a plugin closer to not loading. */
   failures: string[];
-  /** Regular (non-light) plugins after the repair, for the limit check. */
+  /**
+   * Regular (non-light) ENABLED plugins after the repair, for the limit check.
+   *
+   * Counted from what is actually ON DISK, including plugins whose flag the
+   * manifest did not record. It used to skip those — so the more flags were
+   * missing, the further this fell below the truth, and it was permanently 0
+   * in the case the alarm exists for. `overLimit` could not fire precisely
+   * when the flags had been lost.
+   *
+   * Disabled plugins are excluded: plugins.txt lists them, but one loads
+   * nothing and consumes no index, so counting them produced a "the game will
+   * not start" warning for profiles that start fine.
+   */
   regularAfter: number;
 };
 
@@ -61,6 +91,9 @@ export async function applyPluginLightFlags(args: {
 }): Promise<PluginFlagRepair> {
   const result: PluginFlagRepair = {
     corrected: 0,
+    set: 0,
+    cleared: 0,
+    correctedNames: [],
     alreadyCorrect: 0,
     unknown: 0,
     missing: 0,
@@ -78,15 +111,27 @@ export async function applyPluginLightFlags(args: {
     done += 1;
     args.onProgress?.(done, args.order.length);
 
+    const file = path.join(args.dataDir, plugin.name);
+    const current = await readPluginFlags(file);
+
+    /**
+     * Counted from the FILE, not from the manifest, and only when enabled.
+     * A plugin whose flag we could not record still sits on disk and still
+     * takes an index — excluding it is what made the limit alarm deaf.
+     */
+    const countsAsRegular = (isLight: boolean): void => {
+      if (plugin.enabled && !isLight) result.regularAfter += 1;
+    };
+
     // Absent means the build could not read it. Leave the user's file alone
-    // rather than clearing a flag on a guess.
+    // rather than clearing a flag on a guess — but still count what it IS.
     if (plugin.light === undefined) {
       result.unknown += 1;
+      if (current !== undefined) countsAsRegular(current.isLight);
+      else result.missing += 1;
       continue;
     }
 
-    const file = path.join(args.dataDir, plugin.name);
-    const current = await readPluginFlags(file);
     if (current === undefined) {
       result.missing += 1;
       continue;
@@ -94,21 +139,27 @@ export async function applyPluginLightFlags(args: {
 
     if (current.isLight === plugin.light) {
       result.alreadyCorrect += 1;
-      if (!plugin.light) result.regularAfter += 1;
+      countsAsRegular(plugin.light);
       continue;
     }
 
     try {
       const changed = await setPluginLightFlag(file, plugin.light);
-      if (changed) result.corrected += 1;
-      else result.alreadyCorrect += 1;
-      if (!plugin.light) result.regularAfter += 1;
+      if (changed) {
+        result.corrected += 1;
+        result.correctedNames.push(plugin.name);
+        if (plugin.light) result.set += 1;
+        else result.cleared += 1;
+      } else {
+        result.alreadyCorrect += 1;
+      }
+      countsAsRegular(plugin.light);
     } catch (err) {
       result.failures.push(
         `${plugin.name}: ${err instanceof Error ? err.message : String(err)}`,
       );
       // It kept whatever it had, so count it as it currently stands.
-      if (!current.isLight) result.regularAfter += 1;
+      countsAsRegular(current.isLight);
     }
   }
   return result;
@@ -126,7 +177,24 @@ export function describePluginFlagRepair(
   result: PluginFlagRepair,
 ): string[] | undefined {
   const overLimit = result.regularAfter > REGULAR_PLUGIN_LIMIT;
-  if (result.corrected === 0 && result.failures.length === 0 && !overLimit) {
+  /**
+   * ─── SILENCE IS NOT AN ACCEPTABLE REPORT FOR TOTAL FAILURE ──────────
+   * This returned `undefined` whenever nothing was corrected, so both ways
+   * the step can fail completely were reported as nothing at all: a package
+   * that records no flags (every entry `unknown`), and a Data folder where
+   * none of the plugins can be read (every entry `missing`). Neither sets
+   * `corrected` or `failures`, and `regularAfter` was 0, so `overLimit` could
+   * not fire either. The install said success and the flags that make the
+   * collection loadable were never restored.
+   */
+  const total = result.unknown + result.missing + result.alreadyCorrect + result.corrected;
+  const blind = total > 0 && result.unknown + result.missing === total;
+  if (
+    result.corrected === 0 &&
+    result.failures.length === 0 &&
+    !overLimit &&
+    !blind
+  ) {
     return undefined;
   }
 
@@ -138,12 +206,35 @@ export function describePluginFlagRepair(
         `is under the limit — light (ESL) flags are what keep a collection ` +
         `this size loadable, and some could not be restored.`,
     );
-  } else if (result.corrected > 0) {
+  } else if (blind) {
     lines.push(
-      `Restored the collection's ESL (light) flag on ${result.corrected} ` +
-        `plugin(s). These do not use a regular load-order slot, which is what ` +
-        `lets a collection this size load at all.`,
+      result.unknown >= result.missing
+        ? `No ESL (light) flag was recorded for any of the ${total} plugins ` +
+          `in this collection, so none were restored. If the game will not ` +
+          `start, that is the first thing to check — the package may predate ` +
+          `this feature, or the curator's build could not read the headers.`
+        : `None of the ${total} plugins in this collection could be read from ` +
+          `your game's Data folder, so no ESL (light) flags were restored. ` +
+          `That usually means the deploy has not happened yet.`,
     );
+  } else if (result.corrected > 0) {
+    // Set and cleared are opposite claims about the load-order budget, and
+    // one message asserted the set-direction meaning for both.
+    if (result.set > 0) {
+      lines.push(
+        `Restored the collection's ESL (light) flag on ${result.set} ` +
+          `plugin(s). These do not use a regular load-order slot, which is ` +
+          `what lets a collection this size load at all.`,
+      );
+    }
+    if (result.cleared > 0) {
+      lines.push(
+        `Removed the ESL (light) flag from ${result.cleared} plugin(s) to ` +
+          `match the curator. Each of these now uses a regular load-order ` +
+          `slot; you have ${Math.max(0, REGULAR_PLUGIN_LIMIT - result.regularAfter)} ` +
+          `spare.`,
+      );
+    }
   }
   if (result.failures.length > 0) {
     lines.push(
@@ -151,7 +242,7 @@ export function describePluginFlagRepair(
         `${result.failures.slice(0, 5).join("; ")}`,
     );
   }
-  if (result.missing > 0) {
+  if (result.missing > 0 && !blind) {
     lines.push(
       `  - ${result.missing} plugin(s) in the collection are not on disk here.`,
     );
