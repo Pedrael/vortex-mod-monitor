@@ -832,13 +832,38 @@ export async function loadBuildContext(
         declared: detectedDependencies,
       });
     }
+    const gameDirKnown = getGameDirectory(state, gameId) !== undefined;
     op.step("external-deps-detected", {
-      gameDirKnown: getGameDirectory(state, gameId) !== undefined,
+      gameDirKnown,
       detected: detectedDependencies.map((d) => `${d.id}@${d.version}`),
     });
+    /**
+     * ─── "CANNOT CHECK" IS NOT "NOTHING INSTALLED" ─────────────────────
+     * The whole scan sits inside `if (gameDir !== undefined)`. When Vortex
+     * has not discovered the game, it fell through with an empty list and no
+     * warning — so the curator built and shipped a collection declaring zero
+     * prerequisites, with nothing on screen saying the scan had not run.
+     * `getGameDirectory`'s own docblock says this must not happen; the
+     * function honours it and the caller did not.
+     */
+    if (!gameDirKnown) {
+      dependencyWarnings.push(
+        `Could not find this game's install folder, so nothing was checked ` +
+          `for script extenders, ENB or engine injectors. That is NOT the ` +
+          `same as "none are needed" — if this collection depends on SKSE or ` +
+          `similar, the package will not mention it. Point Vortex at the ` +
+          `game and reopen this page to scan properly.`,
+      );
+    }
   } catch (err) {
-    // Never fail a build context over a prerequisite scan.
+    // Never fail a build context over a prerequisite scan — but never let it
+    // fail quietly either. An empty list looks identical to a clean scan.
     op.step("external-deps-failed", { err: String(err) });
+    dependencyWarnings.push(
+      `The scan for script extenders and engine injectors did not complete ` +
+        `(${String(err)}), so this package may declare fewer prerequisites ` +
+        `than the collection actually needs.`,
+    );
   }
 
   op.ok({

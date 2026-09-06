@@ -36,7 +36,11 @@ const receipt = (over: Partial<HealthReceiptView> = {}): HealthReceiptView => ({
   ],
   rulesApplication: {
     appliedRuleCount: 291,
-    baselinePluginOrder: on("a.esp", "b.esp", "c.esp"),
+    baselinePluginOrder: [
+      { name: "a.esp", enabled: true, light: true },
+      { name: "b.esp", enabled: true, light: false },
+      { name: "c.esp", enabled: true },
+    ],
   },
   userlistApplication: { appliedRuleCount: 29 },
   ...over,
@@ -49,6 +53,9 @@ const healthy = (over: Partial<HealthObservations> = {}): HealthObservations => 
   enabledModIds: ["m1", "m2", "m3"],
   driftedCompareKeys: [],
   currentPluginOrder: on("a.esp", "b.esp", "c.esp"),
+  // Matches the recorded flags above. `c.esp` recorded none, so it is not
+  // checked at all — absent is an unknown, never drift.
+  currentPluginLightFlags: { "a.esp": true, "b.esp": false },
   currentModRuleCount: 291,
   currentUserlistRuleCount: 29,
   ...over,
@@ -333,5 +340,60 @@ describe("a supervised install makes drift ambiguous", () => {
     );
     expect(byId(checks, "staging").detail).toContain("Alpha");
     expect(byId(checks, "staging").affectedCount).toBe(1);
+  });
+});
+
+describe("the ESL flags, which decide whether the game starts", () => {
+  it("is DRIFTED when a light flag was lost, and says what that costs", () => {
+    /**
+     * The failure this check exists for. The flag lives in the plugin file's
+     * header, so a Vortex purge under copy deployment rewrites it from
+     * staging and silently undoes the install's repair. On the profile this
+     * was built for, 1421 of 1607 plugins are light — losing them puts the
+     * setup roughly 1200 over the 254 limit and the game stops starting,
+     * while every other check stays green.
+     */
+    const checks = evaluateHealth(
+      receipt(),
+      healthy({ currentPluginLightFlags: { "a.esp": false, "b.esp": false } }),
+    );
+    const c = byId(checks, "plugin-light-flags");
+    expect(c.status).toBe("drifted");
+    expect(c.affectedCount).toBe(1);
+    expect(c.summary).toMatch(/lost the light flag/);
+    expect(c.summary).toMatch(/purge/);
+    expect(c.detail.join(" ")).toMatch(/a\.esp should be light/);
+  });
+
+  it("does not call an unreadable plugin drift", () => {
+    // Absent from the on-disk map means we could not read that file. Treating
+    // it as changed would report drift on a locked game folder.
+    const checks = evaluateHealth(
+      receipt(),
+      healthy({ currentPluginLightFlags: { "b.esp": false } }),
+    );
+    expect(byId(checks, "plugin-light-flags").status).toBe("healthy");
+  });
+
+  it("is UNKNOWN, never healthy, when nothing could be read", () => {
+    const checks = evaluateHealth(receipt(), healthy({ currentPluginLightFlags: undefined }));
+    const c = byId(checks, "plugin-light-flags");
+    expect(c.status).toBe("unknown");
+    expect(c.summary).toMatch(/not the same as them being correct/);
+  });
+
+  it("is UNKNOWN when the package recorded no flags at all", () => {
+    // A package built before the flags were carried. Saying "healthy" would
+    // vouch for something never checked.
+    const r = receipt();
+    const stripped = {
+      ...r,
+      rulesApplication: {
+        ...r.rulesApplication!,
+        baselinePluginOrder: [{ name: "a.esp", enabled: true }],
+      },
+    };
+    const checks = evaluateHealth(stripped, healthy());
+    expect(byId(checks, "plugin-light-flags").status).toBe("unknown");
   });
 });

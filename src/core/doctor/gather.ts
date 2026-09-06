@@ -97,6 +97,13 @@ export interface GatherOptions {
    * claim than "did not look".
    */
   driftedCompareKeys?: readonly string[];
+  /**
+   * The plugins the receipt recorded, so the ESL flags can be re-read from
+   * disk and compared. Only entries carrying a `light` value are checked —
+   * a package that recorded none gives nothing to check, which is "unknown"
+   * rather than "fine".
+   */
+  recordedPlugins?: readonly { name: string; light?: boolean }[];
 }
 
 /**
@@ -155,6 +162,47 @@ export async function gatherObservations(
     currentUserlistRuleCount = undefined;
   }
 
+  /**
+   * ─── THE FLAGS AS THEY ARE ON DISK RIGHT NOW ───────────────────────
+   * Read from the deployed plugin headers, not from Vortex's state, because
+   * the flag IS the file's bytes and that is what the game parses at launch.
+   *
+   * Under copy deployment a Vortex purge rewrites those files from staging
+   * and silently undoes the install's repair. Nothing re-checked, so a
+   * profile could go hundreds of plugins over the 254 limit — the game stops
+   * starting — while Doctor reported everything healthy.
+   */
+  let currentPluginLightFlags: Record<string, boolean> | undefined;
+  try {
+    const [{ readPluginFlags }, { getGameDirectory }] = await Promise.all([
+      import("../manifest/pluginFlags"),
+      import("../manifest/externalDependencies"),
+    ]);
+    const gameDir = getGameDirectory(state, gameId);
+    const baseline = opts.recordedPlugins ?? [];
+    // Only the plugins the package recorded a flag for: everything else is an
+    // unknown, and an unknown is not drift.
+    const wanted = baseline.filter((p) => p.light !== undefined);
+    if (gameDir === undefined || wanted.length === 0) {
+      currentPluginLightFlags = undefined;
+    } else {
+      const nodePath = await import("path");
+      const found: Record<string, boolean> = {};
+      for (const p of wanted) {
+        const flags = await readPluginFlags(
+          nodePath.join(gameDir, "Data", p.name),
+        );
+        // Absent stays absent — a plugin we could not read is not evidence
+        // that its flag changed.
+        if (flags !== undefined) found[p.name.toLowerCase()] = flags.isLight;
+      }
+      currentPluginLightFlags = found;
+    }
+  } catch (err) {
+    ehLog("debug", "doctor.gather.light-flags-unreadable", { err });
+    currentPluginLightFlags = undefined;
+  }
+
   let activeProfileId: string | undefined;
   try {
     activeProfileId = getActiveProfileId(state);
@@ -172,6 +220,9 @@ export async function gatherObservations(
     currentPluginOrder,
     currentModRuleCount: countModRules(state, gameId),
     currentUserlistRuleCount,
+    ...(currentPluginLightFlags !== undefined
+      ? { currentPluginLightFlags }
+      : {}),
   };
   op.ok({
     profiles: observations.existingProfileIds.length,

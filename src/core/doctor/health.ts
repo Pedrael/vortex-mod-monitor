@@ -40,6 +40,7 @@ export type HealthCheckId =
   | "mods-enabled"
   | "staging"
   | "plugin-order"
+  | "plugin-light-flags"
   | "mod-rules"
   | "userlist";
 
@@ -105,6 +106,12 @@ export interface HealthObservations {
    * see the flag has to treat every one of them as a positional difference.
    */
   currentPluginOrder: readonly PluginOrderEntry[] | undefined;
+  /**
+   * ESL / light flag of each recorded plugin as it is on disk NOW, keyed by
+   * LOWERCASED name. `undefined` when it could not be read at all — which is
+   * "not checked", never "no drift".
+   */
+  currentPluginLightFlags?: Readonly<Record<string, boolean>>;
   /** Mod rules currently set for this game, counted. */
   currentModRuleCount: number | undefined;
   /** LOOT userlist rules currently set, counted. */
@@ -119,7 +126,10 @@ export interface HealthReceiptView {
   mods: ReadonlyArray<{ vortexModId: string; compareKey: string; name: string }>;
   rulesApplication?: {
     appliedRuleCount?: number;
-    baselinePluginOrder?: readonly PluginOrderEntry[];
+    baselinePluginOrder?: readonly (PluginOrderEntry & {
+      /** The curator's ESL flag, when the package recorded one. */
+      light?: boolean;
+    })[];
   };
   userlistApplication?: { appliedRuleCount?: number };
   /**
@@ -353,6 +363,69 @@ export function evaluateHealth(
               label: "Restore the curator's plugin order",
             },
           }),
+    });
+  }
+
+  // ── ESL / light flags ────────────────────────────────────────────────
+  /**
+   * ─── THE FLAG LIVES IN THE FILE, SO IT CAN BE UNDONE ────────────────
+   * Under copy deployment a Vortex purge rewrites plugins from staging and
+   * silently reverts the install's flag repair. Nothing re-checked it: on the
+   * profile this was built for, 1421 of 1607 plugins are light, and losing
+   * them puts the setup roughly 1200 plugins over the 254 limit — the game
+   * simply stops starting, with Doctor reporting everything healthy.
+   */
+  const recordedFlags = (baseline ?? []).filter((p) => p.light !== undefined);
+  const onDisk = obs.currentPluginLightFlags;
+  if (recordedFlags.length === 0) {
+    checks.push({
+      id: "plugin-light-flags",
+      title: "ESL (light) flags",
+      status: "unknown",
+      summary:
+        "This install did not record any ESL flags, so there is nothing to " +
+        "compare against.",
+      detail: [],
+      affectedCount: 0,
+    });
+  } else if (onDisk === undefined) {
+    checks.push({
+      id: "plugin-light-flags",
+      title: "ESL (light) flags",
+      status: "unknown",
+      summary:
+        "The plugin files could not be read, so their ESL flags were not " +
+        "checked. That is not the same as them being correct.",
+      detail: [],
+      affectedCount: 0,
+    });
+  } else {
+    const wrong = recordedFlags.filter((p) => {
+      const now = onDisk[p.name.toLowerCase()];
+      // Absent means we could not read that one. Not evidence of drift.
+      return now !== undefined && now !== p.light;
+    });
+    // Only a flag that was CLEARED costs a load-order slot; one wrongly set
+    // is a different problem and much rarer. Both are drift, but the count
+    // that decides whether the game starts is this one.
+    const lostLight = wrong.filter((p) => p.light === true).length;
+    checks.push({
+      id: "plugin-light-flags",
+      title: "ESL (light) flags",
+      status: wrong.length === 0 ? "healthy" : "drifted",
+      summary:
+        wrong.length === 0
+          ? `All ${recordedFlags.length} recorded ESL flags still match the ` +
+            `curator's.`
+          : `${wrong.length} plugin(s) no longer carry the ESL flag the ` +
+            `curator had` +
+            (lostLight > 0
+              ? ` — ${lostLight} of them lost the light flag, and each one ` +
+                `now uses a regular load-order slot. A Vortex purge under ` +
+                `copy deployment does exactly this.`
+              : "."),
+      detail: wrong.slice(0, 5).map((p) => `${p.name} should be ${p.light ? "light" : "regular"}`),
+      affectedCount: wrong.length,
     });
   }
 

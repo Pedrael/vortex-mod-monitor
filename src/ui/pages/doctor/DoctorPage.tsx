@@ -77,6 +77,11 @@ function toHealthView(receipt: InstallReceipt): HealthReceiptView {
                   baselinePluginOrder: baseline.map((e) => ({
                     name: e.name,
                     enabled: e.enabled,
+                    // And `light` travels too. This exact map is where the
+                    // enabled flag was being dropped before; adding a field
+                    // to the receipt and forgetting this line is how the
+                    // next one gets lost.
+                    ...(e.light !== undefined ? { light: e.light } : {}),
                   })),
                 }
               : {}),
@@ -195,6 +200,14 @@ export function DoctorPage(props: DoctorPageProps): JSX.Element {
           api,
           gameId,
           receiptProfileId: loaded.selected.vortexProfileId,
+          // The ESL flags live in the plugin FILES, so checking them needs
+          // the curator's recorded values to compare against.
+          ...(loaded.selected.rulesApplication?.baselinePluginOrder !== undefined
+            ? {
+                recordedPlugins:
+                  loaded.selected.rulesApplication.baselinePluginOrder,
+              }
+            : {}),
           ...(drifted !== undefined ? { driftedCompareKeys: drifted } : {}),
         });
         if (!alive) return;

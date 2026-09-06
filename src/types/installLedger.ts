@@ -287,6 +287,18 @@ export type ReceiptSkippedLoadOrderEntry = {
 export type ReceiptPluginEntry = {
   name: string;
   enabled: boolean;
+  /**
+   * The curator's ESL / "light" flag, when the package recorded one.
+   *
+   * Carried so Doctor can tell whether the flags are STILL right. The flag
+   * lives in the plugin file's header, and under copy deployment a Vortex
+   * purge rewrites those files from staging — silently undoing the repair.
+   * With 1421 of 1607 plugins light on a real profile, losing them puts the
+   * setup hundreds of plugins over the 254 limit and the game stops starting.
+   *
+   * Absent means the package recorded nothing, never "not light".
+   */
+  light?: boolean;
 };
 
 /**

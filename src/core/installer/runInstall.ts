@@ -1990,7 +1990,13 @@ async function runInstallImpl(ctx: DriverContext): Promise<InstallResult> {
     rulesApplication = {
       ...rulesApplication,
       baselinePluginOrder: plan.manifest.plugins.order.map(
-        (p): ReceiptPluginEntry => ({ name: p.name, enabled: p.enabled }),
+        (p): ReceiptPluginEntry => ({
+          name: p.name,
+          enabled: p.enabled,
+          // Carried, not dropped: Doctor cannot check a flag it was never
+          // told about, and this is the boundary where it used to be lost.
+          ...(p.light !== undefined ? { light: p.light } : {}),
+        }),
       ),
     };
 
