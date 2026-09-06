@@ -25,8 +25,8 @@ import * as nodePath from "path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { runInstall } from "../../src/core/installer/runInstall";
-import { resolveInstallPlan } from "../../src/core/resolver/resolveInstallPlan";
 import { parseManifest } from "../../src/core/manifest/parseManifest";
+import { resolveInstallPlan } from "../../src/core/resolver/resolveInstallPlan";
 import { buildManifest } from "../../src/core/manifest/buildManifest";
 import { captureStagingFiles } from "../../src/core/manifest/captureStagingFiles";
 import { scopeCollectionMods } from "../../src/core/manifest/collectionScope";
@@ -114,9 +114,28 @@ function why(result: unknown): string {
 }
 
 async function install(
-  manifest: EhcollManifest,
+  rawManifest: EhcollManifest,
   fake: ReturnType<typeof makeFakeVortex>,
 ) {
+  /**
+   * ─── THROUGH THE REAL FORMAT, NOT AROUND IT ─────────────────────────
+   * These tests used to hand the manifest OBJECT straight to the driver,
+   * which skips the one step every real install performs: serialize to
+   * `.ehcoll`, read it back, parse it.
+   *
+   * That gap hid the worst bug this project has had. `parseManifest` never
+   * read `plugins.order[].light`, so every ESL flag a curator captured was
+   * silently dropped on the user's machine — and all four light-flag tests
+   * below passed throughout, because they never went through the parser. A
+   * profile that fits 817 plugins only because 573 are light installed with
+   * every one of them regular against a limit of 254, and the game did not
+   * start.
+   *
+   * Round-tripping here means an e2e test now fails when a field stops
+   * surviving the format, which is what "end to end" was supposed to mean.
+   */
+  const manifest = parseManifest(JSON.stringify(rawManifest)).manifest;
+
   const plan = resolveInstallPlan(manifest, userState(), {
     kind: "fresh-profile",
     profileName: "E2E Profile",

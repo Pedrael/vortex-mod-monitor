@@ -66,6 +66,23 @@ describe("manifest round-trip", () => {
       },
       game: { version: "1.10.163.0", versionPolicy: "exact" },
       vortex: { version: "2.6.0", deploymentMethod: "hardlink" },
+      /**
+       * ─── THE FIXTURE HAS TO POPULATE THE FIELD TO PROTECT IT ─────────
+       * This test's own docblock says it is "a net, not a proof — it only
+       * covers fields this fixture populates", and that turned out to be
+       * exactly right: `plugins.order` was empty here, so nothing compared
+       * the plugin entries, and `parseManifest` silently dropped `light` for
+       * the entire life of the ESL feature. Every flag a curator captured
+       * died on the user's machine and this test stayed green.
+       *
+       * All three states are covered on purpose. `false` and ABSENT are
+       * different instructions — clear the flag versus leave it alone — and
+       * a round-trip that collapsed them would be worse than none.
+       */
+      pluginsTxtContent: ["*Light.esp", "*Regular.esp", "*Unrecorded.esp"].join(
+        String.fromCharCode(10),
+      ),
+      pluginLightFlags: { "light.esp": true, "regular.esp": false },
       externalMods: {
         "ext-mod": {
           instructions: "Get it here",
@@ -75,6 +92,11 @@ describe("manifest round-trip", () => {
         },
       },
     } as never);
+
+    // The fixture must actually exercise what it claims to protect: an empty
+    // plugin list is how this test missed `light` in the first place.
+    expect(manifest.plugins.order).toHaveLength(3);
+    expect(manifest.plugins.order.filter((p) => p.light !== undefined)).toHaveLength(2);
 
     const parsed = parseManifest(JSON.stringify(manifest)).manifest;
     // The real assertion: nothing the builder produced was eaten on the way in.
