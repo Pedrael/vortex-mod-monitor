@@ -341,3 +341,15 @@ project rather than this one, it belongs upstream — say so and it can be promo
   waiter matching install-completion events on identity logged only its success. When its identity
   source went stale it rejected the correct event every time, silently, and the failure presented as
   "nothing happened".*
+
+- **GP-32** — **A heredoc eats backslashes; write code files with the file-writing tool.** A quoted
+  shell heredoc still collapses `\` to `\`, which silently changes the MEANING of the code it
+  carries. Three separate instances in one session: `` `\s${value}` `` in a template literal became
+  `s...` and matched nothing; a CSS template literal was terminated early by a backtick in prose;
+  and `` `${hive}\${key}` `` became `` `${hive}\${key}` `` — where `\$` is an escaped dollar, so it
+  built the literal text `HKLM${key}`. That last one is the worst shape available: `reg` answered
+  "no such key", exit 1, and the code *correctly* reported the runtime as ABSENT. A malformed query
+  is indistinguishable from a genuine negative unless you check the query itself. None of the three
+  was a type error and none failed a build; two were caught only by running the code against a
+  machine whose real answer was already known. *Scar: a runtime detector reported all four
+  Microsoft runtimes missing on a machine that plainly had them.*
