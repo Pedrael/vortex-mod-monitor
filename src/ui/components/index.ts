@@ -1,5 +1,7 @@
 export { EventHorizonLogo } from "./EventHorizonLogo";
 export type { EventHorizonLogoProps } from "./EventHorizonLogo";
+export { EventHorizonMark } from "./EventHorizonMark";
+export type { EventHorizonMarkProps } from "./EventHorizonMark";
 
 export { Button } from "./Button";
 export type { ButtonProps, ButtonIntent, ButtonSize } from "./Button";

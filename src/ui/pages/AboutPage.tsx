@@ -10,7 +10,7 @@
 
 import * as React from "react";
 
-import { EventHorizonLogo, Page, Pill, Card } from "../components";
+import { EventHorizonMark, Page, Pill, Card } from "../components";
 import { EXTENSION_VERSION } from "../version";
 
 const REPO_URL = "https://github.com/ReidenXerx/Event-Horizon";
@@ -36,7 +36,7 @@ export function AboutPage(): JSX.Element {
           WebkitBackdropFilter: "blur(8px)",
         }}
       >
-        <EventHorizonLogo size={96} />
+        <EventHorizonMark size={96} />
         <div style={{ flex: "1 1 320px", minWidth: 280 }}>
           <h2 style={{ marginBottom: "var(--eh-sp-2)" }}>
             <span className="eh-text-gradient">Event Horizon</span>

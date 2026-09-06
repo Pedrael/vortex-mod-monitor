@@ -23,7 +23,7 @@ import * as React from "react";
 import {
   Button,
   Card,
-  EventHorizonLogo,
+  EventHorizonMark,
   Pill,
   ProgressRing,
 } from "../components";
@@ -119,7 +119,7 @@ export function Hero(): JSX.Element {
       style={{ paddingTop: "var(--eh-sp-3)", paddingBottom: "var(--eh-sp-3)" }}
     >
       <span className="eh-hero__logo">
-        <EventHorizonLogo size={104} />
+        <EventHorizonMark size={104} />
       </span>
       <h1 className="eh-hero__title" style={{ fontSize: "var(--eh-text-2xl)" }}>
         <span className="eh-text-gradient">Event Horizon</span>

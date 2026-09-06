@@ -25,7 +25,7 @@ import { util } from "@nexusmods/vortex-api";
 import {
   Button,
   Card,
-  EventHorizonLogo,
+  EventHorizonMark,
   HashingCard,
   Modal,
   Pill,
@@ -320,7 +320,7 @@ export function PickStep(props: PickStepProps): JSX.Element {
             "eh-fade-up var(--eh-dur-deliberate) var(--eh-easing) both",
         }}
       >
-        <EventHorizonLogo size={120} />
+        <EventHorizonMark size={120} />
         <div>
           <h3
             style={{
