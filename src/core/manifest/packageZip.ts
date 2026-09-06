@@ -36,6 +36,7 @@
  */
 
 import * as fsp from "fs/promises";
+import { ehLog } from "../logging/ehLog";
 import * as os from "os";
 import * as path from "path";
 
@@ -66,7 +67,37 @@ export type MirrorFileSpec = {
   sha256: string;
 };
 
+/**
+ * ──────────────────────────────────────────────────────────────────────
+ * What packaging is doing, while it does it.
+ *
+ * This module ran for minutes behind a single unchanging "Packaging
+ * .ehcoll..." and wrote nothing to any log. On a 9.4 GB collection the last
+ * step alone — reading the finished package back to hash it — takes minutes
+ * with no disk activity a curator can see, and it was reported as a freeze.
+ * It was not frozen. It was working, silently, which from outside is the
+ * same thing.
+ *
+ * `bytes` is carried where it is known, because "hashing the package" is a
+ * puzzling wait and "hashing the package (9.4 GB)" is an explained one.
+ * ──────────────────────────────────────────────────────────────────────
+ */
+export type PackageProgress = {
+  step:
+    | "writing-manifest"
+    | "staging-mirror"
+    | "staging-bundled"
+    | "compressing"
+    | "hashing-output";
+  message: string;
+  done?: number;
+  total?: number;
+  bytes?: number;
+};
+
 export type PackageEhcollInput = {
+  /** Called as each packaging step begins, and as long ones advance. */
+  onProgress?: (progress: PackageProgress) => void;
   manifest: EhcollManifest;
   bundledArchives: BundledArchiveSpec[];
   /**
@@ -152,6 +183,13 @@ export class PackageEhcollError extends Error {
  * 7z). Throws {@link PackageEhcollError} on any validation or I/O error;
  * staging directory is cleaned up regardless.
  */
+/** Bytes as something a waiting person reads. */
+function describeBytes(bytes: number): string {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
 export async function packageEhcoll(
   input: PackageEhcollInput,
 ): Promise<PackageEhcollResult> {
@@ -172,8 +210,18 @@ export async function packageEhcoll(
   const stagingDir = await prepareStagingDir(input.stagingDir);
   const cleanupOnSuccess = input.cleanupOnSuccess !== false;
 
+  const onProgress = input.onProgress;
+  const started = Date.now();
+  ehLog("info", "package.start", {
+    mods: input.manifest.mods.length,
+    bundled: input.bundledArchives.length,
+    mirrorFiles: input.mirrorFiles?.length ?? 0,
+    output: input.outputPath,
+  });
+
   try {
     checkAbort();
+    onProgress?.({ step: "writing-manifest", message: "Writing the manifest..." });
     await writeManifestJson(stagingDir, input.manifest);
 
     checkAbort();
@@ -182,25 +230,50 @@ export async function packageEhcoll(
     checkAbort();
     await writeOptionalMarkdown(stagingDir, "CHANGELOG.md", input.changelog);
 
-    await stageMirrorFiles(
-    stagingDir,
-    input.mirrorFiles ?? [],
-    signal,
-  );
-  await stageBundledArchives(
+    const mirrorFiles = input.mirrorFiles ?? [];
+    if (mirrorFiles.length > 0) {
+      ehLog("info", "package.mirror.start", { files: mirrorFiles.length });
+    }
+    const mirrorMs = Date.now();
+    await stageMirrorFiles(stagingDir, mirrorFiles, signal, onProgress);
+    if (mirrorFiles.length > 0) {
+      ehLog("info", "package.mirror.ok", {
+        files: mirrorFiles.length,
+        ms: Date.now() - mirrorMs,
+      });
+    }
+
+    ehLog("info", "package.bundled.start", {
+      archives: input.bundledArchives.length,
+      verifyHashes: input.verifyHashes === true,
+    });
+    const bundledMs = Date.now();
+    await stageBundledArchives(
       stagingDir,
       input.bundledArchives,
       input.verifyHashes === true,
       signal,
+      onProgress,
     );
+    ehLog("info", "package.bundled.ok", {
+      archives: input.bundledArchives.length,
+      ms: Date.now() - bundledMs,
+    });
 
     checkAbort();
+    onProgress?.({
+      step: "compressing",
+      message: "Compressing the package — this is the long part.",
+    });
+    ehLog("info", "package.compress.start", {});
+    const compressMs = Date.now();
     await runSevenZipAdd(
       input.outputPath,
       stagingDir,
       input.sevenZip ?? resolveSevenZip(),
       signal,
     );
+    ehLog("info", "package.compress.ok", { ms: Date.now() - compressMs });
 
     checkAbort();
     const stat = await fsp.stat(input.outputPath);
@@ -220,7 +293,28 @@ export async function packageEhcoll(
     // Computed from the FINISHED FILE rather than accumulated while writing:
     // what matters is the bytes that actually landed on disk, because those
     // are the bytes a recipient will hash.
+    // ─── THE STEP THAT LOOKED LIKE A FREEZE ────────────────────────────
+    // Reading 9.4 GB back off disk takes minutes and moves nothing a curator
+    // can see: the .ehcoll already exists and has stopped growing. Said out
+    // loud, with the size, so the wait is explained rather than alarming.
+    onProgress?.({
+      step: "hashing-output",
+      message: `Fingerprinting the finished package (${describeBytes(stat.size)})...`,
+      bytes: stat.size,
+    });
+    ehLog("info", "package.hash.start", { bytes: stat.size });
+    const hashMs = Date.now();
     const outputSha256 = await hashFileSha256(input.outputPath, signal);
+    ehLog("info", "package.hash.ok", {
+      bytes: stat.size,
+      ms: Date.now() - hashMs,
+    });
+    ehLog("info", "package.ok", {
+      ms: Date.now() - started,
+      bytes: stat.size,
+      sha256: outputSha256,
+      bundled: input.bundledArchives.length,
+    });
 
     return {
       outputPath: input.outputPath,
@@ -230,6 +324,11 @@ export async function packageEhcoll(
       warnings,
     };
   } catch (err) {
+    ehLog("error", "package.fail", {
+      ms: Date.now() - started,
+      output: input.outputPath,
+      err,
+    });
     // Cleanup BOTH the staging dir AND any partially-written output. Without
     // the second step, a failed/cancelled build leaves a corrupt .ehcoll on
     // disk that the curator might mistake for a real artifact.
@@ -369,14 +468,23 @@ async function stageBundledArchives(
   archives: BundledArchiveSpec[],
   verifyHashes: boolean,
   signal: AbortSignal | undefined,
+  onProgress?: (progress: PackageProgress) => void,
 ): Promise<void> {
   const bundledDir = path.join(stagingDir, "bundled");
   await fsp.mkdir(bundledDir, { recursive: true });
 
+  let done = 0;
   for (const archive of archives) {
     if (signal?.aborted) {
       throw new AbortError("Packaging cancelled by user");
     }
+    done += 1;
+    onProgress?.({
+      step: "staging-bundled",
+      message: `Collecting bundled archives (${done} / ${archives.length})...`,
+      done,
+      total: archives.length,
+    });
 
     if (verifyHashes) {
       await verifyArchiveHash(archive);
@@ -403,14 +511,23 @@ async function stageMirrorFiles(
   stagingDir: string,
   files: readonly MirrorFileSpec[],
   signal: AbortSignal | undefined,
+  onProgress?: (progress: PackageProgress) => void,
 ): Promise<void> {
   if (files.length === 0) return;
   const mirrorDir = path.join(stagingDir, "mirror");
   await fsp.mkdir(mirrorDir, { recursive: true });
 
   const staged = new Set<string>();
+  let done = 0;
   for (const file of files) {
     if (signal?.aborted) throw new AbortError("Packaging cancelled by user");
+    done += 1;
+    onProgress?.({
+      step: "staging-mirror",
+      message: `Collecting mirrored files (${done} / ${files.length})...`,
+      done,
+      total: files.length,
+    });
     if (staged.has(file.sha256)) continue;
     staged.add(file.sha256);
     await stageOne(file.sourcePath, path.join(mirrorDir, file.sha256));

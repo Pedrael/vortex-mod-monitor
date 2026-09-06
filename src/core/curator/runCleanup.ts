@@ -28,6 +28,7 @@
  */
 
 import type { types } from "@nexusmods/vortex-api";
+import { ehLog } from "../logging/ehLog";
 
 import type { ArchiveRemoval, CleanupPlan, DownloadEntry } from "./cleanupPlan";
 
@@ -132,6 +133,14 @@ export async function runCleanup(input: {
 
   const total = plan.removeMods.length + plan.deleteArchives.length;
   let done = 0;
+  const startedAt = Date.now();
+  // Deletion is the one thing here a curator cannot undo, so what went and
+  // what survived is written down before anyone has to ask.
+  ehLog("info", "cleanup.start", {
+    removeMods: plan.removeMods.length,
+    deleteArchives: plan.deleteArchives.length,
+    bytesPlanned: plan.bytesFreed,
+  });
 
   /** Mods whose removal failed — their archives are still referenced. */
   const stillHeld = new Set<string>();
@@ -144,8 +153,17 @@ export async function runCleanup(input: {
     onProgress?.(done, total, `Removing ${removal.mod.name}`);
     try {
       await removeMod(removal.mod.id);
+      ehLog("info", "cleanup.mod-removed", {
+        mod: removal.mod.name,
+        modId: removal.mod.id,
+        supersededBy: removal.supersededBy.name,
+      });
       out.modsRemoved.push(removal.mod.name);
     } catch (err) {
+      ehLog("warn", "cleanup.mod-remove-failed", {
+        mod: removal.mod.name,
+        err,
+      });
       out.modsFailed.push({
         name: removal.mod.name,
         why: err instanceof Error ? err.message : String(err),

@@ -1711,6 +1711,18 @@ export async function runBuildPipeline(
     changelog: overrides.changelog.length > 0 ? overrides.changelog : undefined,
     outputPath,
     signal,
+    // The longest phase in the build used to sit behind one unchanging
+    // "Packaging .ehcoll...". On a 9.4 GB collection the final step alone —
+    // reading the package back to fingerprint it — runs for minutes while the
+    // file on disk stops changing, and it was reported as a freeze. It was
+    // working. Saying which step it is on is the whole difference.
+    onProgress: (p) =>
+      onProgress?.({
+        phase: "packaging",
+        message: p.message,
+        ...(p.done !== undefined ? { done: p.done } : {}),
+        ...(p.total !== undefined ? { total: p.total } : {}),
+      }),
   });
 
   // ─── THE REPACK FOLDER IS A CACHE NOW, NOT A SCRATCH DIR ─────────────

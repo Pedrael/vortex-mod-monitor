@@ -24,6 +24,7 @@
  */
 
 import type { types } from "@nexusmods/vortex-api";
+import { ehLog } from "../logging/ehLog";
 
 import type { EhcollManifest } from "../../types/ehcoll";
 import type { InstallReceipt } from "../../types/installLedger";
@@ -84,7 +85,53 @@ function resolveModMaps(receipt: InstallReceipt): {
   return { modIdByCompareKey, modIdByNexusModId, ambiguousNexusModIds };
 }
 
+/**
+ * ─── THE DIAGNOSTIC TOOL WAS ITSELF UNDIAGNOSABLE ────────────────────
+ * Doctor had not one log line in it. It is the screen a user opens when
+ * something has already gone wrong, and every repair it performed left no
+ * trace of having been attempted — so a report reading "I pressed heal and
+ * nothing happened" could not be answered at all, by anyone.
+ *
+ * A wrapper rather than a line per branch: the switch below has a return in
+ * every case, and instrumenting each one is a list that goes stale the first
+ * time somebody adds a repair.
+ */
 export async function runHeal(
+  action: HealAction,
+  deps: RunHealDeps,
+): Promise<HealOutcome> {
+  const startedAt = Date.now();
+  ehLog("info", "doctor.heal.start", {
+    action,
+    gameId: deps.gameId,
+    profile: deps.receipt.vortexProfileName,
+    mods: deps.receipt.mods.length,
+  });
+  try {
+    const outcome = await healImpl(action, deps);
+    ehLog("info", "doctor.heal.done", {
+      action,
+      ms: Date.now() - startedAt,
+      kind: outcome.kind,
+      summary: (outcome as { summary?: string }).summary,
+      ...(outcome.kind === "blocked"
+        ? { reason: (outcome as { reason?: string }).reason }
+        : {}),
+    });
+    return outcome;
+  } catch (err) {
+    // A repair that threw is the single most important thing this file can
+    // record, and it recorded nothing at all before.
+    ehLog("error", "doctor.heal.fail", {
+      action,
+      ms: Date.now() - startedAt,
+      err,
+    });
+    throw err;
+  }
+}
+
+async function healImpl(
   action: HealAction,
   deps: RunHealDeps,
 ): Promise<HealOutcome> {

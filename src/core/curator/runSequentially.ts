@@ -15,6 +15,8 @@
  * ──────────────────────────────────────────────────────────────────────
  */
 
+import { ehLog } from "../logging/ehLog";
+
 /** The check run after each step. Injected so the loop stays testable. */
 export type StepVerify<T> = (item: T) => Promise<
   | { kind: "ok" }
@@ -57,16 +59,44 @@ export async function runSequentially<T>(input: {
   const { items, act, verify, onProgress, signal } = input;
   const outcomes: StepOutcome<T>[] = [];
 
+  /**
+   * Named for the log, not for the screen.
+   *
+   * Every bulk action a curator can start runs through here, and none of them
+   * wrote a line anywhere: a run that did nothing at all was indistinguishable
+   * from one that worked, and the only way to tell was to read Vortex's log
+   * and find it empty too. That is not a diagnosis anyone should have to make,
+   * least of all a user reporting a problem from another machine.
+   */
+  const label = (item: T): string => {
+    const named = item as { name?: unknown; mod?: { name?: unknown } };
+    if (typeof named.name === "string") return named.name;
+    if (typeof named.mod?.name === "string") return named.mod.name;
+    return "(unnamed)";
+  };
+
+  const startedAt = Date.now();
+  ehLog("info", "sequential.start", { items: items.length });
+
   let done = 0;
   for (const item of items) {
-    if (signal?.aborted === true) return { outcomes, cancelled: true };
+    if (signal?.aborted === true) {
+      ehLog("info", "sequential.cancelled", { done, of: items.length });
+      return { outcomes, cancelled: true };
+    }
     onProgress?.(done, items.length, item);
+    ehLog("debug", "sequential.item.start", {
+      n: done + 1,
+      of: items.length,
+      item: label(item),
+    });
 
     try {
       // Everything below happens after this one has finished, and the next
       // iteration cannot begin until it has.
       await act(item);
     } catch (err) {
+      ehLog("warn", "sequential.item.failed", { item: label(item), err });
       outcomes.push({
         kind: "failed",
         item,
@@ -78,10 +108,24 @@ export async function runSequentially<T>(input: {
 
     try {
       const checked = await verify(item);
-      if (checked.kind === "ok") outcomes.push({ kind: "done", item });
-      else if (checked.kind === "missing") {
+      if (checked.kind === "ok") {
+        ehLog("debug", "sequential.item.ok", { item: label(item) });
+        outcomes.push({ kind: "done", item });
+      } else if (checked.kind === "missing") {
+        // The reason this loop is sequential at all. Loud on purpose.
+        ehLog("warn", "sequential.item.files-dropped", {
+          item: label(item),
+          missing: checked.missing.length,
+          examples: checked.missing.slice(0, 5),
+        });
         outcomes.push({ kind: "files-dropped", item, missing: checked.missing });
-      } else outcomes.push({ kind: "unverified", item, why: checked.why });
+      } else {
+        ehLog("info", "sequential.item.unverified", {
+          item: label(item),
+          why: checked.why,
+        });
+        outcomes.push({ kind: "unverified", item, why: checked.why });
+      }
     } catch (err) {
       // A check that threw is a check that did not happen. Reporting the item
       // as done here would be the one lie this loop exists to prevent.
@@ -95,5 +139,13 @@ export async function runSequentially<T>(input: {
   }
 
   if (items.length > 0) onProgress?.(done, items.length, items[items.length - 1]!);
+  ehLog("info", "sequential.done", {
+    ms: Date.now() - startedAt,
+    items: items.length,
+    outcomes: outcomes.reduce<Record<string, number>>((acc, o) => {
+      acc[o.kind] = (acc[o.kind] ?? 0) + 1;
+      return acc;
+    }, {}),
+  });
   return { outcomes, cancelled: false };
 }
