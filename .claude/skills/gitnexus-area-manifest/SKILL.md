@@ -1,16 +1,16 @@
 ---
 name: gitnexus-area-manifest
-description: "Skill for the Manifest area of Event-Horizon. 339 symbols across 73 files."
+description: "Skill for the Manifest area of Event-Horizon. 362 symbols across 81 files."
 ---
 
 # Manifest
 
-339 symbols | 73 files | Cohesion: 80%
+362 symbols | 81 files | Cohesion: 78%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how parseManifest, archiveFileCacheKey, enrichModsWithArchiveHashes work
+- Understanding how archiveFileCacheKey, enrichModsWithArchiveHashes, hashFileSha256 work
 - Modifying manifest-related functionality
 
 ## Key Files
@@ -18,69 +18,69 @@ description: "Skill for the Manifest area of Event-Horizon. 339 symbols across 7
 | File | Symbols |
 |------|---------|
 | `src/core/manifest/parseManifest.ts` | ParseManifestError, describe, expectArray, expectBoolean, expectEnum (+43) |
-| `src/core/manifest/collectionConfig.ts` | isUuid, listNeverBuiltConfigs, listPublishedCollections, parseAndValidate, validateExternalDependencyEntries (+12) |
-| `src/core/manifest/packageZip.ts` | isAbortLikeError, packageEhcoll, checkAbort, prepareStagingDir, runSevenZipAdd (+12) |
+| `src/core/manifest/packageZip.ts` | describeBytes, isAbortLikeError, packageEhcoll, checkAbort, prepareStagingDir (+13) |
 | `src/core/manifest/readZip.ts` | ZipReadError, extractZipEntryToFile, findDataOffset, findEntry, findZip64Extra (+11) |
-| `src/core/manifest/buildManifest.ts` | BuildManifestError, buildLoadOrder, buildManifest, buildPackageMetadata, buildUserlist (+11) |
-| `src/core/manifest/readEhcoll.ts` | crossCheckBundled, prepareStagingDir, readEhcoll, safeRmDir, ReadEhcollError (+7) |
-| `src/core/manifest/externalHints.ts` | downloadsFromState, asMode, collectExternalHints, collectionHints, diagnoseHintSources (+6) |
+| `src/core/manifest/buildManifest.ts` | buildExternalMod, buildModEntry, buildModInstallSpec, buildModInstallState, buildNexusMod (+11) |
+| `src/core/manifest/collectionConfig.ts` | mode, CollectionConfigError, createDefaultConfig, getCollectionConfigPath, loadOrCreateCollectionConfig (+8) |
+| `src/core/manifest/externalHints.ts` | countBy, downloadsFromState, modsFromState, asMode, collectExternalHints (+8) |
+| `src/core/manifest/readEhcoll.ts` | ReadEhcollError, assertReadableFile, crossCheckBundled, extractManifest, listZipEntries (+7) |
 | `src/core/manifest/sevenZip.ts` | resolveSevenZip, assertOk, cancelOnAbort, sevenZipAdd, sevenZipExtractFull (+5) |
-| `src/core/manifest/parseModuleConfig.ts` | decodeModuleConfig, parseConditionals, parseFiles, parseGroup, parseModuleConfig (+3) |
-| `src/core/manifest/collectionScope.ts` | describeHashedCollisions, describeScope, findHashedIdentityCollisions, groupBy, normalizeInstallName (+2) |
+| `src/core/manifest/bundleFromStaging.ts` | directorySize, walk, readCachedBundle, repackBundledExternals, sweepStaleBundles (+3) |
+| `src/core/logging/ehLog.ts` | fail, ok, step, ehLog, enqueue (+3) |
 
 ## Entry Points
 
 Start here when exploring this area:
 
-- **`parseManifest`** (Function) — `src/core/manifest/parseManifest.ts:143`
-- **`archiveFileCacheKey`** (Function) — `src/core/archiveHashCache.ts:83`
-- **`enrichModsWithArchiveHashes`** (Function) — `src/core/archiveHashing.ts:183`
-- **`hashFileSha256`** (Function) — `src/core/archiveHashing.ts:38`
-- **`cleanup`** (Function) — `src/core/archiveHashing.ts:58`
+- **`archiveFileCacheKey`** (Function) — `src/core/archiveHashCache.ts:84`
+- **`enrichModsWithArchiveHashes`** (Function) — `src/core/archiveHashing.ts:184`
+- **`hashFileSha256`** (Function) — `src/core/archiveHashing.ts:39`
+- **`cleanup`** (Function) — `src/core/archiveHashing.ts:59`
+- **`onAbort`** (Function) — `src/core/archiveHashing.ts:51`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `ParseManifestError` | Class | `src/core/manifest/parseManifest.ts` | 121 |
 | `AbortError` | Class | `src/utils/abortError.ts` | 22 |
-| `ZipReadError` | Class | `src/core/manifest/readZip.ts` | 56 |
+| `ParseManifestError` | Class | `src/core/manifest/parseManifest.ts` | 121 |
+| `ReadEhcollError` | Class | `src/core/manifest/readEhcoll.ts` | 129 |
+| `ZipReadError` | Class | `src/core/manifest/readZip.ts` | 58 |
+| `CollectionConfigError` | Class | `src/core/manifest/collectionConfig.ts` | 270 |
 | `BuildManifestError` | Class | `src/core/manifest/buildManifest.ts` | 251 |
-| `CollectionConfigError` | Class | `src/core/manifest/collectionConfig.ts` | 256 |
-| `PackageEhcollError` | Class | `src/core/manifest/packageZip.ts` | 132 |
-| `ReadEhcollError` | Class | `src/core/manifest/readEhcoll.ts` | 128 |
-| `parseManifest` | Function | `src/core/manifest/parseManifest.ts` | 143 |
-| `archiveFileCacheKey` | Function | `src/core/archiveHashCache.ts` | 83 |
-| `enrichModsWithArchiveHashes` | Function | `src/core/archiveHashing.ts` | 183 |
-| `hashFileSha256` | Function | `src/core/archiveHashing.ts` | 38 |
-| `cleanup` | Function | `src/core/archiveHashing.ts` | 58 |
-| `onAbort` | Function | `src/core/archiveHashing.ts` | 50 |
-| `recoverMissingArchives` | Function | `src/core/archiveRecovery.ts` | 247 |
-| `applyLoadOrder` | Function | `src/core/installer/applyLoadOrder.ts` | 99 |
+| `PackageEhcollError` | Class | `src/core/manifest/packageZip.ts` | 163 |
+| `archiveFileCacheKey` | Function | `src/core/archiveHashCache.ts` | 84 |
+| `enrichModsWithArchiveHashes` | Function | `src/core/archiveHashing.ts` | 184 |
+| `hashFileSha256` | Function | `src/core/archiveHashing.ts` | 39 |
+| `cleanup` | Function | `src/core/archiveHashing.ts` | 59 |
+| `onAbort` | Function | `src/core/archiveHashing.ts` | 51 |
+| `recoverMissingArchives` | Function | `src/core/archiveRecovery.ts` | 248 |
 | `checkArchiveIdentity` | Function | `src/core/installer/checkArchiveIdentity.ts` | 83 |
-| `verifyModInstall` | Function | `src/core/installer/verifyModInstall.ts` | 164 |
-| `repackBundledExternals` | Function | `src/core/manifest/bundleFromStaging.ts` | 114 |
-| `captureStagingFiles` | Function | `src/core/manifest/captureStagingFiles.ts` | 94 |
-| `getDefaultHashConcurrency` | Function | `src/core/manifest/stagingFileWalker.ts` | 51 |
+| `verifyModInstall` | Function | `src/core/installer/verifyModInstall.ts` | 165 |
+| `bundleFileName` | Function | `src/core/manifest/bundleCache.ts` | 50 |
+| `bundleSidecarPath` | Function | `src/core/manifest/bundleCache.ts` | 55 |
+| `isBundleOfMod` | Function | `src/core/manifest/bundleCache.ts` | 66 |
+| `sanitizeModId` | Function | `src/core/manifest/bundleCache.ts` | 40 |
+| `sidecarMatches` | Function | `src/core/manifest/bundleCache.ts` | 103 |
 
 ## Execution Flows
 
 | Flow | Type | Steps |
 |------|------|-------|
-| `ExecutePromptUserChoice → ZipReadError` | cross_community | 9 |
-| `PublishedDetailsPanel → ZipReadError` | cross_community | 9 |
-| `RunLoadingPipeline → ZipReadError` | cross_community | 8 |
-| `ExecutePromptUserChoice → FindZip64Extra` | cross_community | 7 |
-| `PublishedDetailsPanel → FindZip64Extra` | cross_community | 7 |
-| `InstallFromBundledArchive → ZipReadError` | cross_community | 7 |
-| `RunSelfChecks → GetVortexUserDataPath` | cross_community | 7 |
-| `LoadPublishedDetails → ZipReadError` | cross_community | 7 |
-| `CurrentFingerprint → GetVortexUserDataPath` | cross_community | 7 |
-| `RunInstallImpl → AbortError` | cross_community | 6 |
+| `ExecutePromptUserChoice → GetEventHorizonDir` | cross_community | 10 |
+| `RunInstallImpl → GetEventHorizonRoot` | cross_community | 10 |
+| `ReadZipEntry → GetVortexUserDataPath` | cross_community | 10 |
+| `PublishedDetailsPanel → GetEventHorizonDir` | cross_community | 10 |
+| `Dashboard → GetEventHorizonRoot` | cross_community | 10 |
+| `RunSelfChecks → GetVortexUserDataPath` | cross_community | 10 |
+| `Act → GetEventHorizonDir` | cross_community | 10 |
+| `LoadPublishedDetails → GetEventHorizonRoot` | cross_community | 10 |
+| `SelfCheckMod → GetVortexUserDataPath` | cross_community | 10 |
+| `RunLoadingPipeline → GetEventHorizonRoot` | cross_community | 10 |
 
 ## How to Explore
 
-1. `context({name: "parseManifest"})` — see callers and callees
+1. `context({name: "archiveFileCacheKey"})` — see callers and callees
 2. `query({search_query: "manifest"})` — find related execution flows
 3. Read key files listed above for implementation details
 4. `explain({target: "<file or symbol>"})` — persisted taint findings (source→sink data flows), when indexed with `--pdg`

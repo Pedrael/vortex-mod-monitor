@@ -176,7 +176,10 @@ export async function readUserPluginsTxt(
 
   let content: string;
   try {
-    content = await fsp.readFile(pluginsPath, "utf8");
+    // latin1, matching what Vortex writes — see parsePluginsTxt's note.
+    // utf8 here mangles every non-ASCII plugin name into U+FFFD, and because
+    // the manifest was mangled the same way the comparison still "matches".
+    content = await fsp.readFile(pluginsPath, "latin1");
   } catch {
     // No plugins.txt is normal for a game that does not use one, and for a
     // profile Vortex has not deployed yet. Neither is an error here.

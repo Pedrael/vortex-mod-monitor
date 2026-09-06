@@ -1009,8 +1009,28 @@ function validatePlugins(
       `plugins.order[${i}].enabled`,
       errors,
     );
+    /**
+     * ─── ABSENT IS A THIRD STATE, AND IT HAS TO SURVIVE THE PARSER ──────
+     * This was not read at all, so every `light` the curator captured was
+     * dropped here and the ESL feature was a no-op on every user's machine —
+     * `applyPluginLightFlags` saw `undefined` for all 817 plugins, counted
+     * them "unknown", wrote nothing, and said nothing, because its notice is
+     * suppressed when `corrected === 0` and its over-limit alarm counts only
+     * plugins it compared. A 573-light profile installed with every plugin
+     * against a 254 limit and reported success.
+     *
+     * The field is optional on `EhcollPluginEntry`, so dropping it was not a
+     * type error — which is exactly why it survived. Absent must stay absent
+     * and never be coerced to `false`: `false` means "the curator's copy is
+     * NOT light, clear the flag", while absent means "we could not read it,
+     * leave the user's file alone".
+     */
+    const light =
+      e.light === undefined
+        ? undefined
+        : expectBoolean(e.light, `plugins.order[${i}].light`, errors);
     if (name === undefined || enabled === undefined) return;
-    order.push({ name, enabled });
+    order.push({ name, enabled, ...(light !== undefined ? { light } : {}) });
   });
   return { order };
 }

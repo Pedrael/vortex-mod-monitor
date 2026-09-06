@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-install
-description: "Skill for the Install area of Event-Horizon. 79 symbols across 11 files."
+description: "Skill for the Install area of Event-Horizon. 73 symbols across 10 files."
 ---
 
 # Install
 
-79 symbols | 11 files | Cohesion: 81%
+73 symbols | 10 files | Cohesion: 82%
 
 ## When to Use
 
@@ -17,16 +17,16 @@ description: "Skill for the Install area of Event-Horizon. 79 symbols across 11 
 
 | File | Symbols |
 |------|---------|
-| `src/ui/pages/install/installSession.ts` | onHashProgress, onPhase, onHashProgress, onPhase, onProgress (+23) |
 | `src/ui/pages/install/steps.tsx` | BucketList, CuratorReportsNotice, DamagedArchiveNotice, ExternalArchiveNotice, GameIniNotice (+22) |
+| `src/ui/pages/install/installSession.ts` | onHashProgress, onPhase, onHashProgress, onPhase, onProgress (+20) |
 | `src/ui/pages/install/state.ts` | wizardReducer, canProceedFromDecisions, countUndecidedConflicts, defaultConflictChoice, defaultOrphanChoice (+3) |
 | `src/ui/pages/install/installProgress.ts` | describeElapsed, describeQuiet, estimateRemainingMs, formatDuration, trackPhase |
-| `src/ui/runtime/ehRuntime.ts` | notify, setBuildBusy, setInstallBusy |
 | `src/core/installer/autoDeploy.ts` | blocksInstall, readsAutoDeploy |
 | `src/ui/pages/install/deploymentGate.test.ts` | bundle, confirmSession |
 | `src/ui/pages/install/fomodModeWiring.test.ts` | atDecisions |
 | `src/core/installer/probeDeployment.ts` | probeDeploymentMethod |
 | `src/ui/pages/install/InstallPage.tsx` | session |
+| `src/ui/pages/install/extractorGate.test.ts` | confirmSession |
 
 ## Entry Points
 
@@ -71,12 +71,12 @@ Start here when exploring this area:
 | `Heal → Notify` | cross_community | 6 |
 | `Heal → GetSnapshot` | cross_community | 5 |
 | `DoneStep → Pill` | cross_community | 5 |
-| `Session → Notify` | cross_community | 5 |
 | `OnHashProgress → EHRuntime` | cross_community | 5 |
 | `OnHashProgress → Notify` | cross_community | 5 |
 | `OnPhase → EHRuntime` | cross_community | 5 |
 | `OnPhase → Notify` | cross_community | 5 |
 | `OnHashProgress → EHRuntime` | cross_community | 5 |
+| `OnHashProgress → Notify` | cross_community | 5 |
 
 ## How to Explore
 

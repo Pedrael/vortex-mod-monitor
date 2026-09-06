@@ -39,16 +39,80 @@ export type PluginsTxtDiffReport = {
   positionChanged: PluginPositionDiff[];
 };
 
-const LOCAL_APPDATA_GAME_FOLDER_BY_GAME_ID: Record<string, string> = {
-  fallout4: "Fallout4",
-  skyrimse: "Skyrim Special Edition",
-  skyrim: "Skyrim",
+/**
+ * ─── THE FORMAT IS PART OF THE GAME, NOT AN ASSUMPTION ──────────────────
+ * Vortex's `gamebryo-plugin-management` carries a `pluginTXTFormat` beside
+ * every game's `appDataPath`, and there are two:
+ *
+ *   "fallout4" — one line per plugin, a leading `*` means ENABLED, and the
+ *                order in the file IS the load order.
+ *   "original" — a bare list of the ENABLED plugins with NO prefix, and the
+ *                order lives in a separate `loadorder.txt`.
+ *
+ * This table used to hold folder names only, with `skyrim` (LE) among them,
+ * while `parsePluginsTxt` assumed the `*` prefix for everything. On an
+ * "original" game that made every line parse as DISABLED — so a curator
+ * shipped an all-disabled order, and `applyPluginOrder` then dispatched
+ * SET_PLUGIN_ENABLED(false) for every plugin and had Vortex serialise the
+ * result. The player's plugins.txt came back holding nothing but the natives:
+ * the game loaded with zero mods, and the drift check could not see it,
+ * because it compares only ENABLED plugins and by then neither side had any.
+ *
+ * So the format is recorded, and "original" is refused rather than guessed
+ * at. Refusing is not a limitation we are hiding: reproducing an "original"
+ * game's load order needs `loadorder.txt`, which this module does not read.
+ * That is a feature to build, not a prefix to strip — and until it exists,
+ * saying so is the cheap failure and mangling the user's list is not.
+ */
+type PluginsTxtFormat = "fallout4" | "original";
+
+const PLUGINS_TXT_GAMES: Record<
+  string,
+  { folder: string; format: PluginsTxtFormat }
+> = {
+  fallout4: { folder: "Fallout4", format: "fallout4" },
+  skyrimse: { folder: "Skyrim Special Edition", format: "fallout4" },
+  skyrimvr: { folder: "Skyrim VR", format: "fallout4" },
+  fallout4vr: { folder: "Fallout4VR", format: "fallout4" },
+  enderalspecialedition: {
+    folder: "Enderal Special Edition",
+    format: "fallout4",
+  },
+  // Present so the refusal below can NAME them. Leaving them out produced the
+  // same silence as an unknown game, which is how `skyrim` stayed listed.
+  skyrim: { folder: "Skyrim", format: "original" },
+  fallout3: { folder: "Fallout3", format: "original" },
+  falloutnv: { folder: "falloutnv", format: "original" },
+  oblivion: { folder: "oblivion", format: "original" },
 };
+
+/** True when this game's plugins.txt is one we can read AND write correctly. */
+export function supportsPluginsTxt(gameId: string): boolean {
+  return PLUGINS_TXT_GAMES[gameId]?.format === "fallout4";
+}
 
 function normalizePluginName(name: string): string {
   return name.trim().replace(/^\*/, "").toLowerCase();
 }
 
+/**
+ * ─── plugins.txt IS latin1, NOT utf8 ───────────────────────────────────
+ * Vortex's `gamebryo-plugin-management` writes it with `{encoding: "latin1"}`
+ * and reads it back with `.toString("latin1")` — self-consistent, and not a
+ * choice we get to make.
+ *
+ * Reading it as utf8 turns any non-ASCII name into replacement characters:
+ * `Träume.esp` is the single byte 0xE4, which utf8 decodes to U+FFFD. The
+ * mangled name goes into the manifest, `set-plugin-list` hands it to Vortex,
+ * the reducer creates a phantom entry for a plugin that does not exist, and
+ * the REAL plugin — absent from the list — is appended after every collection
+ * plugin by the reducer's tail. A patch that had to load at position 40 loads
+ * last.
+ *
+ * And the drift check stays silent, because it compares the user's file to
+ * the manifest and both are mangled the same way. A false clean, which is the
+ * expensive direction.
+ */
 export function parsePluginsTxt(content: string): PluginEntry[] {
   return content
     .split(/\r?\n/)
@@ -156,13 +220,25 @@ function getLocalAppDataPath(): string {
 }
 
 export function getCurrentPluginsTxtPath(gameId: string): string {
-  const folderName = LOCAL_APPDATA_GAME_FOLDER_BY_GAME_ID[gameId];
+  const game = PLUGINS_TXT_GAMES[gameId];
 
-  if (!folderName) {
+  if (game === undefined) {
     throw new Error(`Unsupported gameId for plugins.txt: ${gameId}`);
   }
 
-  return path.join(getLocalAppDataPath(), folderName, "plugins.txt");
+  // Named, not silent. Every caller of this treats a throw as "no plugin
+  // ordering for this game", which is the correct outcome — but a user asking
+  // why deserves the reason rather than "unsupported".
+  if (game.format === "original") {
+    throw new Error(
+      `${gameId} uses the "original" plugins.txt format, which lists only ` +
+        `enabled plugins with no prefix and keeps the load order in a ` +
+        `separate loadorder.txt. Event Horizon does not read that yet, so it ` +
+        `does not touch plugin order for this game rather than guess at it.`,
+    );
+  }
+
+  return path.join(getLocalAppDataPath(), game.folder, "plugins.txt");
 }
 
 export async function comparePluginsTxtFiles(params: {
@@ -172,8 +248,9 @@ export async function comparePluginsTxtFiles(params: {
   const { referenceFilePath, currentFilePath } = params;
 
   const [referenceContent, currentContent] = await Promise.all([
-    fs.readFile(referenceFilePath, "utf8"),
-    fs.readFile(currentFilePath, "utf8"),
+    // latin1: see the note above parsePluginsTxt.
+    fs.readFile(referenceFilePath, "latin1"),
+    fs.readFile(currentFilePath, "latin1"),
   ]);
 
   return comparePluginsEntries({

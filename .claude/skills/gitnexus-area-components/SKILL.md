@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-components
-description: "Skill for the Components area of Event-Horizon. 14 symbols across 5 files."
+description: "Skill for the Components area of Event-Horizon. 12 symbols across 5 files."
 ---
 
 # Components
 
-14 symbols | 5 files | Cohesion: 93%
+12 symbols | 5 files | Cohesion: 92%
 
 ## When to Use
 
@@ -17,7 +17,7 @@ description: "Skill for the Components area of Event-Horizon. 14 symbols across 
 
 | File | Symbols |
 |------|---------|
-| `src/ui/components/Toast.tsx` | ToastCard, ToastHost, ToastProvider, show, nodeToText (+5) |
+| `src/ui/components/Toast.tsx` | ToastCard, ToastHost, ToastProvider, show, nodeToText (+3) |
 | `src/ui/EventHorizonMainPage.tsx` | EventHorizonMainPage |
 | `src/ui/errors/ErrorContext.tsx` | ErrorProvider |
 | `src/ui/state/ApiContext.tsx` | ApiProvider |
@@ -43,8 +43,6 @@ Start here when exploring this area:
 | `ApiProvider` | Function | `src/ui/state/ApiContext.tsx` | 25 |
 | `EventHorizonStyles` | Function | `src/ui/theme/EventHorizonStyles.tsx` | 41 |
 | `show` | Function | `src/ui/components/Toast.tsx` | 89 |
-| `dismiss` | Function | `src/ui/components/Toast.tsx` | 79 |
-| `handle` | Function | `src/ui/components/Toast.tsx` | 135 |
 | `ToastInput` | Interface | `src/ui/components/Toast.tsx` | 18 |
 | `ToastCard` | Function | `src/ui/components/Toast.tsx` | 225 |
 | `ToastHost` | Function | `src/ui/components/Toast.tsx` | 194 |

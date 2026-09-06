@@ -5,7 +5,7 @@ description: "Skill for the Actions area of Event-Horizon. 66 symbols across 16 
 
 # Actions
 
-66 symbols | 16 files | Cohesion: 80%
+66 symbols | 16 files | Cohesion: 78%
 
 ## When to Use
 
@@ -47,8 +47,8 @@ Start here when exploring this area:
 | `collectDistinctModTypes` | Function | `src/core/deploymentManifest.ts` | 53 |
 | `matchEhcollFile` | Function | `src/core/doctor/heal.ts` | 177 |
 | `captureLoadOrder` | Function | `src/core/loadOrder.ts` | 40 |
-| `reconcileExternalModsConfig` | Function | `src/core/manifest/collectionConfig.ts` | 332 |
-| `toBuildManifestExternalMods` | Function | `src/core/manifest/collectionConfig.ts` | 373 |
+| `reconcileExternalModsConfig` | Function | `src/core/manifest/collectionConfig.ts` | 371 |
+| `toBuildManifestExternalMods` | Function | `src/core/manifest/collectionConfig.ts` | 418 |
 | `applyHint` | Function | `src/core/manifest/externalHints.ts` | 229 |
 | `locateCollectionPackage` | Function | `src/core/manifest/locatePackage.ts` | 28 |
 | `buildOutputFileName` | Function | `src/core/manifest/packageFileName.ts` | 32 |

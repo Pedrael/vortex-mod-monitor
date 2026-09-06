@@ -1,16 +1,16 @@
 ---
 name: gitnexus-area-installer
-description: "Skill for the Installer area of Event-Horizon. 298 symbols across 65 files."
+description: "Skill for the Installer area of Event-Horizon. 281 symbols across 61 files."
 ---
 
 # Installer
 
-298 symbols | 65 files | Cohesion: 87%
+281 symbols | 61 files | Cohesion: 85%
 
 ## When to Use
 
 - Working with code in `src/`
-- Understanding how describeGameIniApplication, shouldApplyGameIni, describeIniTweaks work
+- Understanding how describeGameIniApplication, shouldApplyGameIni, applyIniTweaks work
 - Modifying installer-related functionality
 
 ## Key Files
@@ -21,62 +21,62 @@ description: "Skill for the Installer area of Event-Horizon. 298 symbols across 
 | `src/core/installer/modInstall.ts` | uninstallMod, delayRespectingAbort, extractBundledFromEhcoll, installFromBundledArchive, installFromExistingDownload (+17) |
 | `src/core/installLedger.ts` | InstallLedgerError, expectString, getInstallLedgerDir, getReceiptPath, isIso8601 (+10) |
 | `src/core/installer/applyUserlist.ts` | applyGroupDefinition, applyGroupRule, applyPluginEntry, applyPluginGroup, applyPluginRuleWithCollectionWins (+8) |
-| `src/core/installer/checkNexusAccount.ts` | describeSelectorAvailability, probeNexusAccount, hasNexusSlice, nexusSlice, readNexusAccount (+4) |
 | `src/core/installer/installMarker.ts` | clearInstallMarker, getMarkerDir, listInterruptedInstalls, markerPath, parseMarker (+4) |
-| `src/core/installer/applyPluginOrder.ts` | describePluginOrderApplication, applyPluginOrder, dispatchRaw, readEnabledState, runLootSort (+3) |
 | `src/core/installer/profile.ts` | createFreshProfile, enableModInProfile, makeAbortError, pickNonCollidingName, switchToProfile (+3) |
-| `src/core/logging/ehLog.ts` | fail, ok, step, ehLog, enqueue (+3) |
 | `src/core/installer/bundledPrefetch.ts` | BundledPrefetchPool, dispose, prime, pump, runExtraction (+2) |
+| `src/core/installer/applyGameIni.ts` | describeGameIniApplication, shouldApplyGameIni, applyGameIni, describeIniChanges, isSectionHeader (+2) |
+| `src/core/installer/checkNexusAccount.ts` | hasNexusSlice, nexusSlice, readNexusAccount, readUserInfo, readViaSelectors (+2) |
+| `src/core/installer/timeBudgets.ts` | countMods, clamp, deployBudgetMs, profileSwitchBudgetMs, scale (+1) |
 
 ## Entry Points
 
 Start here when exploring this area:
 
-- **`describeGameIniApplication`** (Function) — `src/core/installer/applyGameIni.ts:286`
-- **`shouldApplyGameIni`** (Function) — `src/core/installer/applyGameIni.ts:266`
+- **`describeGameIniApplication`** (Function) — `src/core/installer/applyGameIni.ts:325`
+- **`shouldApplyGameIni`** (Function) — `src/core/installer/applyGameIni.ts:305`
+- **`applyIniTweaks`** (Function) — `src/core/installer/applyIniTweaks.ts:53`
 - **`describeIniTweaks`** (Function) — `src/core/installer/applyIniTweaks.ts:114`
-- **`describeMirrorOutcome`** (Function) — `src/core/installer/applyMirrors.ts:138`
-- **`describeModTypeChanges`** (Function) — `src/core/installer/applyModTypes.ts:159`
+- **`emptyIniTweakApplication`** (Function) — `src/core/installer/applyIniTweaks.ts:41`
 
 ## Key Symbols
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `BundledPrefetchPool` | Class | `src/core/installer/bundledPrefetch.ts` | 101 |
-| `InstallLedgerError` | Class | `src/core/installLedger.ts` | 71 |
-| `describeGameIniApplication` | Function | `src/core/installer/applyGameIni.ts` | 286 |
-| `shouldApplyGameIni` | Function | `src/core/installer/applyGameIni.ts` | 266 |
+| `BundledPrefetchPool` | Class | `src/core/installer/bundledPrefetch.ts` | 102 |
+| `InstallLedgerError` | Class | `src/core/installLedger.ts` | 72 |
+| `describeGameIniApplication` | Function | `src/core/installer/applyGameIni.ts` | 325 |
+| `shouldApplyGameIni` | Function | `src/core/installer/applyGameIni.ts` | 305 |
+| `applyIniTweaks` | Function | `src/core/installer/applyIniTweaks.ts` | 53 |
 | `describeIniTweaks` | Function | `src/core/installer/applyIniTweaks.ts` | 114 |
+| `emptyIniTweakApplication` | Function | `src/core/installer/applyIniTweaks.ts` | 41 |
+| `applyLoadOrder` | Function | `src/core/installer/applyLoadOrder.ts` | 99 |
+| `applyMirrorPlan` | Function | `src/core/installer/applyMirrors.ts` | 54 |
 | `describeMirrorOutcome` | Function | `src/core/installer/applyMirrors.ts` | 138 |
+| `mirrorEntryFor` | Function | `src/core/installer/applyMirrors.ts` | 46 |
 | `describeModTypeChanges` | Function | `src/core/installer/applyModTypes.ts` | 159 |
 | `label` | Function | `src/core/installer/applyModTypes.ts` | 163 |
 | `planModTypeChanges` | Function | `src/core/installer/applyModTypes.ts` | 63 |
 | `readCurrentModTypes` | Function | `src/core/installer/applyModTypes.ts` | 106 |
 | `describePluginFlagRepair` | Function | `src/core/installer/applyPluginLightFlags.ts` | 124 |
-| `describePluginOrderApplication` | Function | `src/core/installer/applyPluginOrder.ts` | 312 |
+| `describePluginOrderApplication` | Function | `src/core/installer/applyPluginOrder.ts` | 357 |
 | `describeModTypeMismatches` | Function | `src/core/installer/checkModTypes.ts` | 83 |
 | `label` | Function | `src/core/installer/checkModTypes.ts` | 88 |
 | `findModTypeMismatches` | Function | `src/core/installer/checkModTypes.ts` | 41 |
-| `comparePluginOrder` | Function | `src/core/installer/checkPluginOrder.ts` | 68 |
-| `describePluginOrderDrift` | Function | `src/core/installer/checkPluginOrder.ts` | 113 |
-| `emptyPluginOrderDrift` | Function | `src/core/installer/checkPluginOrder.ts` | 55 |
-| `readUserPluginsTxt` | Function | `src/core/installer/checkPluginOrder.ts` | 163 |
-| `describeSevenZipHealth` | Function | `src/core/installer/checkSevenZipHealth.ts` | 136 |
 
 ## Execution Flows
 
 | Flow | Type | Steps |
 |------|------|-------|
-| `InstallNexusViaApi → GetEventHorizonRoot` | cross_community | 10 |
-| `ExecuteDecision → GetEventHorizonDir` | cross_community | 10 |
+| `ExecutePromptUserChoice → GetEventHorizonDir` | cross_community | 10 |
+| `RunInstallImpl → GetEventHorizonRoot` | cross_community | 10 |
+| `Dashboard → GetEventHorizonRoot` | cross_community | 10 |
 | `Act → GetEventHorizonDir` | cross_community | 10 |
-| `ExecutePromptUserChoice → ZipReadError` | cross_community | 9 |
-| `Init → GetVortexUserDataPath` | cross_community | 9 |
-| `InstallFromLocalArchive → Clamp` | cross_community | 8 |
-| `InstallFromLocalArchive → Scale` | cross_community | 8 |
-| `ExecuteDecision → Truncate` | cross_community | 8 |
-| `RouteOutlet → InstallLedgerError` | cross_community | 8 |
-| `CreateBuildPackageAction → GetVortexUserDataPath` | cross_community | 8 |
+| `LoadDashboardData → GetVortexUserDataPath` | cross_community | 10 |
+| `Take → GetVortexUserDataPath` | cross_community | 10 |
+| `ExecutePromptUserChoice → Truncate` | cross_community | 9 |
+| `Act → Clamp` | cross_community | 8 |
+| `Act → Scale` | cross_community | 8 |
+| `HomePage → Truncate` | cross_community | 8 |
 
 ## How to Explore
 

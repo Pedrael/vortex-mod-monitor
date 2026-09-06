@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-dashboard
-description: "Skill for the Dashboard area of Event-Horizon. 5 symbols across 2 files."
+description: "Skill for the Dashboard area of Event-Horizon. 6 symbols across 2 files."
 ---
 
 # Dashboard
 
-5 symbols | 2 files | Cohesion: 53%
+6 symbols | 2 files | Cohesion: 57%
 
 ## When to Use
 
@@ -17,7 +17,7 @@ description: "Skill for the Dashboard area of Event-Horizon. 5 symbols across 2 
 
 | File | Symbols |
 |------|---------|
-| `src/ui/pages/dashboard/data.ts` | loadBuiltPackages, loadCuratorConfigs, loadDashboardData |
+| `src/ui/pages/dashboard/data.ts` | loadBuiltPackages, loadCuratorConfigs, loadDashboardData, loadReceipts |
 | `src/core/paths.ts` | getCollectionsConfigDir, getCollectionsDir |
 
 ## Entry Points
@@ -37,21 +37,22 @@ Start here when exploring this area:
 | `loadDashboardData` | Function | `src/ui/pages/dashboard/data.ts` | 108 |
 | `loadBuiltPackages` | Function | `src/ui/pages/dashboard/data.ts` | 249 |
 | `loadCuratorConfigs` | Function | `src/ui/pages/dashboard/data.ts` | 184 |
+| `loadReceipts` | Function | `src/ui/pages/dashboard/data.ts` | 156 |
 
 ## Execution Flows
 
 | Flow | Type | Steps |
 |------|------|-------|
-| `RouteOutlet → InstallLedgerError` | cross_community | 8 |
-| `RouteOutlet → GetInstallLedgerDir` | cross_community | 7 |
-| `RouteOutlet → IsUuid` | cross_community | 7 |
+| `Dashboard → GetEventHorizonRoot` | cross_community | 10 |
+| `LoadDashboardData → GetVortexUserDataPath` | cross_community | 10 |
+| `HomePage → Truncate` | cross_community | 8 |
+| `Dashboard → GetVortexUserDataPath` | cross_community | 8 |
+| `RouteOutlet → Fail` | cross_community | 7 |
+| `RouteOutlet → Ok` | cross_community | 7 |
 | `RouteOutlet → BelongsToGame` | cross_community | 7 |
-| `HomePage → ExpectString` | cross_community | 7 |
 | `RouteOutlet → GetActiveGameId` | cross_community | 6 |
 | `RouteOutlet → ResolveProfileName` | cross_community | 6 |
 | `RouteOutlet → ResolveVortexVersion` | cross_community | 6 |
-| `Dashboard → IsSemverLike` | cross_community | 6 |
-| `Dashboard → IsUuid` | cross_community | 6 |
 
 ## How to Explore
 

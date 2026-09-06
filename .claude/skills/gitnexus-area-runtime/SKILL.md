@@ -5,7 +5,7 @@ description: "Skill for the Runtime area of Event-Horizon. 11 symbols across 6 f
 
 # Runtime
 
-11 symbols | 6 files | Cohesion: 100%
+11 symbols | 6 files | Cohesion: 92%
 
 ## When to Use
 
@@ -28,9 +28,9 @@ description: "Skill for the Runtime area of Event-Horizon. 11 symbols across 6 f
 
 Start here when exploring this area:
 
-- **`verify`** (Function) — `src/core/curator/bulkUpdate.ts:103`
-- **`installPrerequisites`** (Function) — `src/core/runtime/installPrerequisites.ts:83`
-- **`summarisePrereqResults`** (Function) — `src/core/runtime/installPrerequisites.ts:175`
+- **`verify`** (Function) — `src/core/curator/bulkUpdate.ts:120`
+- **`installPrerequisites`** (Function) — `src/core/runtime/installPrerequisites.ts:85`
+- **`summarisePrereqResults`** (Function) — `src/core/runtime/installPrerequisites.ts:217`
 - **`classifyExitCode`** (Function) — `src/core/runtime/prerequisites.ts:154`
 - **`verdictIsGood`** (Function) — `src/core/runtime/prerequisites.ts:186`
 
@@ -38,13 +38,13 @@ Start here when exploring this area:
 
 | Symbol | Type | File | Line |
 |--------|------|------|------|
-| `verify` | Function | `src/core/curator/bulkUpdate.ts` | 103 |
-| `installPrerequisites` | Function | `src/core/runtime/installPrerequisites.ts` | 83 |
-| `summarisePrereqResults` | Function | `src/core/runtime/installPrerequisites.ts` | 175 |
+| `verify` | Function | `src/core/curator/bulkUpdate.ts` | 120 |
+| `installPrerequisites` | Function | `src/core/runtime/installPrerequisites.ts` | 85 |
+| `summarisePrereqResults` | Function | `src/core/runtime/installPrerequisites.ts` | 217 |
 | `classifyExitCode` | Function | `src/core/runtime/prerequisites.ts` | 154 |
 | `verdictIsGood` | Function | `src/core/runtime/prerequisites.ts` | 186 |
-| `verify` | Function | `src/core/curator/bulkUpdate.test.ts` | 71 |
-| `ok` | Function | `src/core/curator/bulkUpdate.test.ts` | 27 |
+| `verify` | Function | `src/core/curator/bulkUpdate.test.ts` | 72 |
+| `ok` | Function | `src/core/curator/bulkUpdate.test.ts` | 28 |
 | `run` | Function | `src/core/runtime/installPrerequisites.test.ts` | 151 |
 | `download` | Function | `src/core/runtime/nodePrereqDeps.ts` | 30 |
 | `go` | Function | `src/core/runtime/nodePrereqDeps.ts` | 36 |

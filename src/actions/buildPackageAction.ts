@@ -565,7 +565,9 @@ async function readPluginsTxtIfPresent(
   }
 
   try {
-    return await fsp.readFile(pluginsPath, "utf8");
+    // latin1, matching what Vortex writes. utf8 mangles every non-ASCII
+    // plugin name into U+FFFD — see the note above parsePluginsTxt.
+    return await fsp.readFile(pluginsPath, "latin1");
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     if (code === "ENOENT") return undefined;

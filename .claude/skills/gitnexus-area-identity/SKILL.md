@@ -1,11 +1,11 @@
 ---
 name: gitnexus-area-identity
-description: "Skill for the Identity area of Event-Horizon. 25 symbols across 4 files."
+description: "Skill for the Identity area of Event-Horizon. 30 symbols across 6 files."
 ---
 
 # Identity
 
-25 symbols | 4 files | Cohesion: 81%
+30 symbols | 6 files | Cohesion: 76%
 
 ## When to Use
 
@@ -18,9 +18,11 @@ description: "Skill for the Identity area of Event-Horizon. 25 symbols across 4 
 | File | Symbols |
 |------|---------|
 | `src/core/identity/modIdentity.ts` | archiveShaKey, runKeyTier, nameVersionKey, nexusFileKey, nexusModKey (+12) |
-| `src/core/identity/compareKey.ts` | archiveReference, nexusFileReference, nexusModReference |
+| `src/core/identity/compareKey.ts` | archiveReference, nexusFileReference, nexusModReference, externalArchiveCompareKey, nexusCompareKey |
 | `src/core/manifest/buildManifest.ts` | buildRule, buildRules, synthesizeRuleReference |
+| `src/core/manifest/collectionScope.ts` | findHashedIdentityCollisions, groupBy |
 | `src/utils/utils.ts` | compareSnapshots, getModCompareKey |
+| `src/core/curator/collectionDiff.ts` | keyFor |
 
 ## Entry Points
 
@@ -42,6 +44,9 @@ Start here when exploring this area:
 | `nexusFileReference` | Function | `src/core/identity/compareKey.ts` | 102 |
 | `nexusModReference` | Function | `src/core/identity/compareKey.ts` | 116 |
 | `normalizeModName` | Function | `src/core/identity/modIdentity.ts` | 164 |
+| `externalArchiveCompareKey` | Function | `src/core/identity/compareKey.ts` | 50 |
+| `nexusCompareKey` | Function | `src/core/identity/compareKey.ts` | 42 |
+| `findHashedIdentityCollisions` | Function | `src/core/manifest/collectionScope.ts` | 192 |
 | `matchSnapshots` | Function | `src/core/identity/modIdentity.ts` | 249 |
 | `compareSnapshots` | Function | `src/utils/utils.ts` | 378 |
 | `getModCompareKey` | Function | `src/utils/utils.ts` | 288 |
@@ -53,20 +58,21 @@ Start here when exploring this area:
 | `str` | Function | `src/core/identity/modIdentity.ts` | 201 |
 | `buildRule` | Function | `src/core/manifest/buildManifest.ts` | 789 |
 | `buildRules` | Function | `src/core/manifest/buildManifest.ts` | 741 |
-| `synthesizeRuleReference` | Function | `src/core/manifest/buildManifest.ts` | 830 |
-| `alnum` | Function | `src/core/identity/modIdentity.ts` | 152 |
-| `nameKey` | Function | `src/core/identity/modIdentity.ts` | 236 |
 
 ## Execution Flows
 
 | Flow | Type | Steps |
 |------|------|-------|
+| `OnRecovered → NexusCompareKey` | cross_community | 5 |
 | `MatchSnapshots → StripVersionTokens` | cross_community | 4 |
 | `MatchSnapshots → StripVortexPin` | cross_community | 4 |
 | `MatchSnapshots → Str` | cross_community | 4 |
+| `Diff → IsNexusSourced` | cross_community | 4 |
+| `Diff → NexusCompareKey` | cross_community | 4 |
+| `LoadBuildDiff → IsNexusSourced` | cross_community | 4 |
+| `LoadBuildDiff → NexusCompareKey` | cross_community | 4 |
 | `MatchSnapshots → DiceCoefficient` | intra_community | 3 |
 | `MatchSnapshots → ArchiveShaKey` | cross_community | 3 |
-| `MatchSnapshots → StagingSetKey` | cross_community | 3 |
 
 ## How to Explore
 
