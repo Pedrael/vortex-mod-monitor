@@ -1,32 +1,64 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Event Horizon  monochrome icon set.
+  Event Horizon — monochrome icon set.
 
   Single-icon sprite used by `installIconSet("event-horizon", ...)` in
-  `src/index.ts`. The Icon component then resolves the symbol id via
-  `name="event-horizon-logo"` (or `set="event-horizon"`).
+  `src/index.ts`. The Icon component resolves the symbol id via
+  `name="event-horizon-logo"` (or `set="event-horizon"`), so that id is a
+  contract with `EH_SIDEBAR_ICON` — do not rename it.
 
-  Design notes:
-    * 24�24 viewBox so it sits cleanly next to Vortex's font-awesome
-      sidebar icons (same nominal size).
-    * `fill="currentColor"` / `stroke="currentColor"` so it picks up the
-      sidebar's active / hover / muted theme colours automatically 
-      this is what makes it "monochrome" in the user's sense (one
-      colour, theme-driven).
-    * Three concentric strokes mimic the accretion disk + photon ring;
-      the filled centre is the singularity. No gradients on purpose 
-      sidebar icons in Vortex are tiny (~20px) and gradients smudge.
-    * The slight horizontal notch on the right ring is the Doppler-bright
-      crescent from the full hero logo, simplified down to a tick.
+  ─── THE CENTRE IS A HOLE, NOT A DOT ───────────────────────────────────
+  The previous version filled the core with `currentColor`, which drew the
+  singularity as the BRIGHTEST, most solid thing in the icon. That is the
+  one detail a black hole cannot have: the whole idea is that the middle is
+  empty. A filled centre inside two even rings reads as a target, or a
+  record, or a loading spinner — anything but this.
+
+  Leaving it unpainted also behaves correctly on a light theme, because a
+  hole shows whatever is behind it. A filled core is always ink; a hole is
+  always background, which is what a hole is.
+
+  ─── ASYMMETRY IS AN ADDED HIGHLIGHT, NEVER A REMOVED SEGMENT ──────────
+  Drafts that suggested the real mark's wound strands by breaking each ring
+  at a different angle all rendered as a literal letter C — the eye follows
+  the heaviest stroke, and a heavy ring with a gap in it is a C at every
+  size. Verified by rendering, not by reasoning about it.
+
+  So the strands are closed, and the Doppler-bright crescent from the real
+  artwork is a THICKER overlay on the outer ring rather than a gap in it.
+  Added light reads as a highlight; subtracted ink reads as a glyph.
+
+  Proportions are taken from the real logo: the hole is a bit under 40% of
+  the width, the bright annulus is heavy and close in, the halo is faint and
+  well separated. Those three ratios are what separate it from a generic
+  concentric-circles icon — not detail, which does not survive here anyway.
+
+  Constraints, all load-bearing:
+    * 24×24 viewBox, to sit beside Vortex's font-awesome sidebar icons at
+      the same nominal size. Vortex renders it at roughly 20px.
+    * `stroke="currentColor"` so it inherits the rail's active / hover /
+      muted colours. That is what "monochrome" means here: one colour,
+      chosen by the theme. A full-colour mark would not dim with the rail
+      and would read as a foreign object next to every other icon in it.
+    * No gradients and no filters — at 20px a gradient is a smudge and a
+      blur is grey fog.
+    * Nothing thinner than 0.9px, no gap tighter than ~1px, or the strands
+      merge into a blob at the size this is actually seen.
+    * The four-point star flare from the real artwork is deliberately
+      absent: at 20px it is one aliased pixel, which reads as dirt.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true">
   <symbol id="event-horizon-logo" viewBox="0 0 24 24">
     <title>Event Horizon</title>
-    <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-      <circle cx="12" cy="12" r="10.5" stroke-width="1" opacity="0.55" />
-      <circle cx="12" cy="12" r="8" stroke-width="1.4" />
-      <path d="M 19.6 9.2 A 8 8 0 0 1 19.6 14.8" stroke-width="2" opacity="0.95" />
+    <g fill="none" stroke="currentColor" stroke-linecap="round">
+      <!-- Halo — faint, closed, well clear of the annulus. -->
+      <circle cx="12" cy="12" r="10.2" stroke-width="1" opacity="0.4" />
+      <!-- Doppler crescent — the same ring, drawn heavier over one quadrant.
+           An overlay, not a gap: see the note above about letters. -->
+      <path d="M 2.42 9.26 A 10.2 10.2 0 0 1 9.26 2.42" stroke-width="1.9" />
+      <!-- The accretion disk. Heavy and close in, so the hole it encloses
+           is unmistakably a hole rather than a gap between two rings. -->
+      <circle cx="12" cy="12" r="6.1" stroke-width="3" />
     </g>
-    <circle cx="12" cy="12" r="4" fill="currentColor" />
   </symbol>
 </svg>
