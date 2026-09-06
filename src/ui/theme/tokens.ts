@@ -188,6 +188,14 @@ export const TOKENS_CSS = `
   --eh-dur-warp: 4500ms;
   --eh-dur-orbit: 12000ms;
   --eh-dur-orbit-fast: 7000ms;
+  /* Ambient timers for the RASTER mark, which needs a different order of
+     magnitude from the SVG above. That logo is radially even, so a 12s orbit
+     reads as a turning disk; the artwork has a bright crescent and a star
+     flare, and any landmark turning that fast reads as a loading spinner
+     instead. A spinner is ~1s per revolution, so drift sits sixty times
+     slower — visibly alive over a glance, never busy. */
+  --eh-dur-drift: 60000ms;
+  --eh-dur-breathe: 9000ms;
 
   /* ── Layout ───────────────────────────────────────────────────── */
   --eh-max-content: 1280px;
@@ -216,6 +224,8 @@ export const TOKENS_CSS = `
     --eh-dur-warp: 0s;
     --eh-dur-orbit: 0s;
     --eh-dur-orbit-fast: 0s;
+    --eh-dur-drift: 0s;
+    --eh-dur-breathe: 0s;
     --eh-dur-deliberate: var(--eh-dur-fast);
     --eh-dur-slow: var(--eh-dur-fast);
     --eh-dur-base: var(--eh-dur-fast);

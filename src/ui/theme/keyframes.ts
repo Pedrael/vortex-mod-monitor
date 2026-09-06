@@ -40,6 +40,20 @@ export const KEYFRAMES_CSS = `
   50%      { filter: brightness(1.15) drop-shadow(0 0 24px rgba(255, 107, 61, 0.6)); }
 }
 
+/* The raster mark's ambient loop: a small scale swell with the glow rising
+   to meet it, so the two read as one breath rather than two effects. Scale
+   tops out at 1.028 — enough to notice at 120px, small enough that it never
+   nudges the layout around it. */
+@keyframes eh-mark-breathe {
+  0%, 100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 14px rgba(240, 56, 107, 0.22));
+  }
+  50% {
+    transform: scale(1.028);
+    filter: drop-shadow(0 0 26px rgba(240, 56, 107, 0.4));
+  }
+}
 @keyframes eh-warp-pulse {
   0%, 88%, 100% {
     transform: scale(1);

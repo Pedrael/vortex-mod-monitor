@@ -17,13 +17,23 @@
  * So this is used at the three hero moments — About, Home, and the install
  * step — and the animated logo keeps every small and inline placement.
  *
- * ─── NO ROTATION ───────────────────────────────────────────────────────
- * Spinning it would be physically apt and visually wrong. The artwork has a
- * bright asymmetric crescent and a four-point flare, so a rotation reads as a
- * loading spinner rather than as an accretion disk — the eye locks onto the
- * flare and starts timing it. The animated SVG can rotate precisely because
- * it is radially even and has no such landmark.
- * ──────────────────────────────────────────────────────────────────────
+ * ─── IT DRIFTS, IT DOES NOT SPIN ───────────────────────────────────────
+ * Two ambient loops, both in CSS (see `theme/logo.ts`), neither in JS:
+ *
+ *   the wrapper BREATHES — a 2.8% scale swell over 9s with the glow rising
+ *     to meet it, so the two read as one breath rather than two effects;
+ *   the image DRIFTS — one clockwise revolution per minute.
+ *
+ * A minute per revolution is the whole trick. The artwork has a bright
+ * crescent and a four-point flare, and any landmark turning at the SVG
+ * logo's 12s orbit reads as a loading spinner — the eye locks onto the flare
+ * and starts timing it. At sixty seconds it is alive over a glance and never
+ * busy. The SVG can afford to turn fast precisely because it is radially
+ * even and offers the eye nothing to time.
+ *
+ * Two nested elements because one element cannot run two `transform`
+ * animations, and their periods are deliberately coprime so the composite
+ * never visibly repeats.
  */
 
 import * as React from "react";
@@ -43,27 +53,18 @@ export function EventHorizonMark(props: EventHorizonMarkProps): JSX.Element {
   const { size = 120, ariaLabel = "Event Horizon logo", className } = props;
 
   return (
-    <img
-      src={EVENT_HORIZON_MARK_PNG}
-      alt={ariaLabel}
-      width={size}
-      height={size}
-      className={className}
-      style={{
-        display: "block",
-        width: size,
-        height: size,
-        // The source is 320px square with a transparent surround, so nothing
-        // is cropped and the aspect ratio cannot drift.
-        objectFit: "contain",
-        // The artwork's own glow stops at its alpha edge. A soft shadow in the
-        // brand's magenta lets it sit ON the panel rather than in front of it,
-        // which is what the animated logo gets for free from its halo layer.
-        filter: "drop-shadow(0 0 18px rgba(240, 56, 107, 0.28))",
-        // Purely decorative next to a heading that already names the product.
-        userSelect: "none",
-      }}
-      draggable={false}
-    />
+    <span
+      className={["eh-mark", className].filter(Boolean).join(" ")}
+      style={{ ["--eh-mark-size" as string]: `${size}px` }}
+    >
+      <img
+        className="eh-mark__img"
+        src={EVENT_HORIZON_MARK_PNG}
+        alt={ariaLabel}
+        width={size}
+        height={size}
+        draggable={false}
+      />
+    </span>
   );
 }
