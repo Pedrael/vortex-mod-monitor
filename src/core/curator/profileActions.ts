@@ -67,6 +67,16 @@ export type CuratorMod = {
   /** The archive's file name, as a fallback identity. */
   fileName?: string;
   /**
+   * The game a mod's FILE was downloaded for, when it differs from the one
+   * being managed.
+   *
+   * The compatible-download case: a Skyrim LE file installed under Skyrim SE.
+   * Vortex's own update path reads `attributes.downloadGame ?? gameId` before
+   * asking Nexus for anything, because the download lives under the other
+   * game's id.
+   */
+  downloadGame?: string;
+  /**
    * Vortex's download id for the archive this mod was installed from.
    *
    * The cleanup planner's whole safety rule reads this: an archive any mod

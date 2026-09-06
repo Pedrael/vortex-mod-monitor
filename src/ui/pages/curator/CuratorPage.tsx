@@ -89,6 +89,7 @@ import {
 } from "../../components";
 import { useApi } from "../../state";
 import { ErrorBoundary } from "../../errors";
+import { ehLog } from "../../../core/logging/ehLog";
 
 /**
  * How Vortex's Nexus integration is ACTUALLY reached.
@@ -565,9 +566,15 @@ function CuratorBody(): JSX.Element {
       // Read-only: this asks Vortex to refresh what Nexus says. Nothing is
       // installed and nothing on disk changes. Same call Vortex's own
       // "check for updates" toolbar button makes.
+      ehLog("info", "curator.recheck.start", {
+        gameId,
+        mods: Object.keys(byId).length,
+      });
       await ext.emitAndAwait("check-mods-version", gameId, byId, true);
+      ehLog("info", "curator.recheck.ok", { gameId });
       setNote("Nexus re-checked. The counts below are current.");
     } catch (err) {
+      ehLog("error", "curator.recheck.fail", { err });
       setNote(
         `Vortex could not check for updates: ${
           err instanceof Error ? err.message : String(err)
@@ -601,6 +608,7 @@ function CuratorBody(): JSX.Element {
     setBusy(undefined);
     setProgress(undefined);
     setTick((t) => t + 1);
+    ehLog("info", "curator.endorse.done", { asked: done });
     setNote(
       `Asked Vortex to endorse ${done} mod(s). Vortex reports each result in ` +
         `its own notifications; press Reload to see the counts settle.`,
@@ -629,6 +637,14 @@ function CuratorBody(): JSX.Element {
     setLines([]);
     const installedIds = new Map<string, string>();
     const controller = new AbortController();
+    // This flow logged nothing at all, so an update that did literally
+    // nothing looked exactly like one that was working — and the only way to
+    // tell them apart was to read Vortex's log and find it empty too.
+    ehLog("info", "curator.bulk-update.start", {
+      candidates: candidates.length,
+      gameId: game,
+    });
+    const startedAt = Date.now();
     const report = await runBulkUpdate({
       candidates,
       signal: controller.signal,
@@ -641,16 +657,44 @@ function CuratorBody(): JSX.Element {
           nexusModId: candidate.mod.nexusModId!,
           toFileId: candidate.toFileId,
           readInstalled: installedIdentityReader(api.getState(), game),
-          start: () =>
-            // Vortex's own update button emits exactly this, with the NEXUS
-            // mod id and the newest file id.
+          start: () => {
+            /**
+             * ─── THE LAST ARGUMENT IS A DISCRIMINATOR, NOT A LABEL ──────
+             * Vortex's `onModUpdate` opens with:
+             *
+             *     if (source !== "nexus") {
+             *       // not a mod from nexus mods
+             *       return;
+             *     }
+             *
+             * It was passed "event-horizon-curator-tools", read as an
+             * attribution tag because Vortex's own caller passes
+             * `mod.attributes.source` there. The handler returned
+             * immediately — no download, no error, and not one line in
+             * Vortex's log or ours — and the page sat on "Updating 1 of 4"
+             * until the fifteen-minute timeout. Vortex's own bulk update
+             * hardcodes "nexus" at this exact call; so does this.
+             */
+            const source = "nexus";
+            // Differs from the active game for a compatible download — a
+            // Skyrim LE file installed under SSE — and Vortex reads it here
+            // for exactly that case.
+            const downloadGame = candidate.mod.downloadGame ?? game;
+            ehLog("info", "curator.update.start", {
+              mod: candidate.mod.name,
+              nexusModId: candidate.mod.nexusModId,
+              fromFileId: candidate.fromFileId,
+              toFileId: candidate.toFileId,
+              downloadGame,
+            });
             api.events.emit(
               "mod-update",
-              game,
+              downloadGame,
               candidate.mod.nexusModId!,
               candidate.toFileId,
-              "event-horizon-curator-tools",
-            ),
+              source,
+            );
+          },
         });
         installedIds.set(candidate.mod.id, newModId);
       },
@@ -663,6 +707,14 @@ function CuratorBody(): JSX.Element {
     });
     setBusy(undefined);
     setProgress(undefined);
+    ehLog("info", "curator.bulk-update.done", {
+      ms: Date.now() - startedAt,
+      cancelled: report.cancelled,
+      outcomes: report.outcomes.reduce<Record<string, number>>((acc, o) => {
+        acc[o.kind] = (acc[o.kind] ?? 0) + 1;
+        return acc;
+      }, {}),
+    });
     setLines(describeBulkUpdate(report));
     setTick((t) => t + 1);
   };

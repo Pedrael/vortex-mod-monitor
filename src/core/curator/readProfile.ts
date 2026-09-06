@@ -92,6 +92,7 @@ export function readCuratorMods(
       // one Nexus page from two versions of the same file.
       ...opt("logicalFileName", asString(attributes.logicalFileName)),
       ...opt("fileName", asString(attributes.fileName)),
+      ...opt("downloadGame", asString(attributes.downloadGame)),
       ...opt("frozenAtVersion", asString(attributes[FROZEN_ATTRIBUTE])),
       ...opt("archiveId", asString(mod?.archiveId)),
     });
