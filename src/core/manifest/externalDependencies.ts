@@ -50,6 +50,7 @@
 import * as fsp from "fs/promises";
 import * as path from "path";
 
+import { ehLog } from "../logging/ehLog";
 import { hashFileSha256 } from "../archiveHashing";
 import type {
   EhcollExternalDependency,
@@ -246,7 +247,9 @@ export function getGameDirectory(
     }
   )?.settings?.gameMode?.discovered?.[gameId];
   const p = discovered?.path;
-  return typeof p === "string" && p.length > 0 ? p : undefined;
+  if (typeof p === "string" && p.length > 0) return p;
+  ehLog("debug", "external-deps.game-dir.unresolved", { gameId });
+  return undefined;
 }
 
 async function findFile(
@@ -327,6 +330,10 @@ export function filesProvidedByDeployment(
       out.add((slash === -1 ? norm : norm.slice(slash + 1)).toLowerCase());
     }
   }
+  ehLog("debug", "external-deps.deployed-files", {
+    manifests: manifests.length,
+    files: out.size,
+  });
   return out;
 }
 
@@ -347,6 +354,10 @@ export function filesProvidedByMods(
       out.add((slash === -1 ? file.path : file.path.slice(slash + 1)).toLowerCase());
     }
   }
+  ehLog("debug", "external-deps.mod-files", {
+    mods: mods.length,
+    files: out.size,
+  });
   return out;
 }
 
@@ -405,6 +416,11 @@ export function describeMissingEngineFixesPart2(args: {
   // folder. It fired BECAUSE they fixed it.
   if (args.deployedFiles.has(ENGINE_FIXES_PART2_FILE)) return undefined;
 
+  ehLog("warn", "external-deps.engine-fixes-part2.missing", {
+    gameId: args.gameId,
+    declaredCount: args.declared.length,
+  });
+
   return (
     `This collection installs SSE Engine Fixes Part 1, but Part 2 is not in ` +
     `your game folder, so it cannot be shipped as a prerequisite either. Part ` +
@@ -421,10 +437,18 @@ export async function detectExternalDependencies(
   gameId: string,
   options: DetectOptions = {},
 ): Promise<EhcollExternalDependency[]> {
+  const startedAt = Date.now();
+  ehLog("info", "external-deps.detect.start", {
+    gameId,
+    probes: PROBES.length,
+  });
   const out: EhcollExternalDependency[] = [];
 
   for (const probe of PROBES) {
-    if (options.signal?.aborted === true) break;
+    if (options.signal?.aborted === true) {
+      ehLog("debug", "external-deps.detect.aborted", { gameId, probe: probe.id });
+      break;
+    }
     if (probe.gameIds.length > 0 && !probe.gameIds.includes(gameId)) continue;
 
     // The collection already installs it -> not a prerequisite.
@@ -440,13 +464,17 @@ export async function detectExternalDependencies(
         options.providedByMods?.has(path.basename(rel).toLowerCase()) === true,
       )
     ) {
+      ehLog("debug", "external-deps.detect.provided-by-mod", { probe: probe.id });
       continue;
     }
 
     const requiredPaths = await Promise.all(
       probe.required.map(async (rel) => ({ rel, full: await findFile(gameDir, rel) })),
     );
-    if (requiredPaths.some((r) => r.full === undefined)) continue;
+    if (requiredPaths.some((r) => r.full === undefined)) {
+      ehLog("debug", "external-deps.detect.probe-absent", { probe: probe.id });
+      continue;
+    }
 
     options.onProgress?.(probe.name);
 
@@ -465,13 +493,22 @@ export async function detectExternalDependencies(
           relPath: entry.rel,
           sha256: await hashFileSha256(entry.full, options.signal),
         });
-      } catch {
+      } catch (err) {
         // A file we cannot read is a file we cannot vouch for. Recording it
         // without a hash is not an option — the type requires one — and
-        // guessing is worse than omitting.
+        // guessing is worse than omitting. Log it: this is exactly the kind
+        // of swallowed catch that used to leave a bug report unanswerable.
+        ehLog("warn", "external-deps.detect.hash-fail", {
+          probe: probe.id,
+          file: entry.rel,
+          err,
+        });
       }
     }
-    if (files.length === 0) continue;
+    if (files.length === 0) {
+      ehLog("warn", "external-deps.detect.probe-empty", { probe: probe.id });
+      continue;
+    }
 
     const version = probe.version?.(files.map((f) => f.relPath)) ?? "unknown";
     out.push({
@@ -484,7 +521,19 @@ export async function detectExternalDependencies(
       instructionsUrl: probe.instructionsUrl,
       instructions: probe.instructions,
     });
+    ehLog("info", "external-deps.detect.found", {
+      probe: probe.id,
+      category: probe.category,
+      version,
+      files: files.length,
+    });
   }
+
+  ehLog("info", "external-deps.detect.ok", {
+    gameId,
+    found: out.length,
+    ms: Date.now() - startedAt,
+  });
 
   return out;
 }
@@ -509,9 +558,13 @@ export function applyDependencyOverrides(
 ): EhcollExternalDependency[] {
   if (overrides === undefined) return detected;
   const out: EhcollExternalDependency[] = [];
+  let excluded = 0;
   for (const dep of detected) {
     const o = overrides[dep.id];
-    if (o?.included === false) continue;
+    if (o?.included === false) {
+      excluded += 1;
+      continue;
+    }
     out.push({
       ...dep,
       ...(o?.version !== undefined && o.version.length > 0
@@ -525,5 +578,10 @@ export function applyDependencyOverrides(
         : {}),
     });
   }
+  ehLog("info", "external-deps.overrides.applied", {
+    detected: detected.length,
+    excluded,
+    result: out.length,
+  });
   return out;
 }

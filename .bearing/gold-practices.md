@@ -310,3 +310,34 @@ project rather than this one, it belongs upstream — say so and it can be promo
   including the selected-state outline on two toggle controls — so "included" and "not included"
   rendered identically, with no border in either state. Typecheck was clean and 348 tests passed
   throughout; the audit that found it took twenty lines.*
+
+- **GP-28** — **Never capture an immutable store's snapshot into a long-lived closure.** Redux and
+  friends hand back the state *as it was*; a snapshot taken before an operation cannot see its
+  result, and nothing about that reads as wrong at the call site. Take a getter, and prefer a
+  signature that makes passing a snapshot a compile error rather than a runtime silence. *Scar: a
+  bulk mod update built its "did the mod I asked for finish?" reader from `api.getState()` while
+  assembling the run. Every later lookup searched a state in which the just-installed mod did not
+  exist, read both ids back as `undefined`, failed the identity check on the RIGHT mod, and
+  discarded the completion event as somebody else's. One mod updated; the run then sat out a
+  fifteen-minute timeout. Changing the parameter to a getter caught all three call sites instantly.*
+
+- **GP-29** — **An argument that looks like a label may be a discriminator.** Copy the literal from
+  the host's own call site; never invent a descriptive value for a parameter you have not read the
+  handler for. *Scar: `api.events.emit("mod-update", game, modId, fileId, "event-horizon-curator-tools")`
+  — the host's own caller passes `mod.attributes.source` there, which reads like attribution. The
+  handler opens with `if (source !== "nexus") return;`. It returned on its first line: no download,
+  no error, and not one line in either log. The only diagnosis available was noticing the HOST's log
+  was empty too.*
+
+- **GP-30** — **A long silent step is indistinguishable from a hang.** Any step over roughly ten
+  seconds must announce itself, and where the cost is a size, say the size — "hashing the package"
+  is a puzzling wait, "hashing the package (9.4 GB)" is an explained one. *Scar: packaging a 9.4 GB
+  collection was reported as frozen. It was computing the finished file's own checksum: minutes of
+  reading, with the output file on disk no longer changing — the exact signature of a hang. The
+  module had neither logging nor progress.*
+
+- **GP-31** — **Log what a matcher REJECTS, not only what it accepts.** A discarded event and no
+  event at all look identical from outside, and the rejection is where the bug lives. *Scar: a
+  waiter matching install-completion events on identity logged only its success. When its identity
+  source went stale it rejected the correct event every time, silently, and the failure presented as
+  "nothing happened".*

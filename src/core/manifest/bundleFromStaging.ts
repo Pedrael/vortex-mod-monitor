@@ -41,6 +41,7 @@ import * as path from "path";
 import { selectors, types } from "@nexusmods/vortex-api";
 
 import { hashFileSha256 } from "../archiveHashing";
+import { beginOp, ehLog } from "../logging/ehLog";
 import {
   bundleFileName,
   bundleSidecarPath,
@@ -101,7 +102,8 @@ async function directorySize(dir: string): Promise<number> {
     let entries;
     try {
       entries = await fsp.readdir(d, { withFileTypes: true });
-    } catch {
+    } catch (err) {
+      ehLog("debug", "bundle.staging-size.dir-unreadable", { err });
       return;
     }
     for (const e of entries) {
@@ -110,8 +112,12 @@ async function directorySize(dir: string): Promise<number> {
       else {
         try {
           total += (await fsp.stat(full)).size;
-        } catch {
+        } catch (err) {
           /* unreadable — not counted, not fatal */
+          ehLog("debug", "bundle.staging-size.file-unreadable", {
+            file: e.name,
+            err,
+          });
         }
       }
     }
@@ -147,11 +153,17 @@ export async function repackBundledExternals(args: {
     (m) => isExternal(m) && config.externalMods[m.id]?.bundled === true,
   );
   if (wanted.length === 0) {
+    ehLog("debug", "bundle.repack.skip", { reason: "no-mods-flagged" });
     return { mods, bundles: [], warnings: [] };
   }
 
+  const op = beginOp("bundle.repack", { gameId, candidates: wanted.length });
+
   const installRoot = installRootFor(state, gameId);
   if (!installRoot) {
+    op.fail(new Error("Could not resolve Vortex's staging folder"), {
+      gameId,
+    });
     return {
       mods,
       bundles: [],
@@ -175,12 +187,17 @@ export async function repackBundledExternals(args: {
     if (options.signal?.aborted === true) break;
     done += 1;
     options.onProgress?.(done, wanted.length, mod.name);
+    const modStartedAt = Date.now();
 
     const stagingDirFor = stagingRootFromFolder(
       installRoot,
       mod.installationPath,
     );
     if (stagingDirFor === undefined) {
+      ehLog("warn", "bundle.repack.mod.no-staging-dir", {
+        modId: mod.id,
+        modName: mod.name,
+      });
       warnings.push(
         `"${mod.name}" is flagged for bundling but Vortex records no staging ` +
           `folder for it, so its current files cannot be packed.`,
@@ -193,6 +210,11 @@ export async function repackBundledExternals(args: {
       const size = await directorySize(stagingDir);
       if (size > warnBytes) {
         // Said, not enforced. The curator chose to ship this.
+        ehLog("warn", "bundle.repack.mod.large", {
+          modId: mod.id,
+          modName: mod.name,
+          bytes: size,
+        });
         warnings.push(
           `"${mod.name}" is bundled and its staging folder is ` +
             `${(size / 1024 ** 3).toFixed(1)} GB, so the .ehcoll will be at ` +
@@ -222,6 +244,13 @@ export async function repackBundledExternals(args: {
 
       if (hit !== undefined) {
         options.onProgress?.(done, wanted.length, `${mod.name} (already packed)`);
+        ehLog("info", "bundle.repack.mod.ok", {
+          modId: mod.id,
+          modName: mod.name,
+          bytes: hit.bytes,
+          reused: true,
+          ms: Date.now() - modStartedAt,
+        });
         bundles.push({
           modId: mod.id,
           modName: mod.name,
@@ -234,6 +263,12 @@ export async function repackBundledExternals(args: {
         keptByMod.set(mod.id, out);
         continue;
       }
+
+      ehLog("debug", "bundle.repack.mod.start", {
+        modId: mod.id,
+        modName: mod.name,
+        cacheable: contentKey !== undefined,
+      });
 
       // `<dir>/*` so 7z stores paths relative to the staging root, matching
       // what the mod's own file list says. There is no cwd option in this
@@ -255,10 +290,23 @@ export async function repackBundledExternals(args: {
       if (contentKey !== undefined) {
         await writeCachedBundle(out, { sha256, bytes });
       }
+      ehLog("info", "bundle.repack.mod.ok", {
+        modId: mod.id,
+        modName: mod.name,
+        bytes,
+        reused: false,
+        ms: Date.now() - modStartedAt,
+      });
       bundles.push({ modId: mod.id, modName: mod.name, sourcePath: out, sha256, bytes });
       newSha.set(mod.id, sha256);
       keptByMod.set(mod.id, out);
     } catch (err) {
+      ehLog("error", "bundle.repack.mod.fail", {
+        modId: mod.id,
+        modName: mod.name,
+        ms: Date.now() - modStartedAt,
+        err,
+      });
       warnings.push(
         `"${mod.name}" is flagged for bundling but could not be packed from its ` +
           `staging folder: ${err instanceof Error ? err.message : String(err)}. ` +
@@ -271,6 +319,13 @@ export async function repackBundledExternals(args: {
   // it needs, never before — a sweep that ran first would delete the copy
   // that makes a retry fast after a failure.
   await sweepStaleBundles(workDir, keptByMod);
+
+  const reusedCount = bundles.filter((b) => b.reused === true).length;
+  op.ok({
+    repacked: bundles.length,
+    reused: reusedCount,
+    warnings: warnings.length,
+  });
 
   if (newSha.size === 0) {
     return { mods, bundles, warnings };
@@ -305,7 +360,11 @@ async function readCachedBundle(
     const raw = await fsp.readFile(bundleSidecarPath(archivePath), "utf8");
     const parsed = JSON.parse(raw) as CachedBundle;
     return sidecarMatches(parsed, stat.size) ? parsed : undefined;
-  } catch {
+  } catch (err) {
+    ehLog("debug", "bundle.cache.miss", {
+      file: path.basename(archivePath),
+      err,
+    });
     return undefined;
   }
 }
@@ -320,8 +379,12 @@ async function writeCachedBundle(
       JSON.stringify(cached),
       "utf8",
     );
-  } catch {
+  } catch (err) {
     // No sidecar means the next build repacks. Wasteful, never wrong.
+    ehLog("warn", "bundle.cache.write-failed", {
+      file: path.basename(archivePath),
+      err,
+    });
   }
 }
 
@@ -334,13 +397,21 @@ async function sweepStaleBundles(
   let fileNames: string[];
   try {
     fileNames = await fsp.readdir(workDir);
-  } catch {
+  } catch (err) {
+    ehLog("warn", "bundle.sweep.list-failed", { err });
     return;
   }
+  let removed = 0;
   for (const [modId, keep] of keptByMod) {
     for (const stale of staleBundlesFor({ fileNames, modId, keep })) {
-      await fsp.rm(path.join(workDir, stale), { force: true }).catch(() => undefined);
+      await fsp.rm(path.join(workDir, stale), { force: true }).catch((err) => {
+        ehLog("debug", "bundle.sweep.remove-failed", { file: stale, err });
+      });
+      removed += 1;
     }
+  }
+  if (removed > 0) {
+    ehLog("debug", "bundle.sweep.ok", { removed, mods: keptByMod.size });
   }
 }
 
@@ -403,7 +474,12 @@ export async function detectExternalDrift(args: {
   // Availability gate only — this function compares captured stagingFiles
   // against archive entries and never touches disk.
   const installRoot = installRootFor(args.state, args.gameId);
-  if (!installRoot) return [];
+  if (!installRoot) {
+    ehLog("debug", "bundle.drift.no-install-root", { gameId: args.gameId });
+    return [];
+  }
+
+  const op = beginOp("bundle.drift", { mods: args.mods.length });
 
   const out: ExternalDrift[] = [];
   for (const mod of args.mods) {
@@ -418,8 +494,10 @@ export async function detectExternalDrift(args: {
     let entries: Array<{ path: string }>;
     try {
       entries = (await args.listArchive(archivePath)).entries;
-    } catch {
-      continue; // unreadable archive is the self-check's problem, not this one
+    } catch (err) {
+      // unreadable archive is the self-check's problem, not this one
+      ehLog("debug", "bundle.drift.archive-unreadable", { modId: mod.id, err });
+      continue;
     }
 
     const archived = entries.map((e) => e.path.toLowerCase());
@@ -455,6 +533,7 @@ export async function detectExternalDrift(args: {
       declaredAlternatives: menu,
     });
   }
+  op.ok({ drifted: out.length });
   return out;
 }
 

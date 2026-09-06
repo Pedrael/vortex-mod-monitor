@@ -35,6 +35,8 @@ import * as path from "path";
 import * as zlib from "zlib";
 import { pipeline } from "stream/promises";
 
+import { ehLog } from "../logging/ehLog";
+
 /** One entry from the central directory. */
 export interface ZipEntry {
   /** Entry path as stored, always forward-slashed per the spec. */
@@ -84,11 +86,20 @@ const FLAG_ENCRYPTED = 0x1;
  * not of the archive.
  */
 export async function listZipEntries(filePath: string): Promise<ZipEntry[]> {
+  const startedAt = Date.now();
+  const name = path.basename(filePath);
   const handle = await open(filePath);
   try {
     const { size } = await handle.stat();
     const eocd = await readEndOfCentralDirectory(handle, size, filePath);
-    return await readCentralDirectory(handle, eocd, filePath);
+    const entries = await readCentralDirectory(handle, eocd, filePath);
+    ehLog("info", "zip.list.ok", {
+      file: name,
+      bytes: size,
+      entries: entries.length,
+      ms: Date.now() - startedAt,
+    });
+    return entries;
   } finally {
     await handle.close().catch(() => undefined);
   }
@@ -106,6 +117,8 @@ export async function readZipEntry(
   entryName: string,
   maxBytes = 64 * 1024 * 1024,
 ): Promise<Buffer> {
+  const startedAt = Date.now();
+  const name = path.basename(filePath);
   const handle = await open(filePath);
   try {
     const { size } = await handle.stat();
@@ -114,6 +127,12 @@ export async function readZipEntry(
     const entry = findEntry(entries, entryName, filePath);
 
     if (entry.uncompressedSize > maxBytes) {
+      ehLog("error", "zip.read-entry.too-large", {
+        file: name,
+        entry: entryName,
+        uncompressedSize: entry.uncompressedSize,
+        maxBytes,
+      });
       throw new ZipReadError(
         `"${entryName}" in "${filePath}" is ${entry.uncompressedSize} bytes, ` +
           `over the ${maxBytes}-byte limit for reading into memory.`,
@@ -130,6 +149,12 @@ export async function readZipEntry(
         dataOffset,
       );
       if (bytesRead !== entry.compressedSize) {
+        ehLog("error", "zip.read-entry.truncated", {
+          file: name,
+          entry: entryName,
+          expectedBytes: entry.compressedSize,
+          actualBytes: bytesRead,
+        });
         throw new ZipReadError(
           `"${filePath}" ends before "${entryName}" does — the archive is ` +
             `incomplete (wanted ${entry.compressedSize} bytes, got ${bytesRead}).`,
@@ -141,6 +166,12 @@ export async function readZipEntry(
       entry.method === METHOD_STORE ? raw : await inflateRaw(raw, entryName);
 
     verifyCrc(out, entry, entryName, filePath);
+    ehLog("debug", "zip.read-entry.ok", {
+      file: name,
+      entry: entryName,
+      bytes: out.length,
+      ms: Date.now() - startedAt,
+    });
     return out;
   } finally {
     await handle.close().catch(() => undefined);
@@ -158,6 +189,8 @@ export async function extractZipEntryToFile(
   entryName: string,
   destPath: string,
 ): Promise<void> {
+  const startedAt = Date.now();
+  const name = path.basename(filePath);
   const handle = await open(filePath);
   let entry: ZipEntry;
   let dataOffset: number;
@@ -177,6 +210,12 @@ export async function extractZipEntryToFile(
   // an edge case not worth threading through a pipeline.
   if (entry.compressedSize === 0) {
     await fsp.writeFile(destPath, Buffer.alloc(0));
+    ehLog("debug", "zip.extract.ok", {
+      file: name,
+      entry: entryName,
+      bytes: 0,
+      ms: Date.now() - startedAt,
+    });
     return;
   }
 
@@ -186,11 +225,22 @@ export async function extractZipEntryToFile(
   });
   const sink = fs.createWriteStream(destPath);
 
-  if (entry.method === METHOD_STORE) {
-    await pipeline(source, sink);
-  } else {
-    await pipeline(source, zlib.createInflateRaw(), sink);
+  try {
+    if (entry.method === METHOD_STORE) {
+      await pipeline(source, sink);
+    } else {
+      await pipeline(source, zlib.createInflateRaw(), sink);
+    }
+  } catch (err) {
+    ehLog("error", "zip.extract.fail", { file: name, entry: entryName, err });
+    throw err;
   }
+  ehLog("debug", "zip.extract.ok", {
+    file: name,
+    entry: entryName,
+    bytes: entry.uncompressedSize,
+    ms: Date.now() - startedAt,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -216,6 +266,11 @@ async function readEndOfCentralDirectory(
   filePath: string,
 ): Promise<EndOfCentralDirectory> {
   if (fileSize < EOCD_MIN_SIZE) {
+    ehLog("error", "zip.eocd.too-small", {
+      file: path.basename(filePath),
+      bytes: fileSize,
+      minBytes: EOCD_MIN_SIZE,
+    });
     throw new ZipReadError(
       `"${filePath}" is ${fileSize} bytes — too small to be a ZIP at all.`,
     );
@@ -235,6 +290,10 @@ async function readEndOfCentralDirectory(
     }
   }
   if (eocdPos === -1) {
+    ehLog("error", "zip.eocd.not-found", {
+      file: path.basename(filePath),
+      bytes: fileSize,
+    });
     throw new ZipReadError(
       `"${filePath}" has no end-of-central-directory record. A ZIP keeps its ` +
         `index at the end, so this is an incomplete file rather than a ` +
@@ -245,6 +304,11 @@ async function readEndOfCentralDirectory(
   const diskNumber = tail.readUInt16LE(eocdPos + 4);
   const diskWithCentralDir = tail.readUInt16LE(eocdPos + 6);
   if (diskNumber !== 0 || diskWithCentralDir !== 0) {
+    ehLog("error", "zip.eocd.multi-disk", {
+      file: path.basename(filePath),
+      diskNumber,
+      diskWithCentralDir,
+    });
     throw new ZipReadError(
       `"${filePath}" is a multi-disk (split) archive, which a collection ` +
         `package never is. Check you picked the right file.`,
@@ -263,6 +327,7 @@ async function readEndOfCentralDirectory(
     centralDirOffset === 0xffffffff;
 
   if (saturated) {
+    ehLog("debug", "zip.eocd.zip64", { file: path.basename(filePath) });
     const zip64 = await readZip64EndOfCentralDirectory(
       handle,
       tail,
@@ -276,6 +341,11 @@ async function readEndOfCentralDirectory(
   }
 
   if (centralDirOffset + centralDirSize > fileSize) {
+    ehLog("error", "zip.eocd.truncated", {
+      file: path.basename(filePath),
+      declaredEnd: centralDirOffset + centralDirSize,
+      actualBytes: fileSize,
+    });
     throw new ZipReadError(
       `"${filePath}" says its index ends at byte ` +
         `${centralDirOffset + centralDirSize} but the file is only ${fileSize} ` +
@@ -295,6 +365,9 @@ async function readZip64EndOfCentralDirectory(
 ): Promise<EndOfCentralDirectory> {
   const locatorPos = eocdPos - 20;
   if (locatorPos < 0 || tail.readUInt32LE(locatorPos) !== EOCD64_LOCATOR_SIG) {
+    ehLog("error", "zip.eocd64.locator-missing", {
+      file: path.basename(filePath),
+    });
     throw new ZipReadError(
       `"${filePath}" uses ZIP64 sizes but has no ZIP64 locator record.`,
     );
@@ -309,6 +382,10 @@ async function readZip64EndOfCentralDirectory(
   const rec = Buffer.alloc(56);
   const { bytesRead } = await handle.read(rec, 0, 56, zip64Offset);
   if (bytesRead < 56 || rec.readUInt32LE(0) !== EOCD64_SIG) {
+    ehLog("error", "zip.eocd64.record-missing", {
+      file: path.basename(filePath),
+      offset: zip64Offset,
+    });
     throw new ZipReadError(
       `"${filePath}" has a ZIP64 locator pointing at byte ${zip64Offset}, ` +
         `where there is no ZIP64 end-of-central-directory record.`,
@@ -346,6 +423,11 @@ async function readCentralDirectory(
       eocd.centralDirOffset,
     );
     if (bytesRead !== eocd.centralDirSize) {
+      ehLog("error", "zip.central-dir.truncated", {
+        file: path.basename(filePath),
+        expectedBytes: eocd.centralDirSize,
+        actualBytes: bytesRead,
+      });
       throw new ZipReadError(
         `"${filePath}" ends inside its own index (wanted ` +
           `${eocd.centralDirSize} bytes, got ${bytesRead}). The archive is ` +
@@ -359,12 +441,21 @@ async function readCentralDirectory(
 
   for (let i = 0; i < eocd.entryCount; i += 1) {
     if (pos + 46 > buf.length) {
+      ehLog("error", "zip.central-dir.index-short", {
+        file: path.basename(filePath),
+        declaredEntries: eocd.entryCount,
+        readEntries: i,
+      });
       throw new ZipReadError(
         `"${filePath}" declares ${eocd.entryCount} entries but its index runs ` +
           `out after ${i}. The archive is truncated or malformed.`,
       );
     }
     if (buf.readUInt32LE(pos) !== CENTRAL_SIG) {
+      ehLog("error", "zip.central-dir.bad-signature", {
+        file: path.basename(filePath),
+        entryIndex: i,
+      });
       throw new ZipReadError(
         `"${filePath}" has a malformed index at entry ${i} — expected a ` +
           `central-directory header and found something else.`,
@@ -385,6 +476,10 @@ async function readCentralDirectory(
     const name = buf.toString("utf8", nameStart, nameStart + nameLength);
 
     if ((flags & FLAG_ENCRYPTED) !== 0) {
+      ehLog("error", "zip.entry.encrypted", {
+        file: path.basename(filePath),
+        entry: name,
+      });
       throw new ZipReadError(
         `"${name}" in "${filePath}" is encrypted. Collection packages are ` +
           `never password-protected, so this is not the file you meant.`,
@@ -401,6 +496,10 @@ async function readCentralDirectory(
       const extraStart = nameStart + nameLength;
       const zip64 = findZip64Extra(buf, extraStart, extraLength);
       if (zip64 === undefined) {
+        ehLog("error", "zip.entry.zip64-extra-missing", {
+          file: path.basename(filePath),
+          entry: name,
+        });
         throw new ZipReadError(
           `"${name}" in "${filePath}" uses ZIP64 sizes but carries no ZIP64 ` +
             `extra field.`,
@@ -492,6 +591,11 @@ async function findDataOffset(
     entry.localHeaderOffset,
   );
   if (bytesRead < 30 || local.readUInt32LE(0) !== LOCAL_SIG) {
+    ehLog("error", "zip.entry.local-header-mismatch", {
+      file: path.basename(filePath),
+      entry: entry.name,
+      offset: entry.localHeaderOffset,
+    });
     throw new ZipReadError(
       `"${filePath}" points at byte ${entry.localHeaderOffset} for ` +
         `"${entry.name}", where there is no entry header. The archive's ` +
@@ -510,16 +614,29 @@ function findEntry(
 ): ZipEntry {
   const entry = entries.find((e) => e.name === entryName);
   if (entry === undefined) {
+    ehLog("error", "zip.entry.not-found", {
+      file: path.basename(filePath),
+      entry: entryName,
+    });
     throw new ZipReadError(
       `"${filePath}" contains no entry named "${entryName}".`,
     );
   }
   if (entry.isDirectory) {
+    ehLog("error", "zip.entry.is-directory", {
+      file: path.basename(filePath),
+      entry: entryName,
+    });
     throw new ZipReadError(
       `"${entryName}" in "${filePath}" is a directory, not a file.`,
     );
   }
   if (entry.method !== METHOD_STORE && entry.method !== METHOD_DEFLATE) {
+    ehLog("error", "zip.entry.unsupported-method", {
+      file: path.basename(filePath),
+      entry: entryName,
+      method: entry.method,
+    });
     throw new ZipReadError(
       `"${entryName}" in "${filePath}" uses compression method ` +
         `${entry.method}, which this reader does not support (only stored and ` +
@@ -533,6 +650,10 @@ async function inflateRaw(raw: Buffer, entryName: string): Promise<Buffer> {
   return await new Promise<Buffer>((resolve, reject) => {
     zlib.inflateRaw(raw, (err, out) => {
       if (err) {
+        ehLog("error", "zip.entry.inflate-fail", {
+          entry: entryName,
+          message: err.message,
+        });
         reject(
           new ZipReadError(
             `"${entryName}" could not be decompressed: ${err.message}. The ` +
@@ -607,6 +728,10 @@ export async function crc32File(
     });
     stream.on("error", (err) => {
       signal?.removeEventListener("abort", onAbort);
+      ehLog("error", "zip.crc32-file.fail", {
+        file: path.basename(filePath),
+        err,
+      });
       reject(err);
     });
     stream.on("close", () => {
@@ -631,6 +756,12 @@ function verifyCrc(
   filePath: string,
 ): void {
   if (out.length !== entry.uncompressedSize) {
+    ehLog("error", "zip.entry.size-mismatch", {
+      file: path.basename(filePath),
+      entry: entryName,
+      expectedBytes: entry.uncompressedSize,
+      actualBytes: out.length,
+    });
     throw new ZipReadError(
       `"${entryName}" in "${filePath}" should be ${entry.uncompressedSize} ` +
         `bytes but decompressed to ${out.length}. The entry is damaged.`,
@@ -638,6 +769,12 @@ function verifyCrc(
   }
   const actual = crc32(out);
   if (actual !== entry.crc32) {
+    ehLog("error", "zip.entry.checksum-mismatch", {
+      file: path.basename(filePath),
+      entry: entryName,
+      expectedCrc: entry.crc32.toString(16),
+      actualCrc: actual.toString(16),
+    });
     throw new ZipReadError(
       `"${entryName}" in "${filePath}" failed its checksum (expected ` +
         `${entry.crc32.toString(16)}, got ${actual.toString(16)}). The entry ` +
@@ -656,8 +793,10 @@ async function open(filePath: string): Promise<fsp.FileHandle> {
   } catch (err) {
     const code = (err as NodeJS.ErrnoException)?.code;
     if (code === "ENOENT") {
+      ehLog("error", "zip.open.missing", { file: path.basename(filePath) });
       throw new ZipReadError(`No file at "${filePath}".`);
     }
+    ehLog("error", "zip.open.fail", { file: path.basename(filePath), err });
     throw new ZipReadError(
       `Cannot open "${filePath}": ` +
         `${err instanceof Error ? err.message : String(err)}.`,
@@ -674,6 +813,11 @@ async function open(filePath: string): Promise<fsp.FileHandle> {
  */
 function toSafeNumber(value: bigint, what: string, filePath: string): number {
   if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
+    ehLog("error", "zip.zip64.value-too-large", {
+      file: path.basename(filePath),
+      what,
+      value: value.toString(),
+    });
     throw new ZipReadError(
       `"${filePath}" declares a ${what} of ${value}, which is too large to be ` +
         `real. The archive's index is corrupt.`,

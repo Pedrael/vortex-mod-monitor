@@ -47,6 +47,7 @@ import * as fsp from "fs/promises";
 import * as os from "os";
 import * as path from "path";
 
+import { ehLog } from "../logging/ehLog";
 import type { EhcollManifest } from "../../types/ehcoll";
 import { parseManifest, ParseManifestError } from "./parseManifest";
 import {
@@ -160,7 +161,12 @@ export async function readEhcoll(
   zipPath: string,
   options: ReadEhcollOptions = {},
 ): Promise<ReadEhcollResult> {
+  const startedAt = Date.now();
+  const zipName = path.basename(zipPath);
+  ehLog("info", "ehcoll.read.start", { file: zipName });
+
   if (!path.isAbsolute(zipPath)) {
+    ehLog("error", "ehcoll.read.invalid-path", { file: zipName });
     throw new ReadEhcollError([
       `zipPath must be an absolute path. Got: ${JSON.stringify(zipPath)}.`,
     ]);
@@ -170,10 +176,32 @@ export async function readEhcoll(
 
   // Phase 1 — central-directory listing. No 7z: see listZipEntries.
   const entries = await listZipEntries(zipPath);
+  ehLog("debug", "ehcoll.read.entries", { file: zipName, count: entries.length });
 
   const layout = classifyEntries(entries);
+  ehLog("info", "ehcoll.read.layout", {
+    file: zipName,
+    entries: entries.length,
+    bundled: layout.bundledEntries.length,
+    unrecognizedBundled: layout.unrecognizedBundled.length,
+    iniTweakFiles: layout.iniTweakFiles.length,
+    hasReadme: layout.hasReadme,
+    hasChangelog: layout.hasChangelog,
+    hasManifest: layout.hasManifest,
+  });
+  if (layout.unrecognizedBundled.length > 0) {
+    // Every entry here failed the `bundled/<sha256>[.ext]` naming contract —
+    // that is a rejected entry, and dropping it silently is exactly the case
+    // that made a bad-but-plausible package unanswerable in a bug report.
+    ehLog("warn", "ehcoll.read.bundled.unrecognized", {
+      file: zipName,
+      count: layout.unrecognizedBundled.length,
+      entries: layout.unrecognizedBundled,
+    });
+  }
 
   if (!layout.hasManifest) {
+    ehLog("error", "ehcoll.read.manifest-missing", { file: zipName });
     throw new ReadEhcollError([
       `Archive "${zipPath}" does not contain manifest.json at its root. ` +
         `This is not a valid Event Horizon collection package.`,
@@ -197,10 +225,31 @@ export async function readEhcoll(
       const parsed = parseManifest(raw);
       manifest = parsed.manifest;
       parseWarnings = parsed.warnings;
+      ehLog("info", "ehcoll.read.manifest.ok", {
+        file: zipName,
+        mods: manifest.mods.length,
+        bytes: raw.length,
+      });
+      if (parseWarnings.length > 0) {
+        ehLog("warn", "ehcoll.read.manifest.warnings", {
+          file: zipName,
+          count: parseWarnings.length,
+          warnings: parseWarnings,
+        });
+      }
     } catch (err) {
       if (err instanceof ParseManifestError) {
+        // The schema mismatch itself — which field, what was expected — lives
+        // inside err.errors, produced by parseManifest. Log it verbatim rather
+        // than just the wrapped ReadEhcollError message.
+        ehLog("error", "ehcoll.read.manifest.invalid", {
+          file: zipName,
+          count: err.errors.length,
+          errors: err.errors,
+        });
         throw new ReadEhcollError(err.errors);
       }
+      ehLog("error", "ehcoll.read.manifest.parse-fail", { file: zipName, err });
       throw err;
     }
   } finally {
@@ -220,8 +269,27 @@ export async function readEhcoll(
   );
 
   if (errors.length > 0) {
+    // Each string here already names the offending mod compareKey or sha256 —
+    // this is the "package is incomplete / has stray bytes" diagnosis, and it
+    // is the whole reason to log before throwing.
+    ehLog("error", "ehcoll.read.cross-check.fail", {
+      file: zipName,
+      count: errors.length,
+      errors,
+    });
     throw new ReadEhcollError(errors);
   }
+
+  ehLog("info", "ehcoll.read.ok", {
+    file: zipName,
+    ms: Date.now() - startedAt,
+    mods: manifest.mods.length,
+    bundled: bundledArchives.length,
+    hasReadme: layout.hasReadme,
+    hasChangelog: layout.hasChangelog,
+    iniTweakFiles: layout.iniTweakFiles.length,
+    warnings: warnings.length,
+  });
 
   return {
     manifest,
@@ -238,21 +306,25 @@ export async function readEhcoll(
 // ---------------------------------------------------------------------------
 
 async function assertReadableFile(zipPath: string): Promise<void> {
+  const zipName = path.basename(zipPath);
   let stat: import("fs").Stats;
   try {
     stat = await fsp.stat(zipPath);
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     if (code === "ENOENT") {
+      ehLog("error", "ehcoll.read.file.missing", { file: zipName });
       throw new ReadEhcollError([
         `No file at "${zipPath}". Has the package been moved or deleted?`,
       ]);
     }
+    ehLog("error", "ehcoll.read.file.stat-fail", { file: zipName, err });
     throw new ReadEhcollError([
       `Cannot stat "${zipPath}": ${err instanceof Error ? err.message : String(err)}.`,
     ]);
   }
   if (!stat.isFile()) {
+    ehLog("error", "ehcoll.read.file.not-a-file", { file: zipName });
     throw new ReadEhcollError([
       `"${zipPath}" is not a regular file ` +
         `(directory? symlink? device?). A .ehcoll must be a single ZIP file.`,
@@ -303,6 +375,12 @@ async function listZipEntries(
       "./diagnoseArchive"
     );
     const diagnosis = await diagnoseArchive(zipPath);
+
+    ehLog("error", "ehcoll.read.zip-list.fail", {
+      file: path.basename(zipPath),
+      diagnosisKind: diagnosis.kind,
+      err,
+    });
 
     throw new ReadEhcollError(
       diagnosis.kind === "looks-like-a-zip"
@@ -546,6 +624,10 @@ async function extractManifest(
       path.join(stagingDir, "manifest.json"),
     );
   } catch (err) {
+    ehLog("error", "ehcoll.read.manifest.extract-fail", {
+      file: path.basename(zipPath),
+      err,
+    });
     throw new ReadEhcollError([
       `Could not read manifest.json from "${zipPath}": ` +
         `${(err as Error).message}`,

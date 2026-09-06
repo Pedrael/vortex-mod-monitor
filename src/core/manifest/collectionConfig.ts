@@ -53,6 +53,7 @@ import * as fsp from "fs/promises";
 import * as path from "path";
 import { applyHint } from "./externalHints";
 import type { DownloadMode, ExternalHint } from "./externalHints";
+import { beginOp, ehLog } from "../logging/ehLog";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -309,6 +310,7 @@ export async function loadOrCreateCollectionConfig(
   validateSlug(input.slug);
 
   const configPath = getCollectionConfigPath(input.configDir, input.slug);
+  const op = beginOp("collection-config.load", { slug: input.slug });
 
   let raw: string;
   try {
@@ -318,13 +320,27 @@ export async function loadOrCreateCollectionConfig(
     if (code === "ENOENT") {
       const fresh = createDefaultConfig();
       await writeConfigFile(configPath, fresh);
+      op.ok({ created: true, packageId: fresh.packageId });
       return { config: fresh, created: true, configPath };
     }
+    op.fail(err, { code });
     throw err;
   }
 
-  const config = parseAndValidate(raw, configPath);
-  return { config, created: false, configPath };
+  try {
+    const config = parseAndValidate(raw, configPath);
+    op.ok({
+      created: false,
+      externalMods: Object.keys(config.externalMods).length,
+      externalDependencies: Object.keys(config.externalDependencies ?? {}).length,
+    });
+    return { config, created: false, configPath };
+  } catch (err) {
+    op.fail(err, {
+      errors: err instanceof CollectionConfigError ? err.errors : undefined,
+    });
+    throw err;
+  }
 }
 
 export async function saveCollectionConfig(
@@ -332,8 +348,18 @@ export async function saveCollectionConfig(
 ): Promise<string> {
   validateSlug(input.slug);
   const configPath = getCollectionConfigPath(input.configDir, input.slug);
-  await writeConfigFile(configPath, input.config);
-  return configPath;
+  const op = beginOp("collection-config.save", {
+    slug: input.slug,
+    externalMods: Object.keys(input.config.externalMods ?? {}).length,
+  });
+  try {
+    await writeConfigFile(configPath, input.config);
+    op.ok();
+    return configPath;
+  } catch (err) {
+    op.fail(err);
+    throw err;
+  }
 }
 
 /**
@@ -371,6 +397,12 @@ export function reconcileExternalModsConfig(
       changed = true;
     }
   }
+
+  ehLog(added.length > 0 ? "info" : "debug", "collection-config.reconcile", {
+    externalMods: input.externalMods.length,
+    added: added.length,
+    changed,
+  });
 
   return {
     config: changed ? { ...input.config, externalMods: next } : input.config,
@@ -414,6 +446,10 @@ export function toBuildManifestExternalMods(
       ...(merged.mode !== undefined ? { mode: merged.mode } : {}),
     };
   }
+  ehLog("debug", "collection-config.to-build-spec", {
+    mods: Object.keys(out).length,
+    bundled: Object.values(out).filter((m) => m.bundled === true).length,
+  });
   return out;
 }
 
@@ -511,18 +547,24 @@ export async function listPublishedCollections(
   configDir: string,
   opts?: ListPublishedCollectionsOptions,
 ): Promise<PublishedCollectionSummary[]> {
+  const op = beginOp("collection-config.list-published");
   let entries: string[];
   try {
     entries = await fsp.readdir(configDir);
   } catch (err) {
     const code = (err as NodeJS.ErrnoException | undefined)?.code;
-    if (code === "ENOENT") return [];
+    if (code === "ENOENT") {
+      op.ok({ scanned: 0, published: 0 });
+      return [];
+    }
     // Surface real I/O errors via onError; the dashboard prefers a
     // partial result over a thrown promise it has to handle.
     opts?.onError?.(configDir, err);
+    op.fail(err);
     return [];
   }
   const out: PublishedCollectionSummary[] = [];
+  let skipped = 0;
   for (const filename of entries) {
     if (!filename.endsWith(".json")) continue;
     if (filename.startsWith(".")) continue;
@@ -533,14 +575,24 @@ export async function listPublishedCollections(
     try {
       raw = await fsp.readFile(configPath, "utf8");
     } catch (err) {
+      ehLog("warn", "collection-config.list-published.unreadable", {
+        file: filename,
+      });
       opts?.onError?.(filename, err);
+      skipped += 1;
       continue;
     }
     let config: CollectionConfig;
     try {
       config = parseAndValidate(raw, configPath);
     } catch (err) {
+      ehLog("warn", "collection-config.list-published.invalid", {
+        file: filename,
+        errorCount:
+          err instanceof CollectionConfigError ? err.errors.length : undefined,
+      });
       opts?.onError?.(filename, err);
+      skipped += 1;
       continue;
     }
     if (config.lastBuiltAt === undefined) {
@@ -570,6 +622,7 @@ export async function listPublishedCollections(
     if (b.lastBuiltAt !== undefined) return 1;
     return a.slug.localeCompare(b.slug);
   });
+  op.ok({ scanned: entries.length, published: out.length, skipped });
   return out;
 }
 
@@ -598,6 +651,10 @@ async function writeConfigFile(
 
 function validateSlug(slug: string): void {
   if (typeof slug !== "string" || slug.length === 0) {
+    ehLog("warn", "collection-config.field.invalid", {
+      field: "slug",
+      reason: "empty",
+    });
     throw new CollectionConfigError(["Slug cannot be empty."]);
   }
   // The slug becomes a filename component; refuse path traversal and
@@ -606,6 +663,11 @@ function validateSlug(slug: string): void {
   // direct callers (Phase 5 UI, tests) can't accidentally smuggle in
   // a `..\..\evil.json`.
   if (/[\\/:*?"<>|]/.test(slug) || slug.includes("..")) {
+    ehLog("warn", "collection-config.field.invalid", {
+      field: "slug",
+      reason: "illegal-characters",
+      value: slug,
+    });
     throw new CollectionConfigError([
       `Slug "${slug}" contains characters that are not allowed in a config filename.`,
     ]);
@@ -617,6 +679,10 @@ function parseAndValidate(raw: string, configPath: string): CollectionConfig {
   try {
     parsed = JSON.parse(raw);
   } catch (err) {
+    ehLog("error", "collection-config.validate.invalid-json", {
+      file: path.basename(configPath),
+      err,
+    });
     throw new CollectionConfigError([
       `Config file "${configPath}" is not valid JSON: ${
         err instanceof Error ? err.message : String(err)
@@ -627,6 +693,9 @@ function parseAndValidate(raw: string, configPath: string): CollectionConfig {
   const errors: string[] = [];
 
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    ehLog("error", "collection-config.validate.not-object", {
+      file: path.basename(configPath),
+    });
     throw new CollectionConfigError([
       `Config file "${configPath}" must be a JSON object.`,
     ]);
@@ -713,6 +782,10 @@ function parseAndValidate(raw: string, configPath: string): CollectionConfig {
   }
 
   if (errors.length > 0) {
+    ehLog("warn", "collection-config.validate.rejected", {
+      file: path.basename(configPath),
+      errors,
+    });
     throw new CollectionConfigError(errors);
   }
 
@@ -868,6 +941,10 @@ const EXTERNAL_MOD_FIELDS: {
     // an update. Ending a collection's history over one unknown enum member is
     // out of proportion, and it is exactly what a future version writing a
     // fourth mode would hand to every older build.
+    ehLog("warn", "collection-config.field.discarded", {
+      field: path,
+      value: raw,
+    });
     return undefined;
   },
 };
@@ -933,12 +1010,24 @@ function isUuid(value: string): boolean {
  * decision. Callers must confirm before calling this.
  */
 export async function deletePublishedCollection(configPath: string): Promise<void> {
+  ehLog("info", "collection-config.delete-published", {
+    file: path.basename(configPath),
+  });
   await deleteCollectionConfig(configPath);
 }
 
 /** Remove a config file. The primitive behind every deletion here. */
 export async function deleteCollectionConfig(configPath: string): Promise<void> {
-  await fsp.rm(configPath, { force: true });
+  const op = beginOp("collection-config.delete", {
+    file: path.basename(configPath),
+  });
+  try {
+    await fsp.rm(configPath, { force: true });
+    op.ok();
+  } catch (err) {
+    op.fail(err);
+    throw err;
+  }
 }
 
 /** A config that exists but has never produced a package. */
@@ -968,13 +1057,16 @@ export async function listNeverBuiltConfigs(
   configDir: string,
   opts?: ListPublishedCollectionsOptions,
 ): Promise<UnbuiltCollectionConfig[]> {
+  const op = beginOp("collection-config.list-never-built");
   let entries: string[];
   try {
     entries = await fsp.readdir(configDir);
-  } catch {
+  } catch (err) {
+    op.fail(err);
     return [];
   }
   const out: UnbuiltCollectionConfig[] = [];
+  let skipped = 0;
   for (const filename of entries) {
     if (!filename.endsWith(".json") || filename.startsWith(".")) continue;
     const slug = filename.slice(0, -".json".length);
@@ -985,10 +1077,18 @@ export async function listNeverBuiltConfigs(
       if (config.lastBuiltAt !== undefined) continue;
       out.push({ slug, packageId: config.packageId, configPath });
     } catch (err) {
+      ehLog("warn", "collection-config.list-never-built.invalid", {
+        file: filename,
+        errorCount:
+          err instanceof CollectionConfigError ? err.errors.length : undefined,
+      });
       opts?.onError?.(filename, err);
+      skipped += 1;
     }
   }
-  return out.sort((a, b) => a.slug.localeCompare(b.slug));
+  const sorted = out.sort((a, b) => a.slug.localeCompare(b.slug));
+  op.ok({ scanned: entries.length, unbuilt: sorted.length, skipped });
+  return sorted;
 }
 
 
@@ -1065,9 +1165,13 @@ export function modsNoLongerBundled(
 ): string[] {
   const was = before.externalMods ?? {};
   const now = after.externalMods ?? {};
-  return Object.keys(was)
+  const result = Object.keys(was)
     .filter((id) => was[id]?.bundled === true && now[id]?.bundled !== true)
     .sort();
+  if (result.length > 0) {
+    ehLog("info", "collection-config.mods-unbundled", { modIds: result });
+  }
+  return result;
 }
 
 
@@ -1095,7 +1199,11 @@ export function modsNewlyBundled(
 ): string[] {
   const was = before.externalMods ?? {};
   const now = after.externalMods ?? {};
-  return Object.keys(now)
+  const result = Object.keys(now)
     .filter((id) => now[id]?.bundled === true && was[id]?.bundled !== true)
     .sort();
+  if (result.length > 0) {
+    ehLog("info", "collection-config.mods-newly-bundled", { modIds: result });
+  }
+  return result;
 }
