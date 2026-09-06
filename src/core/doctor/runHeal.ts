@@ -160,6 +160,80 @@ async function healImpl(
       };
     }
 
+    case "restore-light-flags": {
+      /**
+       * ─── HEALABLE FROM THE RECEIPT ALONE ────────────────────────────
+       * The receipt carries each plugin's name and the curator's flag, so
+       * this needs no `.ehcoll` — which matters, because the user who needs
+       * it is the one whose game stopped starting and who may no longer have
+       * the package to hand.
+       */
+      const recorded = (receipt.rulesApplication?.baselinePluginOrder ?? [])
+        .filter((p): p is typeof p & { light: boolean } => p.light !== undefined)
+        .map((p) => ({ name: p.name, enabled: p.enabled, light: p.light }));
+
+      if (recorded.length === 0) {
+        return {
+          kind: "blocked",
+          reason:
+            "This receipt did not record any ESL flags, so there is nothing " +
+            "to restore. Packages built before that was captured cannot be " +
+            "healed this way — reinstalling the collection would fix it.",
+        };
+      }
+
+      const [{ applyPluginLightFlags, describePluginFlagRepair }, { getGameDirectory }] =
+        await Promise.all([
+          import("../installer/applyPluginLightFlags"),
+          import("../manifest/externalDependencies"),
+        ]);
+      const gameDir = getGameDirectory(deps.api.getState(), gameId);
+      if (gameDir === undefined) {
+        // "Cannot check" and "nothing to do" are different answers, and only
+        // one of them is a reason to stop.
+        return {
+          kind: "blocked",
+          reason:
+            "Vortex has not recorded where this game is installed, so the " +
+            "plugin files could not be found.",
+        };
+      }
+
+      const nodePath = await import("path");
+      const repair = await applyPluginLightFlags({
+        order: recorded,
+        dataDir: nodePath.join(gameDir, "Data"),
+        ...(deps.signal !== undefined ? { signal: deps.signal } : {}),
+      });
+
+      const lines = describePluginFlagRepair(repair) ?? [];
+      // A repair that changed nothing is not a success worth claiming: if
+      // every plugin was already correct the check would not have offered
+      // this, so reaching here having done nothing means something stopped it.
+      if (repair.corrected === 0) {
+        return {
+          kind: "blocked",
+          reason:
+            lines.length > 0
+              ? lines.join(" ")
+              : "No flag needed changing, which suggests the drift was fixed " +
+                "elsewhere. Re-run the check.",
+        };
+      }
+      return {
+        kind: "done",
+        summary:
+          `Restored ${repair.corrected} ESL flag(s)` +
+          (repair.failures.length > 0
+            ? `, and ${repair.failures.length} could not be changed.`
+            : ".") +
+          (repair.unreadable.length > 0
+            ? ` ${repair.unreadable.length} plugin(s) were locked — close the ` +
+              `game and any xEdit/LOOT windows, then run this again.`
+            : ""),
+      };
+    }
+
     case "repin-plugin-order": {
       const recorded = receipt.rulesApplication?.baselinePluginOrder;
       if (recorded === undefined || recorded.length === 0) {
@@ -177,7 +251,19 @@ async function healImpl(
         import("../installer/checkPluginOrder"),
         import("../installer/applyPluginOrder"),
       ]);
-      const current = (await readUserPluginsTxt(gameId)) ?? [];
+      /**
+       * Store-aware. Without it, a GOG or Xbox install reads the STEAM
+       * plugins.txt — which usually does not exist, so `current` falls back
+       * to `[]` and the rebuild silently drops every plugin the user has
+       * added. A heal that strips the user's own plugins is worse than no
+       * heal at all.
+       */
+      const { discoveredStore } = await import("../comparePlugins");
+      const current =
+        (await readUserPluginsTxt(
+          gameId,
+          discoveredStore(deps.api.getState(), gameId),
+        )) ?? [];
       // Names only. The receipt's own enabled flags are dropped on purpose:
       // they describe install time, and re-pinning with them would undo every
       // plugin the user has toggled since.

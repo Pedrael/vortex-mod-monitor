@@ -29,6 +29,9 @@ import type { EhcollPluginEntry } from "../../types/ehcoll";
 import { buildOutputFileName } from "../manifest/packageFileName";
 import type { HealAction } from "./health";
 
+/** A blank line between paragraphs, without an escape a tool can mangle. */
+const NL2 = String.fromCharCode(10, 10);
+
 /**
  * Does this cure need the collection package, or only the receipt?
  *
@@ -46,6 +49,10 @@ export function healNeedsManifest(action: HealAction): boolean {
     case "switch-profile":
     case "enable-mods":
     case "repin-plugin-order":
+    // The receipt carries each plugin's name and the curator's flag, which is
+    // everything the repair needs. Requiring the .ehcoll would hide the button
+    // from exactly the user whose game has stopped starting.
+    case "restore-light-flags":
       return false;
   }
 }
@@ -64,6 +71,24 @@ export function describeHeal(action: HealAction): {
   confirm: string;
 } {
   switch (action) {
+    case "restore-light-flags":
+      return {
+        title: "Restore the collection's ESL flags?",
+        body:
+          "This rewrites one header bit in the plugin files that no longer " +
+          "carry the flag the curator had. Nothing is reinstalled and no mod " +
+          "content changes." +
+          NL2 +
+          "Light (ESL) plugins share a single load-order index instead of " +
+          "taking one of the 254 available, which is what lets a large " +
+          "collection load at all. A Vortex purge under copy deployment " +
+          "rewrites plugins from staging and undoes this, which is the usual " +
+          "reason it is needed." +
+          NL2 +
+          "Close the game and any xEdit or LOOT windows first — a plugin " +
+          "another program is holding open cannot be changed.",
+        confirm: "Restore flags",
+      };
     case "switch-profile":
       return {
         title: "Switch to the collection's profile?",

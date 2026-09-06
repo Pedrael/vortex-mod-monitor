@@ -6,6 +6,7 @@ import { getActiveGameId } from "../core/getModsListForProfile";
 import {
   comparePluginsTxtFiles,
   exportPluginsDiffReport,
+  discoveredStore,
   getCurrentPluginsTxtPath,
 } from "../core/comparePlugins";
 import { openFile, openFolder } from "../utils/utils";
@@ -32,7 +33,12 @@ export function createComparePluginsAction(
         return;
       }
 
-      const currentFilePath = getCurrentPluginsTxtPath(gameId);
+      // Store-aware: plugins.txt lives in a store-specific folder, and
+      // comparing against the wrong one reports every plugin as changed.
+      const currentFilePath = getCurrentPluginsTxtPath(
+        gameId,
+        discoveredStore(state, gameId),
+      );
 
       const diff = await comparePluginsTxtFiles({
         referenceFilePath,

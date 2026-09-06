@@ -65,6 +65,7 @@ export type HealAction =
   | "reapply-rules"
   | "reapply-userlist"
   | "repin-plugin-order"
+  | "restore-light-flags"
   | "switch-profile";
 
 export interface HealthCheck {
@@ -424,8 +425,24 @@ export function evaluateHealth(
                 `now uses a regular load-order slot. A Vortex purge under ` +
                 `copy deployment does exactly this.`
               : "."),
-      detail: wrong.slice(0, 5).map((p) => `${p.name} should be ${p.light ? "light" : "regular"}`),
+      detail: wrong
+        .slice(0, 5)
+        .map((p) => `${p.name} should be ${p.light ? "light" : "regular"}`),
       affectedCount: wrong.length,
+      /**
+       * Healable WITHOUT the .ehcoll, which is what makes it worth offering:
+       * the receipt carries the name and the flag, and the repair needs
+       * nothing else. A user whose game stopped starting after a purge gets a
+       * button rather than a reinstall.
+       */
+      ...(wrong.length > 0
+        ? {
+            heal: {
+              action: "restore-light-flags" as const,
+              label: `Restore ${wrong.length} ESL flag${wrong.length === 1 ? "" : "s"}`,
+            },
+          }
+        : {}),
     });
   }
 

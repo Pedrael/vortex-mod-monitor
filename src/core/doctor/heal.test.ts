@@ -186,3 +186,35 @@ describe("matchEhcollFile", () => {
     expect(matchEhcollFile([], "Ivy 2", "1.0.9")).toBeUndefined();
   });
 });
+
+describe("restoring ESL flags", () => {
+  it("does NOT need the .ehcoll", () => {
+    /**
+     * The point of offering it. The receipt carries each plugin's name and
+     * the curator's flag, so the repair needs nothing else — and the user who
+     * needs this is the one whose game stopped starting, who may no longer
+     * have the package to hand. Requiring the manifest would hide the button
+     * from exactly them.
+     */
+    expect(healNeedsManifest("restore-light-flags")).toBe(false);
+  });
+
+  it("warns about locked files before doing it, not after", () => {
+    // A plugin another program holds open cannot be rewritten, and that is
+    // the commonest reason this heal half-fails. Saying it in the
+    // confirmation costs nothing; saying it afterwards costs a re-run.
+    const d = describeHeal("restore-light-flags");
+    expect(d.title).toMatch(/ESL/);
+    expect(d.body).toMatch(/xEdit|LOOT/);
+    expect(d.body).toMatch(/254/);
+    expect(d.confirm).toMatch(/Restore/);
+  });
+
+  it("says no mod content changes, because none does", () => {
+    // It rewrites one header bit. A user agreeing to a "repair" deserves to
+    // know it is not a reinstall.
+    expect(describeHeal("restore-light-flags").body).toMatch(
+      /Nothing is reinstalled/,
+    );
+  });
+});
