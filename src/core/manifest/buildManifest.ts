@@ -995,6 +995,28 @@ function buildUserlist(
     pluginsOrder.map((p) => p.name.toLowerCase()),
   );
 
+  /**
+   * ─── DROPPING EVERYTHING IS NOT THE SAME AS DROPPING SOME ────────────
+   * The per-entry skip below is deliberately silent, and right: a curator
+   * keeps LOOT rules on far more plugins than they ship, and warning about
+   * each would be noise.
+   *
+   * But "no plugin order at all" is a different event. It means the build
+   * could not read plugins.txt — which is what a store-relocated folder did
+   * for real: a GOG Skyrim SE shipped `plugins.order: []`, and this loop then
+   * discarded every LOOT rule the curator had, without a word, because each
+   * individual drop looked like the ordinary case. One bug, three losses, all
+   * invisible.
+   */
+  if (pluginNamesLower.size === 0 && captured.plugins.length > 0) {
+    warnings.push(
+      `None of the ${captured.plugins.length} LOOT plugin rule(s) could be ` +
+        `shipped, because this build captured no plugin order to match them ` +
+        `against. That usually means plugins.txt could not be read — check ` +
+        `the log for plugins-txt.not-found.`,
+    );
+  }
+
   const plugins: EhcollUserlistPlugin[] = [];
   for (const entry of captured.plugins) {
     if (!pluginNamesLower.has(entry.name.toLowerCase())) {
