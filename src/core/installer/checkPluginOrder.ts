@@ -163,13 +163,19 @@ export function describePluginOrderDrift(drift: PluginOrderDrift): string[] {
  */
 export async function readUserPluginsTxt(
   gameId: string,
+  /**
+   * Vortex's discovered store. plugins.txt lives in a store-specific folder
+   * — a GOG Skyrim SE writes to "Skyrim Special Edition GOG" — and without
+   * this the resolver has to guess from what exists on disk.
+   */
+  store?: string,
 ): Promise<PluginOrderEntry[] | undefined> {
   const [{ getCurrentPluginsTxtPath, parsePluginsTxt }, fsp] =
     await Promise.all([import("../comparePlugins"), import("fs/promises")]);
 
   let pluginsPath: string;
   try {
-    pluginsPath = getCurrentPluginsTxtPath(gameId);
+    pluginsPath = getCurrentPluginsTxtPath(gameId, store);
   } catch {
     return undefined;
   }

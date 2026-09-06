@@ -69,7 +69,10 @@ import {
 } from "../core/getModsListForProfile";
 import { captureLoadOrder } from "../core/loadOrder";
 import { captureUserlist } from "../core/userlist";
-import { getCurrentPluginsTxtPath } from "../core/comparePlugins";
+import {
+  discoveredStore,
+  getCurrentPluginsTxtPath,
+} from "../core/comparePlugins";
 import {
   buildManifest,
   BuildManifestError,
@@ -200,7 +203,11 @@ export default function createBuildPackageAction(
 
       const userlist = captureUserlist(state);
 
-      const pluginsTxtContent = await readPluginsTxtIfPresent(gameId);
+      // Store-aware: see readPluginsTxtIfPresent.
+      const pluginsTxtContent = await readPluginsTxtIfPresent(
+        gameId,
+        discoveredStore(state, gameId),
+      );
 
       // ── Slice 4b: load/create per-collection state file ────────────────
       // Lives at <appData>\Vortex\event-horizon\collections\.config\<slug>.json
@@ -584,10 +591,11 @@ function resolveDeploymentMethod(
 
 async function readPluginsTxtIfPresent(
   gameId: string,
+  store?: string,
 ): Promise<string | undefined> {
   let pluginsPath: string;
   try {
-    pluginsPath = getCurrentPluginsTxtPath(gameId);
+    pluginsPath = getCurrentPluginsTxtPath(gameId, store);
   } catch {
     // Game doesn't have a plugins.txt path mapping (e.g. starfield handled
     // via LoadOrder API). buildManifest will emit plugins.order: [].

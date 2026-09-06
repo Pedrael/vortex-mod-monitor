@@ -1,5 +1,8 @@
 import * as fs from "fs/promises";
+import { existsSync } from "fs";
 import * as path from "path";
+
+import { ehLog } from "./logging/ehLog";
 import * as os from "os";
 
 export type PluginEntry = {
@@ -89,6 +92,84 @@ const PLUGINS_TXT_GAMES: Record<
 /** True when this game's plugins.txt is one we can read AND write correctly. */
 export function supportsPluginsTxt(gameId: string): boolean {
   return PLUGINS_TXT_GAMES[gameId]?.format === "fallout4";
+}
+
+/**
+ * ─── THE FOLDER NAME DEPENDS ON WHICH STORE SOLD THE GAME ──────────────
+ * Copied from Vortex's own overlay, which is the authority: the same
+ * `appDataPath` it uses to find plugins.txt is store-dependent, and the base
+ * names above are the STEAM ones.
+ *
+ * This cost a real curator a real collection. Every Skyrim SE package built
+ * on a GOG copy shipped `plugins.order: []` — no plugin order, no ESL flags,
+ * no userlist — because the build looked in "Skyrim Special Edition" while
+ * the game writes to "Skyrim Special Edition GOG". Nothing failed; the list
+ * was simply empty, and an empty list is also what a game with no plugins.txt
+ * legitimately produces. Fallout 4 packages from the same machine were fine,
+ * which is exactly why it went unnoticed.
+ */
+const STORE_APPDATA_OVERRIDES: Record<string, Record<string, string>> = {
+  xbox: {
+    skyrimse: "Skyrim Special Edition MS",
+    fallout4: "Fallout4 MS",
+    oblivion: "Oblivion",
+  },
+  gog: {
+    skyrimse: "Skyrim Special Edition GOG",
+    enderalspecialedition: "Enderal Special Edition GOG",
+  },
+  epic: {
+    skyrimse: "Skyrim Special Edition EPIC",
+    fallout4: "Fallout4 EPIC",
+  },
+};
+
+/**
+ * Every folder this game could be using, most specific first.
+ *
+ * Exported for the probe below and for tests; a caller that knows the store
+ * should pass it rather than relying on what happens to exist on disk.
+ */
+export function pluginsTxtFolderCandidates(
+  gameId: string,
+  store?: string,
+): string[] {
+  const base = PLUGINS_TXT_GAMES[gameId]?.folder;
+  if (base === undefined) return [];
+
+  // A KNOWN store is authoritative, override or not: Steam and every other
+  // store without a relocation use the base folder, and there is nothing to
+  // probe for. Only "we do not know" justifies looking around.
+  if (store !== undefined) {
+    return [STORE_APPDATA_OVERRIDES[store.toLowerCase()]?.[gameId] ?? base];
+  }
+
+  // Store unknown. Offer every variant so the probe can find the real one
+  // instead of defaulting to Steam and reporting an empty profile.
+  const variants = Object.values(STORE_APPDATA_OVERRIDES)
+    .map((byGame) => byGame[gameId])
+    .filter((f): f is string => f !== undefined);
+  return [base, ...variants.filter((f) => f !== base)];
+}
+
+/**
+ * Vortex's discovered store for this game, when it recorded one.
+ *
+ * `undefined` means "we do not know", never "Steam" — the difference decides
+ * whether the caller may trust a single path or has to look.
+ */
+export function discoveredStore(
+  state: unknown,
+  gameId: string,
+): string | undefined {
+  const store = (
+    state as {
+      settings?: {
+        gameMode?: { discovered?: Record<string, { store?: string }> };
+      };
+    }
+  )?.settings?.gameMode?.discovered?.[gameId]?.store;
+  return typeof store === "string" && store.length > 0 ? store : undefined;
 }
 
 function normalizePluginName(name: string): string {
@@ -219,7 +300,16 @@ function getLocalAppDataPath(): string {
   );
 }
 
-export function getCurrentPluginsTxtPath(gameId: string): string {
+export function getCurrentPluginsTxtPath(
+  gameId: string,
+  /**
+   * Vortex's discovered store, from {@link discoveredStore}. When known it
+   * decides the folder outright; when not, the existing file wins — see the
+   * probe below, and the note on STORE_APPDATA_OVERRIDES for why guessing
+   * Steam is the one answer that must not be silent.
+   */
+  store?: string,
+): string {
   const game = PLUGINS_TXT_GAMES[gameId];
 
   if (game === undefined) {
@@ -238,7 +328,25 @@ export function getCurrentPluginsTxtPath(gameId: string): string {
     );
   }
 
-  return path.join(getLocalAppDataPath(), game.folder, "plugins.txt");
+  const local = getLocalAppDataPath();
+  const candidates = pluginsTxtFolderCandidates(gameId, store);
+  const paths = candidates.map((f) => path.join(local, f, "plugins.txt"));
+
+  // A known store is authoritative even if the file is not there yet.
+  if (store !== undefined && paths.length === 1) return paths[0]!;
+
+  const present = paths.filter((f) => existsSync(f));
+  if (present.length === 1) return present[0]!;
+  if (present.length > 1) {
+    // Both a Steam and a store-specific folder exist — someone changed
+    // editions. Without a discovered store there is no way to tell which the
+    // game is using, and picking silently is how the wrong one gets shipped.
+    ehLog("warn", "plugins-txt.ambiguous-store", { gameId, present });
+    return present[0]!;
+  }
+
+  ehLog("warn", "plugins-txt.not-found", { gameId, store, tried: paths });
+  return paths[0]!;
 }
 
 export async function comparePluginsTxtFiles(params: {

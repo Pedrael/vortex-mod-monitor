@@ -128,7 +128,11 @@ export async function gatherObservations(
   // check to compare positions blind and call every healthy install drifted.
   let currentPluginOrder: { name: string; enabled: boolean }[] | undefined;
   try {
-    const entries = await readUserPluginsTxt(gameId);
+    // Store-aware: a GOG Skyrim SE keeps plugins.txt under a different
+    // folder, and reading the Steam name reports an empty order as though
+    // the game simply had none.
+    const { discoveredStore } = await import("../comparePlugins");
+    const entries = await readUserPluginsTxt(gameId, discoveredStore(state, gameId));
     // undefined means "this game has no plugins.txt", which the check renders
     // as not-applicable rather than as a problem.
     currentPluginOrder = entries?.map((e) => ({ name: e.name, enabled: e.enabled }));

@@ -43,7 +43,10 @@ import {
 } from "../../../core/getModsListForProfile";
 import { captureLoadOrder } from "../../../core/loadOrder";
 import { captureUserlist } from "../../../core/userlist";
-import { getCurrentPluginsTxtPath } from "../../../core/comparePlugins";
+import {
+  discoveredStore,
+  getCurrentPluginsTxtPath,
+} from "../../../core/comparePlugins";
 import { buildManifest } from "../../../core/manifest/buildManifest";
 import { captureStagingFiles } from "../../../core/manifest/captureStagingFiles";
 import { runSelfChecks,
@@ -1587,7 +1590,16 @@ export async function runBuildPipeline(
 
   checkAbort();
   onProgress?.({ phase: "reading-plugins-txt" });
-  const pluginsTxtContent = await readPluginsTxtIfPresent(gameId);
+  /**
+   * The store decides the folder. A GOG Skyrim SE writes plugins.txt to
+   * "Skyrim Special Edition GOG", and reading the Steam name found nothing —
+   * so every package built on a non-Steam copy shipped an empty plugin order
+   * and nothing said so.
+   */
+  const pluginsTxtContent = await readPluginsTxtIfPresent(
+    gameId,
+    discoveredStore(state, gameId),
+  );
 
   // ESL/light flags, read from the DEPLOYED plugin headers.
   //
@@ -1988,10 +2000,11 @@ function resolveBundledArchives(
 
 async function readPluginsTxtIfPresent(
   gameId: string,
+  store?: string,
 ): Promise<string | undefined> {
   let pluginsPath: string;
   try {
-    pluginsPath = getCurrentPluginsTxtPath(gameId);
+    pluginsPath = getCurrentPluginsTxtPath(gameId, store);
   } catch {
     return undefined;
   }

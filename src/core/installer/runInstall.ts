@@ -188,6 +188,7 @@ import {
   applyLoadOrder,
   type ApplyLoadOrderResult,
 } from "./applyLoadOrder";
+import { discoveredStore } from "../comparePlugins";
 import {
   applyUserlist,
   type ApplyUserlistResult,
@@ -2089,7 +2090,10 @@ async function runInstallImpl(ctx: DriverContext): Promise<InstallResult> {
     // AFTER the write above, so it reports what the game will actually load.
     let pluginOrderDrift = emptyPluginOrderDrift();
     try {
-      const actual = await readUserPluginsTxt(plan.manifest.game.id);
+      const actual = await readUserPluginsTxt(
+        plan.manifest.game.id,
+        discoveredStore(api.getState(), plan.manifest.game.id),
+      );
       if (actual !== undefined) {
         pluginOrderDrift = comparePluginOrder(
           plan.manifest.plugins.order,
