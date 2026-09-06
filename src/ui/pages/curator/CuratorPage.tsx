@@ -718,6 +718,12 @@ function CuratorBody(): JSX.Element {
       }, {}),
     });
     setLines(describeBulkUpdate(report));
+    // Clear the ticks, as every other action on this page does. Vortex gives
+    // an updated mod a NEW id, so these ids are stale the moment the run
+    // finishes: the button would keep reading "Update 12 ticked mods" while
+    // acting on the 7 that still exist, and `from: "ticked"` would pin the
+    // target there — leaving the remaining updates unreachable by filtering.
+    setUpdateSel(new Set());
     setTick((t) => t + 1);
   };
 

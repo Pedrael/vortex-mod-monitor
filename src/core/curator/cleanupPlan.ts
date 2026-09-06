@@ -280,11 +280,28 @@ export function planCleanup(args: {
     }
   }
 
-  /** Nexus mod ids the curator still has installed after the removals. */
-  const installedNexusIds = new Set<number>();
+  /**
+   * ─── THE NEWEST FILE STILL INSTALLED, PER NEXUS PAGE ────────────────
+   * Not "which pages are installed". This used to be a Set of mod ids, and
+   * "some version of this mod is installed" was accepted as proof that an
+   * unreferenced download was superseded — the same-page fallacy the mod side
+   * of this file was rewritten to eliminate, still live on the archive side,
+   * and on the half that deletes with no tick required.
+   *
+   * It destroyed exactly the files a curator most wants kept: a NEWER file
+   * downloaded ahead of installing it, a sibling variant from one page
+   * ("Bodypaints - CBBE" installed, "- Male" merely downloaded), and every
+   * archive re-fetched by archive recovery — which nothing references by
+   * `archiveId`, so all 771 of them read as orphans of an installed page.
+   */
+  const newestInstalledFile = new Map<number, number>();
   for (const mod of mods) {
     if (removedIds.has(mod.id)) continue;
-    if (mod.nexusModId !== undefined) installedNexusIds.add(mod.nexusModId);
+    if (mod.nexusModId === undefined || mod.nexusFileId === undefined) continue;
+    const held = newestInstalledFile.get(mod.nexusModId);
+    if (held === undefined || mod.nexusFileId > held) {
+      newestInstalledFile.set(mod.nexusModId, mod.nexusFileId);
+    }
   }
 
   const deleteArchives: ArchiveRemoval[] = [];
@@ -300,10 +317,19 @@ export function planCleanup(args: {
       deleteArchives.push({ entry, reason: "freed-by-removal" });
       continue;
     }
-    // Orphan. Superseded only if some version of the same mod survives.
+    // Orphan. "Superseded" means a STRICTLY NEWER file of the same mod is
+    // installed — nothing weaker. An archive we cannot place that way is not
+    // evidence of anything, so it falls to `unclearOrphans`, which is
+    // reported and never selected. A missing `nexusFileId` on either side is
+    // an unknown, and an unknown is never grounds for a permanent delete.
+    const newestInstalled =
+      entry.nexusModId === undefined
+        ? undefined
+        : newestInstalledFile.get(entry.nexusModId);
     if (
-      entry.nexusModId !== undefined &&
-      installedNexusIds.has(entry.nexusModId)
+      entry.nexusFileId !== undefined &&
+      newestInstalled !== undefined &&
+      entry.nexusFileId < newestInstalled
     ) {
       deleteArchives.push({ entry, reason: "orphan-superseded" });
     } else {

@@ -26,6 +26,8 @@ describe("what each answer actually writes", () => {
   it("declaring records only the declaration", () => {
     expect(overrideForChoice("declare", { isNexusMod: true })).toEqual({
       postProcessed: true,
+      mirrored: false,
+      bundled: false,
     });
   });
 
@@ -38,12 +40,16 @@ describe("what each answer actually writes", () => {
     expect(overrideForChoice("bundle", { isNexusMod: true })).toEqual({
       bundled: true,
       treatAsExternal: true,
+      mirrored: false,
+      postProcessed: false,
     });
   });
 
   it("bundling an already-external mod does not need the flag", () => {
     expect(overrideForChoice("bundle", { isNexusMod: false })).toEqual({
       bundled: true,
+      mirrored: false,
+      postProcessed: false,
     });
   });
 
@@ -52,8 +58,11 @@ describe("what each answer actually writes", () => {
     for (const isNexusMod of [true, false]) {
       const declare = overrideForChoice("declare", { isNexusMod });
       const bundle = overrideForChoice("bundle", { isNexusMod });
-      expect(declare.bundled).toBeUndefined();
-      expect(bundle.postProcessed).toBeUndefined();
+      // Explicitly false rather than absent: the patch is MERGED onto an
+      // existing entry, so a changed verdict has to overwrite the old flag,
+      // not merely omit it.
+      expect(declare.bundled).toBe(false);
+      expect(bundle.postProcessed).toBe(false);
     }
   });
 });
@@ -224,9 +233,13 @@ describe("the mirror choice", () => {
     // download, and the bytes we then only have to correct rather than carry.
     expect(overrideForChoice("mirror", { isNexusMod: true })).toEqual({
       mirrored: true,
+      bundled: false,
+      postProcessed: false,
     });
     expect(overrideForChoice("mirror", { isNexusMod: false })).toEqual({
       mirrored: true,
+      bundled: false,
+      postProcessed: false,
     });
   });
 
@@ -273,5 +286,40 @@ describe("the mirror copy matches what the build actually packs", () => {
 
   it("admits the download gets bigger, like bundling does", () => {
     expect(describeChoice("mirror", 12).consequence).toMatch(/bigger/i);
+  });
+});
+
+
+describe("changing a verdict REPLACES it", () => {
+  // The defect this pins: these patches were purely additive, which was
+  // harmless while an answer could only be given once. The "Change" button
+  // made it wrong — `recordPostProcessingDecision` MERGES, and
+  // `choiceFromEntry` reads by precedence (bundle > mirror > declare), so
+  // answering "declare" on a mod already carrying `mirrored: true` left
+  // mirroring in place. The package shipped the whole staging folder the
+  // curator had just declined, and the updated fingerprint meant the
+  // question never reopened.
+  const CHOICES = ["mirror", "declare", "bundle"] as const;
+
+  it("sets exactly one verdict flag and clears the other two", () => {
+    for (const choice of CHOICES) {
+      const patch = overrideForChoice(choice, { isNexusMod: false }) as Record<
+        string,
+        unknown
+      >;
+      const on = (["mirrored", "postProcessed", "bundled"] as const).filter(
+        (k) => patch[k] === true,
+      );
+      expect(on, `choice ${choice} set ${on.join()}`).toHaveLength(1);
+    }
+  });
+
+  it("overwrites a previous answer when merged the way the recorder merges", () => {
+    const merged = {
+      ...overrideForChoice("mirror", { isNexusMod: false }),
+      ...overrideForChoice("declare", { isNexusMod: false }),
+    };
+    expect(merged.mirrored).toBe(false);
+    expect(merged.postProcessed).toBe(true);
   });
 });

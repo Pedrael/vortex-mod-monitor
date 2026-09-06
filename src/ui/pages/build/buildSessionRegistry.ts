@@ -135,7 +135,19 @@ class BuildSessionRegistry {
   isAnyBusy(): boolean {
     for (const session of this.sessions.values()) {
       const k = session.getState().kind;
-      if (k === "loading" || k === "queued" || k === "building") return true;
+      // "awaiting-decisions" is a build IN FLIGHT that happens to be waiting
+      // on the curator — it still holds the global build slot and will resume
+      // into deployment and plugins.txt reads. Omitting it cleared the
+      // concurrent-operation banner mid-build, so an install could be started
+      // against the same Vortex state the paused pipeline is about to read.
+      if (
+        k === "loading" ||
+        k === "queued" ||
+        k === "building" ||
+        k === "awaiting-decisions"
+      ) {
+        return true;
+      }
     }
     return false;
   }

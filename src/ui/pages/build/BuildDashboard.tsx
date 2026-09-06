@@ -515,6 +515,13 @@ They are not harmless clutter — a collection's ` +
     if (result.action !== "Discard") return;
     // Drop the live session if any — there's nothing to come back to
     // since the disk file is being deleted.
+    //
+    // CANCEL FIRST. A session paused on the decisions gate is suspended on a
+    // promise only that session can resolve; removing it from the registry
+    // without cancelling strands the pipeline AND the global build slot, so
+    // every later build queues behind a session nothing can reach. Restarting
+    // Vortex was the only way out.
+    registry.get(draftId)?.cancelBuilding();
     registry.remove(draftId);
     await deleteDraft(getAppDataPath(), "build", draftId);
     showToast({

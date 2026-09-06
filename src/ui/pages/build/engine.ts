@@ -74,6 +74,7 @@ import {
   detectExternalDrift,
   repackBundledExternals,
   type RepackedBundle,
+  mergeRepackedBundles,
 } from "../../../core/manifest/bundleFromStaging";
 import {
   describeRootFolderReview,
@@ -1473,7 +1474,21 @@ export async function runBuildPipeline(
             },
           });
           mods = again.mods;
-          repackedBundles = [...repackedBundles, ...again.bundles];
+          /**
+           * ─── MERGE BY MOD, NEVER CONCATENATE ─────────────────────────
+           * `repackBundledExternals` packs EVERY mod the config marks
+           * bundled, not just the ones that changed — it takes the config,
+           * not a list. So pass two returns an entry for each already-bundled
+           * mod as well, served from the cache with the identical sha256.
+           *
+           * Concatenating those produced two entries with the same hash, and
+           * `packageEhcoll`'s validation rejects that outright: "Two bundled
+           * archives share sha256 ... this should be impossible." The build
+           * died at packaging, after every expensive phase, for any curator
+           * who already had one bundled mod and answered "ship my copy" for
+           * one more — which is the ordinary case for this feature.
+           */
+          repackedBundles = mergeRepackedBundles(repackedBundles, again.bundles);
           bundleWarnings.push(...again.warnings);
         } catch (err) {
           // A failed second pass must not lose the build. The decision is
@@ -1486,6 +1501,11 @@ export async function runBuildPipeline(
           );
         }
       }
+
+      // Cancelling on the gate must stop here. The next `checkAbort` is on
+      // the far side of a full deployment-manifest capture, so without this a
+      // cancelled build walks a 1,700-mod profile before it rewinds.
+      checkAbort();
 
       // What is STILL unanswered. Recomputed from the same reports rather
       // than re-running the check: the staging did not change while the

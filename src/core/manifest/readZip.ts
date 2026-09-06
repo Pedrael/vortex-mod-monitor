@@ -85,6 +85,22 @@ const FLAG_ENCRYPTED = 0x1;
  * Reads the table, never the payloads — the cost is the size of the directory,
  * not of the archive.
  */
+/**
+ * ─── "NOT A ZIP" IS AN EXPECTED ANSWER ON THIS CODEBASE'S HOT PATH ─────
+ * `listArchiveNativeFirst` tries this reader FIRST on every mod archive and
+ * swallows the throw to fall through to 7z, because a mod archive is as often
+ * .7z or .rar as .zip. Logging those structural rejections at `error` made a
+ * 200-mod build write ninety entries accusing perfectly healthy archives of
+ * being truncated — into the very log a maintainer greps for `"level":"error"`
+ * when something is actually wrong. A diagnostic that cries wolf on the
+ * commonest path is worse than none.
+ *
+ * So the level is `debug` here. A genuinely damaged `.ehcoll` still reports
+ * loudly: `readEhcoll` logs its own failure with the file and the reason, and
+ * `listArchiveNativeFirst` reports `unreadable` when BOTH readers fail.
+ */
+const probeLevel = "debug" as const;
+
 export async function listZipEntries(filePath: string): Promise<ZipEntry[]> {
   const startedAt = Date.now();
   const name = path.basename(filePath);
@@ -266,7 +282,7 @@ async function readEndOfCentralDirectory(
   filePath: string,
 ): Promise<EndOfCentralDirectory> {
   if (fileSize < EOCD_MIN_SIZE) {
-    ehLog("error", "zip.eocd.too-small", {
+    ehLog(probeLevel, "zip.eocd.too-small", {
       file: path.basename(filePath),
       bytes: fileSize,
       minBytes: EOCD_MIN_SIZE,
@@ -290,7 +306,7 @@ async function readEndOfCentralDirectory(
     }
   }
   if (eocdPos === -1) {
-    ehLog("error", "zip.eocd.not-found", {
+    ehLog(probeLevel, "zip.eocd.not-found", {
       file: path.basename(filePath),
       bytes: fileSize,
     });
@@ -304,7 +320,7 @@ async function readEndOfCentralDirectory(
   const diskNumber = tail.readUInt16LE(eocdPos + 4);
   const diskWithCentralDir = tail.readUInt16LE(eocdPos + 6);
   if (diskNumber !== 0 || diskWithCentralDir !== 0) {
-    ehLog("error", "zip.eocd.multi-disk", {
+    ehLog(probeLevel, "zip.eocd.multi-disk", {
       file: path.basename(filePath),
       diskNumber,
       diskWithCentralDir,
@@ -341,7 +357,7 @@ async function readEndOfCentralDirectory(
   }
 
   if (centralDirOffset + centralDirSize > fileSize) {
-    ehLog("error", "zip.eocd.truncated", {
+    ehLog(probeLevel, "zip.eocd.truncated", {
       file: path.basename(filePath),
       declaredEnd: centralDirOffset + centralDirSize,
       actualBytes: fileSize,
@@ -365,7 +381,7 @@ async function readZip64EndOfCentralDirectory(
 ): Promise<EndOfCentralDirectory> {
   const locatorPos = eocdPos - 20;
   if (locatorPos < 0 || tail.readUInt32LE(locatorPos) !== EOCD64_LOCATOR_SIG) {
-    ehLog("error", "zip.eocd64.locator-missing", {
+    ehLog(probeLevel, "zip.eocd64.locator-missing", {
       file: path.basename(filePath),
     });
     throw new ZipReadError(
@@ -382,7 +398,7 @@ async function readZip64EndOfCentralDirectory(
   const rec = Buffer.alloc(56);
   const { bytesRead } = await handle.read(rec, 0, 56, zip64Offset);
   if (bytesRead < 56 || rec.readUInt32LE(0) !== EOCD64_SIG) {
-    ehLog("error", "zip.eocd64.record-missing", {
+    ehLog(probeLevel, "zip.eocd64.record-missing", {
       file: path.basename(filePath),
       offset: zip64Offset,
     });
@@ -423,7 +439,7 @@ async function readCentralDirectory(
       eocd.centralDirOffset,
     );
     if (bytesRead !== eocd.centralDirSize) {
-      ehLog("error", "zip.central-dir.truncated", {
+      ehLog(probeLevel, "zip.central-dir.truncated", {
         file: path.basename(filePath),
         expectedBytes: eocd.centralDirSize,
         actualBytes: bytesRead,
@@ -441,7 +457,7 @@ async function readCentralDirectory(
 
   for (let i = 0; i < eocd.entryCount; i += 1) {
     if (pos + 46 > buf.length) {
-      ehLog("error", "zip.central-dir.index-short", {
+      ehLog(probeLevel, "zip.central-dir.index-short", {
         file: path.basename(filePath),
         declaredEntries: eocd.entryCount,
         readEntries: i,
@@ -452,7 +468,7 @@ async function readCentralDirectory(
       );
     }
     if (buf.readUInt32LE(pos) !== CENTRAL_SIG) {
-      ehLog("error", "zip.central-dir.bad-signature", {
+      ehLog(probeLevel, "zip.central-dir.bad-signature", {
         file: path.basename(filePath),
         entryIndex: i,
       });
@@ -793,10 +809,10 @@ async function open(filePath: string): Promise<fsp.FileHandle> {
   } catch (err) {
     const code = (err as NodeJS.ErrnoException)?.code;
     if (code === "ENOENT") {
-      ehLog("error", "zip.open.missing", { file: path.basename(filePath) });
+      ehLog(probeLevel, "zip.open.missing", { file: path.basename(filePath) });
       throw new ZipReadError(`No file at "${filePath}".`);
     }
-    ehLog("error", "zip.open.fail", { file: path.basename(filePath), err });
+    ehLog(probeLevel, "zip.open.fail", { file: path.basename(filePath), err });
     throw new ZipReadError(
       `Cannot open "${filePath}": ` +
         `${err instanceof Error ? err.message : String(err)}.`,

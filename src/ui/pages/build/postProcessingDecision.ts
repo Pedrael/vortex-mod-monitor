@@ -75,18 +75,42 @@ export function overrideForChoice(
     opts.fingerprint === undefined
       ? {}
       : { postProcessingDecidedFor: opts.fingerprint };
+  /**
+   * ─── THE THREE FLAGS ARE ONE ANSWER, SO EACH CLEARS THE OTHERS ──────
+   * These patches used to be purely additive, which was harmless while an
+   * answer could only be given once. Adding a "Change" button made it wrong:
+   * `recordPostProcessingDecision` MERGES, and `choiceFromEntry` reads the
+   * flags by precedence (bundle > mirror > declare) — so answering "declare"
+   * on a mod already carrying `mirrored: true` left mirroring in place and
+   * the verdict still read as mirror.
+   *
+   * The package then shipped the entire staging folder the curator had just
+   * declined, and because the fingerprint WAS updated the question never
+   * reopened. A silent, permanent override of an explicit decision.
+   *
+   * `treatAsExternal` is deliberately NOT cleared here: it also means "this
+   * Nexus mod's file is gone, ship it as external", which the build form sets
+   * independently of anything decided on this screen. Clearing it would undo
+   * that. Bundling still sets it, and un-bundling leaves it — see the note in
+   * the build engine about restoring identity for a dropped bundle.
+   */
+  const exclusive = {
+    mirrored: choice === "mirror",
+    postProcessed: choice === "declare",
+    bundled: choice === "bundle",
+  };
   if (choice === "mirror") {
     // Deliberately NOT treatAsExternal. A mirrored mod is a normal Nexus mod
     // that gets corrected after install — flagging it external would stop the
     // archive being downloaded at all, which is the one thing this choice
     // exists to preserve.
-    return { mirrored: true, ...about };
+    return { ...exclusive, ...about };
   }
   if (choice === "declare") {
-    return { postProcessed: true, ...about };
+    return { ...exclusive, ...about };
   }
   return {
-    bundled: true,
+    ...exclusive,
     ...(opts.isNexusMod ? { treatAsExternal: true } : {}),
     ...about,
   };

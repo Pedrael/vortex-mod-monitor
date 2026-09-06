@@ -94,7 +94,9 @@ describe("the curator's answer survives being written down", () => {
     // a whitelisting serializer would silently drop this and the next build
     // would find nothing — no error, just a collection that does not mirror.
     const patch = overrideForChoice("mirror", { isNexusMod: true });
-    expect(patch).toEqual({ mirrored: true });
+    // The other two verdicts are explicitly cleared, because this patch is
+    // merged onto whatever the entry already carried.
+    expect(patch).toMatchObject({ mirrored: true });
 
     const config = await roundTrip("apocalypse", patch);
     expect(config.externalMods.apocalypse?.mirrored).toBe(true);
@@ -117,7 +119,9 @@ describe("the curator's answer survives being written down", () => {
       overrideForChoice("declare", { isNexusMod: true }),
     );
     expect(config.externalMods.xlodgen?.postProcessed).toBe(true);
-    expect(config.externalMods.xlodgen?.mirrored).toBeUndefined();
+    // Written as an explicit false by the exclusive patch; what matters is
+    // that it is not mirroring.
+    expect(config.externalMods.xlodgen?.mirrored).not.toBe(true);
   });
 });
 
@@ -137,7 +141,7 @@ describe("and reaches the build that comes after it", () => {
       [mod("apocalypse"), mod("untouched")],
       config,
     );
-    expect(mods[1]!.mirrored).toBeUndefined();
+    expect(mods[1]!.mirrored).not.toBe(true);
   });
 
   it("carries BOTH answers when a mod has both", async () => {

@@ -23,7 +23,10 @@ import * as path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { __testPaths } from "../../../test/stubs/vortex-api";
-import { repackBundledExternals } from "./bundleFromStaging";
+import {
+  mergeRepackedBundles,
+  repackBundledExternals,
+} from "./bundleFromStaging";
 import type { AuditorMod } from "../getModsListForProfile";
 import type { CollectionConfig } from "./collectionConfig";
 import type { SevenZipApi } from "./sevenZip";
@@ -192,5 +195,38 @@ describe("packing the same staging twice", () => {
 
     await run(zip, lods("a".repeat(64)));
     expect(fs.existsSync(other)).toBe(true);
+  });
+});
+
+describe("folding a second repack pass into the first", () => {
+  // The build-killer two audit lenses found independently. `repackBundledExternals`
+  // packs every mod the CONFIG marks bundled, so a mid-build second pass returns
+  // the already-bundled mods too — from cache, with the SAME sha256. Concatenating
+  // them made `packageEhcoll` reject the build: "Two bundled archives share
+  // sha256 ... this should be impossible."
+  const b = (modId: string, sha: string): never =>
+    ({ modId, modName: modId, sourcePath: `C:/r/${sha}.zip`, sha256: sha, bytes: 1 }) as never;
+
+  it("keeps ONE entry per mod when the second pass re-emits the first", () => {
+    const merged = mergeRepackedBundles(
+      [b("lods", "a".repeat(64)), b("grass", "b".repeat(64))],
+      [b("lods", "a".repeat(64)), b("grass", "b".repeat(64)), b("new", "c".repeat(64))],
+    );
+    expect(merged).toHaveLength(3);
+    const shas = merged.map((x) => x.sha256);
+    expect(new Set(shas).size, "duplicate sha256 would fail packaging").toBe(3);
+  });
+
+  it("lets the second pass win, because it read the answers", () => {
+    const merged = mergeRepackedBundles(
+      [b("m", "a".repeat(64))],
+      [b("m", "d".repeat(64))],
+    );
+    expect(merged).toEqual([b("m", "d".repeat(64))]);
+  });
+
+  it("is a no-op when the second pass found nothing", () => {
+    const first = [b("m", "a".repeat(64))];
+    expect(mergeRepackedBundles(first, [])).toEqual(first);
   });
 });

@@ -586,3 +586,31 @@ export function describeExternalDrift(drift: ExternalDrift[]): string[] {
   }
   return [lines.join("\n")];
 }
+
+
+/**
+ * ──────────────────────────────────────────────────────────────────────
+ * Fold a second repack pass into the first, one entry per mod.
+ *
+ * `repackBundledExternals` packs every mod the CONFIG marks bundled — it takes
+ * the config, not a list of ids — so a second pass run after the curator
+ * answers mid-build returns an entry for each already-bundled mod too, served
+ * from the cache with an identical sha256.
+ *
+ * Concatenating produced two entries with the same hash, and `packageEhcoll`
+ * rejects that outright: "Two bundled archives share sha256 ... this should be
+ * impossible." The build died at packaging, after every expensive phase, for
+ * any curator who already had one bundled mod and answered "ship my copy" for
+ * one more — the ordinary case for this feature.
+ *
+ * The second pass wins: it read the config the curator's answers just wrote.
+ * ──────────────────────────────────────────────────────────────────────
+ */
+export function mergeRepackedBundles(
+  first: readonly RepackedBundle[],
+  second: readonly RepackedBundle[],
+): RepackedBundle[] {
+  const byModId = new Map(first.map((b) => [b.modId, b] as const));
+  for (const bundle of second) byModId.set(bundle.modId, bundle);
+  return [...byModId.values()];
+}

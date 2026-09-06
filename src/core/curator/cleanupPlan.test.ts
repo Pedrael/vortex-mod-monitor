@@ -125,7 +125,7 @@ describe("what may be deleted", () => {
   it("deletes an orphan when a version of that mod survives", () => {
     const plan = planCleanup({
       mods: [mod("cur", { archiveId: "dl-new", nexusModId: 7, nexusFileId: 9 })],
-      downloads: [dl("dl-new"), dl("dl-stale", { nexusModId: 7 })],
+      downloads: [dl("dl-new"), dl("dl-stale", { nexusModId: 7, nexusFileId: 1 })],
     });
     expect(plan.deleteArchives.map((a) => a.entry.id)).toEqual(["dl-stale"]);
     expect(plan.deleteArchives[0]!.reason).toBe("orphan-superseded");
@@ -137,7 +137,7 @@ describe("what may be deleted", () => {
     // is worse than not saving it.
     const plan = planCleanup({
       mods: [],
-      downloads: [dl("maybe-wanted", { nexusModId: 99 })],
+      downloads: [dl("maybe-wanted", { nexusModId: 99, nexusFileId: 1 })],
     });
     expect(plan.deleteArchives).toEqual([]);
     expect(plan.unclearOrphans.map((o) => o.entry.id)).toEqual(["maybe-wanted"]);
@@ -148,8 +148,8 @@ describe("what may be deleted", () => {
     // It cannot vouch for any file, so nothing is freed on its account — but
     // it also must not cause an unrelated archive to be deleted.
     const plan = planCleanup({
-      mods: [mod("no-archive", { nexusModId: 7, nexusFileId: 1 })],
-      downloads: [dl("dl-1", { nexusModId: 7 })],
+      mods: [mod("no-archive", { nexusModId: 7, nexusFileId: 900 })],
+      downloads: [dl("dl-1", { nexusModId: 7, nexusFileId: 1 })],
     });
     expect(plan.deleteArchives.map((a) => a.entry.id)).toEqual(["dl-1"]);
   });
@@ -159,7 +159,7 @@ describe("what may be deleted", () => {
       mods: [mod("cur", { archiveId: "keep", nexusModId: 7, nexusFileId: 9 })],
       downloads: [
         dl("keep", { bytes: 5 * 1024 ** 3 }),
-        dl("stale", { nexusModId: 7, bytes: 2 * 1024 ** 3 }),
+        dl("stale", { nexusModId: 7, nexusFileId: 1, bytes: 2 * 1024 ** 3 }),
         dl("unknown", { nexusModId: 42, bytes: 9 * 1024 ** 3 }),
       ],
     });
@@ -216,7 +216,7 @@ describe("the two ways this used to delete the wrong thing", () => {
     // and that path never depended on guessing versions.
     const plan = planCleanup({
       mods: [mod("cur", { archiveId: "keep", nexusModId: 7, nexusFileId: 9 })],
-      downloads: [dl("keep"), dl("stale", { nexusModId: 7 })],
+      downloads: [dl("keep"), dl("stale", { nexusModId: 7, nexusFileId: 1 })],
     });
     expect(plan.deleteArchives.map((a) => a.entry.id)).toEqual(["stale"]);
   });
@@ -230,7 +230,7 @@ describe("splitting the plan into the two acts", () => {
   const downloads: DownloadEntry[] = [
     { id: "arc-old", fileName: "Mod-7-0.7z", bytes: 100, nexusModId: 7 },
     { id: "arc-new", fileName: "Mod-8-0.7z", bytes: 200, nexusModId: 7 },
-    { id: "arc-loose", fileName: "Mod-6-0.7z", bytes: 400, nexusModId: 7 },
+    { id: "arc-loose", fileName: "Mod-6-0.7z", bytes: 400, nexusModId: 7, nexusFileId: 60 },
   ];
 
   it("calls an already-free archive an orphan, needing no removal", () => {
@@ -459,5 +459,71 @@ describe("what IS an old version", () => {
     ];
     expect(provenSupersedes(findSupersededMods(pair))).toEqual([]);
     expect(unprovenSupersedes(findSupersededMods(pair))).toHaveLength(1);
+  });
+});
+
+
+describe("an orphan is only superseded by something NEWER", () => {
+  // Three independent audit lenses landed on this: the rule used to be "some
+  // version of this page is installed", which is the same-page fallacy the
+  // mod half of this file was rewritten to kill — and it lived on the half
+  // that deletes permanently with no tick required.
+  const installedV2 = [
+    mod("v2", { nexusModId: 500, nexusFileId: 900, archiveId: "dl-v2" }),
+  ];
+
+  it("deletes an older file of a mod whose newer file is installed", () => {
+    const plan = planCleanup({
+      mods: installedV2,
+      downloads: [
+        dl("dl-v2", { nexusModId: 500, nexusFileId: 900 }),
+        dl("dl-v1", { nexusModId: 500, nexusFileId: 400 }),
+      ],
+    });
+    expect(plan.deleteArchives.map((a) => a.entry.id)).toEqual(["dl-v1"]);
+  });
+
+  it("NEVER deletes a newer file the curator has not installed yet", () => {
+    // Downloaded ahead of installing. The old rule deleted it because an
+    // OLDER file of the same mod was installed.
+    const plan = planCleanup({
+      mods: [mod("v1", { nexusModId: 500, nexusFileId: 400, archiveId: "dl-v1" })],
+      downloads: [
+        dl("dl-v1", { nexusModId: 500, nexusFileId: 400 }),
+        dl("dl-v3", { nexusModId: 500, nexusFileId: 900 }),
+      ],
+    });
+    expect(plan.deleteArchives).toEqual([]);
+    expect(plan.unclearOrphans.map((o) => o.entry.id)).toEqual(["dl-v3"]);
+  });
+
+  it("NEVER deletes a sibling variant from the same page", () => {
+    // "Bodypaints - CBBE" installed, "- Male" merely downloaded. The exact
+    // pair this file's own comments cite as the false positive to kill.
+    const plan = planCleanup({
+      mods: [mod("cbbe", { nexusModId: 31826, nexusFileId: 128100, archiveId: "dl-cbbe" })],
+      downloads: [
+        dl("dl-cbbe", { nexusModId: 31826, nexusFileId: 128100 }),
+        dl("dl-male", { nexusModId: 31826, nexusFileId: 128101 }),
+      ],
+    });
+    expect(plan.deleteArchives).toEqual([]);
+  });
+
+  it("treats a missing file id on either side as an unknown, never as proof", () => {
+    // An unknown is never grounds for a permanent delete. This is also the
+    // shape of every archive-recovery re-download.
+    expect(
+      planCleanup({
+        mods: installedV2,
+        downloads: [dl("dl-v2", { nexusModId: 500, nexusFileId: 900 }), dl("dl-?", { nexusModId: 500 })],
+      }).deleteArchives,
+    ).toEqual([]);
+    expect(
+      planCleanup({
+        mods: [mod("v", { nexusModId: 500, archiveId: "a" })],
+        downloads: [dl("dl-old", { nexusModId: 500, nexusFileId: 1 })],
+      }).deleteArchives,
+    ).toEqual([]);
   });
 });
