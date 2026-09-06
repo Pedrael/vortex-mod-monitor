@@ -19,6 +19,7 @@
 
 import type { types } from "@nexusmods/vortex-api";
 
+import { beginOp, ehLog } from "../logging/ehLog";
 import type { HealthObservations } from "./health";
 
 /** Profiles that exist for a game, by id. */
@@ -109,6 +110,11 @@ export async function gatherObservations(
   opts: GatherOptions,
 ): Promise<HealthObservations> {
   const { api, gameId, receiptProfileId } = opts;
+  const op = beginOp("doctor.gather", {
+    gameId,
+    receiptProfileId,
+    deepScan: opts.driftedCompareKeys !== undefined,
+  });
   const state = api.getState();
 
   const [{ getActiveProfileId }, { readUserPluginsTxt }, { captureUserlist }] =
@@ -124,7 +130,10 @@ export async function gatherObservations(
     // undefined means "this game has no plugins.txt", which the check renders
     // as not-applicable rather than as a problem.
     currentPluginOrder = entries?.map((e) => e.name);
-  } catch {
+  } catch (err) {
+    // Swallowed on purpose (see file header) — but silence here is exactly
+    // what makes "no plugins.txt" indistinguishable from "could not read it".
+    ehLog("debug", "doctor.gather.plugins-txt-unreadable", { gameId, err });
     currentPluginOrder = undefined;
   }
 
@@ -135,18 +144,20 @@ export async function gatherObservations(
     // userlistApplication.appliedRuleCount. Counting groups too would compare
     // two different numbers and report permanent drift.
     currentUserlistRuleCount = captured.plugins.length;
-  } catch {
+  } catch (err) {
+    ehLog("debug", "doctor.gather.userlist-unreadable", { err });
     currentUserlistRuleCount = undefined;
   }
 
   let activeProfileId: string | undefined;
   try {
     activeProfileId = getActiveProfileId(state);
-  } catch {
+  } catch (err) {
+    ehLog("debug", "doctor.gather.active-profile-unreadable", { err });
     activeProfileId = undefined;
   }
 
-  return {
+  const observations: HealthObservations = {
     existingProfileIds: readProfileIds(state, gameId),
     activeProfileId,
     installedModIds: readInstalledModIds(state, gameId),
@@ -156,4 +167,14 @@ export async function gatherObservations(
     currentModRuleCount: countModRules(state, gameId),
     currentUserlistRuleCount,
   };
+  op.ok({
+    profiles: observations.existingProfileIds.length,
+    installedMods: observations.installedModIds.length,
+    enabledMods: observations.enabledModIds.length,
+    driftedCompareKeys: observations.driftedCompareKeys?.length,
+    pluginOrderEntries: observations.currentPluginOrder?.length,
+    modRules: observations.currentModRuleCount,
+    userlistRules: observations.currentUserlistRuleCount,
+  });
+  return observations;
 }

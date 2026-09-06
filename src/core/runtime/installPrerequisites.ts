@@ -23,6 +23,8 @@
  * ──────────────────────────────────────────────────────────────────────
  */
 
+import { beginOp, ehLog } from "../logging/ehLog";
+
 import {
   classifyExitCode,
   verdictIsGood,
@@ -89,16 +91,34 @@ export async function installPrerequisites(
     signal?: { aborted: boolean };
   } = {},
 ): Promise<PrereqResult[]> {
+  const op = beginOp("prerequisites.install", {
+    items: items.length,
+    ids: items.map((i) => i.id),
+  });
   const results: PrereqResult[] = [];
-  const dir = await deps.makeTempDir();
+
+  let dir: string;
+  try {
+    dir = await deps.makeTempDir();
+  } catch (err) {
+    op.fail(err, { stage: "make-temp-dir" });
+    throw err;
+  }
 
   try {
     for (const item of items) {
-      if (opts.signal?.aborted === true) break;
+      if (opts.signal?.aborted === true) {
+        ehLog("info", "prerequisites.install.aborted", {
+          id: item.id,
+          completed: results.length,
+        });
+        break;
+      }
 
       const dest = deps.joinPath(dir, `${item.id}.exe`);
 
       try {
+        ehLog("debug", "prerequisites.download.start", { id: item.id });
         opts.onStep?.({ phase: "downloading", id: item.id, received: 0 });
         await deps.download(item.url, dest, (received, total) => {
           opts.onStep?.({
@@ -108,7 +128,9 @@ export async function installPrerequisites(
             ...(total !== undefined ? { total } : {}),
           });
         });
+        ehLog("debug", "prerequisites.download.ok", { id: item.id });
       } catch (err) {
+        ehLog("warn", "prerequisites.download.fail", { id: item.id, err });
         results.push({
           id: item.id,
           name: item.name,
@@ -123,10 +145,17 @@ export async function installPrerequisites(
       let verdict: ExitVerdict;
       try {
         opts.onStep?.({ phase: "installing", id: item.id });
-        verdict = classifyExitCode(await deps.run(dest, item.silentArgs));
+        const exitCode = await deps.run(dest, item.silentArgs);
+        verdict = classifyExitCode(exitCode);
+        ehLog("debug", "prerequisites.run.done", {
+          id: item.id,
+          exitCode,
+          verdict: verdict.kind,
+        });
       } catch (err) {
         // A throw here is the prefix refusing to run the binary at all, which
         // is a different and more interesting failure than a non-zero code.
+        ehLog("warn", "prerequisites.run.fail", { id: item.id, err });
         verdict = {
           kind: "failed",
           why: `Could not run the installer: ${
@@ -140,9 +169,11 @@ export async function installPrerequisites(
         opts.onStep?.({ phase: "verifying", id: item.id });
         try {
           verified = await deps.verify();
-        } catch {
+          ehLog("debug", "prerequisites.verify.done", { id: item.id, verified });
+        } catch (err) {
           // A probe that throws tells us nothing; it must not be reported as
           // a failed repair.
+          ehLog("debug", "prerequisites.verify.threw", { id: item.id, err });
           verified = undefined;
         }
       }
@@ -157,12 +188,23 @@ export async function installPrerequisites(
 
       // Stop as soon as the thing we were fixing works. Continuing would
       // install runtimes the user does not need to solve a solved problem.
-      if (verified === true) break;
+      if (verified === true) {
+        ehLog("info", "prerequisites.install.satisfied-early", { id: item.id });
+        break;
+      }
     }
   } finally {
-    await deps.removeTempDir(dir).catch(() => undefined);
+    await deps.removeTempDir(dir).catch((err) => {
+      ehLog("debug", "prerequisites.temp-dir-cleanup-failed", { err });
+    });
   }
 
+  op.ok({
+    items: items.length,
+    completed: results.length,
+    verified: results.filter((r) => r.verified === true).length,
+    failed: results.filter((r) => !verdictIsGood(r.verdict)).length,
+  });
   return results;
 }
 

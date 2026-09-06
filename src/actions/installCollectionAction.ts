@@ -99,7 +99,8 @@ import type {
 } from "../types/installPlan";
 import { pickEhcollFile, pickModArchiveFile } from "../utils/utils";
 import { getVortexUserDataPath } from "../core/paths";
-import { beginOp } from "../core/logging/ehLog";
+import { beginOp, ehLog } from "../core/logging/ehLog";
+import * as path from "path";
 
 const SUPPORTED_GAME_IDS: ReadonlySet<string> = new Set<SupportedGameId>([
   "skyrimse",
@@ -125,11 +126,17 @@ const downloadScanNotificationId = "vortex-event-horizon:install-download-scan";
         op.ok({ cancelled: "file-picker" });
         return; // user cancelled
       }
-      op.step("package-picked", { zipPath });
+      op.step("package-picked", { file: path.basename(zipPath) });
 
       // ── 2. read .ehcoll ──────────────────────────────────────────────
       const ehcoll = await readEhcoll(zipPath);
       const { manifest } = ehcoll;
+      op.step("ehcoll-read", {
+        packageId: manifest.package.id,
+        packageName: manifest.package.name,
+        packageVersion: manifest.package.version,
+        mods: manifest.mods.length,
+      });
 
       // ── 3. early game-id gate (cheap; avoids hashing unrelated mods) ─
       const state = context.api.getState();
@@ -165,6 +172,7 @@ const downloadScanNotificationId = "vortex-event-horizon:install-download-scan";
       // ── 4. read receipt (single source of truth for lineage) ─────────
       const appDataPath = getVortexUserDataPath();
       let receipt = await readReceipt(appDataPath, manifest.package.id);
+      op.step("receipt-read", { found: receipt !== undefined });
 
       // H2: a receipt may reference a Vortex profile the user has
       // since deleted (e.g. they nuked the EH-created profile to
@@ -213,12 +221,18 @@ const downloadScanNotificationId = "vortex-event-horizon:install-download-scan";
       });
       hashingNotificationShown = true;
 
+      const hashingStartedAt = Date.now();
+      op.step("hashing-start", { archives: rawMods.length });
       const installedMods = await enrichModsWithArchiveHashes(
         state,
         activeGameId,
         rawMods,
         { concurrency: 4 },
       );
+      op.step("hashing-done", {
+        ms: Date.now() - hashingStartedAt,
+        archives: installedMods.length,
+      });
 
       context.api.dismissNotification?.(hashingNotificationId);
       hashingNotificationShown = false;
@@ -237,6 +251,8 @@ const downloadScanNotificationId = "vortex-event-horizon:install-download-scan";
         message: "Checking which mod archives are already downloaded...",
       });
       let downloadScanShown = true;
+      const downloadScanStartedAt = Date.now();
+      op.step("download-scan-start");
       const availableDownloads = await scanAvailableDownloads({
         api: context.api,
         gameId: activeGameId,
@@ -250,6 +266,14 @@ const downloadScanNotificationId = "vortex-event-horizon:install-download-scan";
             message: `Checking downloads (${done}/${total}): ${name}`,
           });
         },
+      });
+      op.step("download-scan-done", {
+        ms: Date.now() - downloadScanStartedAt,
+        // `undefined` means the downloads folder itself could not be
+        // resolved (no game-specific download dir) — distinct from "zero
+        // archives found", so it is worth telling apart in the log.
+        skipped: availableDownloads === undefined,
+        found: availableDownloads?.length ?? 0,
       });
       if (downloadScanShown) {
         context.api.dismissNotification?.(downloadScanNotificationId);
@@ -293,7 +317,10 @@ const downloadScanNotificationId = "vortex-event-horizon:install-download-scan";
       );
 
       if (dialogResult?.action !== "Install") {
-        // User chose Cancel / Close, or dialog returned null.
+        // User chose Cancel / Close, or dialog returned null. Distinguish a
+        // plan that was never installable from a curator declining a valid
+        // one — "did nothing" and "blocked" are different findings.
+        op.ok({ cancelled: installable.ok ? "preview-dialog" : "not-installable" });
         return;
       }
 
@@ -309,7 +336,10 @@ const downloadScanNotificationId = "vortex-event-horizon:install-download-scan";
         op.ok({ cancelled: "decisions" });
         return; // user cancelled mid-picker
       }
-      op.step("decisions-confirmed");
+      op.step("decisions-confirmed", {
+        conflictsResolved: Object.keys(decisions.conflictChoices ?? {}).length,
+        orphansResolved: Object.keys(decisions.orphanChoices ?? {}).length,
+      });
 
       // ── 11. run install ──────────────────────────────────────────────
       await runInstallFlow({
@@ -321,7 +351,7 @@ const downloadScanNotificationId = "vortex-event-horizon:install-download-scan";
         decisions,
       });
 
-      op.ok({ zipPath });
+      op.ok({ file: path.basename(zipPath) });
     } catch (error) {
       const message = formatError(error);
       context.api.sendNotification?.({
@@ -353,12 +383,39 @@ function logPlanSummary(plan: InstallPlan, sourcePath: string): void {
       `missing=${s.missing}, orphans=${s.orphans}) | ` +
       `canProceed=${s.canProceed} | source=${sourcePath}`,
   );
+  // Mirrored into the persistent log: console.log never survives past the
+  // devtools session, and this is the one line that answers "what did the
+  // plan actually resolve to" for a user who cannot be watched live.
+  ehLog("info", "install.plan.summary", {
+    packageId: m.package.id,
+    packageVersion: m.package.version,
+    target: plan.installTarget.kind,
+    totalMods: s.totalMods,
+    alreadyInstalled: s.alreadyInstalled,
+    silent: s.willInstallSilently,
+    confirm: s.needsUserConfirmation,
+    missing: s.missing,
+    orphans: s.orphans,
+    canProceed: s.canProceed,
+  });
 
   for (const w of plan.compatibility.warnings) {
     console.warn(`[Vortex Event Horizon] compat warn: ${w}`);
   }
+  if (plan.compatibility.warnings.length > 0) {
+    ehLog("warn", "install.plan.compat-warnings", {
+      count: plan.compatibility.warnings.length,
+      warnings: plan.compatibility.warnings,
+    });
+  }
   for (const e of plan.compatibility.errors) {
     console.warn(`[Vortex Event Horizon] compat error: ${e}`);
+  }
+  if (plan.compatibility.errors.length > 0) {
+    ehLog("error", "install.plan.compat-errors", {
+      count: plan.compatibility.errors.length,
+      errors: plan.compatibility.errors,
+    });
   }
 }
 
@@ -739,20 +796,50 @@ async function collectUserDecisions(
   const conflictChoices: Record<string, ConflictChoice> = {};
   const orphanChoices: Record<string, OrphanChoice> = {};
 
+  ehLog("info", "install.decisions.start", {
+    mods: plan.modResolutions.length,
+    orphans: plan.orphanedMods.length,
+  });
+
   // ── Conflict pickers ────────────────────────────────────────────────
   for (const r of plan.modResolutions) {
     const choice = await pickConflictChoice(api, plan, r);
     if (choice === undefined) continue; // decision needs no input
-    if (choice === "cancelled") return undefined;
+    if (choice === "cancelled") {
+      ehLog("info", "install.decisions.cancelled", {
+        at: "conflict-picker",
+        mod: r.name,
+      });
+      return undefined;
+    }
+    ehLog("debug", "install.decisions.conflict-picked", {
+      mod: r.name,
+      choice: choice.kind,
+    });
     conflictChoices[r.compareKey] = choice;
   }
 
   // ── Orphan pickers ──────────────────────────────────────────────────
   for (const orphan of plan.orphanedMods) {
     const choice = await pickOrphanChoice(api, plan, orphan);
-    if (choice === "cancelled") return undefined;
+    if (choice === "cancelled") {
+      ehLog("info", "install.decisions.cancelled", {
+        at: "orphan-picker",
+        mod: orphan.name,
+      });
+      return undefined;
+    }
+    ehLog("debug", "install.decisions.orphan-picked", {
+      mod: orphan.name,
+      choice: choice.kind,
+    });
     orphanChoices[orphan.existingModId] = choice;
   }
+
+  ehLog("info", "install.decisions.ok", {
+    conflictsResolved: Object.keys(conflictChoices).length,
+    orphansResolved: Object.keys(orphanChoices).length,
+  });
 
   return { conflictChoices, orphanChoices };
 }
@@ -874,6 +961,10 @@ async function pickExternalPromptUserChoice(
 
     // Picker cancelled → next iteration of the loop re-shows the
     // dialog with the explanatory note. No fallback to "skip".
+    ehLog("warn", "install.decisions.file-picker-cancelled", {
+      mod: resolution.name,
+      attempt,
+    });
   }
 }
 
@@ -1076,6 +1167,11 @@ async function resolveStaleReceipt(
   receipt: InstallReceipt,
   appDataPath: string,
 ): Promise<"delete" | "keep" | "cancel"> {
+  ehLog("warn", "install.stale-receipt.detected", {
+    packageId: receipt.packageId,
+    profileId: receipt.vortexProfileId,
+  });
+
   const text =
     `An install receipt for "${receipt.packageName}" v${receipt.packageVersion} ` +
     `points to Vortex profile "${receipt.vortexProfileName}" ` +
@@ -1100,13 +1196,20 @@ async function resolveStaleReceipt(
     ],
   );
 
-  if (!dialog) return "cancel";
+  if (!dialog) {
+    ehLog("info", "install.stale-receipt.resolved", { outcome: "cancel" });
+    return "cancel";
+  }
 
   switch (dialog.action) {
     case "Treat as fresh install": {
       try {
         await deleteReceipt(appDataPath, receipt.packageId);
       } catch (err) {
+        ehLog("error", "install.stale-receipt.delete-failed", {
+          packageId: receipt.packageId,
+          err,
+        });
         await api.showDialog?.(
           "error",
           "Could not delete stale receipt",
@@ -1120,13 +1223,17 @@ async function resolveStaleReceipt(
           },
           [{ label: "Close", default: true }],
         );
+        ehLog("info", "install.stale-receipt.resolved", { outcome: "cancel" });
         return "cancel";
       }
+      ehLog("info", "install.stale-receipt.resolved", { outcome: "delete" });
       return "delete";
     }
     case "Use current profile anyway":
+      ehLog("info", "install.stale-receipt.resolved", { outcome: "keep" });
       return "keep";
     default:
+      ehLog("info", "install.stale-receipt.resolved", { outcome: "cancel" });
       return "cancel";
   }
 }
@@ -1151,6 +1258,12 @@ async function runInstallFlow(args: {
 
   const progressNotificationId = "vortex-event-horizon:install-progress";
 
+  const runOp = beginOp("install.run", {
+    mods: plan.modResolutions.length,
+    orphans: plan.orphanedMods.length,
+    target: plan.installTarget.kind,
+  });
+
   const onProgress = (progress: DriverProgress): void => {
     api.sendNotification?.({
       id: progressNotificationId,
@@ -1170,8 +1283,36 @@ async function runInstallFlow(args: {
       decisions,
       onProgress,
     });
+  } catch (err) {
+    // The driver reports its own failures via `InstallResult.kind ===
+    // "failed"` without throwing; an actual exception here is the driver
+    // itself breaking, which is the worse case and must not go unlogged.
+    runOp.fail(err);
+    throw err;
   } finally {
     api.dismissNotification?.(progressNotificationId);
+  }
+
+  if (result.kind === "success") {
+    runOp.ok({
+      installed: result.installedModIds.length,
+      removed: result.removedMods.length,
+      carried: result.carriedMods.length,
+      skipped: result.skippedMods.length,
+      driverDurationMs: result.durationMs,
+    });
+  } else if (result.kind === "aborted") {
+    ehLog("warn", "install.run.aborted", {
+      phase: result.phase,
+      reason: result.reason,
+      installedSoFar: result.installedSoFar.length,
+    });
+  } else {
+    ehLog("error", "install.run.driver-failed", {
+      phase: result.phase,
+      error: result.error,
+      installedSoFar: result.installedSoFar.length,
+    });
   }
 
   await renderResultDialog(api, plan, result);

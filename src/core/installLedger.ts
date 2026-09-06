@@ -64,6 +64,7 @@ import type {
 } from "../types/installLedger";
 import { INSTALL_LEDGER_SCHEMA_VERSION } from "../types/installLedger";
 import type { SupportedGameId } from "../types/ehcoll";
+import { ehLog, beginOp } from "./logging/ehLog";
 
 // ===========================================================================
 // Error type
@@ -358,10 +359,25 @@ export async function readReceipt(
     raw = await fsp.readFile(filePath, "utf8");
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
-    if (code === "ENOENT") return undefined;
+    if (code === "ENOENT") {
+      ehLog("debug", "ledger.read-receipt.none", { packageId });
+      return undefined;
+    }
+    ehLog("error", "ledger.read-receipt.io-fail", { packageId, err });
     throw err;
   }
-  return parseReceipt(raw);
+  try {
+    const receipt = parseReceipt(raw);
+    ehLog("info", "ledger.read-receipt.ok", {
+      packageId,
+      mods: receipt.mods.length,
+      installedAt: receipt.installedAt,
+    });
+    return receipt;
+  } catch (err) {
+    ehLog("error", "ledger.read-receipt.invalid", { packageId, err });
+    throw err;
+  }
 }
 
 /**
@@ -376,18 +392,28 @@ export async function writeReceipt(
   appDataPath: string,
   receipt: InstallReceipt,
 ): Promise<{ path: string }> {
+  const op = beginOp("ledger.write-receipt", {
+    packageId: receipt.packageId,
+    mods: receipt.mods.length,
+  });
   const filePath = getReceiptPath(appDataPath, receipt.packageId);
   const dir = path.dirname(filePath);
-  await fsp.mkdir(dir, { recursive: true });
+  try {
+    await fsp.mkdir(dir, { recursive: true });
 
-  const json = serializeReceipt(receipt);
-  const tmp = `${filePath}.tmp`;
-  await fsp.writeFile(tmp, json, "utf8");
-  // `fs.rename` on Windows replaces an existing destination atomically
-  // for files on the same volume — guaranteed since we put the tmp
-  // alongside the target.
-  await fsp.rename(tmp, filePath);
-  return { path: filePath };
+    const json = serializeReceipt(receipt);
+    const tmp = `${filePath}.tmp`;
+    await fsp.writeFile(tmp, json, "utf8");
+    // `fs.rename` on Windows replaces an existing destination atomically
+    // for files on the same volume — guaranteed since we put the tmp
+    // alongside the target.
+    await fsp.rename(tmp, filePath);
+    op.ok();
+    return { path: filePath };
+  } catch (err) {
+    op.fail(err);
+    throw err;
+  }
 }
 
 /**
@@ -401,10 +427,15 @@ export async function deleteReceipt(
   const filePath = getReceiptPath(appDataPath, packageId);
   try {
     await fsp.unlink(filePath);
+    ehLog("info", "ledger.delete-receipt.ok", { packageId });
     return { deleted: true };
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
-    if (code === "ENOENT") return { deleted: false };
+    if (code === "ENOENT") {
+      ehLog("debug", "ledger.delete-receipt.none", { packageId });
+      return { deleted: false };
+    }
+    ehLog("error", "ledger.delete-receipt.fail", { packageId, err });
     throw err;
   }
 }
@@ -424,17 +455,23 @@ export async function listReceipts(
   appDataPath: string,
   onError?: (filename: string, err: Error) => void,
 ): Promise<InstallReceipt[]> {
+  const op = beginOp("ledger.list");
   const dir = getInstallLedgerDir(appDataPath);
   let entries: string[];
   try {
     entries = await fsp.readdir(dir);
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
-    if (code === "ENOENT") return [];
+    if (code === "ENOENT") {
+      op.ok({ files: 0, receipts: 0, reason: "no-ledger-directory" });
+      return [];
+    }
+    op.fail(err);
     throw err;
   }
 
   const receipts: InstallReceipt[] = [];
+  let invalid = 0;
   for (const entry of entries) {
     if (!entry.toLowerCase().endsWith(".json")) continue;
     const stem = entry.slice(0, -".json".length);
@@ -445,12 +482,16 @@ export async function listReceipts(
       const raw = await fsp.readFile(fullPath, "utf8");
       receipts.push(parseReceipt(raw));
     } catch (err) {
+      invalid += 1;
+      const error = err instanceof Error ? err : new Error(String(err));
+      ehLog("warn", "ledger.list.receipt-invalid", { file: entry, err: error });
       if (onError) {
-        onError(entry, err instanceof Error ? err : new Error(String(err)));
+        onError(entry, error);
       }
       // Continue — one bad receipt does not invalidate the rest.
     }
   }
+  op.ok({ files: entries.length, receipts: receipts.length, invalid });
   return receipts;
 }
 

@@ -45,6 +45,7 @@ import {
   type ArchiveHashCache,
 } from "../archiveHashCache";
 import { hashFileSha256 } from "../archiveHashing";
+import { ehLog } from "../logging/ehLog";
 import type { AvailableDownload } from "../../types/installPlan";
 
 export type DownloadScanResult = {
@@ -97,6 +98,7 @@ export async function collectAvailableDownloads(args: {
   onProgress?: (done: number, total: number, name: string) => void;
 }): Promise<DownloadScanResult> {
   const { state, gameId, downloadsDir, signal, onProgress } = args;
+  const startedAt = Date.now();
   const cache: ArchiveHashCache = {
     schemaVersion: 1,
     entries: { ...args.cache.entries },
@@ -106,6 +108,11 @@ export async function collectAvailableDownloads(args: {
   const downloads: AvailableDownload[] = [];
   let hashed = 0;
   let fromCache = 0;
+
+  ehLog("info", "resolver.downloads.start", {
+    gameId,
+    cachedEntries: Object.keys(args.cache.entries).length,
+  });
 
   const files = readDownloadFiles(state);
   const candidates: Array<{ archiveId: string; entry: RawDownload }> = [];
@@ -120,6 +127,12 @@ export async function collectAvailableDownloads(args: {
     }
     candidates.push({ archiveId, entry });
   }
+  ehLog("debug", "resolver.downloads.candidates", {
+    gameId,
+    total: candidates.length,
+    skippedOtherGame: skipped.otherGame,
+    skippedNoLocalPath: skipped.missing,
+  });
 
   let done = 0;
   for (const { archiveId, entry } of candidates) {
@@ -132,13 +145,22 @@ export async function collectAvailableDownloads(args: {
     let stat: Awaited<ReturnType<typeof fsp.stat>>;
     try {
       stat = await fsp.stat(localPath);
-    } catch {
+    } catch (err) {
       // Vortex still lists it; the file is gone. Common after a manual clean.
       skipped.missing += 1;
+      ehLog("debug", "resolver.downloads.file-missing", {
+        archiveId,
+        name: path.basename(localPath),
+        err,
+      });
       continue;
     }
     if (!stat.isFile() || stat.size === 0) {
       skipped.missing += 1;
+      ehLog("debug", "resolver.downloads.file-empty-or-not-a-file", {
+        archiveId,
+        name: path.basename(localPath),
+      });
       continue;
     }
 
@@ -149,6 +171,10 @@ export async function collectAvailableDownloads(args: {
     // thing we are about to hash, and the string is a label about them.
     if (typeof entry.size === "number" && entry.size > 0 && stat.size < entry.size) {
       skipped.incomplete += 1;
+      ehLog("debug", "resolver.downloads.incomplete", {
+        archiveId,
+        name: path.basename(localPath),
+      });
       continue;
     }
 
@@ -171,8 +197,22 @@ export async function collectAvailableDownloads(args: {
     try {
       sha256 = await hashFileSha256(localPath, signal);
     } catch (err) {
-      if ((err as Error)?.name === "AbortError") break;
+      if ((err as Error)?.name === "AbortError") {
+        ehLog("warn", "resolver.downloads.aborted", {
+          ms: Date.now() - startedAt,
+          done,
+          total: candidates.length,
+          hashed,
+          fromCache,
+        });
+        break;
+      }
       skipped.unreadable += 1;
+      ehLog("debug", "resolver.downloads.hash-failed", {
+        archiveId,
+        name: path.basename(localPath),
+        err,
+      });
       continue;
     }
 
@@ -190,6 +230,16 @@ export async function collectAvailableDownloads(args: {
     });
   }
 
+  ehLog("info", "resolver.downloads.done", {
+    ms: Date.now() - startedAt,
+    usable: downloads.length,
+    hashed,
+    fromCache,
+    skippedOtherGame: skipped.otherGame,
+    skippedIncomplete: skipped.incomplete,
+    skippedMissing: skipped.missing,
+    skippedUnreadable: skipped.unreadable,
+  });
   return { downloads, cache, hashed, fromCache, skipped };
 }
 

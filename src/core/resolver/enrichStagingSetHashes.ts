@@ -5,6 +5,7 @@ import type { types } from "@nexusmods/vortex-api";
 
 import type { AuditorMod } from "../getModsListForProfile";
 import type { EhcollManifest } from "../../types/ehcoll";
+import { ehLog } from "../logging/ehLog";
 import { AbortError } from "../../utils/abortError";
 import { computeStagingSetHash } from "../manifest/stagingSetHash";
 import {
@@ -128,14 +129,31 @@ export async function enrichInstalledModsWithStagingSetHashes(
   options: EnrichStagingSetHashesOptions = {},
 ): Promise<AuditorMod[]> {
   const { hashConcurrency, onProgress, onWarn, signal } = options;
+  const startedAt = Date.now();
+  ehLog("info", "resolver.staging-hashes.start", {
+    gameId,
+    manifestMods: manifest.mods.length,
+    installedMods: installedMods.length,
+  });
 
   // Gate 1: anything to match against?
   const wanted = collectExternalStagingSetHashTargets(manifest);
   if (wanted.size === 0) {
+    ehLog("debug", "resolver.staging-hashes.done", {
+      ms: Date.now() - startedAt,
+      reason: "no-external-staging-set-hash-targets",
+      enriched: 0,
+    });
     return installedMods;
   }
 
-  if (signal?.aborted) throw new AbortError();
+  if (signal?.aborted) {
+    ehLog("warn", "resolver.staging-hashes.aborted", {
+      ms: Date.now() - startedAt,
+      stage: "pre-scan",
+    });
+    throw new AbortError();
+  }
 
   // Gate 2: which installed mods name-match? Only those get hashed.
   const out = installedMods.map((m) => ({ ...m }));
@@ -149,11 +167,21 @@ export async function enrichInstalledModsWithStagingSetHashes(
     }
   }
   if (candidateIndices.length === 0) {
+    ehLog("debug", "resolver.staging-hashes.done", {
+      ms: Date.now() - startedAt,
+      wanted: wanted.size,
+      candidates: 0,
+      enriched: 0,
+    });
     return out;
   }
 
   const installRoot = installRootFor(state, gameId);
   if (installRoot === undefined) {
+    ehLog("warn", "resolver.staging-hashes.no-install-root", {
+      gameId,
+      candidates: candidateIndices.length,
+    });
     if (onWarn !== undefined) {
       onWarn(
         out[candidateIndices[0]!]!,
@@ -162,6 +190,12 @@ export async function enrichInstalledModsWithStagingSetHashes(
           "mods will fall back to install-from-bundle / prompt-user.",
       );
     }
+    ehLog("debug", "resolver.staging-hashes.done", {
+      ms: Date.now() - startedAt,
+      candidates: candidateIndices.length,
+      enriched: 0,
+      reason: "no-install-root",
+    });
     return out;
   }
 
@@ -169,13 +203,29 @@ export async function enrichInstalledModsWithStagingSetHashes(
 
   const total = candidateIndices.length;
   let done = 0;
+  let enriched = 0;
+  let warned = 0;
 
   for (const i of candidateIndices) {
-    if (signal?.aborted) throw new AbortError();
+    if (signal?.aborted) {
+      ehLog("warn", "resolver.staging-hashes.aborted", {
+        ms: Date.now() - startedAt,
+        stage: "hashing",
+        done,
+        total,
+        enriched,
+        warned,
+      });
+      throw new AbortError();
+    }
     const mod = out[i]!;
 
     const installationPath = installationPathFromState(state, gameId, mod.id);
     if (installationPath === undefined) {
+      warned += 1;
+      ehLog("debug", "resolver.staging-hashes.no-installation-path", {
+        mod: mod.name,
+      });
       onWarn?.(
         mod,
         `Mod "${mod.name}" has no installationPath in Vortex state. ` +
@@ -191,6 +241,10 @@ export async function enrichInstalledModsWithStagingSetHashes(
     // usable folder name is.
     const stagingRoot = stagingRootFromFolder(installRoot, installationPath);
     if (stagingRoot === undefined) {
+      warned += 1;
+      ehLog("debug", "resolver.staging-hashes.no-staging-root", {
+        mod: mod.name,
+      });
       done += 1;
       onProgress?.(done, total, mod);
       continue;
@@ -198,6 +252,10 @@ export async function enrichInstalledModsWithStagingSetHashes(
     try {
       const files = await walkStagingFolder(stagingRoot, signal);
       if (files.length === 0) {
+        warned += 1;
+        ehLog("debug", "resolver.staging-hashes.empty-staging-folder", {
+          mod: mod.name,
+        });
         onWarn?.(
           mod,
           `Staging folder for "${mod.name}" is empty or missing at ` +
@@ -214,15 +272,27 @@ export async function enrichInstalledModsWithStagingSetHashes(
         "thorough",
         workers,
         signal,
-        (relPath, err) => onWarn?.(mod, `${relPath}: ${err.message}`),
+        (relPath, err) => {
+          ehLog("debug", "resolver.staging-hashes.file-hash-failed", {
+            mod: mod.name,
+            relPath,
+            err,
+          });
+          onWarn?.(mod, `${relPath}: ${err.message}`);
+        },
       );
       const setHash = computeStagingSetHash(stagingFiles);
       if (setHash !== undefined) {
         mod.stagingSetHash = setHash;
+        enriched += 1;
       } else {
         // Either no files, or some had no sha (I/O error during walk).
         // computeStagingSetHash returns undefined to refuse partial
         // hashes — same conservative degradation, surfaced to the user.
+        warned += 1;
+        ehLog("debug", "resolver.staging-hashes.incomplete-hash", {
+          mod: mod.name,
+        });
         onWarn?.(
           mod,
           `Could not compute a complete staging-set-hash for "${mod.name}" ` +
@@ -231,7 +301,26 @@ export async function enrichInstalledModsWithStagingSetHashes(
         );
       }
     } catch (err) {
-      if (err instanceof AbortError) throw err;
+      if (err instanceof AbortError) {
+        ehLog("warn", "resolver.staging-hashes.aborted", {
+          ms: Date.now() - startedAt,
+          stage: "per-mod",
+          mod: mod.name,
+          done,
+          total,
+          enriched,
+          warned,
+        });
+        throw err;
+      }
+      warned += 1;
+      // Swallowed on purpose — the resolver treats this mod as unmatched
+      // rather than failing the whole enrichment, but the swallow must say
+      // what it ate.
+      ehLog("warn", "resolver.staging-hashes.mod-failed", {
+        mod: mod.name,
+        err,
+      });
       onWarn?.(
         mod,
         `Failed to enrich staging-set-hash for "${mod.name}": ${
@@ -244,6 +333,12 @@ export async function enrichInstalledModsWithStagingSetHashes(
     onProgress?.(done, total, mod);
   }
 
+  ehLog("info", "resolver.staging-hashes.done", {
+    ms: Date.now() - startedAt,
+    candidates: total,
+    enriched,
+    warned,
+  });
   return out;
 }
 

@@ -48,6 +48,7 @@ import {
   resolveModArchivePath,
 } from "./archiveHashing";
 import type { AuditorMod } from "./getModsListForProfile";
+import { ehLog, beginOp } from "./logging/ehLog";
 
 /** A mod the build cannot identify, and the Nexus file that would fix it. */
 export type RecoverableMod = {
@@ -251,11 +252,17 @@ export async function recoverMissingArchives(
   targets: RecoverableMod[],
   options: RecoveryOptions = {},
 ): Promise<RecoveryReport> {
+  const op = beginOp("archive-recovery.run", {
+    targets: targets.length,
+    gameId,
+  });
   const recovered: RecoveryOutcome[] = [];
   const failed: RecoveryOutcome[] = [];
 
   const nexusDownload = api.ext?.nexusDownload;
   if (nexusDownload === undefined) {
+    const err = new Error("Vortex's Nexus integration is not available.");
+    op.fail(err, { targets: targets.length });
     return {
       recovered: [],
       failed: targets.map(({ mod }) => ({
@@ -276,6 +283,12 @@ export async function recoverMissingArchives(
     // away. "Stop after this one" has to mean the work is kept, or it is a
     // button that silently destroys hours of downloading.
     if (options.signal?.aborted === true) {
+      ehLog("info", "archive-recovery.aborted", {
+        recovered: recovered.length,
+        failed: failed.length,
+        remaining: targets.length - done,
+      });
+      op.ok({ recovered: recovered.length, failed: failed.length, aborted: true });
       return { recovered, failed, unattemptable: [], aborted: true };
     }
     done += 1;
@@ -316,10 +329,21 @@ export async function recoverMissingArchives(
         size: stat.size,
       };
       recovered.push(outcome);
+      op.step("recovered", {
+        mod: target.mod.name,
+        nexusModId: target.nexusModId,
+        nexusFileId: target.nexusFileId,
+        size: stat.size,
+      });
       // Persist before the next download begins.
       await options.onRecovered?.(outcome);
     } catch (err) {
       if (err instanceof AbortError) {
+        ehLog("info", "archive-recovery.aborted", {
+          recovered: recovered.length,
+          failed: failed.length,
+        });
+        op.ok({ recovered: recovered.length, failed: failed.length, aborted: true });
         return { recovered, failed, unattemptable: [], aborted: true };
       }
       failed.push({
@@ -327,9 +351,16 @@ export async function recoverMissingArchives(
         mod: target.mod,
         reason: err instanceof Error ? err.message : String(err),
       });
+      ehLog("warn", "archive-recovery.item-failed", {
+        mod: target.mod.name,
+        nexusModId: target.nexusModId,
+        nexusFileId: target.nexusFileId,
+        err,
+      });
     }
   }
 
+  op.ok({ recovered: recovered.length, failed: failed.length, aborted: false });
   return { recovered, failed, unattemptable: [], aborted: false };
 }
 

@@ -36,6 +36,7 @@ import * as path from "path";
 
 import type { AuditorMod } from "./getModsListForProfile";
 import { nexusCompareKey } from "./identity/compareKey";
+import { ehLog, beginOp } from "./logging/ehLog";
 
 export const ARCHIVE_HASH_CACHE_FILE = "archive-hashes.json";
 
@@ -185,29 +186,40 @@ const isHex64 = (value: unknown): value is string =>
 export async function loadArchiveHashCache(
   dataDir: string,
 ): Promise<ArchiveHashCache> {
+  const startedAt = Date.now();
   let raw: string;
   try {
     raw = await fsp.readFile(path.join(dataDir, ARCHIVE_HASH_CACHE_FILE), "utf8");
   } catch {
+    ehLog("debug", "hash-cache.load.none", { ms: Date.now() - startedAt });
     return emptyArchiveHashCache();
   }
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
-  } catch {
+  } catch (err) {
+    ehLog("warn", "hash-cache.load.corrupt-json", {
+      ms: Date.now() - startedAt,
+      err,
+    });
     return emptyArchiveHashCache();
   }
 
   const entries = (parsed as ArchiveHashCache | undefined)?.entries;
   if (entries === null || typeof entries !== "object") {
+    ehLog("warn", "hash-cache.load.bad-shape", { ms: Date.now() - startedAt });
     return emptyArchiveHashCache();
   }
 
   const clean: Record<string, CachedArchiveHash> = {};
+  let dropped = 0;
   for (const [key, value] of Object.entries(entries as Record<string, unknown>)) {
     const entry = value as Partial<CachedArchiveHash> | undefined;
-    if (!isHex64(entry?.sha256)) continue;
+    if (!isHex64(entry?.sha256)) {
+      dropped += 1;
+      continue;
+    }
     clean[key] = {
       sha256: entry!.sha256!,
       ...(typeof entry!.size === "number" ? { size: entry!.size } : {}),
@@ -215,6 +227,11 @@ export async function loadArchiveHashCache(
         typeof entry!.recoveredAt === "string" ? entry!.recoveredAt : "unknown",
     };
   }
+  ehLog("info", "hash-cache.load.ok", {
+    entries: Object.keys(clean).length,
+    dropped,
+    ms: Date.now() - startedAt,
+  });
   return { schemaVersion: 1, entries: clean };
 }
 
@@ -222,13 +239,22 @@ export async function saveArchiveHashCache(
   dataDir: string,
   cache: ArchiveHashCache,
 ): Promise<void> {
-  await fsp.mkdir(dataDir, { recursive: true });
-  const target = path.join(dataDir, ARCHIVE_HASH_CACHE_FILE);
-  const tmp = `${target}.tmp`;
-  // Write-then-rename: a build interrupted mid-save must not leave a truncated
-  // cache that the next run silently reads as "no hashes".
-  await fsp.writeFile(tmp, `${JSON.stringify(cache, null, 2)}\n`, "utf8");
-  await fsp.rename(tmp, target);
+  const op = beginOp("hash-cache.save", {
+    entries: Object.keys(cache.entries).length,
+  });
+  try {
+    await fsp.mkdir(dataDir, { recursive: true });
+    const target = path.join(dataDir, ARCHIVE_HASH_CACHE_FILE);
+    const tmp = `${target}.tmp`;
+    // Write-then-rename: a build interrupted mid-save must not leave a truncated
+    // cache that the next run silently reads as "no hashes".
+    await fsp.writeFile(tmp, `${JSON.stringify(cache, null, 2)}\n`, "utf8");
+    await fsp.rename(tmp, target);
+    op.ok();
+  } catch (err) {
+    op.fail(err);
+    throw err;
+  }
 }
 
 /** Record a hash. Returns a new cache; the input is not mutated. */

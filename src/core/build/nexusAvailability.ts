@@ -40,6 +40,8 @@
  * ──────────────────────────────────────────────────────────────────────
  */
 
+import { ehLog, beginOp } from "../logging/ehLog";
+
 export type NexusAvailability =
   /** Present in the mod's current file list. */
   | "available"
@@ -248,6 +250,11 @@ export async function checkNexusAvailability(
     else list.push(e);
   }
 
+  const op = beginOp("nexus-availability.check", {
+    entries: entries.length,
+    uniqueMods: byMod.size,
+  });
+
   const giveUpAfter = deps.giveUpAfterConsecutiveFailures ?? 6;
   const findings: AvailabilityFinding[] = [];
   const emptyListGroups: AvailabilityEntry[][] = [];
@@ -289,6 +296,10 @@ export async function checkNexusAvailability(
     } catch (err) {
       if (isAbort(err)) {
         gaveUpEarly = true;
+        ehLog("info", "nexus-availability.aborted", {
+          modsChecked,
+          totalMods: byMod.size,
+        });
         for (const e of group) {
           findings.push({
             ...e,
@@ -305,6 +316,12 @@ export async function checkNexusAvailability(
       // otherwise answering — during a failure streak, it is the API talking,
       // not the mod.
       const looksSystemic = consecutiveFailures >= giveUpAfter;
+      ehLog(looksSystemic ? "error" : "warn", "nexus-availability.lookup-failed", {
+        modId,
+        consecutiveFailures,
+        looksSystemic,
+        err,
+      });
       for (const e of group) {
         findings.push({
           ...e,
@@ -316,7 +333,13 @@ export async function checkNexusAvailability(
               }`,
         });
       }
-      if (looksSystemic) gaveUpEarly = true;
+      if (looksSystemic) {
+        gaveUpEarly = true;
+        ehLog("error", "nexus-availability.gave-up", {
+          modsChecked,
+          totalMods: byMod.size,
+        });
+      }
     }
 
     done += 1;
@@ -357,6 +380,17 @@ export async function checkNexusAvailability(
       });
     }
   }
+
+  op.ok({
+    modsChecked,
+    totalMods: byMod.size,
+    gaveUpEarly,
+    findings: findings.length,
+    unknown: findings.filter((f) => f.status === "unknown").length,
+    modMissing: findings.filter((f) => f.status === "mod-missing").length,
+    fileMissing: findings.filter((f) => f.status === "file-missing").length,
+    oldVersion: findings.filter((f) => f.status === "old-version").length,
+  });
 
   return { findings, modsChecked, gaveUpEarly };
 }
