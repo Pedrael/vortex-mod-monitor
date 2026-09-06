@@ -50,6 +50,7 @@
 
 import type { types } from "@nexusmods/vortex-api";
 
+import { ehLog, beginOp } from "../logging/ehLog";
 import type { EhcollPluginEntry } from "../../types/ehcoll";
 
 /** Redux action from gamebryo-plugin-management: `(pluginName, enabled)`. */
@@ -105,8 +106,14 @@ export async function applyPluginOrder(
     notes: [],
   };
 
+  const op = beginOp("plugin-order", {
+    gameId: input.gameId,
+    entries: input.order.length,
+  });
+
   if (input.order.length === 0) {
     result.notes.push("the collection recorded no plugin order");
+    op.ok({ reason: "empty-order" });
     return result;
   }
 
@@ -119,6 +126,7 @@ export async function applyPluginOrder(
     result.notes.push(
       "this Vortex has no event bus to set the plugin order through",
     );
+    op.ok({ reason: "no-event-bus" });
     return result;
   }
 
@@ -133,12 +141,14 @@ export async function applyPluginOrder(
       false,
     );
     result.pinned = true;
+    ehLog("debug", "plugin-order.pin.ok", { entries: input.order.length });
   } catch (err) {
     result.notes.push(
       `could not set the plugin order: ${
         err instanceof Error ? err.message : String(err)
       }`,
     );
+    op.fail(err, { entries: input.order.length });
     return result;
   }
 
@@ -154,6 +164,7 @@ export async function applyPluginOrder(
   // the kind of number that reads as a finding and is really just a loop
   // bound.
   const currentEnabled = readEnabledState(input.api);
+  let enabledCorrectionFailures = 0;
   for (const plugin of input.order) {
     if (input.signal?.aborted === true) break;
     const id = toPluginId(plugin.name);
@@ -169,9 +180,20 @@ export async function applyPluginOrder(
         enabled: plugin.enabled,
       });
       result.enabledCorrections += 1;
-    } catch {
+    } catch (err) {
       // Individually unimportant; the count tells the caller how many landed.
+      enabledCorrectionFailures += 1;
+      ehLog("debug", "plugin-order.enabled-correction.fail", {
+        plugin: plugin.name,
+        err: err instanceof Error ? err.message : String(err),
+      });
     }
+  }
+  if (result.enabledCorrections > 0 || enabledCorrectionFailures > 0) {
+    ehLog("info", "plugin-order.enabled-corrections", {
+      corrected: result.enabledCorrections,
+      failed: enabledCorrectionFailures,
+    });
   }
 
   // ── 2. sort ───────────────────────────────────────────────────────────
@@ -180,8 +202,13 @@ export async function applyPluginOrder(
       events.emit.bind(events),
       input.sortTimeoutMs ?? SORT_TIMEOUT_MS,
     );
-    if (sortNote === undefined) result.sorted = true;
-    else result.notes.push(sortNote);
+    if (sortNote === undefined) {
+      result.sorted = true;
+      ehLog("info", "plugin-order.sort.ok", { entries: input.order.length });
+    } else {
+      result.notes.push(sortNote);
+      ehLog("warn", "plugin-order.sort.degraded", { note: sortNote });
+    }
   }
 
   // ── 3. write ──────────────────────────────────────────────────────────
@@ -194,14 +221,25 @@ export async function applyPluginOrder(
       input.collectionId,
     );
     result.written = true;
+    ehLog("debug", "plugin-order.write.ok", {});
   } catch (err) {
     result.notes.push(
       `Vortex would not flush the order to plugins.txt: ${
         err instanceof Error ? err.message : String(err)
       }`,
     );
+    ehLog("error", "plugin-order.write.fail", {
+      err: err instanceof Error ? err.message : String(err),
+    });
   }
 
+  op.ok({
+    pinned: result.pinned,
+    sorted: result.sorted,
+    written: result.written,
+    enabledCorrections: result.enabledCorrections,
+    notes: result.notes.length,
+  });
   return result;
 }
 
@@ -219,6 +257,7 @@ function runLootSort(
     };
 
     const timer = setTimeout(() => {
+      ehLog("warn", "plugin-order.sort.timeout", { timeoutMs });
       finish(
         `LOOT did not finish sorting within ${Math.round(
           timeoutMs / 1000,
@@ -232,6 +271,9 @@ function runLootSort(
     try {
       emit("autosort-plugins", true, (err: Error | null | undefined) => {
         clearTimeout(timer);
+        if (err !== null && err !== undefined) {
+          ehLog("warn", "plugin-order.sort.cycle", { err: err.message });
+        }
         finish(
           err === null || err === undefined
             ? undefined
@@ -244,6 +286,9 @@ function runLootSort(
       });
     } catch (err) {
       clearTimeout(timer);
+      ehLog("error", "plugin-order.sort.emit-fail", {
+        err: err instanceof Error ? err.message : String(err),
+      });
       finish(
         `LOOT sorting is not available here: ${
           err instanceof Error ? err.message : String(err)

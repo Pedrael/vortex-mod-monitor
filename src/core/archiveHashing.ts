@@ -11,6 +11,7 @@ import type { types } from "@nexusmods/vortex-api";
 
 import type { AuditorMod } from "./getModsListForProfile";
 import { AbortError } from "../utils/abortError";
+import { ehLog } from "./logging/ehLog";
 import { getDefaultHashConcurrency } from "./manifest/stagingFileWalker";
 import { pMap } from "../utils/pMap";
 
@@ -195,59 +196,104 @@ export async function enrichModsWithArchiveHashes(
   } = options;
 
   let done = 0;
+  // Batch-level counters ONLY — this runs over hundreds of thousands of
+  // files across a profile, so nothing per-file is logged here. See the
+  // module-level rule this function exists to honor.
+  let hashed = 0;
+  let cacheHits = 0;
+  let skipped = 0;
+  let failed = 0;
+  const startedAt = Date.now();
 
-  return pMap(
-    mods,
+  ehLog("info", "archive-hash.batch.start", {
+    mods: mods.length,
     concurrency,
-    async (mod) => {
-      if (signal?.aborted) {
-        throw new AbortError();
-      }
-      const archivePath = getModArchivePath(state, mod.archiveId, gameId);
+    cacheEnabled: hashCache !== undefined,
+  });
 
-      let archiveSha256: string | undefined;
+  try {
+    const result = await pMap(
+      mods,
+      concurrency,
+      async (mod) => {
+        if (signal?.aborted) {
+          throw new AbortError();
+        }
+        const archivePath = getModArchivePath(state, mod.archiveId, gameId);
 
-      if (archivePath) {
-        try {
-          const stat = await fs.promises.stat(archivePath);
+        let archiveSha256: string | undefined;
 
-          if (stat.isFile()) {
-            // Re-reading every archive on every build is ~17 minutes and tens
-            // of gigabytes for a large profile, and the bytes have not moved.
-            // The fingerprint is what makes skipping it safe: a cached hash is
-            // reused only when path, size AND mtime all still match.
-            const key =
-              hashCache !== undefined
-                ? archiveFileCacheKey(archivePath, stat.size, stat.mtimeMs)
-                : undefined;
-            const cached = key === undefined ? undefined : hashCache!.get(key);
-            if (cached !== undefined) {
-              archiveSha256 = cached;
-            } else {
-              archiveSha256 = await hashFileSha256(archivePath, signal);
-              if (key !== undefined) {
-                hashCache!.set(key, archiveSha256);
+        if (archivePath) {
+          try {
+            const stat = await fs.promises.stat(archivePath);
+
+            if (stat.isFile()) {
+              // Re-reading every archive on every build is ~17 minutes and tens
+              // of gigabytes for a large profile, and the bytes have not moved.
+              // The fingerprint is what makes skipping it safe: a cached hash is
+              // reused only when path, size AND mtime all still match.
+              const key =
+                hashCache !== undefined
+                  ? archiveFileCacheKey(archivePath, stat.size, stat.mtimeMs)
+                  : undefined;
+              const cached = key === undefined ? undefined : hashCache!.get(key);
+              if (cached !== undefined) {
+                archiveSha256 = cached;
+                cacheHits += 1;
+              } else {
+                archiveSha256 = await hashFileSha256(archivePath, signal);
+                hashed += 1;
+                if (key !== undefined) {
+                  hashCache!.set(key, archiveSha256);
+                }
               }
             }
+          } catch (err) {
+            // Re-throw cancellation so pMap unwinds cleanly. Otherwise
+            // swallow — file missing or unreadable is non-fatal: drift
+            // is more useful than a hard stop.
+            if (err instanceof AbortError) {
+              throw err;
+            }
+            if ((err as Error | undefined)?.name === "AbortError") {
+              throw err;
+            }
+            failed += 1;
           }
-        } catch (err) {
-          // Re-throw cancellation so pMap unwinds cleanly. Otherwise
-          // swallow — file missing or unreadable is non-fatal: drift
-          // is more useful than a hard stop.
-          if (err instanceof AbortError) {
-            throw err;
-          }
-          if ((err as Error | undefined)?.name === "AbortError") {
-            throw err;
-          }
+        } else {
+          skipped += 1;
         }
-      }
 
-      done += 1;
-      onProgress?.(done, mods.length, mod);
+        done += 1;
+        onProgress?.(done, mods.length, mod);
 
-      return archiveSha256 !== undefined ? { ...mod, archiveSha256 } : mod;
-    },
-    signal,
-  );
+        return archiveSha256 !== undefined ? { ...mod, archiveSha256 } : mod;
+      },
+      signal,
+    );
+
+    ehLog("info", "archive-hash.batch.ok", {
+      mods: mods.length,
+      hashed,
+      cacheHits,
+      skipped,
+      failed,
+      ms: Date.now() - startedAt,
+    });
+    return result;
+  } catch (err) {
+    const aborted =
+      err instanceof AbortError || (err as Error | undefined)?.name === "AbortError";
+    ehLog(aborted ? "warn" : "error", "archive-hash.batch.fail", {
+      mods: mods.length,
+      done,
+      hashed,
+      cacheHits,
+      skipped,
+      failed,
+      ms: Date.now() - startedAt,
+      err: aborted ? "aborted" : err instanceof Error ? err.message : String(err),
+    });
+    throw err;
+  }
 }

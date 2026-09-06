@@ -38,6 +38,7 @@ import {
   verifyStagingAgainstArchive,
   type StagedFileRef,
 } from "../manifest/verifyAgainstArchive";
+import { ehLog } from "../logging/ehLog";
 
 export type ReinstallJudgement =
   /**
@@ -108,12 +109,25 @@ export type JudgeInput = {
 export async function judgeReinstall(
   input: JudgeInput,
 ): Promise<ReinstallJudgement> {
+  ehLog("info", "judge-reinstall.start", {
+    missingCount: input.missingFiles.length,
+    differingCount: input.differingPaths.length,
+    postProcessed: input.postProcessed === true,
+  });
+
   // Missing files are the one thing the curator's staging is unambiguously
   // the right reference for. Content mutation does not affect PRESENCE, so a
   // file the curator recorded and the user lacks is an omission regardless of
   // any post-processing — and that is the failure this project was built to
   // catch. Never explained away.
   if (input.missingFiles.length > 0 && input.postProcessed !== true) {
+    ehLog("info", "judge-reinstall.verdict", {
+      kind: "reinstall",
+      reason: "missing-files",
+      missingCount: input.missingFiles.length,
+      examples: input.missingFiles.slice(0, 5),
+      archiveConsulted: false,
+    });
     return {
       kind: "reinstall",
       why: `${input.missingFiles.length} file(s) the curator recorded are absent`,
@@ -133,6 +147,11 @@ export async function judgeReinstall(
   // So the flag buys a QUESTION, not an exemption.
 
   if (input.differingPaths.length === 0 && input.missingFiles.length === 0) {
+    ehLog("info", "judge-reinstall.verdict", {
+      kind: "reinstall",
+      reason: "no-file-detail",
+      archiveConsulted: false,
+    });
     return {
       kind: "reinstall",
       why: "verification failed with no file detail",
@@ -141,6 +160,10 @@ export async function judgeReinstall(
   }
 
   if (input.archivePath === undefined) {
+    ehLog("info", "judge-reinstall.verdict", {
+      kind: "undecidable",
+      reason: "archive-not-located",
+    });
     return {
       kind: "undecidable",
       why: "the archive this mod came from could not be located",
@@ -157,6 +180,11 @@ export async function judgeReinstall(
     ...(input.signal !== undefined ? { signal: input.signal } : {}),
   });
   if (attempt.kind === "unreadable") {
+    ehLog("warn", "judge-reinstall.verdict", {
+      kind: "undecidable",
+      reason: "archive-unreadable",
+      why: attempt.why,
+    });
     return {
       kind: "undecidable",
       why: `the archive could not be listed: ${attempt.why}`,
@@ -168,6 +196,11 @@ export async function judgeReinstall(
   // which is weak enough that calling a mod "fine" on its basis would be
   // guessing. Say so instead.
   if (listing.withCrc === 0) {
+    ehLog("warn", "judge-reinstall.verdict", {
+      kind: "undecidable",
+      reason: "no-checksums-in-listing",
+      entries: listing.entries.length,
+    });
     return {
       kind: "undecidable",
       why: "the archive listing carries no checksums to compare against",
@@ -191,6 +224,14 @@ export async function judgeReinstall(
       archiveNames.has(baseName(rel).toLowerCase()),
     );
     if (reproducible.length > 0) {
+      ehLog("info", "judge-reinstall.verdict", {
+        kind: "reinstall",
+        reason: "missing-files-in-archive",
+        reproducibleCount: reproducible.length,
+        missingCount: input.missingFiles.length,
+        examples: reproducible.slice(0, 5),
+        archiveConsulted: true,
+      });
       return {
         kind: "reinstall",
         why:
@@ -216,8 +257,15 @@ export async function judgeReinstall(
       // archive. The sha256 verifyModInstall computed cannot answer it.
       const crc = await crc32File(abs, input.signal);
       refs.push({ path: rel, size: stat.size, crc });
-    } catch {
+    } catch (err) {
       // Unreadable now though it existed a moment ago. Do not explain it away.
+      ehLog("warn", "judge-reinstall.verdict", {
+        kind: "reinstall",
+        reason: "read-back-failed",
+        path: rel,
+        err,
+        archiveConsulted: true,
+      });
       return {
         kind: "reinstall",
         why: `"${rel}" could not be read back for comparison`,
@@ -243,6 +291,12 @@ export async function judgeReinstall(
         refs.length > 0
           ? `, and its ${refs.length} differing file(s) match the archive`
           : "";
+      ehLog("info", "judge-reinstall.verdict", {
+        kind: "curator-only",
+        excusedCount: excusedMissing.length,
+        matchedDiffering: refs.length,
+        examples: excusedMissing.slice(0, 5),
+      });
       return {
         kind: "curator-only",
         excused: excusedMissing.length,
@@ -252,6 +306,10 @@ export async function judgeReinstall(
           `reinstall could produce them`,
       };
     }
+    ehLog("info", "judge-reinstall.verdict", {
+      kind: "curator-diverged",
+      explainedCount: result.matched,
+    });
     return {
       kind: "curator-diverged",
       explained: result.matched,
@@ -262,6 +320,13 @@ export async function judgeReinstall(
     };
   }
 
+  ehLog("info", "judge-reinstall.verdict", {
+    kind: "reinstall",
+    reason: "differs-from-archive",
+    unexplainedCount: result.unexplained + result.sizeOnly,
+    totalDiffering: refs.length,
+    examples: input.differingPaths.slice(0, 5),
+  });
   return {
     kind: "reinstall",
     why:

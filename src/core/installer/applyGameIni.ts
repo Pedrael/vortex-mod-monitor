@@ -32,6 +32,7 @@
 import * as fsp from "fs/promises";
 import * as path from "path";
 
+import { ehLog, beginOp } from "../logging/ehLog";
 import { iniLocationFor, isMachineOwned } from "../manifest/gameIni";
 import type { EhcollGameIni } from "../../types/ehcoll";
 import type { GameIniApplicationReceipt } from "../../types/installLedger";
@@ -205,12 +206,18 @@ export async function applyGameIni(args: {
     failed: [],
   };
 
+  const op = beginOp("game-ini", {
+    gameId: args.gameId,
+    files: args.gameIni.files.length,
+  });
+
   const location = iniLocationFor(args.gameId, args.documentsPath);
   if (location === undefined) {
     receipt.failed.push({
       fileName: "(all)",
       reason: `No INI layout known for game "${args.gameId}".`,
     });
+    op.ok({ reason: "no-ini-layout", failed: receipt.failed.length });
     return receipt;
   }
 
@@ -230,10 +237,16 @@ export async function applyGameIni(args: {
       // Absent is normal for *Custom.ini — create it rather than skip, since
       // that is exactly where hand-authored settings belong.
       original = "";
+      ehLog("debug", "game-ini.file-absent", { file: file.fileName });
     }
 
     const merged = mergeIniText(original, assignments);
     receipt.alreadyMatchedCount += merged.unchanged;
+    ehLog("debug", "game-ini.merge", {
+      file: file.fileName,
+      changed: merged.changed.length,
+      unchanged: merged.unchanged,
+    });
     if (merged.changed.length === 0) continue;
 
     try {
@@ -244,13 +257,39 @@ export async function applyGameIni(args: {
         fileName: file.fileName,
         reason: err instanceof Error ? err.message : String(err),
       });
+      ehLog("error", "game-ini.write.fail", {
+        file: file.fileName,
+        err: err instanceof Error ? err.message : String(err),
+      });
       continue;
+    }
+
+    // Every key this touched — the exact record that answers "what did this
+    // change in my game's settings" when a user reports something behaving
+    // differently after an install.
+    for (const change of merged.changed) {
+      ehLog("debug", "game-ini.key-changed", {
+        file: file.fileName,
+        section: change.section,
+        key: change.key,
+        before: change.before,
+        after: change.after,
+      });
     }
 
     receipt.appliedCount += merged.changed.length;
     receipt.changes.push(...describeIniChanges(file.fileName, merged.changed));
+    ehLog("info", "game-ini.write.ok", {
+      file: file.fileName,
+      keys: merged.changed.length,
+    });
   }
 
+  op.ok({
+    applied: receipt.appliedCount,
+    alreadyMatched: receipt.alreadyMatchedCount,
+    failed: receipt.failed.length,
+  });
   return receipt;
 }
 

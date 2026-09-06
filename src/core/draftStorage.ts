@@ -38,6 +38,7 @@ import * as fsp from "fs/promises";
 import * as path from "path";
 
 import { util } from "@nexusmods/vortex-api";
+import { ehLog, beginOp } from "./logging/ehLog";
 import { getVortexUserDataPath } from "./paths";
 
 /**
@@ -164,11 +165,13 @@ export async function listDrafts<T>(
   appDataPath: string,
   scope: DraftScope,
 ): Promise<Array<DraftEnvelope<T>>> {
+  const op = beginOp("draft-storage.list", { scope });
   const root = getDraftsRoot(appDataPath);
   let entries: string[];
   try {
     entries = await fsp.readdir(root);
   } catch {
+    op.ok({ reason: "no-drafts-dir", files: 0, drafts: 0 });
     return [];
   }
   const prefix = `${scope}-`;
@@ -185,6 +188,7 @@ export async function listDrafts<T>(
     }
   }
   results.sort((a, b) => (a.savedAt < b.savedAt ? 1 : a.savedAt > b.savedAt ? -1 : 0));
+  op.ok({ files: entries.length, drafts: results.length });
   return results;
 }
 
@@ -202,17 +206,33 @@ async function readDraftFile<T>(
   try {
     raw = await fsp.readFile(filePath, "utf8");
   } catch {
+    ehLog("debug", "draft-storage.read.miss", { scope, key: expectedKey });
     return undefined;
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
+    ehLog("warn", "draft-storage.read.corrupt", { scope, key: expectedKey });
     return undefined;
   }
-  if (!isPlainObject(parsed)) return undefined;
+  if (!isPlainObject(parsed)) {
+    ehLog("warn", "draft-storage.read.malformed", {
+      scope,
+      key: expectedKey,
+      reason: "not-an-object",
+    });
+    return undefined;
+  }
   const env = parsed as unknown as DraftEnvelope<T>;
-  if (typeof env.version !== "number") return undefined;
+  if (typeof env.version !== "number") {
+    ehLog("warn", "draft-storage.read.malformed", {
+      scope,
+      key: expectedKey,
+      reason: "no-version",
+    });
+    return undefined;
+  }
   if (env.version > DRAFT_SCHEMA_VERSION) {
     // Newer than us — refuse to corrupt by misinterpreting fields.
     // eslint-disable-next-line no-console
@@ -221,6 +241,12 @@ async function readDraftFile<T>(
         `(this build supports up to v${DRAFT_SCHEMA_VERSION}); skipping. ` +
         `This usually means a newer Event Horizon build wrote the file.`,
     );
+    ehLog("warn", "draft-storage.read.newer-schema", {
+      scope,
+      key: expectedKey,
+      version: env.version,
+      supported: DRAFT_SCHEMA_VERSION,
+    });
     return undefined;
   }
   if (env.version < DRAFT_OLDEST_MIGRATABLE) {
@@ -230,16 +256,44 @@ async function readDraftFile<T>(
         `(below oldest migratable v${DRAFT_OLDEST_MIGRATABLE}); skipping. ` +
         `The file will be silently ignored — no draft will be restored.`,
     );
+    ehLog("warn", "draft-storage.read.too-old", {
+      scope,
+      key: expectedKey,
+      version: env.version,
+      oldestMigratable: DRAFT_OLDEST_MIGRATABLE,
+    });
     return undefined;
   }
-  if (env.scope !== scope) return undefined;
-  if (typeof env.savedAt !== "string") return undefined;
-  if (!("payload" in env)) return undefined;
+  if (env.scope !== scope) {
+    ehLog("debug", "draft-storage.read.scope-mismatch", {
+      scope,
+      key: expectedKey,
+      fileScope: env.scope,
+    });
+    return undefined;
+  }
+  if (typeof env.savedAt !== "string") {
+    ehLog("warn", "draft-storage.read.malformed", {
+      scope,
+      key: expectedKey,
+      reason: "no-saved-at",
+    });
+    return undefined;
+  }
+  if (!("payload" in env)) {
+    ehLog("warn", "draft-storage.read.malformed", {
+      scope,
+      key: expectedKey,
+      reason: "no-payload",
+    });
+    return undefined;
+  }
 
   if (env.version === DRAFT_SCHEMA_VERSION) {
     // Hand-edited files might rename the key field but leave the
     // filename. Trust the filename (which the OS guarantees) over
     // the JSON body.
+    ehLog("debug", "draft-storage.read.ok", { scope, key: expectedKey });
     if (env.key !== expectedKey) {
       return { ...env, key: expectedKey };
     }
@@ -274,6 +328,10 @@ async function readDraftFile<T>(
   //   • after step 2, before step 3 → both files exist; the
   //     stale `.migrating-*` is invisible to listDrafts.
   if (env.version === 1) {
+    ehLog("info", "draft-storage.migrate.start", {
+      scope,
+      oldKey: expectedKey,
+    });
     const newKey = randomUUID();
     const migratedPayload = migrateV1Payload<T>(scope, env);
     const migrated: DraftEnvelope<T> = {
@@ -307,6 +365,10 @@ async function readDraftFile<T>(
           // this file. Returning undefined means listDrafts will
           // pick up the new UUID-keyed entry on this same pass
           // (or the next one) without us double-creating it.
+          ehLog("debug", "draft-storage.migrate.race-lost", {
+            scope,
+            oldKey: expectedKey,
+          });
           return undefined;
         }
         throw err;
@@ -327,12 +389,24 @@ async function readDraftFile<T>(
       } catch {
         /* best-effort cleanup */
       }
+      ehLog("info", "draft-storage.migrate.ok", {
+        scope,
+        oldKey: expectedKey,
+        newKey,
+      });
     } catch (err) {
       // eslint-disable-next-line no-console
       console.warn(
         `[Event Horizon] draft migration v1→v${DRAFT_SCHEMA_VERSION} failed for ${filePath}:`,
         err,
       );
+      ehLog("error", "draft-storage.migrate.fail", {
+        scope,
+        oldKey: expectedKey,
+        newKey,
+        claimed,
+        err: err instanceof Error ? err.message : String(err),
+      });
       // Best-effort restore: if we claimed but failed to write
       // the v2 file, put the v1 file back so a future load can
       // retry the migration. Swallow restore failures — at worst
@@ -403,6 +477,7 @@ export async function saveDraft<T>(
   key: string,
   payload: T,
 ): Promise<boolean> {
+  const op = beginOp("draft-storage.save", { scope, key });
   const filePath = getDraftPath(appDataPath, scope, key);
   const envelope: DraftEnvelope<T> = {
     version: DRAFT_SCHEMA_VERSION,
@@ -414,12 +489,15 @@ export async function saveDraft<T>(
   try {
     await fsp.mkdir(path.dirname(filePath), { recursive: true });
     const tmpPath = `${filePath}.tmp`;
-    await fsp.writeFile(tmpPath, JSON.stringify(envelope, null, 2), "utf8");
+    const json = JSON.stringify(envelope, null, 2);
+    await fsp.writeFile(tmpPath, json, "utf8");
     await fsp.rename(tmpPath, filePath);
+    op.ok({ bytes: json.length });
     return true;
   } catch (err) {
     // eslint-disable-next-line no-console
     console.warn(`[Event Horizon] saveDraft(${scope}/${key}) failed:`, err);
+    op.fail(err);
     return false;
   }
 }
@@ -437,6 +515,7 @@ export async function deleteDraft(
   const filePath = getDraftPath(appDataPath, scope, key);
   try {
     await fsp.unlink(filePath);
+    ehLog("info", "draft-storage.delete.ok", { scope, key });
   } catch (err) {
     // ENOENT is the happy path; only log the noisy ones.
     const code = (err as NodeJS.ErrnoException | undefined)?.code;
@@ -446,6 +525,13 @@ export async function deleteDraft(
         `[Event Horizon] deleteDraft(${scope}/${key}) failed:`,
         err,
       );
+      ehLog("error", "draft-storage.delete.fail", {
+        scope,
+        key,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    } else {
+      ehLog("debug", "draft-storage.delete.none", { scope, key });
     }
   }
 }

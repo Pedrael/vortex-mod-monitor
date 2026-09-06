@@ -17,6 +17,7 @@ import {
 } from "../stagingPath";
 import { getDefaultHashConcurrency } from "../manifest/stagingFileWalker";
 import { pMap } from "../../utils/pMap";
+import { ehLog } from "../logging/ehLog";
 
 /**
  * Post-install integrity check.
@@ -175,11 +176,27 @@ export async function verifyModInstall(
     signal,
   } = input;
 
+  const startedAt = Date.now();
+  ehLog("info", "verify-install.start", {
+    vortexModId,
+    gameId,
+    level,
+    expectedCount: expectedFiles?.length ?? 0,
+  });
+
   if (level === "none") {
+    ehLog("info", "verify-install.skip", {
+      vortexModId,
+      reason: "verification-level-none",
+    });
     return { kind: "skip", reason: "verification-level-none" };
   }
 
   if (expectedFiles === undefined || expectedFiles.length === 0) {
+    ehLog("info", "verify-install.skip", {
+      vortexModId,
+      reason: "no-staging-files-in-manifest",
+    });
     return { kind: "skip", reason: "no-staging-files-in-manifest" };
   }
 
@@ -191,6 +208,10 @@ export async function verifyModInstall(
   // into undefined.
   const installRoot = installRootFor(state, gameId);
   if (installRoot === undefined) {
+    ehLog("info", "verify-install.skip", {
+      vortexModId,
+      reason: "install-path-unresolvable",
+    });
     return { kind: "skip", reason: "install-path-unresolvable" };
   }
 
@@ -199,6 +220,10 @@ export async function verifyModInstall(
     installationPathFromState(state, gameId, vortexModId),
   );
   if (stagingRoot === undefined) {
+    ehLog("info", "verify-install.skip", {
+      vortexModId,
+      reason: "vortex-mod-missing-from-state",
+    });
     return { kind: "skip", reason: "vortex-mod-missing-from-state" };
   }
 
@@ -253,6 +278,11 @@ export async function verifyModInstall(
           return undefined;
         } catch (err) {
           if (err instanceof AbortError) throw err;
+          ehLog("debug", "verify-install.hash-read-error", {
+            vortexModId,
+            path: item.expected.path,
+            err,
+          });
           return {
             path: item.expected.path,
             expected: item.expected.sha256!,
@@ -278,6 +308,19 @@ export async function verifyModInstall(
     hashMismatches.length > 0;
 
   if (hasFailures) {
+    ehLog("info", "verify-install.fail", {
+      vortexModId,
+      level,
+      expectedCount: expectedFiles.length,
+      missingCount: missingFiles.length,
+      sizeMismatchCount: sizeMismatches.length,
+      hashMismatchCount: hashMismatches.length,
+      extraCount: extraFiles.length,
+      missingExamples: missingFiles.slice(0, 5),
+      sizeMismatchExamples: sizeMismatches.slice(0, 5),
+      hashMismatchExamples: hashMismatches.slice(0, 5).map((m) => m.path),
+      ms: Date.now() - startedAt,
+    });
     return {
       kind: "fail",
       missingFiles,
@@ -289,6 +332,13 @@ export async function verifyModInstall(
     };
   }
 
+  ehLog("info", "verify-install.ok", {
+    vortexModId,
+    level,
+    verifiedCount: expectedFiles.length,
+    extraCount: extraFiles.length,
+    ms: Date.now() - startedAt,
+  });
   return {
     kind: "ok",
     extraFiles,
@@ -327,7 +377,11 @@ async function collectOnDiskFiles(
     let entries: fs.Dirent[];
     try {
       entries = await fs.promises.readdir(dir, { withFileTypes: true });
-    } catch {
+    } catch (err) {
+      ehLog("debug", "verify-install.readdir-failed", {
+        relativeDir: toPosix(path.relative(root, dir)) || ".",
+        err,
+      });
       continue;
     }
     for (const entry of entries) {

@@ -48,6 +48,9 @@
  */
 
 import { util } from "@nexusmods/vortex-api";
+import * as path from "path";
+
+import { ehLog } from "../logging/ehLog";
 
 /**
  * One entry reported by `list`'s progress callback.
@@ -174,6 +177,9 @@ export type SevenZipApi = {
 export function resolveSevenZip(): SevenZipApi {
   const exposed = (util as unknown as { SevenZip?: unknown }).SevenZip;
   if (typeof exposed !== "function") {
+    ehLog("error", "sevenzip.resolve.fail", {
+      reason: "util.SevenZip is not a constructor",
+    });
     throw new Error(
       "vortex-api.util.SevenZip is not available at runtime. " +
         "Are we running outside of Vortex?",
@@ -190,6 +196,15 @@ export function resolveSevenZip(): SevenZipApi {
  */
 function assertOk(result: SevenZipResult | undefined, what: string): void {
   const code = result?.code;
+  // Log the resolved code and errors on EVERY call — node-7z resolves on
+  // failure rather than rejecting (see note 7 in the module docblock), so
+  // this is the one place a non-zero code is guaranteed to surface even when
+  // nothing above ever inspects the thrown error.
+  ehLog(code === 0 || code === undefined ? "debug" : "warn", "sevenzip.result", {
+    what,
+    code: code ?? null,
+    errors: result?.errors ?? [],
+  });
   if (code === 0 || code === undefined) {
     return;
   }
@@ -228,6 +243,7 @@ export async function sevenZipSelfTest(
   const os = await import("os");
   const path = await import("path");
 
+  ehLog("info", "sevenzip.self-test.start", {});
   let dir: string | undefined;
   try {
     dir = await fsp.mkdtemp(path.join(os.tmpdir(), "eh-7z-selftest-"));
@@ -258,6 +274,10 @@ export async function sevenZipSelfTest(
         "utf8",
       );
       if (roundTripped !== PROBE_CONTENT) {
+        ehLog("error", "sevenzip.self-test.fail", {
+          fatal: true,
+          reason: "round-trip-mismatch",
+        });
         return {
           ok: false,
           fatal: true,
@@ -267,6 +287,11 @@ export async function sevenZipSelfTest(
         };
       }
     } catch (err) {
+      ehLog("error", "sevenzip.self-test.fail", {
+        fatal: true,
+        reason: "extract-failed",
+        err: err instanceof Error ? err.message : String(err),
+      });
       return {
         ok: false,
         fatal: true,
@@ -281,6 +306,10 @@ export async function sevenZipSelfTest(
     if (typeof spec?.type !== "string") {
       // Not fatal: extraction works, so mods install. Only listing is broken,
       // and every path of ours that needs a listing is native-first already.
+      ehLog("warn", "sevenzip.self-test.fail", {
+        fatal: false,
+        reason: "list-unavailable",
+      });
       return {
         ok: false,
         fatal: false,
@@ -290,8 +319,14 @@ export async function sevenZipSelfTest(
           "archives natively, so installs are unaffected.",
       };
     }
+    ehLog("info", "sevenzip.self-test.ok", {});
     return { ok: true };
   } catch (err) {
+    ehLog("error", "sevenzip.self-test.fail", {
+      fatal: true,
+      reason: "unexpected",
+      err: err instanceof Error ? err.message : String(err),
+    });
     return {
       ok: false,
       fatal: true,
@@ -327,6 +362,9 @@ export async function sevenZipList(
   archive: string,
   options?: SevenZipOptions,
 ): Promise<SevenZipListEntry[]> {
+  const archiveName = path.basename(archive);
+  const startedAt = Date.now();
+  ehLog("debug", "sevenzip.list.start", { archive: archiveName });
   const entries: SevenZipListEntry[] = [];
   const spec = await api.list(archive, options ?? {}, (batch) => {
     for (const entry of batch) {
@@ -352,12 +390,22 @@ export async function sevenZipList(
     // file (diagnoseArchive) and testing 7z itself (sevenZipSelfTest). This
     // message deliberately does NOT accuse the file, because on the evidence
     // available here that is a guess.
+    ehLog("error", "sevenzip.list.fail", {
+      archive: archiveName,
+      reason: "empty-spec",
+      ms: Date.now() - startedAt,
+    });
     throw new Error(
       `7z returned no archive information for "${archive}". node-7z reports ` +
         `nothing further on this path — the file, the path, or 7z itself ` +
         `could be at fault.`,
     );
   }
+  ehLog("info", "sevenzip.list.ok", {
+    archive: archiveName,
+    entries: entries.length,
+    ms: Date.now() - startedAt,
+  });
   return entries;
 }
 
@@ -372,6 +420,12 @@ export async function sevenZipExtractFull(
   options?: SevenZipOptions,
   signal?: AbortSignal,
 ): Promise<void> {
+  const archiveName = path.basename(archive);
+  const startedAt = Date.now();
+  ehLog("debug", "sevenzip.extract.start", {
+    archive: archiveName,
+    dest: path.basename(dest),
+  });
   const result = await api.extractFull(
     archive,
     dest,
@@ -379,6 +433,10 @@ export async function sevenZipExtractFull(
     cancelOnAbort(signal),
   );
   assertOk(result, `extracting "${archive}"`);
+  ehLog("info", "sevenzip.extract.ok", {
+    archive: archiveName,
+    ms: Date.now() - startedAt,
+  });
 }
 
 /** Add files to an archive. `sources` must be an array — node-7z calls `.map` on it. */
@@ -389,6 +447,12 @@ export async function sevenZipAdd(
   options?: SevenZipOptions,
   signal?: AbortSignal,
 ): Promise<void> {
+  const archiveName = path.basename(archive);
+  const startedAt = Date.now();
+  ehLog("debug", "sevenzip.add.start", {
+    archive: archiveName,
+    sources: sources.length,
+  });
   const result = await api.add(
     archive,
     sources,
@@ -396,4 +460,9 @@ export async function sevenZipAdd(
     cancelOnAbort(signal),
   );
   assertOk(result, `creating "${archive}"`);
+  ehLog("info", "sevenzip.add.ok", {
+    archive: archiveName,
+    sources: sources.length,
+    ms: Date.now() - startedAt,
+  });
 }

@@ -31,6 +31,7 @@
 
 import type { InstallReceiptMod } from "../../types/installLedger";
 import type { EhcollMod, EhcollStagingFile } from "../../types/ehcoll";
+import { ehLog } from "../logging/ehLog";
 
 export type DriftCandidate = {
   compareKey: string;
@@ -82,6 +83,11 @@ export function selectDriftCandidates(args: {
       expectedHash: mod.stagingSetHash,
     });
   }
+  ehLog("debug", "staging-drift.candidates", {
+    receiptMods: args.receiptMods.length,
+    manifestMods: args.manifestMods.length,
+    candidates: out.length,
+  });
   return out;
 }
 
@@ -134,6 +140,12 @@ export async function findDriftedMods(args: {
   signal?: AbortSignal;
   onProgress?: (done: number, total: number, name: string) => void;
 }): Promise<DriftFinding[]> {
+  const startedAt = Date.now();
+  ehLog("info", "staging-drift.start", {
+    candidates: args.candidates.length,
+    caching: args.cacheDir !== undefined,
+  });
+
   const { hashStagingFiles } = await import("../manifest/stagingFileWalker");
   const { computeStagingSetHash } = await import("../manifest/stagingSetHash");
   const { loadArchiveHashCache, saveArchiveHashCache, makeHashLookup } =
@@ -157,7 +169,8 @@ export async function findDriftedMods(args: {
       const made = makeHashLookup(cache);
       lookup = made.lookup;
       added = made.added;
-    } catch {
+    } catch (err) {
+      ehLog("warn", "staging-drift.cache-load-failed", { err });
       lookup = undefined;
     }
   }
@@ -207,14 +220,25 @@ export async function findDriftedMods(args: {
       // `undefined` means some file could not be hashed, so the set is not
       // describable — which is not the same as matching.
       if (actual !== undefined && actual !== candidate.expectedHash) {
+        ehLog("debug", "staging-drift.mod-drifted", {
+          compareKey: candidate.compareKey,
+          name: candidate.name,
+          trackedFiles: tracked.length,
+          presentFiles: present.length,
+        });
         found.push({
           compareKey: candidate.compareKey,
           name: candidate.name,
           vortexModId: candidate.vortexModId,
         });
       }
-    } catch {
+    } catch (err) {
       // Unreadable is not drifted. See the note above.
+      ehLog("debug", "staging-drift.mod-unreadable", {
+        compareKey: candidate.compareKey,
+        name: candidate.name,
+        err,
+      });
     }
   }
 
@@ -226,8 +250,18 @@ export async function findDriftedMods(args: {
     await saveArchiveHashCache(
       args.cacheDir,
       mergeHashes(cache, added, new Date().toISOString()),
-    ).catch(() => undefined);
+    ).catch((err) => {
+      ehLog("warn", "staging-drift.cache-save-failed", { err });
+      return undefined;
+    });
   }
+
+  ehLog("info", "staging-drift.ok", {
+    candidates: args.candidates.length,
+    drifted: found.length,
+    examples: found.slice(0, 5).map((f) => f.name),
+    ms: Date.now() - startedAt,
+  });
   return found;
 }
 

@@ -53,6 +53,7 @@
  */
 
 import { AbortError } from "../../utils/abortError";
+import { ehLog } from "../logging/ehLog";
 // No 7z import. Extraction from a .ehcoll is a ZIP read of our own format and
 // is done natively — see extractBundledFromEhcoll. This pool used to call
 // resolveSevenZip() in its CONSTRUCTOR, which throws when util.SevenZip is
@@ -150,11 +151,19 @@ export class BundledPrefetchPool {
    */
   prime(zipEntries: readonly string[]): void {
     if (this.disposed) return;
+    let added = 0;
     for (const zipEntry of zipEntries) {
       if (this.slots.has(zipEntry)) continue;
       this.slots.set(zipEntry, { state: "queued", zipEntry });
       this.queue.push(zipEntry);
+      added++;
     }
+    ehLog("info", "bundled-prefetch.primed", {
+      requested: zipEntries.length,
+      added,
+      alreadyQueued: zipEntries.length - added,
+      concurrency: this.concurrency,
+    });
     this.pump();
   }
 
@@ -179,12 +188,14 @@ export class BundledPrefetchPool {
     if (slot === undefined) {
       // Never primed — extract inline. This is the cold path; the
       // driver's prime() call should usually have caught it.
+      ehLog("warn", "bundled-prefetch.take.cold", { zipEntry });
       return await this.runExtraction(zipEntry, /* tracked */ false);
     }
 
     if (slot.state === "ready") {
       this.slots.delete(zipEntry);
       const taken = slot.result;
+      ehLog("debug", "bundled-prefetch.take.hit", { zipEntry });
       // Now that this slot is consumed, see if we can start the
       // next queued extraction (we were holding back at concurrency).
       this.pump();
@@ -192,6 +203,7 @@ export class BundledPrefetchPool {
     }
 
     if (slot.state === "extracting") {
+      ehLog("debug", "bundled-prefetch.take.await", { zipEntry });
       try {
         const result = await slot.promise;
         // Fall through: re-read the slot (it may have transitioned
@@ -219,12 +231,14 @@ export class BundledPrefetchPool {
         if (after?.state === "failed") {
           this.slots.delete(zipEntry);
         }
+        ehLog("debug", "bundled-prefetch.take.await-failed", { zipEntry });
         throw err;
       }
     }
 
     if (slot.state === "failed") {
       this.slots.delete(zipEntry);
+      ehLog("debug", "bundled-prefetch.take.latched-failure", { zipEntry });
       throw slot.error;
     }
 
@@ -251,6 +265,10 @@ export class BundledPrefetchPool {
         cleanups.push(safeRmTempDir(slot.result.tempDir));
       }
     }
+    ehLog("info", "bundled-prefetch.dispose", {
+      remainingSlots: this.slots.size,
+      untakenReady: cleanups.length,
+    });
     this.slots.clear();
     this.queue.length = 0;
     await Promise.all(cleanups);
@@ -297,6 +315,7 @@ export class BundledPrefetchPool {
     tracked: boolean,
   ): Promise<PrefetchedBundle> {
     const startedAt = Date.now();
+    ehLog("debug", "bundled-prefetch.extract.start", { zipEntry, tracked });
     try {
       if (this.signal?.aborted) {
         throw new AbortError();
@@ -307,6 +326,11 @@ export class BundledPrefetchPool {
       );
       const elapsed = Date.now() - startedAt;
       this.onExtracted?.(zipEntry, elapsed);
+      ehLog("info", "bundled-prefetch.extract.ok", {
+        zipEntry,
+        tracked,
+        ms: elapsed,
+      });
 
       if (tracked) {
         this.inFlight = Math.max(0, this.inFlight - 1);
@@ -320,6 +344,12 @@ export class BundledPrefetchPool {
       }
       return result;
     } catch (err) {
+      ehLog("error", "bundled-prefetch.extract.fail", {
+        zipEntry,
+        tracked,
+        ms: Date.now() - startedAt,
+        err,
+      });
       if (tracked) {
         this.inFlight = Math.max(0, this.inFlight - 1);
         this.slots.set(zipEntry, {
