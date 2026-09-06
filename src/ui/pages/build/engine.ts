@@ -131,7 +131,7 @@ import {
 } from "../../../core/manifest/externalHints";
 import type { ExternalHint } from "../../../core/manifest/externalHints";
 import { getCollectionsConfigDir, getCollectionsDir, getVortexUserDataPath } from "../../../core/paths";
-import { beginOp } from "../../../core/logging/ehLog";
+import { beginOp, ehLog } from "../../../core/logging/ehLog";
 import type {
   SupportedGameId,
   VerificationLevel,
@@ -186,6 +186,13 @@ export interface BuildContext {
    * to say about them; see `collectionConfig.externalDependencies`.
    */
   detectedDependencies: EhcollExternalDependency[];
+  /**
+   * Files the collection's own mods provide, from Vortex's deployment
+   * manifests. Kept on the context so the Engine Fixes pairing check can be
+   * re-evaluated against the list that actually SHIPS — the curator's
+   * exclusions are applied at pack time, long after detection.
+   */
+  dependencyProvidedFiles: ReadonlySet<string>;
   /**
    * The game version this collection will REQUIRE, read from Vortex. Shown on
    * the form because it is a hard requirement the curator should see before
@@ -783,6 +790,7 @@ export async function loadBuildContext(
   // knows which mod won each file. Walking every staging folder would answer
   // the same question far more slowly and by inference.
   let detectedDependencies: EhcollExternalDependency[] = [];
+  let dependencyProvidedFiles: ReadonlySet<string> = new Set<string>();
   const dependencyWarnings: string[] = [];
   let rootBinaryNotes: string[] = [];
   try {
@@ -790,6 +798,7 @@ export async function loadBuildContext(
     if (gameDir !== undefined) {
       const deployed = await captureDeploymentManifests(api, state, gameId);
       const providedByMods = filesProvidedByDeployment(deployed);
+      dependencyProvidedFiles = providedByMods;
       detectedDependencies = await detectExternalDependencies(gameDir, gameId, {
         signal,
         providedByMods,
@@ -873,6 +882,7 @@ export async function loadBuildContext(
     profileId,
     mods,
     detectedDependencies,
+    dependencyProvidedFiles,
     externalHints,
     gameVersion: await resolveGameVersion(state, gameId),
     scopeWarnings: [
@@ -1369,6 +1379,28 @@ export async function runBuildPipeline(
     included: externalDependencies.length,
     ids: externalDependencies.map((d) => `${d.id}@${d.version}`),
   });
+
+  /**
+   * ─── THE PAIRING WARNING HAS TO SEE WHAT SHIPS, NOT WHAT WAS FOUND ──
+   * `describeMissingEngineFixesPart2` also runs during `loadBuildContext`,
+   * against the RAW detection — before the curator has touched the form. So
+   * detecting Part 2 silenced it permanently: unticking Part 2 afterwards
+   * shipped a manifest declaring Part 1 alone, which is the exact silent
+   * half-pairing the check exists to prevent, and no warning was ever raised
+   * because the only evaluation had already happened against a list that
+   * still contained it.
+   *
+   * Re-evaluated here, where the shipping list is finally known.
+   */
+  const pairingWarning = describeMissingEngineFixesPart2({
+    gameId,
+    declared: externalDependencies,
+    deployedFiles: context.dependencyProvidedFiles,
+  });
+  if (pairingWarning !== undefined) {
+    ehLog("warn", "build.engine-fixes-unpaired", { gameId, why: pairingWarning });
+    bundleWarnings.push(pairingWarning);
+  }
 
   // ── Self-check: is the CURATOR'S OWN staging what it should be? ──────
   // Everything downstream treats this capture as the etalon, so if Vortex lost

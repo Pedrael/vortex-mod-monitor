@@ -98,7 +98,7 @@ import type {
 } from "../types/ehcoll";
 import { openFile, openFolder } from "../utils/utils";
 import { getCollectionsDir, getVortexUserDataPath } from "../core/paths";
-import { beginOp } from "../core/logging/ehLog";
+import { beginOp, ehLog } from "../core/logging/ehLog";
 
 const SUPPORTED_GAME_IDS: ReadonlySet<string> = new Set<SupportedGameId>([
   "skyrimse",
@@ -268,7 +268,36 @@ export default function createBuildPackageAction(
         },
         pluginsTxtContent,
         externalMods: toBuildManifestExternalMods(collectionConfig),
+        /**
+         * ─── STILL EMPTY, BUT NO LONGER SILENTLY ────────────────────────
+         * Detection lives in the build page's pipeline, above the manifest
+         * layer, so this second entry point never gets it. The resulting
+         * `.ehcoll` declares zero prerequisites while also declaring
+         * `verificationLevel: "thorough"`, and is byte-indistinguishable from
+         * a good package — every user of one is silently never told about
+         * SKSE or Engine Fixes.
+         *
+         * Wiring detection in here is the real fix and belongs with the
+         * detection move; until then this at least stops the omission being
+         * invisible, which is the property that let it survive.
+         */
         externalDependencies: [],
+      });
+
+      ehLog("warn", "legacy-build.no-external-deps", {
+        gameId,
+        why:
+          "The legacy dialog does not run prerequisite detection, so this " +
+          "package declares none. Build from the Event Horizon page if the " +
+          "collection needs SKSE, ENB or an engine injector.",
+      });
+      context.api.sendNotification?.({
+        type: "warning",
+        title: "Built without prerequisites",
+        message:
+          "This dialog does not detect script extenders or engine injectors. " +
+          "The package declares none — build from the Event Horizon page if " +
+          "this collection needs them.",
       });
 
       const outputFileName = buildOutputFileName(curator.name, curator.version);
