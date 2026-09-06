@@ -1713,9 +1713,21 @@ export async function runBuildPipeline(
     signal,
   });
 
-  // The repacked archives are inside the package now; the temp copies are not
-  // wanted. Best-effort: leaving them costs disk, not correctness.
-  await fsp.rm(repackDir, { recursive: true, force: true }).catch(() => undefined);
+  // ─── THE REPACK FOLDER IS A CACHE NOW, NOT A SCRATCH DIR ─────────────
+  // This used to delete the whole directory here, which is why every build
+  // re-packed every bundled mod: DynDOLOD output is commonly several GB and
+  // almost never changes between two versions of a collection, and the bytes
+  // were thrown away seconds after being produced.
+  //
+  // `repackBundledExternals` keeps exactly one archive per bundled mod, named
+  // by the hash of the staging it came from, and sweeps that mod's older
+  // versions itself once the build has what it needs. Deleting the folder
+  // wholesale here would undo that sweep's entire point.
+  //
+  // Deliberately NOT extended to "anything not bundled in this build": the
+  // folder is shared by every collection, so a build of one would throw away
+  // another's cache. A mod that stops being bundled everywhere therefore
+  // leaves its last archive behind — disk, not correctness.
 
   // ── 6. Stamp the config with last-built metadata ───────────────────────
   // Drives the curator dashboard's "Published" tab — `lastBuiltVersion`

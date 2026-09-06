@@ -41,6 +41,15 @@ import * as path from "path";
 import { selectors, types } from "@nexusmods/vortex-api";
 
 import { hashFileSha256 } from "../archiveHashing";
+import {
+  bundleFileName,
+  bundleSidecarPath,
+  sanitizeModId,
+  sidecarMatches,
+  staleBundlesFor,
+  type CachedBundle,
+} from "./bundleCache";
+import { computeStagingSetHash } from "./stagingSetHash";
 import { declaresAlternatives } from "./omissionLeads";
 import { sevenZipAdd, type SevenZipApi } from "./sevenZip";
 import type { AuditorMod } from "../getModsListForProfile";
@@ -55,6 +64,13 @@ export type RepackedBundle = {
   sourcePath: string;
   sha256: string;
   bytes: number;
+  /**
+   * True when this archive was reused from a previous build.
+   *
+   * Reported so a curator watching a build finish in seconds can tell that
+   * nothing was skipped — the bytes were simply already packed.
+   */
+  reused?: boolean;
 };
 
 export type RepackResult = {
@@ -151,6 +167,8 @@ export async function repackBundledExternals(args: {
   const bundles: RepackedBundle[] = [];
   const warnings: string[] = [];
   const newSha = new Map<string, string>();
+  /** modId → the archive this build is using, so older ones can be swept. */
+  const keptByMod = new Map<string, string>();
   let done = 0;
 
   for (const mod of wanted) {
@@ -184,11 +202,44 @@ export async function repackBundledExternals(args: {
         );
       }
 
+      /**
+       * The identity of what is about to be packed.
+       *
+       * `undefined` when any staged file lacks a hash, which is exactly the
+       * case where reusing a previous archive would be a guess rather than a
+       * fact. The mod is repacked then, under a name nothing will match.
+       */
+      const contentKey = computeStagingSetHash(mod.stagingFiles ?? []);
+      const out =
+        contentKey === undefined
+          ? path.join(workDir, `${sanitizeModId(mod.id)}-uncacheable.zip`)
+          : path.join(workDir, bundleFileName(mod.id, contentKey));
+
+      const hit =
+        contentKey === undefined
+          ? undefined
+          : await readCachedBundle(out, options.signal);
+
+      if (hit !== undefined) {
+        options.onProgress?.(done, wanted.length, `${mod.name} (already packed)`);
+        bundles.push({
+          modId: mod.id,
+          modName: mod.name,
+          sourcePath: out,
+          sha256: hit.sha256,
+          bytes: hit.bytes,
+          reused: true,
+        });
+        newSha.set(mod.id, hit.sha256);
+        keptByMod.set(mod.id, out);
+        continue;
+      }
+
       // `<dir>/*` so 7z stores paths relative to the staging root, matching
       // what the mod's own file list says. There is no cwd option in this
       // node-7z; see sevenZip.ts.
-      const out = path.join(workDir, `${sanitize(mod.id)}.zip`);
       await fsp.rm(out, { force: true });
+      await fsp.rm(bundleSidecarPath(out), { force: true });
       await sevenZipAdd(
         sevenZip,
         out,
@@ -199,8 +250,14 @@ export async function repackBundledExternals(args: {
 
       const sha256 = await hashFileSha256(out, options.signal);
       const bytes = (await fsp.stat(out)).size;
+      // Written only after the archive exists and has been measured, so a
+      // sidecar never describes a file that was interrupted on the way out.
+      if (contentKey !== undefined) {
+        await writeCachedBundle(out, { sha256, bytes });
+      }
       bundles.push({ modId: mod.id, modName: mod.name, sourcePath: out, sha256, bytes });
       newSha.set(mod.id, sha256);
+      keptByMod.set(mod.id, out);
     } catch (err) {
       warnings.push(
         `"${mod.name}" is flagged for bundling but could not be packed from its ` +
@@ -209,6 +266,11 @@ export async function repackBundledExternals(args: {
       );
     }
   }
+
+  // One archive per bundled mod: older versions go once the build has what
+  // it needs, never before — a sweep that ran first would delete the copy
+  // that makes a retry fast after a failure.
+  await sweepStaleBundles(workDir, keptByMod);
 
   if (newSha.size === 0) {
     return { mods, bundles, warnings };
@@ -226,9 +288,60 @@ export async function repackBundledExternals(args: {
   };
 }
 
-/** Keep a mod id usable as a filename without inventing collisions. */
-function sanitize(id: string): string {
-  return id.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 120);
+/**
+ * A previously packed archive, if it is still exactly what it claims.
+ *
+ * Every failure here answers "no cache" rather than throwing: a missing,
+ * unreadable or half-written sidecar must cost a repack, never a build.
+ */
+async function readCachedBundle(
+  archivePath: string,
+  signal?: AbortSignal,
+): Promise<CachedBundle | undefined> {
+  void signal;
+  try {
+    const stat = await fsp.stat(archivePath);
+    if (!stat.isFile() || stat.size === 0) return undefined;
+    const raw = await fsp.readFile(bundleSidecarPath(archivePath), "utf8");
+    const parsed = JSON.parse(raw) as CachedBundle;
+    return sidecarMatches(parsed, stat.size) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function writeCachedBundle(
+  archivePath: string,
+  cached: CachedBundle,
+): Promise<void> {
+  try {
+    await fsp.writeFile(
+      bundleSidecarPath(archivePath),
+      JSON.stringify(cached),
+      "utf8",
+    );
+  } catch {
+    // No sidecar means the next build repacks. Wasteful, never wrong.
+  }
+}
+
+/** Drop every cached archive of these mods except the one just used. */
+async function sweepStaleBundles(
+  workDir: string,
+  keptByMod: ReadonlyMap<string, string>,
+): Promise<void> {
+  if (keptByMod.size === 0) return;
+  let fileNames: string[];
+  try {
+    fileNames = await fsp.readdir(workDir);
+  } catch {
+    return;
+  }
+  for (const [modId, keep] of keptByMod) {
+    for (const stale of staleBundlesFor({ fileNames, modId, keep })) {
+      await fsp.rm(path.join(workDir, stale), { force: true }).catch(() => undefined);
+    }
+  }
 }
 
 /**
