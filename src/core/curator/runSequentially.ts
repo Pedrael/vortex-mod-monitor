@@ -47,6 +47,21 @@ export type SequentialReport<T> = {
   outcomes: StepOutcome<T>[];
   /** True when the curator stopped it; the remaining items were not touched. */
   cancelled: boolean;
+  /**
+   * Why the run ended before its items did, when `fatal` said stop.
+   *
+   * Distinct from `cancelled`: nobody asked for this one, so a report that
+   * folded them together would tell the curator they stopped a run they were
+   * watching run itself into the ground.
+   */
+  halted?: string;
+  /**
+   * Items never attempted, because the run ended first.
+   *
+   * The number that makes "the rest were left alone" a checkable claim rather
+   * than a reassurance.
+   */
+  notAttempted: number;
 };
 
 export async function runSequentially<T>(input: {
@@ -55,8 +70,25 @@ export async function runSequentially<T>(input: {
   verify: StepVerify<T>;
   onProgress?: (done: number, total: number, item: T) => void;
   signal?: AbortSignal;
+  /**
+   * ─── SOME FAILURES POISON THE REST OF THE RUN ───────────────────────
+   * Return a reason to END the run after this item; `undefined` to carry on.
+   *
+   * The case this exists for is an update TIMEOUT. `updateOneAndWait` gives up
+   * after fifteen minutes, but Vortex has not — it is very likely still
+   * installing that mod. Treating that like any other per-item failure and
+   * continuing starts the NEXT install on top of a live one, which makes this
+   * loop concurrent: the precise condition the sequential design exists to
+   * prevent, arriving exactly when things are already going wrong. It also
+   * destroys per-mod attribution, because files dropped by the overlap are
+   * blamed on whichever mod happened to be next.
+   *
+   * The item still gets its `failed` outcome; what changes is that the loop
+   * stops and the report says so.
+   */
+  fatal?: (err: unknown, item: T) => string | undefined;
 }): Promise<SequentialReport<T>> {
-  const { items, act, verify, onProgress, signal } = input;
+  const { items, act, verify, onProgress, signal, fatal } = input;
   const outcomes: StepOutcome<T>[] = [];
 
   /**
@@ -82,7 +114,11 @@ export async function runSequentially<T>(input: {
   for (const item of items) {
     if (signal?.aborted === true) {
       ehLog("info", "sequential.cancelled", { done, of: items.length });
-      return { outcomes, cancelled: true };
+      return {
+        outcomes,
+        cancelled: true,
+        notAttempted: items.length - outcomes.length,
+      };
     }
     onProgress?.(done, items.length, item);
     ehLog("debug", "sequential.item.start", {
@@ -103,6 +139,21 @@ export async function runSequentially<T>(input: {
         why: err instanceof Error ? err.message : String(err),
       });
       done += 1;
+      const halt = fatal?.(err, item);
+      if (halt !== undefined) {
+        ehLog("warn", "sequential.halted", {
+          item: label(item),
+          why: halt,
+          done,
+          of: items.length,
+        });
+        return {
+          outcomes,
+          cancelled: false,
+          halted: halt,
+          notAttempted: items.length - outcomes.length,
+        };
+      }
       continue;
     }
 
@@ -147,5 +198,9 @@ export async function runSequentially<T>(input: {
       return acc;
     }, {}),
   });
-  return { outcomes, cancelled: false };
+  return {
+    outcomes,
+    cancelled: false,
+    notAttempted: items.length - outcomes.length,
+  };
 }

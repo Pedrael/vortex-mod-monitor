@@ -36,6 +36,7 @@
 
 import type { CuratorMod, UpdateCandidate } from "./profileActions";
 import { runSequentially } from "./runSequentially";
+import { UpdateTimeout } from "./updateOneMod";
 
 /** What happened to one mod. */
 export type UpdateOutcome =
@@ -52,6 +53,18 @@ export type UpdateOutcome =
   /** The update itself failed. The mod is whatever it was before. */
   | { kind: "failed"; mod: CuratorMod; why: string }
   /**
+   * ─── THE MOD IS GONE, AND PUTTING IT BACK FAILED ────────────────────
+   * Only a REINSTALL can produce this, and only a reinstall needs it.
+   * Reinstalling uninstalls first, so a failure after that point is not the
+   * "nothing changed" that `failed` means — the mod has been removed from the
+   * setup and is not coming back on its own.
+   *
+   * It read as `failed` before, printing `"X" did not update`, which a curator
+   * reasonably takes as "X is as it was". They then ship a collection missing
+   * a mod they were told was merely unchanged.
+   */
+  | { kind: "removed-not-reinstalled"; mod: CuratorMod; why: string }
+  /**
    * Updated, and we could not tell whether anything was lost.
    *
    * No archive to compare against, or a FOMOD whose script could not be
@@ -65,6 +78,10 @@ export type BulkUpdateReport = {
   outcomes: UpdateOutcome[];
   /** True when the curator stopped it; the remaining mods were not touched. */
   cancelled: boolean;
+  /** Why the run ended itself — see `runSequentially`'s `fatal`. */
+  halted?: string;
+  /** Mods the run never got to. */
+  notAttempted: number;
 };
 
 /** The check run after each update. Injected so the engine stays testable. */
@@ -109,9 +126,25 @@ export async function runBulkUpdate(
         }
       : {}),
     ...(input.signal !== undefined ? { signal: input.signal } : {}),
+    /**
+     * A timeout ends the run. See `runSequentially`'s `fatal` for why: the
+     * fifteen minutes elapsing means we stopped waiting, NOT that Vortex
+     * stopped installing, so the next install would overlap a live one.
+     *
+     * The policy lives here rather than on the page because it is a fact
+     * about how Vortex installs, not about how this is displayed.
+     */
+    fatal: (err) =>
+      err instanceof UpdateTimeout
+        ? `${err.message} Nothing further was started, because Vortex is ` +
+          `probably still installing it and a second install on top of a ` +
+          `live one is how mods lose files.`
+        : undefined,
   });
   return {
     cancelled: report.cancelled,
+    notAttempted: report.notAttempted,
+    ...(report.halted === undefined ? {} : { halted: report.halted }),
     outcomes: report.outcomes.map((o): UpdateOutcome => {
       if (o.kind === "done") return { kind: "updated", mod: o.item.mod };
       if (o.kind === "files-dropped") {
@@ -152,6 +185,17 @@ export function describeBulkUpdate(report: BulkUpdateReport): string[] {
     );
   }
 
+  // Above `failed` on purpose: this one means files left the setup.
+  for (const outcome of by("removed-not-reinstalled")) {
+    if (outcome.kind !== "removed-not-reinstalled") continue;
+    lines.push(
+      `"${outcome.mod.name}" was REMOVED and could NOT be reinstalled: ` +
+        `${outcome.why}. It is no longer in your setup — its archive is still ` +
+        `in Vortex's Downloads, so install it from there before shipping ` +
+        `anything.`,
+    );
+  }
+
   for (const outcome of by("failed")) {
     if (outcome.kind !== "failed") continue;
     lines.push(`"${outcome.mod.name}" did not update: ${outcome.why}`);
@@ -177,7 +221,16 @@ export function describeBulkUpdate(report: BulkUpdateReport): string[] {
       : `${ok} mod(s) updated and verified against their archives.`,
   );
   if (report.cancelled) {
-    lines.push("Stopped early — the remaining mods were left alone.");
+    lines.push(
+      `Stopped early — the remaining ${report.notAttempted} mod(s) were ` +
+        `left alone.`,
+    );
+  }
+  if (report.halted !== undefined) {
+    lines.push(
+      `The run ended itself: ${report.halted} ${report.notAttempted} mod(s) ` +
+        `were not attempted — press Update again once Vortex is idle.`,
+    );
   }
   return lines;
 }

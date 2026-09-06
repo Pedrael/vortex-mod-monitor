@@ -90,6 +90,7 @@ import {
 import { useApi } from "../../state";
 import { ErrorBoundary } from "../../errors";
 import { ehLog } from "../../../core/logging/ehLog";
+import { getCuratorSession, type CuratorSnapshot } from "./curatorSession";
 
 /**
  * How Vortex's Nexus integration is ACTUALLY reached.
@@ -114,6 +115,58 @@ type EmitAndAwait = {
 };
 
 const num = (n: number): string => n.toLocaleString();
+
+/**
+ * ─── EVERY IRREVERSIBLE ACT ON THIS PAGE ASKS FIRST ────────────────────
+ * Three buttons here permanently delete files or uninstall mods, and each was
+ * a single unconfirmed click — the archive one defaulting to EVERY orphan it
+ * found, which on the profile this was built for is tens of gigabytes gone on
+ * a misclick with no undo anywhere in Vortex.
+ *
+ * Shaped as a function rather than repeated inline so all three say the same
+ * kind of thing: what happens, how much of it, and that it cannot be undone.
+ *
+ * A Vortex build with no `showDialog` REFUSES rather than proceeds. It is core
+ * API and present everywhere in practice; if it ever is not, silently doing
+ * the destructive thing unconfirmed is the wrong way to fail.
+ */
+type Confirmer = (args: {
+  title: string;
+  text: string;
+  confirmLabel: string;
+}) => Promise<boolean>;
+
+function makeConfirmer(
+  api: { showDialog?: (...args: never[]) => PromiseLike<unknown> },
+  onRefused: (why: string) => void,
+): Confirmer {
+  return async ({ title, text, confirmLabel }) => {
+    if (typeof api.showDialog !== "function") {
+      ehLog("error", "curator.confirm.unavailable", { title });
+      onRefused(
+        "This Vortex build does not expose showDialog, so this cannot be " +
+          "confirmed — and nothing that deletes files runs here unconfirmed. " +
+          "Do it from Vortex's own Mods and Downloads tabs instead.",
+      );
+      return false;
+    }
+    ehLog("info", "curator.confirm.ask", { title });
+    const result = (await (
+      api.showDialog as unknown as (
+        type: string,
+        title: string,
+        content: { text: string },
+        actions: { label: string }[],
+      ) => PromiseLike<{ action?: string } | undefined>
+    )("question", title, { text }, [
+      { label: "Cancel" },
+      { label: confirmLabel },
+    ])) as { action?: string } | undefined;
+    const said = result?.action === confirmLabel;
+    ehLog("info", "curator.confirm.answer", { title, confirmed: said });
+    return said;
+  };
+}
 
 function Tile(props: {
   label: string;
@@ -356,8 +409,46 @@ const archiveId = (a: ArchiveRow): string => a.entry.id;
 function CuratorBody(): JSX.Element {
   const api = useApi();
   const [tick, setTick] = React.useState(0);
-  const [busy, setBusy] = React.useState<string | undefined>(undefined);
-  const [note, setNote] = React.useState<string | undefined>(undefined);
+
+  /**
+   * ─── THE RUNNING STATE LIVES OUTSIDE THIS COMPONENT ─────────────────
+   * `RouteOutlet` keys every page on its route, so clicking another tab
+   * UNMOUNTS this one. `busy`, `progress` and the report were `useState`
+   * here, and a bulk update over forty mods runs for many minutes.
+   *
+   * Tab away mid-run and all three died with the component: the report was
+   * gone — including the LOST lines that are the entire product of verifying
+   * each mod — the buttons came back enabled, so a SECOND bulk update could
+   * start on top of the live one, and the first kept running invisibly
+   * against staging folders a build might be about to hash. The expected bug
+   * report is "I clicked Update, looked at something else, came back, and it
+   * said nothing happened."
+   *
+   * `buildSession` and `installSession` already solved this; this is the same
+   * shape. Only what must OUTLIVE the component moved — the effects stay
+   * here, where they can read `api` and the profile.
+   */
+  const session = React.useMemo(() => getCuratorSession(), []);
+  const [run, setRun] = React.useState<CuratorSnapshot>(() =>
+    session.getSnapshot(),
+  );
+  React.useEffect(() => {
+    // Re-read on mount as well as subscribing: a run that finished while this
+    // page was unmounted has already published its final state to nobody.
+    setRun(session.getSnapshot());
+    return session.subscribe(setRun);
+  }, [session]);
+  const busy = run.busy;
+  const progress = run.progress;
+  const lines = run.lines;
+  const note = run.note;
+  const setNote = (message: string | undefined): void => session.say(message);
+  const setProgress = (message: string | undefined): void =>
+    session.progress(message);
+  const confirm = React.useMemo(
+    () => makeConfirmer(api as never, (why) => session.say(why)),
+    [api, session],
+  );
 
   const gameId = React.useMemo(() => {
     const state = api.getState();
@@ -443,7 +534,6 @@ function CuratorBody(): JSX.Element {
   const [updateAim, setUpdateAim] = React.useState<TargetSet | undefined>();
   const [frozenAim, setFrozenAim] = React.useState<TargetSet | undefined>();
   const [dupAim, setDupAim] = React.useState<TargetSet | undefined>();
-  const [archiveAim, setArchiveAim] = React.useState<TargetSet | undefined>();
 
   /**
    * Every finished download, read straight from Vortex's state.
@@ -516,13 +606,22 @@ function CuratorBody(): JSX.Element {
     return duplicates.filter((g) => ids.has(String(g.nexusModId)));
   }, [duplicates, dupAim]);
 
-  /** The archives the delete button will really remove, and their weight. */
+  /**
+   * ─── THE ARCHIVES THE DELETE BUTTON WILL REMOVE — TICKED ONLY ────────
+   * Deliberately NOT `effectiveTarget`'s ticks-else-filtered default, which
+   * every other button on this page uses. That default means "no ticks = all
+   * of them", and here "all of them" was every orphan found: on the profile
+   * this was built for, one unconfirmed click on a freshly opened page
+   * permanently deleted tens of gigabytes of archives.
+   *
+   * Ticks-else-filtered is right for an action you can redo. This one you
+   * cannot: Vortex has no undo and the files do not go to the recycle bin.
+   * Card 2 below already worked this way ("nothing is pre-ticked"), and the
+   * two cards being inconsistent about it was itself part of the trap.
+   */
   const archiveRemovals = React.useMemo(
-    () =>
-      archiveAim === undefined
-        ? orphans
-        : tickedArchives(orphans, new Set(archiveAim.ids)),
-    [orphans, archiveAim],
+    () => tickedArchives(orphans, archiveSel),
+    [orphans, archiveSel],
   );
   const archiveBytes = React.useMemo(
     () => archiveRemovals.reduce((n, a) => n + a.entry.bytes, 0),
@@ -560,7 +659,7 @@ function CuratorBody(): JSX.Element {
       setNote("This Vortex build does not expose emitAndAwait.");
       return;
     }
-    setBusy("refresh");
+    if (session.begin("refresh", { keepReport: true }) === undefined) return;
     setNote("Asking Nexus about every mod — this takes a moment.");
     try {
       // Read-only: this asks Vortex to refresh what Nexus says. Nothing is
@@ -572,28 +671,35 @@ function CuratorBody(): JSX.Element {
       });
       await ext.emitAndAwait("check-mods-version", gameId, byId, true);
       ehLog("info", "curator.recheck.ok", { gameId });
-      setNote("Nexus re-checked. The counts below are current.");
     } catch (err) {
       ehLog("error", "curator.recheck.fail", { err });
-      setNote(
+      session.finish(
+        undefined,
         `Vortex could not check for updates: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
+      setTick((t) => t + 1);
+      return;
     }
-    setBusy(undefined);
+    session.finish(undefined, "Nexus re-checked. The counts below are current.");
     setTick((t) => t + 1);
   };
 
   const endorseAll = async (): Promise<void> => {
     const game = gameId;
     if (game === undefined) return;
-    setBusy("endorse");
+    const signal = session.begin("endorse", { keepReport: true });
+    if (signal === undefined) return;
     let done = 0;
     // Paced, not parallel. `endorse-mod` is fire-and-forget — Vortex gives no
     // promise to await — so the only way to avoid firing 1,500 requests at
     // Nexus in one tick is to space them. A ban is not a faster result.
     for (const mod of endorsable) {
+      // Endorsing cannot be undone one at a time, but it CAN be stopped
+      // part-way — which is the difference between a curator who changed
+      // their mind at mod 30 of 1,500 and one who has to close Vortex.
+      if (signal.aborted) break;
       if (mod.nexusModId === undefined) continue;
       // Vortex's OWN mod id here, not the Nexus one: that is what its endorse
       // control passes, and the other id endorses nothing.
@@ -605,18 +711,16 @@ function CuratorBody(): JSX.Element {
       );
       await new Promise((r) => setTimeout(r, ENDORSE_PACE_MS));
     }
-    setBusy(undefined);
-    setProgress(undefined);
     setTick((t) => t + 1);
-    ehLog("info", "curator.endorse.done", { asked: done });
-    setNote(
-      `Asked Vortex to endorse ${done} mod(s). Vortex reports each result in ` +
-        `its own notifications; press Reload to see the counts settle.`,
+    ehLog("info", "curator.endorse.done", { asked: done, stopped: signal.aborted });
+    session.finish(
+      undefined,
+      `Asked Vortex to endorse ${done} of ${endorsable.length} mod(s)` +
+        (signal.aborted ? " before you stopped it" : "") +
+        `. Vortex reports each result in its own notifications; press Reload ` +
+        `to see the counts settle.`,
     );
   };
-
-  const [progress, setProgress] = React.useState<string | undefined>(undefined);
-  const [lines, setLines] = React.useState<string[]>([]);
 
   /**
    * Update every candidate, one at a time, verifying each before the next.
@@ -633,10 +737,11 @@ function CuratorBody(): JSX.Element {
     // shape as the closure bugs that crashed two releases of the build page.
     const game = gameId;
     if (game === undefined) return;
-    setBusy("update");
-    setLines([]);
+    // The session owns the signal, so the Cancel button below can reach it.
+    // It used to be a local `AbortController` that nothing ever aborted.
+    const signal = session.begin("update");
+    if (signal === undefined) return;
     const installedIds = new Map<string, string>();
-    const controller = new AbortController();
     // This flow logged nothing at all, so an update that did literally
     // nothing looked exactly like one that was working — and the only way to
     // tell them apart was to read Vortex's log and find it empty too.
@@ -647,7 +752,7 @@ function CuratorBody(): JSX.Element {
     const startedAt = Date.now();
     const report = await runBulkUpdate({
       candidates,
-      signal: controller.signal,
+      signal,
       onProgress: (n, total, m) =>
         setProgress(`Updating ${n + 1} of ${total} — ${m.name}`),
       update: async (candidate) => {
@@ -707,17 +812,17 @@ function CuratorBody(): JSX.Element {
           vortexModId: installedIds.get(m.id) ?? m.id,
         }),
     });
-    setBusy(undefined);
-    setProgress(undefined);
     ehLog("info", "curator.bulk-update.done", {
       ms: Date.now() - startedAt,
       cancelled: report.cancelled,
+      halted: report.halted,
+      notAttempted: report.notAttempted,
       outcomes: report.outcomes.reduce<Record<string, number>>((acc, o) => {
         acc[o.kind] = (acc[o.kind] ?? 0) + 1;
         return acc;
       }, {}),
     });
-    setLines(describeBulkUpdate(report));
+    session.finish(describeBulkUpdate(report));
     // Clear the ticks, as every other action on this page does. Vortex gives
     // an updated mod a NEW id, so these ids are stale the moment the run
     // finishes: the button would keep reading "Update 12 ticked mods" while
@@ -739,9 +844,34 @@ function CuratorBody(): JSX.Element {
   const reinstall = async (targets: readonly CuratorMod[]): Promise<void> => {
     const game = gameId;
     if (game === undefined || targets.length === 0) return;
-    setBusy("reinstall");
-    setLines([]);
+    /**
+     * Reinstalling UNINSTALLS first, so this is destructive before it is
+     * restorative. Said plainly, with the count, before anything is removed.
+     */
+    const ok = await confirm({
+      title: `Reinstall ${num(targets.length)} mod(s)?`,
+      text:
+        `Each one is UNINSTALLED and then installed again from its archive, ` +
+        `one at a time. Everything Vortex would otherwise lose — the FOMOD ` +
+        `answers, the mod type, whether it is enabled, any freeze — is read ` +
+        `first and put back after.\n\n` +
+        `If an install fails after the removal, that mod is gone from your ` +
+        `setup until you install it again from Downloads. The report says ` +
+        `exactly which, if any.`,
+      confirmLabel: "Reinstall",
+    });
+    if (!ok) return;
+    const signal = session.begin("reinstall");
+    if (signal === undefined) return;
     const installedIds = new Map<string, string>();
+    /**
+     * Mods whose UNINSTALL succeeded.
+     *
+     * The report cannot tell "the reinstall failed and the mod is untouched"
+     * from "the reinstall failed and the mod is gone" without this — and
+     * those two sentences ask the curator to do opposite things.
+     */
+    const removed = new Set<string>();
     const state0 = api.getState();
     const enabledNow = readEnabledModIds(state0, game);
 
@@ -758,6 +888,9 @@ function CuratorBody(): JSX.Element {
           FROZEN_ATTRIBUTE,
         );
         await uninstallMod(api, { gameId: game, modId: m.id });
+        // Past this line the mod is NOT in the setup. Anything that throws
+        // from here on leaves it that way.
+        removed.add(m.id);
         const { vortexModId } = await installFromExistingDownload(api, {
           gameId: game,
           ...reinstallArgs(preserved),
@@ -808,20 +941,29 @@ function CuratorBody(): JSX.Element {
           gameId: game,
           vortexModId: installedIds.get(m.id) ?? m.id,
         }),
+      signal,
     });
 
-    setBusy(undefined);
-    setProgress(undefined);
-    setLines(
+    session.finish(
       describeBulkUpdate({
         cancelled: report.cancelled,
+        notAttempted: report.notAttempted,
+        ...(report.halted === undefined ? {} : { halted: report.halted }),
         outcomes: report.outcomes.map((o) =>
           o.kind === "done"
             ? { kind: "updated" as const, mod: o.item }
             : o.kind === "files-dropped"
               ? { kind: "files-dropped" as const, mod: o.item, missing: o.missing }
               : o.kind === "failed"
-                ? { kind: "failed" as const, mod: o.item, why: o.why }
+                ? // A failure AFTER the uninstall is not "did not update" —
+                  // the mod has left the setup and nothing will bring it back.
+                  removed.has(o.item.id)
+                  ? {
+                      kind: "removed-not-reinstalled" as const,
+                      mod: o.item,
+                      why: o.why,
+                    }
+                  : { kind: "failed" as const, mod: o.item, why: o.why }
                 : { kind: "unverified" as const, mod: o.item, why: o.why },
         ),
       }),
@@ -871,9 +1013,11 @@ function CuratorBody(): JSX.Element {
   const applyCleanup = async (plan: CleanupPlan): Promise<void> => {
     const game = gameId;
     if (game === undefined) return;
-    setBusy("cleanup");
+    const signal = session.begin("cleanup");
+    if (signal === undefined) return;
     const outcome = await runCleanup({
       plan,
+      signal,
       onProgress: (n, total, what) => setProgress(`${what} (${n + 1}/${total})`),
       removeMod: async (vortexModId) => {
         await uninstallMod(api, { gameId: game, modId: vortexModId });
@@ -882,6 +1026,30 @@ function CuratorBody(): JSX.Element {
         const full = getModArchivePath(api.getState(), dlEntry.id, game);
         if (full === undefined) {
           throw new Error("its path on disk could not be resolved");
+        }
+        /**
+         * ─── CONFIRM THE FILE IS THERE BEFORE CLAIMING TO FREE IT ───────
+         * `rm(force: true)` swallows ENOENT, so a path that resolved to the
+         * WRONG place — the compatible-download case puts a Skyrim LE file
+         * under a different game's folder than the active one — succeeded
+         * silently. The run then counted the archive's bytes as freed, told
+         * the curator the disk was that much emptier, and dropped Vortex's
+         * download record for a file still sitting on disk: the archive
+         * becomes invisible to Vortex AND to this page, so nothing can
+         * clean it up afterwards.
+         *
+         * Throwing instead puts it in `archivesFailed` with the path we
+         * looked at, which is both honest about the bytes and the one piece
+         * of information a bug report needs.
+         */
+        try {
+          await fsp.stat(full);
+        } catch {
+          throw new Error(
+            `no file at the path Vortex gives for it (${full}) — the ` +
+              `download record was left alone rather than dropped for a ` +
+              `file that may still be on disk somewhere else`,
+          );
         }
         await fsp.rm(full, { force: true });
         // Outside the throwing path on purpose. The file IS gone by here, so a
@@ -896,9 +1064,7 @@ function CuratorBody(): JSX.Element {
         }
       },
     });
-    setBusy(undefined);
-    setProgress(undefined);
-    setLines(describeCleanupOutcome(outcome));
+    session.finish(describeCleanupOutcome(outcome));
     setRetire(new Set());
     setArchiveSel(new Set());
     setTick((t) => t + 1);
@@ -984,7 +1150,33 @@ function CuratorBody(): JSX.Element {
       )}
 
       {progress !== undefined && (
-        <p style={{ margin: 0, color: "var(--eh-text-primary)" }}>{progress}</p>
+        <div
+          style={{
+            display: "flex",
+            gap: "var(--eh-sp-2)",
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          <p style={{ margin: 0, color: "var(--eh-text-primary)" }}>{progress}</p>
+          {/*
+            The stop this page has always claimed to have.
+
+            `runSequentially` and `runCleanup` both check their signal between
+            items and report `cancelled`; nothing ever aborted one, so the
+            "Stopped early" line was unreachable code and a curator who
+            started a 900-mod run had no way out but closing Vortex.
+
+            It stops BETWEEN mods, never mid-install — interrupting Vortex
+            halfway through writing a mod is how files get lost, which is the
+            thing this whole page exists to avoid.
+          */}
+          {busy !== undefined && (
+            <Button intent="ghost" onClick={(): void => session.cancel()}>
+              Stop after this one
+            </Button>
+          )}
+        </div>
       )}
 
       {lines.length > 0 && (
@@ -1002,6 +1194,16 @@ function CuratorBody(): JSX.Element {
               {l}
             </p>
           ))}
+          {/*
+            The report OUTLIVES the run and the page now, so it needs a way
+            to be put down — otherwise the last run's lines sit above the next
+            one's forever, and a curator cannot tell which run they describe.
+          */}
+          {busy === undefined && (
+            <Button intent="ghost" onClick={(): void => session.dismiss()}>
+              Dismiss report
+            </Button>
+          )}
         </Card>
       )}
 
@@ -1217,10 +1419,11 @@ function CuratorBody(): JSX.Element {
       <Section
         title="Disk cleanup — 1. Orphaned archives"
         note={
-          "Downloaded files that no installed mod points at, where a newer " +
-          "version of the same mod IS installed. Deleting these changes " +
-          "nothing about your setup — it is only disk. This is where almost " +
-          "all the space is."
+          "Downloaded files that no installed mod points at, where a NEWER " +
+          "file of the same mod is installed. Deleting these changes nothing " +
+          "about your setup — it is only disk, and this is where almost all " +
+          "the space is. Nothing is pre-ticked: the files are deleted " +
+          "permanently, so you choose which."
         }
       >
         {orphans.length === 0 ? (
@@ -1242,21 +1445,38 @@ function CuratorBody(): JSX.Element {
                 intent="danger"
                 disabled={busy !== undefined || archiveRemovals.length === 0}
                 onClick={(): void =>
-                  void applyCleanup(
-                    cleanupSubset({
-                      plan: orphanPlan,
-                      removeMods: [],
-                      deleteArchives: archiveRemovals,
-                    }),
-                  )
+                  void (async (): Promise<void> => {
+                    const ok = await confirm({
+                      title: `Permanently delete ${num(
+                        archiveRemovals.length,
+                      )} archive(s)?`,
+                      text:
+                        `This frees ${formatSize(archiveBytes)} and cannot be ` +
+                        `undone — the files are removed from disk, not sent ` +
+                        `to the recycle bin, and Vortex has no undo.\n\n` +
+                        `No mod is uninstalled and your profile does not ` +
+                        `change. What you lose is the ability to reinstall ` +
+                        `these exact files offline: each one would have to be ` +
+                        `downloaded from Nexus again.`,
+                      confirmLabel: "Delete",
+                    });
+                    if (!ok) return;
+                    await applyCleanup(
+                      cleanupSubset({
+                        plan: orphanPlan,
+                        removeMods: [],
+                        deleteArchives: archiveRemovals,
+                      }),
+                    );
+                  })()
                 }
               >
                 {busy === "cleanup"
                   ? "Deleting..."
-                  : `Delete ${describeTarget(
-                      archiveAim ?? { ids: orphans.map((a) => a.entry.id), from: "all" },
-                      "archive",
-                    )} — frees ${formatSize(archiveBytes)}`}
+                  : archiveRemovals.length === 0
+                    ? "Tick the archives you want deleted"
+                    : `Delete ${num(archiveRemovals.length)} ticked ` +
+                      `archive(s) — frees ${formatSize(archiveBytes)}`}
               </Button>
               <span
                 style={{
@@ -1265,7 +1485,7 @@ function CuratorBody(): JSX.Element {
                   fontSize: "var(--eh-text-sm)",
                 }}
               >
-                Deletes the files permanently. Nothing is uninstalled.
+                Deleted permanently, not recycled. Nothing is uninstalled.
               </span>
             </div>
             <DataTable
@@ -1276,7 +1496,6 @@ function CuratorBody(): JSX.Element {
               limit={200}
               maxHeight={320}
               selection={{ selected: archiveSel, onChange: setArchiveSel }}
-              onTarget={setArchiveAim}
             />
           </>
         )}
@@ -1342,13 +1561,34 @@ function CuratorBody(): JSX.Element {
                 intent="danger"
                 disabled={busy !== undefined || retirePlan.removeMods.length === 0}
                 onClick={(): void =>
-                  void applyCleanup(
-                    cleanupSubset({
-                      plan: retirePlan,
-                      removeMods: retirePlan.removeMods,
-                      deleteArchives: archivesFreedByRemoval(retirePlan),
-                    }),
-                  )
+                  void (async (): Promise<void> => {
+                    const alsoDeleted = archivesFreedByRemoval(retirePlan);
+                    const ok = await confirm({
+                      title: `Remove ${num(
+                        retirePlan.removeMods.length,
+                      )} install(s) from your setup?`,
+                      text:
+                        `Each is uninstalled from this profile, and the ` +
+                        `${num(alsoDeleted.length)} archive(s) that frees are ` +
+                        `then deleted from disk — ${formatSize(
+                          freedByRetiring,
+                        )} in total. Neither step can be undone.\n\n` +
+                        `This CHANGES your setup. If any of these is not ` +
+                        `really an old version — a patch or a variant from the ` +
+                        `same mod page, say — you lose it and would have to ` +
+                        `download it again. Removals happen first, and an ` +
+                        `archive is only deleted once its install is gone.`,
+                      confirmLabel: "Remove",
+                    });
+                    if (!ok) return;
+                    await applyCleanup(
+                      cleanupSubset({
+                        plan: retirePlan,
+                        removeMods: retirePlan.removeMods,
+                        deleteArchives: alsoDeleted,
+                      }),
+                    );
+                  })()
                 }
               >
                 {busy === "cleanup"

@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { describeBulkUpdate, runBulkUpdate } from "./bulkUpdate";
 import type { CuratorMod, UpdateCandidate } from "./profileActions";
+import { UpdateTimeout } from "./updateOneMod";
 
 const mod = (id: string): CuratorMod => ({
   id,
@@ -185,6 +186,7 @@ describe("what the curator reads afterwards", () => {
   it("leads with dropped files and names them", async () => {
     const lines = describeBulkUpdate({
       cancelled: false,
+      notAttempted: 0,
       outcomes: [
         { kind: "updated", mod: mod("fine") },
         {
@@ -203,6 +205,7 @@ describe("what the curator reads afterwards", () => {
     // "38 updated, 2 issues" invites reading the 38 and moving on.
     const lines = describeBulkUpdate({
       cancelled: false,
+      notAttempted: 0,
       outcomes: [
         { kind: "updated", mod: mod("a") },
         { kind: "files-dropped", mod: mod("b"), missing: ["x"] },
@@ -216,13 +219,107 @@ describe("what the curator reads afterwards", () => {
   it("says plainly that unverified is not fine", () => {
     const lines = describeBulkUpdate({
       cancelled: false,
+      notAttempted: 0,
       outcomes: [{ kind: "unverified", mod: mod("a"), why: "no archive" }],
     });
     expect(lines.join(" ")).toContain("Not checked is not the same as fine");
   });
 
   it("mentions an early stop rather than implying the run completed", () => {
-    const lines = describeBulkUpdate({ cancelled: true, outcomes: [] });
+    const lines = describeBulkUpdate({ cancelled: true, outcomes: [], notAttempted: 4 });
     expect(lines.join(" ")).toContain("Stopped early");
+  });
+});
+
+/**
+ * ─── A TIMEOUT IS NOT A PER-MOD FAILURE ────────────────────────────────
+ * Giving up waiting is not Vortex giving up installing. Continuing put the
+ * next install on top of a live one — this loop's one forbidden state,
+ * arriving exactly when things are already going wrong.
+ */
+describe("an update timeout ends the run", () => {
+  it("does not start the next mod", async () => {
+    const started: string[] = [];
+    const report = await runBulkUpdate({
+      candidates: [candidate("a"), candidate("b"), candidate("c")],
+      update: async (c) => {
+        started.push(c.mod.id);
+        if (c.mod.id === "a") {
+          throw new UpdateTimeout("Vortex did not report finishing it.");
+        }
+      },
+      verify: ok,
+    });
+
+    expect(started).toEqual(["a"]);
+    expect(report.halted).toContain("still installing");
+    expect(report.notAttempted).toBe(2);
+    // Not `cancelled` — nobody pressed anything. Merging the two would tell
+    // the curator they stopped a run that stopped itself.
+    expect(report.cancelled).toBe(false);
+  });
+
+  it("still carries on past an ordinary failure", async () => {
+    // The contrast that makes the rule above meaningful: a mod that simply
+    // fails leaves Vortex idle, so the run continues as it always has.
+    const started: string[] = [];
+    const report = await runBulkUpdate({
+      candidates: [candidate("a"), candidate("b")],
+      update: async (c) => {
+        started.push(c.mod.id);
+        if (c.mod.id === "a") throw new Error("archive missing");
+      },
+      verify: ok,
+    });
+
+    expect(started).toEqual(["a", "b"]);
+    expect(report.halted).toBeUndefined();
+    expect(report.notAttempted).toBe(0);
+  });
+
+  it("says what was not attempted, rather than reassuring", async () => {
+    const lines = describeBulkUpdate({
+      cancelled: false,
+      notAttempted: 7,
+      halted: "It timed out.",
+      outcomes: [],
+    });
+    expect(lines.join(" ")).toContain("7 mod(s) were not attempted");
+  });
+});
+
+describe("a reinstall that removed a mod and could not put it back", () => {
+  it("never reports it as merely not updated", async () => {
+    // `"X" did not update` reads as "X is as it was". The mod is gone.
+    const lines = describeBulkUpdate({
+      cancelled: false,
+      notAttempted: 0,
+      outcomes: [
+        {
+          kind: "removed-not-reinstalled",
+          mod: mod("Bodypaints"),
+          why: "the archive could not be read",
+        },
+      ],
+    });
+    const said = lines.join(" ");
+    expect(said).toContain("REMOVED");
+    expect(said).toContain("no longer in your setup");
+    expect(said).not.toContain("did not update");
+  });
+
+  it("puts it above ordinary failures, which are the recoverable kind", async () => {
+    const lines = describeBulkUpdate({
+      cancelled: false,
+      notAttempted: 0,
+      outcomes: [
+        { kind: "failed", mod: mod("Untouched"), why: "no archive" },
+        { kind: "removed-not-reinstalled", mod: mod("Gone"), why: "boom" },
+      ],
+    });
+    const goneAt = lines.findIndex((l) => l.includes("Gone"));
+    const failedAt = lines.findIndex((l) => l.includes("Untouched"));
+    expect(goneAt).toBeGreaterThanOrEqual(0);
+    expect(goneAt).toBeLessThan(failedAt);
   });
 });
