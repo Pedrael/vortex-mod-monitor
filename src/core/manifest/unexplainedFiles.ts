@@ -1,3 +1,5 @@
+import { createHash } from "crypto";
+
 /**
  * ──────────────────────────────────────────────────────────────────────
  * Two different things wear the same verdict, and the curator can't see which.
@@ -157,4 +159,31 @@ export function countKinds(files: readonly UnexplainedFile[]): {
   let added = 0;
   for (const f of files) if (f.kind === "added") added += 1;
   return { added, changed: files.length - added };
+}
+
+
+/**
+ * ──────────────────────────────────────────────────────────────────────
+ * A stable name for "the diverged files, as they were when you answered".
+ *
+ * A decision about a mod's unreproducible files is a decision about THOSE
+ * files. Storing only the answer means a curator who later drops another
+ * patch into the same folder keeps the old verdict, and for "these files are
+ * mine — users don't need them" that is the dangerous direction: the new file
+ * is withheld silently, with no warning and nothing in a diff.
+ *
+ * So the answer is stored against this, and the question reopens when it
+ * moves. Content, not just paths: editing a file in place is exactly the case
+ * a path list cannot see.
+ * ──────────────────────────────────────────────────────────────────────
+ */
+export function fingerprintUnexplained(
+  files: readonly { path: string; size?: number; sha256?: string }[],
+): string {
+  const lines = files
+    .map((f) => `${f.path}\u0000${f.sha256 ?? `size:${f.size ?? -1}`}`)
+    // Sorted, because the order files come back in is an implementation
+    // detail of the walk and must not read as a change.
+    .sort();
+  return createHash("sha256").update(lines.join("\n"), "utf8").digest("hex");
 }

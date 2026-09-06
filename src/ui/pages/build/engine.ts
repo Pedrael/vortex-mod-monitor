@@ -113,6 +113,7 @@ import {
   type CollectionConfig,
   type ExternalModConfigEntry,
   type PublishedCollectionSummary,
+  decidedPostProcessing,
 } from "../../../core/manifest/collectionConfig";
 import {
   collectExternalHints,
@@ -1372,6 +1373,11 @@ export async function runBuildPipeline(
     const repackedIds = new Set(repackedBundles.map((b) => b.modId));
     const selfCheck = await runSelfChecks(state, gameId, mods, {
       shipsOwnBytes: (m) => repackedIds.has(m.id),
+      // Every answer the curator has already given, and the diverged files
+      // each was given about. Read from the config rather than the overlaid
+      // mods: only `postProcessed` and `mirrored` reach a mod, so a bundling
+      // decision was invisible here and got re-asked forever.
+      decided: decidedPostProcessing(collectionConfig),
       ...(signal !== undefined ? { signal } : {}),
       onProgress: (done, total, modName) => {
         onProgress?.({

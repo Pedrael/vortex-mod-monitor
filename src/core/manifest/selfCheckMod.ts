@@ -42,6 +42,7 @@ import { verifyStagingAgainstArchive } from "./verifyAgainstArchive";
 import {
   UNEXPLAINED_EXAMPLES,
   classifyUnexplained,
+  fingerprintUnexplained,
   type UnexplainedFile,
 } from "./unexplainedFiles";
 
@@ -75,6 +76,13 @@ export type SelfCheckReport = {
    * Capped: this is evidence for a human, not a manifest.
    */
   unexplainedExamples: UnexplainedFile[];
+  /**
+   * A stable name for the whole diverged set, not just the examples above.
+   *
+   * What a curator's answer is recorded against, so the question can reopen
+   * when these files change and stay quiet when they do not.
+   */
+  unexplainedFingerprint?: string;
   /**
    * Archive files with no staged counterpart that the archive's own shape does
    * not explain — the omission signal for mods with no FOMOD script to replay.
@@ -141,19 +149,29 @@ function findModuleConfigEntry(listing: ArchiveListing): string | undefined {
 function unexplainedFacts(
   containment: ArchiveVerificationResult,
   listing: ArchiveListing,
-): { unexplained: number; unexplainedExamples: UnexplainedFile[] } {
+): {
+  unexplained: number;
+  unexplainedExamples: UnexplainedFile[];
+  unexplainedFingerprint?: string;
+} {
+  // The WHOLE set, before the cap. The examples are evidence for a human;
+  // the fingerprint has to cover every file the answer is about, or a change
+  // past the cap would keep a stale decision alive.
+  const all = containment.verdicts
+    .filter((v) => v.kind === "unexplained")
+    .map((v) => v.file);
   return {
     unexplained: containment.unexplained,
     // Classified against the archive rather than reported as bare paths: a
     // path alone cannot tell the curator whether declaring it means the user
     // goes WITHOUT the file or merely gets the archive's version of it.
     unexplainedExamples: classifyUnexplained(
-      containment.verdicts
-        .filter((v) => v.kind === "unexplained")
-        .slice(0, UNEXPLAINED_EXAMPLES)
-        .map((v) => v.file),
+      all.slice(0, UNEXPLAINED_EXAMPLES),
       listing,
     ),
+    ...(all.length > 0
+      ? { unexplainedFingerprint: fingerprintUnexplained(all) }
+      : {}),
   };
 }
 

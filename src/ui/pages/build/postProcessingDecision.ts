@@ -59,21 +59,36 @@ export type PostProcessingChoice =
  */
 export function overrideForChoice(
   choice: PostProcessingChoice,
-  opts: { isNexusMod: boolean },
+  opts: {
+    isNexusMod: boolean;
+    /**
+     * The diverged files being answered about.
+     *
+     * Stored with the answer so the question reopens when they change. An
+     * answer with no fingerprint is still an answer — it simply never
+     * reopens, which is what entries written before this existed do.
+     */
+    fingerprint?: string;
+  },
 ): Partial<ExternalModConfigEntry> {
+  const about =
+    opts.fingerprint === undefined
+      ? {}
+      : { postProcessingDecidedFor: opts.fingerprint };
   if (choice === "mirror") {
     // Deliberately NOT treatAsExternal. A mirrored mod is a normal Nexus mod
     // that gets corrected after install — flagging it external would stop the
     // archive being downloaded at all, which is the one thing this choice
     // exists to preserve.
-    return { mirrored: true };
+    return { mirrored: true, ...about };
   }
   if (choice === "declare") {
-    return { postProcessed: true };
+    return { postProcessed: true, ...about };
   }
   return {
     bundled: true,
     ...(opts.isNexusMod ? { treatAsExternal: true } : {}),
+    ...about,
   };
 }
 

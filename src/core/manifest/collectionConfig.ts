@@ -84,6 +84,19 @@ export type ExternalModConfigEntry = {
   /** When true, the source archive ships inside the `.ehcoll` at `bundled/<sha256>.<ext>`. Default false. */
   bundled?: boolean;
   /**
+   * The diverged files this mod's post-processing answer was given about.
+   *
+   * An answer is about the files as they were. Without this, a curator who
+   * later drops another patch into the same folder keeps the old verdict —
+   * and for "users don't need them" that means the new file is withheld
+   * silently. With it, the question reopens exactly when the files move.
+   *
+   * Absent on entries answered before this existed. Those are honoured rather
+   * than re-asked: nagging about every past decision on upgrade would be a
+   * worse trade than trusting an answer that was correct when it was given.
+   */
+  postProcessingDecidedFor?: string;
+  /**
    * Reproduce this mod's staging folder on the user's machine, exactly.
    *
    * The third answer to "my staging differs from my archive", and the one that
@@ -806,6 +819,11 @@ const EXTERNAL_MOD_FIELDS: {
 } = {
   name: (raw, path, errors) => expectStringField(raw, path, errors),
   instructions: (raw, path, errors) => expectStringField(raw, path, errors),
+  // A sha256 of the diverged files an answer was given about. Read as a plain
+  // string: an unrecognisable value simply fails to match the current
+  // fingerprint, which reopens the question — the safe direction.
+  postProcessingDecidedFor: (raw, path, errors) =>
+    expectStringField(raw, path, errors),
   url: (raw, path, errors) => expectStringField(raw, path, errors),
   bundled: (raw, path, errors) => {
     if (typeof raw !== "boolean") {
@@ -971,4 +989,36 @@ export async function listNeverBuiltConfigs(
     }
   }
   return out.sort((a, b) => a.slug.localeCompare(b.slug));
+}
+
+
+/**
+ * ──────────────────────────────────────────────────────────────────────
+ * Mods whose post-processing question has been ANSWERED, and what about.
+ *
+ * All three answers count. Only `postProcessed` used to, which meant the two
+ * other buttons wrote a config entry, said "saved", and asked the same
+ * question again on the next build — the answer stuck everywhere except in
+ * the one place that decides whether to ask.
+ *
+ * The value is the fingerprint the answer was given against, or `undefined`
+ * for entries written before fingerprints existed. Those are honoured: asking
+ * a curator to re-answer every past decision because we started recording
+ * more is a worse trade than trusting an answer that was right when given.
+ * ──────────────────────────────────────────────────────────────────────
+ */
+export function decidedPostProcessing(
+  config: CollectionConfig,
+): Map<string, string | undefined> {
+  const out = new Map<string, string | undefined>();
+  for (const [modId, entry] of Object.entries(config.externalMods ?? {})) {
+    if (
+      entry?.postProcessed === true ||
+      entry?.mirrored === true ||
+      entry?.bundled === true
+    ) {
+      out.set(modId, entry.postProcessingDecidedFor);
+    }
+  }
+  return out;
 }

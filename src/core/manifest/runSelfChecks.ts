@@ -58,6 +58,15 @@ export type RunSelfChecksOptions = {
    * that does not know which mods those are.
    */
   shipsOwnBytes?: (mod: AuditorMod) => boolean;
+  /**
+   * Mods already answered, and the fingerprint each was answered against.
+   *
+   * Built by the caller from the collection config — see
+   * `decidedPostProcessing`. Absent means "derive what you can from the mods",
+   * which is weaker: it cannot see a bundling decision and has no fingerprint
+   * to reopen on.
+   */
+  decided?: ReadonlyMap<string, string | undefined>;
 };
 
 /**
@@ -125,6 +134,21 @@ export type PostProcessingCandidate = {
    * user's folder would be reconciled against nothing.
    */
   canMirror: boolean;
+  /**
+   * A stable name for the diverged files being asked about.
+   *
+   * Recorded with the answer so the question can reopen when they change, and
+   * stay shut when they do not.
+   */
+  fingerprint?: string;
+  /**
+   * This mod was answered before, and its diverged files have changed since.
+   *
+   * The old answer is not silently reapplied: for "users don't need them"
+   * that would withhold a file the curator added afterwards, with nothing to
+   * see. So it is asked again, and said to be a re-ask rather than a new one.
+   */
+  reopened: boolean;
 };
 
 /**
@@ -135,12 +159,19 @@ export type PostProcessingCandidate = {
  */
 export function findPostProcessingCandidates(
   reports: readonly SelfCheckReport[],
-  declared: ReadonlySet<string>,
+  /**
+   * modId → the fingerprint that mod was answered against.
+   *
+   * A key with an `undefined` value means "answered, before fingerprints were
+   * recorded" and closes the question. A key whose value differs from the
+   * report's current fingerprint reopens it.
+   */
+  decided: ReadonlyMap<string, string | undefined>,
   /** Mod ids whose staging was captured with a hash for every file. */
   mirrorable: ReadonlySet<string> = new Set(),
 ): PostProcessingCandidate[] {
   return reports
-    .filter((r) => r.unexplained > 0 && !declared.has(r.modId))
+    .filter((r) => r.unexplained > 0 && !isSettled(r, decided))
     .sort((a, b) => b.unexplained - a.unexplained)
     .map((r) => ({
       modId: r.modId,
@@ -148,15 +179,34 @@ export function findPostProcessingCandidates(
       unexplained: r.unexplained,
       files: r.unexplainedExamples,
       canMirror: mirrorable.has(r.modId),
+      ...(r.unexplainedFingerprint !== undefined
+        ? { fingerprint: r.unexplainedFingerprint }
+        : {}),
+      reopened: decided.has(r.modId),
     }));
+}
+
+/** Answered, and about the same files it was answered about. */
+function isSettled(
+  report: SelfCheckReport,
+  decided: ReadonlyMap<string, string | undefined>,
+): boolean {
+  if (!decided.has(report.modId)) return false;
+  const answeredFor = decided.get(report.modId);
+  // Answered before fingerprints were recorded, or against a report that
+  // could not produce one. Honour it rather than nag.
+  if (answeredFor === undefined) return true;
+  if (report.unexplainedFingerprint === undefined) return true;
+  return answeredFor === report.unexplainedFingerprint;
 }
 
 export function describeUndeclaredPostProcessing(
   reports: readonly SelfCheckReport[],
-  declared: ReadonlySet<string>,
+  /** Same map as `findPostProcessingCandidates`: any answer closes this. */
+  decided: ReadonlyMap<string, string | undefined>,
 ): string | undefined {
   const undeclared = reports
-    .filter((r) => r.unexplained > 0 && !declared.has(r.modId))
+    .filter((r) => r.unexplained > 0 && !isSettled(r, decided))
     .sort((a, b) => b.unexplained - a.unexplained);
   if (undeclared.length === 0) return undefined;
 
@@ -378,13 +428,21 @@ export async function runSelfChecks(
   // archive, fails identically, and is recorded broken. Declaring the mod
   // post-processed is what tells the driver those files are yours; bundling it
   // ships them instead. Doing neither ships a collection that cannot verify.
-  const declaredIds = new Set(
-    mods.filter((m) => m.postProcessed === true).map((m) => m.id),
-  );
-  const undeclaredWarning = describeUndeclaredPostProcessing(
-    reports,
-    declaredIds,
-  );
+  /**
+   * What the curator has already answered.
+   *
+   * Supplied by the caller, which holds the collection config. The fallback
+   * derives what it can from the overlaid mods so a caller that passes
+   * nothing keeps the old behaviour rather than re-asking everything.
+   */
+  const decided =
+    opts?.decided ??
+    new Map<string, string | undefined>(
+      mods
+        .filter((m) => m.postProcessed === true || m.mirrored === true)
+        .map((m) => [m.id, undefined] as const),
+    );
+  const undeclaredWarning = describeUndeclaredPostProcessing(reports, decided);
   if (undeclaredWarning !== undefined) warnings.push(undeclaredWarning);
   // A mod can only be mirrored when every one of its staged files carries a
   // hash — i.e. when the build ran `thorough`. Offering the choice otherwise
@@ -400,7 +458,7 @@ export async function runSelfChecks(
   );
   const postProcessingCandidates = findPostProcessingCandidates(
     reports,
-    declaredIds,
+    decided,
     mirrorable,
   );
 

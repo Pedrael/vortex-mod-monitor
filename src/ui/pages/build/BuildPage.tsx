@@ -573,6 +573,11 @@ function BuildWizard(props: BuildWizardProps): JSX.Element {
               modId: candidate.modId,
               patch: overrideForChoice(choice, {
                 isNexusMod: mod !== undefined && isNexusMod(mod),
+                // What this answer is ABOUT. Without it the answer would
+                // apply for ever, including to files added afterwards.
+                ...(candidate.fingerprint !== undefined
+                  ? { fingerprint: candidate.fingerprint }
+                  : {}),
               }),
             });
           }}
@@ -2843,6 +2848,27 @@ function PostProcessingDecisions(props: {
                 </span>
               </div>
 
+              {c.reopened && (
+                // Not a new question. The curator answered this mod before and
+                // the files it was about have changed since, so the old answer
+                // is deliberately not reapplied — reapplying "users don't need
+                // them" to a file added afterwards withholds it in silence.
+                <p
+                  style={{
+                    margin: 0,
+                    padding: "var(--eh-sp-2)",
+                    borderLeft: "3px solid var(--eh-info)",
+                    color: "var(--eh-text-secondary)",
+                    fontSize: "var(--eh-text-sm)",
+                  }}
+                >
+                  You answered this mod before, and these files have changed
+                  since. Your previous answer is still saved and still applies
+                  until you change it here — this is asking again because it
+                  was given about different files.
+                </p>
+              )}
+
               {/*
                 Evidence, on screen. The decision is unanswerable without it —
                 and a bare path is not enough evidence. "Common Clothes and
@@ -2888,7 +2914,9 @@ function PostProcessingDecisions(props: {
 
               {answer !== undefined ? (
                 <span style={{ color: "var(--eh-text-secondary)" }}>
-                  ✓ {describeChoice(answer, c.unexplained, countKinds(c.files)).label} — saved.
+                  ✓ {describeChoice(answer, c.unexplained, countKinds(c.files)).label}
+                  {" — saved. Applies from your next build; the package you "}
+                  {"just built is unchanged."}
                 </span>
               ) : (
                 // Side by side, so the two answers read as alternatives to

@@ -15,6 +15,10 @@ import { describe, expect, it } from "vitest";
 import { describeUndeclaredPostProcessing } from "./runSelfChecks";
 import type { SelfCheckReport } from "./selfCheckMod";
 
+/** "These mods were answered, with no fingerprint recorded." */
+const answered = (ids: string[]): ReadonlyMap<string, string | undefined> =>
+  new Map(ids.map((id) => [id, undefined] as const));
+
 const report = (
   modName: string,
   unexplained: number,
@@ -30,7 +34,7 @@ const report = (
     omissionLeads: [],
   }) as unknown as SelfCheckReport;
 
-const none = new Set<string>();
+const none = answered([]);
 
 describe("naming the mods that cannot verify", () => {
   it("says nothing when every mod is reproducible", () => {
@@ -62,14 +66,14 @@ describe("naming the mods that cannot verify", () => {
     // asked, or the warning becomes noise they learn to scroll past.
     const reports = [report("xlodgen", 1608, "mod-1")];
     expect(
-      describeUndeclaredPostProcessing(reports, new Set(["mod-1"])),
+      describeUndeclaredPostProcessing(reports, answered(["mod-1"])),
     ).toBeUndefined();
   });
 
   it("keeps warning about the ones still undeclared", () => {
     const text = describeUndeclaredPostProcessing(
       [report("Declared", 5, "mod-1"), report("Forgotten", 7, "mod-2")],
-      new Set(["mod-1"]),
+      answered(["mod-1"]),
     )!;
     expect(text).toContain("Forgotten");
     expect(text).not.toContain("Declared");

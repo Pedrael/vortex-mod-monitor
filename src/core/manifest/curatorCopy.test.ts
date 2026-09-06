@@ -34,6 +34,10 @@ import { describe, expect, it } from "vitest";
 import { describeUndeclaredPostProcessing } from "./runSelfChecks";
 import type { SelfCheckReport } from "./selfCheckMod";
 
+/** "These mods were answered, with no fingerprint recorded." */
+const answered = (ids: string[]): ReadonlyMap<string, string | undefined> =>
+  new Map(ids.map((id) => [id, undefined] as const));
+
 const report = (
   modId: string,
   modName: string,
@@ -56,7 +60,7 @@ describe("the undeclared-post-processing warning", () => {
   const line = (): string =>
     describeUndeclaredPostProcessing(
       [report("a", "sse-xlodgen-output-pbr", 1608), report("b", "Immersive Armours", 2)],
-      new Set<string>(),
+      answered([]),
     ) ?? "";
 
   it("says how many mods and names the worst of them", () => {
@@ -78,7 +82,7 @@ describe("the undeclared-post-processing warning", () => {
     expect(
       describeUndeclaredPostProcessing(
         [report("a", "x", 5)],
-        new Set(["a"]),
+        answered(["a"]),
       ),
     ).toBeUndefined();
   });
