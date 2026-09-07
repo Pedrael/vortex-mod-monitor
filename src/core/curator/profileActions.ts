@@ -126,6 +126,90 @@ const shown = (v: string | undefined): string => v ?? "unknown";
  * Frozen mods are filtered HERE rather than at the call site, so no future
  * caller can offer to update one by forgetting to ask.
  */
+/**
+ * A mod Nexus says is out of date, that we cannot update FOR the curator.
+ *
+ * `newestVersion` and `newestFileId` are set by two different parts of
+ * Vortex's update check and one can arrive without the other: the version
+ * comes straight off the mod page, while the file id is resolved by walking
+ * `files.file_updates`, a chain that is broken or absent for plenty of real
+ * mods. Measured on the profile this was written for: 271 mods carrying a
+ * `newestVersion` and not one `newestFileId` in the same state.
+ */
+export type ManualUpdate = {
+  mod: CuratorMod;
+  fromVersion: string;
+  toVersion: string;
+  /** The mod page, when we know the id — the only place they can act. */
+  url?: string;
+};
+
+/**
+ * ─── UPDATES WE CAN SEE BUT NOT TAKE ───────────────────────────────────
+ * `findUpdatable` requires a `newestFileId`, because that is the argument
+ * Vortex's `mod-update` event needs — without one there is nothing to ask
+ * for. That requirement is correct and must not be relaxed.
+ *
+ * What was wrong is that such mods then appeared NOWHERE. A curator with a
+ * hundred out-of-date mods saw a handful in the update list and reasonably
+ * concluded the check was broken, when in fact those were the only ones that
+ * could be automated. An update we cannot perform is still an update the
+ * curator needs to know about — it is the difference between "you are up to
+ * date" and "twelve of these need a visit to their mod page".
+ *
+ * Deliberately kept apart from `UpdateCandidate` rather than folded in with a
+ * nullable file id: the bulk updater must never receive one of these, and a
+ * separate type makes that a compile error instead of a runtime check.
+ */
+export function findManualUpdates(
+  mods: readonly CuratorMod[],
+): ManualUpdate[] {
+  const out: ManualUpdate[] = [];
+  const seen = new Set<number>();
+
+  for (const mod of mods) {
+    if (mod.frozenAtVersion !== undefined) continue;
+    // Anything the automated path can take belongs there, not here.
+    if (
+      mod.nexusFileId !== undefined &&
+      mod.newestFileId !== undefined &&
+      mod.newestFileId > mod.nexusFileId
+    ) {
+      continue;
+    }
+    const newest = mod.newestVersion?.trim();
+    const current = mod.version?.trim();
+    if (newest === undefined || newest.length === 0) continue;
+    // Vortex only records a `newestVersion` when it believes one exists, so
+    // "differs" is the signal. Compared case-insensitively because "1.0A"
+    // and "1.0a" are the same release and reporting that as an update would
+    // be noise on every refresh.
+    if (current !== undefined && newest.toLowerCase() === current.toLowerCase()) {
+      continue;
+    }
+
+    // One per page, like the automated list, so several installs of the same
+    // mod do not each demand a visit to the same page.
+    if (mod.nexusModId !== undefined) {
+      if (seen.has(mod.nexusModId)) continue;
+      seen.add(mod.nexusModId);
+    }
+
+    out.push({
+      mod,
+      fromVersion: shown(mod.version),
+      toVersion: newest,
+      ...(mod.nexusModId !== undefined && mod.downloadGame !== undefined
+        ? {
+            url: `https://www.nexusmods.com/${mod.downloadGame}/mods/${mod.nexusModId}`,
+          }
+        : {}),
+    });
+  }
+
+  return out;
+}
+
 export function findUpdatable(mods: readonly CuratorMod[]): UpdateCandidate[] {
   const best = new Map<number, CuratorMod>();
   const noPage: CuratorMod[] = [];

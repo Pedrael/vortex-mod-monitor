@@ -12,6 +12,7 @@ import {
   findDuplicates,
   findEndorsable,
   findFrozen,
+  findManualUpdates,
   findUpdatable,
   findUpdateShadowed,
   summarizeProfile,
@@ -265,5 +266,78 @@ describe("two installs of one mod, both with an update waiting", () => {
     expect(
       findUpdatable([mod({ id: "x", nexusFileId: 1, newestFileId: 2 })]),
     ).toHaveLength(1);
+  });
+});
+
+describe("updates we can see but not take", () => {
+  const m = (over: Partial<CuratorMod> & { id: string }): CuratorMod =>
+    ({ name: over.id, enabled: true, modType: "", ...over }) as CuratorMod;
+
+  it("surfaces a mod with a newer VERSION but no file id", () => {
+    /**
+     * The reported bug. `newestVersion` and `newestFileId` come from two
+     * different parts of Vortex's update check, and the file id is resolved
+     * by walking a chain that is broken for plenty of real mods. Measured on
+     * the real profile: 271 mods carrying a newestVersion and not one
+     * newestFileId. Those appeared NOWHERE, so the curator saw a handful of
+     * updates and concluded the check was broken.
+     */
+    const found = findManualUpdates([
+      m({ id: "a", nexusModId: 7, downloadGame: "skyrimse", version: "1.0", newestVersion: "1.4" }),
+    ]);
+    expect(found).toHaveLength(1);
+    expect(found[0]?.toVersion).toBe("1.4");
+    expect(found[0]?.url).toBe("https://www.nexusmods.com/skyrimse/mods/7");
+  });
+
+  it("does NOT duplicate what the automated list already offers", () => {
+    // A mod with a usable file id belongs in findUpdatable. Listing it twice
+    // would make the curator update it, then think it failed.
+    const mod = m({
+      id: "a", nexusModId: 7, version: "1.0", newestVersion: "1.4",
+      nexusFileId: 10, newestFileId: 20,
+    });
+    expect(findUpdatable([mod])).toHaveLength(1);
+    expect(findManualUpdates([mod])).toHaveLength(0);
+  });
+
+  it("stays quiet when the version is the same", () => {
+    expect(
+      findManualUpdates([m({ id: "a", nexusModId: 7, version: "1.4", newestVersion: "1.4" })]),
+    ).toHaveLength(0);
+  });
+
+  it("ignores a case-only difference", () => {
+    // "1.0A" and "1.0a" are one release; reporting it would put a permanent
+    // false entry in the list.
+    expect(
+      findManualUpdates([m({ id: "a", nexusModId: 7, version: "1.0a", newestVersion: "1.0A" })]),
+    ).toHaveLength(0);
+  });
+
+  it("never offers a frozen mod", () => {
+    // Same rule as the automated path: freezing is the curator saying no.
+    expect(
+      findManualUpdates([
+        m({ id: "a", nexusModId: 7, version: "1.0", newestVersion: "2.0", frozenAtVersion: "1.0" }),
+      ]),
+    ).toHaveLength(0);
+  });
+
+  it("asks for one visit per mod page, not one per install", () => {
+    // Two installs of the same mod are one trip to one page.
+    const found = findManualUpdates([
+      m({ id: "old", nexusModId: 7, version: "1.0", newestVersion: "3.0" }),
+      m({ id: "new", nexusModId: 7, version: "2.0", newestVersion: "3.0" }),
+    ]);
+    expect(found).toHaveLength(1);
+  });
+
+  it("still lists a mod with no page, without inventing a link", () => {
+    const found = findManualUpdates([
+      m({ id: "a", version: "1.0", newestVersion: "2.0" }),
+    ]);
+    expect(found).toHaveLength(1);
+    expect(found[0]?.url).toBeUndefined();
   });
 });

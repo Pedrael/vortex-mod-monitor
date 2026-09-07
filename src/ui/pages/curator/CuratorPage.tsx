@@ -20,6 +20,7 @@ import {
   findEndorsable,
   findFrozen,
   findUpdatable,
+  findManualUpdates,
   findUpdateShadowed,
   summarizeProfile,
   type CuratorMod,
@@ -248,6 +249,7 @@ function Section(props: {
 type UpdateRow = ReturnType<typeof findUpdatable>[number];
 type FrozenRow = ReturnType<typeof findFrozen>[number];
 type ShadowRow = ReturnType<typeof findUpdateShadowed>[number];
+type ManualRow = ReturnType<typeof findManualUpdates>[number];
 type RetireRow = ReturnType<typeof findSupersededMods>[number];
 type DuplicateRow = ReturnType<typeof findDuplicates>[number];
 type RemovalRow = CleanupPlan["removeMods"][number];
@@ -304,6 +306,26 @@ const SHADOW_COLUMNS: Column<ShadowRow>[] = [
     key: "newer",
     header: "Newer copy already installed",
     value: (r) => r.newerInstall.name,
+  },
+];
+
+const MANUAL_COLUMNS: Column<ManualRow>[] = [
+  { key: "name", header: "Mod", value: (r) => r.mod.name },
+  { key: "from", header: "You have", value: (r) => r.fromVersion, width: 130 },
+  { key: "to", header: "Nexus has", value: (r) => r.toVersion, width: 130 },
+  {
+    key: "page",
+    header: "Mod page",
+    width: 220,
+    value: (r) => r.url ?? "",
+    render: (r) =>
+      r.url === undefined ? (
+        <span style={{ color: "var(--eh-text-muted)" }}>no page recorded</span>
+      ) : (
+        <a href={r.url} target="_blank" rel="noreferrer">
+          open on Nexus
+        </a>
+      ),
   },
 ];
 
@@ -400,6 +422,7 @@ const ARCHIVE_COLUMNS: Column<ArchiveRow>[] = [
 const updateId = (c: UpdateRow): string => c.mod.id;
 const frozenId = (f: FrozenRow): string => f.mod.id;
 const shadowId = (r: ShadowRow): string => r.mod.id;
+const manualId = (r: ManualRow): string => r.mod.id;
 const curatorModId = (m: CuratorMod): string => m.id;
 const retireId = (c: RetireRow): string => c.mod.id;
 const duplicateId = (g: DuplicateRow): string => String(g.nexusModId);
@@ -496,6 +519,16 @@ function CuratorBody(): JSX.Element {
    * something the curator reads rather than something they notice missing.
    */
   const shadowed = React.useMemo(() => findUpdateShadowed(mods), [mods]);
+  /**
+   * Out of date, but not automatable.
+   *
+   * Vortex sets `newestVersion` and `newestFileId` from two different parts
+   * of its update check, and the file id — the one `mod-update` actually
+   * needs — is missing for plenty of real mods. Those used to appear
+   * NOWHERE, so a curator with a hundred out-of-date mods saw a handful and
+   * concluded the check was broken.
+   */
+  const manualUpdates = React.useMemo(() => findManualUpdates(mods), [mods]);
   const endorsable = React.useMemo(() => findEndorsable(mods), [mods]);
 
   const ext = api as unknown as EmitAndAwait;
@@ -1101,7 +1134,25 @@ function CuratorBody(): JSX.Element {
         <Button intent="ghost" onClick={(): void => void refreshUpdates()}>
           Re-check Nexus for updates
         </Button>
-        <Button intent="ghost" onClick={(): void => setTick((t) => t + 1)}>
+        <Button
+          intent="ghost"
+          onClick={(): void => {
+            setTick((t) => t + 1);
+            /**
+             * Reload re-reads Vortex; it does not ask Nexus anything. When
+             * nothing has changed on the machine, nothing on screen moves —
+             * so with no feedback at all it was indistinguishable from a dead
+             * button, and got reported as one. Say what was read.
+             */
+            setNote(
+              `Re-read ${num(mods.length)} mod(s) from Vortex: ` +
+                `${num(updatable.length)} updatable, ` +
+                `${num(manualUpdates.length)} need a manual update, ` +
+                `${num(frozen.length)} frozen. This reads Vortex only — use ` +
+                `"Re-check Nexus for updates" to ask Nexus itself.`,
+            );
+          }}
+        >
           Reload
         </Button>
         <Button
@@ -1274,6 +1325,35 @@ function CuratorBody(): JSX.Element {
               noun="older install"
               limit={100}
               maxHeight={240}
+            />
+          </div>
+        )}
+
+        {manualUpdates.length > 0 && (
+          <div style={{ marginTop: "var(--eh-sp-3)" }}>
+            <p
+              style={{
+                margin: "0 0 var(--eh-sp-1)",
+                padding: "var(--eh-sp-2)",
+                borderLeft: "3px solid var(--eh-warning)",
+                color: "var(--eh-text-secondary)",
+                fontSize: "var(--eh-text-sm)",
+              }}
+            >
+              {num(manualUpdates.length)} mod(s) have a newer version on Nexus
+              that Event Horizon CANNOT update for you. Vortex knows the new
+              version number but not which file it is — the update button
+              needs a file id, and Nexus did not give it one. These are real
+              updates; they just have to be done from the mod page. Nothing
+              above is missing them, and nothing here is a duplicate of it.
+            </p>
+            <DataTable
+              rows={manualUpdates}
+              idOf={manualId}
+              columns={MANUAL_COLUMNS}
+              noun="manual update"
+              limit={200}
+              maxHeight={320}
             />
           </div>
         )}
