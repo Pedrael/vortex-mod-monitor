@@ -1031,6 +1031,22 @@ export function describeMissingArchives(missing: AuditorMod[]): string[] {
  * those writes are read-only-state changes that the curator can
  * trivially overwrite by clicking Build again.
  */
+/**
+ * The build refused to produce a package, and why.
+ *
+ * A distinct class so the page can render the reason as guidance rather than
+ * as a crash — this is not a failure of the build, it is the build declining
+ * to make something that would not work.
+ */
+export class BuildRefusedError extends Error {
+  readonly code: string;
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = "BuildRefusedError";
+    this.code = code;
+  }
+}
+
 export async function runBuildPipeline(
   api: types.IExtensionApi,
   context: BuildContext,
@@ -1660,6 +1676,48 @@ export async function runBuildPipeline(
     flagPluginNames.length,
     REGULAR_PLUGIN_LIMIT,
   );
+
+  /**
+   * ─── REFUSE, RATHER THAN SHIP SOMETHING BROKEN ──────────────────────
+   * Both rules are checked here because this is the first point where the
+   * answers exist, and BEFORE the manifest is assembled or anything is
+   * written — so a refusal costs the curator a retry, not a rebuild.
+   *
+   * A package with no plugin order is not a degraded collection, it is a
+   * broken one: the player installs many gigabytes, the load order is
+   * whatever LOOT invents, and the ESL flags that let it load at all were
+   * never recorded. That shipped ten times before the store bug was found,
+   * and nothing failed on either side. This is the guard that makes the NEXT
+   * cause of an empty order impossible to ship quietly, whatever it is.
+   */
+  const { preflightRefusal } = await import(
+    "../../../core/manifest/buildPreflight"
+  );
+  const { supportsPluginsTxt } = await import("../../../core/comparePlugins");
+  const refusal = preflightRefusal({
+    gameId,
+    usesPluginsTxt: supportsPluginsTxt(gameId),
+    plugins:
+      pluginsTxtContent === undefined
+        ? []
+        : parsePluginsTxt(pluginsTxtContent).map((entry) => ({
+            name: entry.name,
+            enabled: entry.enabled,
+            // Absent stays absent: an unreadable header is an unknown, and
+            // the limit check must never refuse a build over one.
+            ...(capturedFlags.light[entry.name.toLowerCase()] !== undefined
+              ? { light: capturedFlags.light[entry.name.toLowerCase()]! }
+              : {}),
+          })),
+  });
+  if (refusal !== undefined) {
+    ehLog("error", "build.refused", {
+      gameId,
+      code: refusal.code,
+      plugins: flagPluginNames.length,
+    });
+    throw new BuildRefusedError(refusal.code, refusal.message);
+  }
 
   // ── 3. Build the manifest ──────────────────────────────────────────────
   checkAbort();

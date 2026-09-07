@@ -105,6 +105,7 @@ import type { VerificationLevel } from "../../../types/ehcoll";
 import { ehLog } from "../../../core/logging/ehLog";
 import {
   loadBuildContext,
+  BuildRefusedError,
   runBuildPipeline,
   type BuildContext,
   type BuildPipelineResult,
@@ -1284,6 +1285,33 @@ class BuildSession {
           // Cancellation rewinds to the form so the curator can
           // tweak and try again — the autosaved draft is untouched.
           this.setState(formSnapshot);
+          return;
+        }
+        /**
+         * ─── A REFUSAL IS NOT A CRASH ───────────────────────────────────
+         * The pipeline declines to build a package that would not work — no
+         * plugin order, or a profile already over the game's plugin limit.
+         * Routing that into the error state would render a stack trace and a
+         * "report this" button for something the curator can simply fix, and
+         * the report we would get is "Event Horizon crashed on build".
+         *
+         * So it rewinds to the form, like a cancellation does, and the reason
+         * goes in the same place every other "fix this and try again" message
+         * does. Checked by NAME as well as instance: the pipeline is reached
+         * through a dynamic import in places, and a class loaded twice fails
+         * instanceof while still being the same error.
+         */
+        const refused =
+          err instanceof BuildRefusedError ||
+          (err instanceof Error && err.name === "BuildRefusedError");
+        if (refused) {
+          ehLog("info", "build.refused.to-form", {
+            code: (err as { code?: string }).code,
+          });
+          this.setState({
+            ...formSnapshot,
+            validationError: (err as Error).message,
+          });
           return;
         }
         ehLog("error", "build.pipeline.fail", { err });
