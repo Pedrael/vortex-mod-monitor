@@ -56,7 +56,7 @@ import {
   type VortexInstallerChoices,
 } from "./installerChoices";
 
-import { extractZipEntryToFile } from "../manifest/readZip";
+import { extractZipEntryToFile, listZipEntries } from "../manifest/readZip";
 import { looksLikeWine } from "./checkSevenZipHealth";
 import { stallBudgetMs, type StallPhase } from "./timeBudgets";
 import { classifyAttempt, backoffMs } from "./downloadFailureShape";
@@ -1279,6 +1279,38 @@ function waitForInstallCompletion(
  * `.rar`, and unpacking THAT is Vortex's installer's work, through Vortex's
  * own 7z. We just hand it the archive.
  */
+/**
+ * The bundled entry whose sha256 matches, whatever extension it carries.
+ *
+ * `undefined` when the package genuinely does not hold that archive — which
+ * is a real failure and must stay one. Only the EXTENSION is forgiven here;
+ * the sha still has to match exactly, so this cannot silently substitute a
+ * different archive.
+ */
+async function findBundledEntryBySha(
+  ehcollZipPath: string,
+  askedFor: string,
+): Promise<string | undefined> {
+  const m = /^bundled\/([0-9a-f]{64})(?:\.|$)/i.exec(askedFor);
+  if (m === null) return undefined;
+  const sha = m[1]!.toLowerCase();
+  try {
+    const entries = await listZipEntries(ehcollZipPath);
+    const prefix = `bundled/${sha}`;
+    const hit = entries.find((e) => {
+      const name = e.name.toLowerCase();
+      // `bundled/<sha>` exactly, or `bundled/<sha>.<anything>`. Never a
+      // longer sha that merely starts with this one.
+      return name === prefix || name.startsWith(`${prefix}.`);
+    });
+    return hit?.name;
+  } catch {
+    // A package we cannot list is a package we cannot recover from; the
+    // caller's original error is the honest one to report.
+    return undefined;
+  }
+}
+
 export async function extractBundledFromEhcoll(
   ehcollZipPath: string,
   bundledZipEntry: string,
@@ -1295,10 +1327,41 @@ export async function extractBundledFromEhcoll(
     try {
       await extractZipEntryToFile(ehcollZipPath, bundledZipEntry, extractedPath);
     } catch (err) {
-      throw new Error(
-        `Could not extract "${bundledZipEntry}" from "${ehcollZipPath}": ` +
-          `${(err as Error).message}`,
+      /**
+       * ─── THE IDENTITY IS THE SHA, NOT THE FILENAME ──────────────────
+       * The entry name is `bundled/<sha256><ext>`, and the two sides derived
+       * `<ext>` from DIFFERENT strings: the packager from the archive it
+       * actually wrote (always the repacked `.zip`), the resolver from the
+       * mod's `expectedFilename`. Those agree only by luck.
+       *
+       * They stop agreeing the moment Vortex has had to disambiguate a mod
+       * name, because it appends `.1`, `.2`… — so a mod called
+       * "IDE WHITERUN-149724-1-1746902603.1" made the resolver ask for
+       * `bundled/<sha>.1` while the package held `bundled/<sha>.zip`. The
+       * install died on the first such mod with "contains no entry named",
+       * and on a large profile there is almost always one.
+       *
+       * The sha IS the identity — it is why the file is named that — so the
+       * fallback finds the entry by it. Doing this here rather than in the
+       * resolver is deliberate: it also repairs packages already built and
+       * downloaded, which for a 10 GB collection is the difference between a
+       * fix and a re-download.
+       */
+      const recovered = await findBundledEntryBySha(
+        ehcollZipPath,
+        bundledZipEntry,
       );
+      if (recovered === undefined) {
+        throw new Error(
+          `Could not extract "${bundledZipEntry}" from "${ehcollZipPath}": ` +
+            `${(err as Error).message}`,
+        );
+      }
+      ehLog("warn", "bundled.entry-name-mismatch", {
+        asked: bundledZipEntry,
+        found: recovered,
+      });
+      await extractZipEntryToFile(ehcollZipPath, recovered, extractedPath);
     }
 
     // Sanity-check: confirm the file actually landed.
